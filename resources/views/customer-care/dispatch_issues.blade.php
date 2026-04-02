@@ -1,5 +1,5 @@
 {!! view('customer-care.qc_and_packing', [
-    'pageTitle' => 'Dispatch Issues',
+    'pageTitle' => 'Issues Record',
     'addIssueButtonText' => 'Add Dispatch Issue',
     'introText' => 'Use Add Dispatch Issue to record SKU issues. SKU lookup auto-fills Parent and available QTY.',
     'recordsTitle' => 'Dispatch Issues Records',

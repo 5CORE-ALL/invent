@@ -185,9 +185,6 @@
                                 <a href="{{ route('second', ['pages', 'transit-analysis']) }}">Transit Analysis</a>
                             </li>
                             <li>
-                                <a href="{{ route('review.analysis') }}">Review Analysis</a>
-                            </li>
-                            <li>
                                 <a href="{{ route('pRoi.analysis') }}">Profit & ROI Analysis</a>
                             </li>
                             <li>
@@ -874,7 +871,7 @@
                             <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.dispatch.issues') }}">Dispatch Issues</a>
+                            <a href="{{ route('customer.care.dispatch.issues') }}">Issues Record</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>

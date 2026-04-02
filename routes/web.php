@@ -231,7 +231,6 @@ use App\Http\Controllers\ProductMaster\PrAnalysisController;
 use App\Http\Controllers\ProductMaster\PricingAnalysisController;
 use App\Http\Controllers\ProductMaster\ProductMasterController;
 use App\Http\Controllers\ProductMaster\ReturnAnalysisController;
-use App\Http\Controllers\ProductMaster\ReviewAnalysisController;
 use App\Http\Controllers\ProductMaster\ShortFallAnalysisController;
 use App\Http\Controllers\ProductMaster\StockAnalysisController;
 use App\Http\Controllers\ProductMaster\ToBeDCController;
@@ -406,7 +405,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/product-master-data-view', [ProductMasterController::class, 'getViewProductData']);
     Route::get('/neweggB2C-data-view', [Neweggb2cController::class, 'getViewNeweggB2CData']);
-    Route::get('/review-analysis-data-view', [ReviewAnalysisController::class, 'getViewReviewAnalysisData']);
     Route::get('/pricing-analysis-data-view', [PricingAnalysisController::class, 'getViewPricingAnalysisData']);
     Route::get('/pRoi-analysis-data-view', [PrAnalysisController::class, 'getViewPRoiAnalysisData']);
     Route::get('/return-analysis-data-view', [ReturnAnalysisController::class, 'getViewReturnAnalysisData']);
@@ -2943,7 +2941,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/health-analysis', [HealthController::class, 'health_master_index'])->name('health.master');
 
     // product master index view routes
-    Route::get('/review.analysis', action: [ReviewAnalysisController::class, 'reviewAnalysis'])->name('review.analysis');
     Route::get('/pricing.analysis', action: [PricingAnalysisController::class, 'pricingAnalysis'])->name('pricing.analysis');
     Route::get('/pRoi.analysis', action: [PrAnalysisController::class, 'pRoiAnalysis'])->name('pRoi.analysis');
     Route::get('/return.analysis', action: [ReturnAnalysisController::class, 'returnAnalysis'])->name('return.analysis');

@@ -29,9 +29,7 @@ class SaveFbaDailyMetrics extends Command
 
         // Aggregate — same logic as updateSummary() in JS
         $totalSales = 0; $totalPft = 0;
-        $gpftSum = 0; $gpftCount = 0;
         $priceSum = 0; $priceCount = 0;
-        $cvrSum = 0; $cvrCount = 0;
         $dilSum = 0; $dilCount = 0;
         $totalInv = 0; $totalL30 = 0;
         $totalViews = 0; $zeroSold = 0;
@@ -48,31 +46,21 @@ class SaveFbaDailyMetrics extends Command
             $totalViews  += (int)   ($row['Current_Month_Views'] ?? 0);
             $totalSpend  += (float) ($row['Total_Spend_L30'] ?? 0);
 
-            // Parse GPFT% HTML string: "<span ...>22 %</span>"
-            $gpftStr = strip_tags($row['GPFT%'] ?? '');
-            $gpft    = (float) str_replace(['%',' '], '', $gpftStr);
-            if ($gpft != 0 || $gpftStr !== '') { $gpftSum += $gpft; $gpftCount++; }
-
             $price = (float) ($row['FBA_Price'] ?? 0);
             if ($price > 0) { $priceSum += $price; $priceCount++; }
-
-            // CVR from HTML: "4.3%"
-            $cvrStr = strip_tags($row['FBA_CVR'] ?? '');
-            $cvr    = (float) str_replace('%', '', $cvrStr);
-            if ($cvr > 0) { $cvrSum += $cvr; $cvrCount++; }
 
             $l30 = (int) ($row['l30_units'] ?? 0);
             if ($l30 === 0) $zeroSold++;
 
-            // DIL = (l30 / inv) * 100
-            $inv = (int) ($row['FBA_Quantity'] ?? 0);
-            if ($inv > 0 && $l30 > 0) { $dilSum += ($l30 / $inv) * 100; $dilCount++; }
+            // DIL: use FBA_Dil already computed, same as badge (simple avg of all rows)
+            $dil = (float) ($row['FBA_Dil'] ?? 0);
+            if (!is_nan($dil)) { $dilSum += $dil; $dilCount++; }
         }
 
-        $avgGpft  = $gpftCount  > 0 ? round($gpftSum  / $gpftCount,  2) : 0;
+        $avgGpft  = $totalSales > 0 ? round(($totalPft  / $totalSales) * 100, 2) : 0;
         $avgPrice = $priceCount > 0 ? round($priceSum  / $priceCount, 2) : 0;
-        $avgCvr   = $cvrCount   > 0 ? round($cvrSum    / $cvrCount,   2) : 0;
-        $avgDil   = $dilCount   > 0 ? round($dilSum    / $dilCount,   2) : 0;
+        $avgCvr   = $totalViews > 0 ? round(($totalL30  / $totalViews) * 100, 2) : 0;
+        $avgDil   = $dilCount   > 0 ? round($dilSum / $dilCount, 2) : 0;
         $adsPct   = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 2) : 0;
         $roi      = $totalSales > 0 ? round(($totalPft  / $totalSales) * 100, 2) : 0;
 
