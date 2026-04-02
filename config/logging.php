@@ -152,6 +152,21 @@ return [
             'level' => 'debug',
             'days' => 30,
         ],
+
+        'fba_debug' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/fba_debug.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 14,
+            'replace_placeholders' => true,
+        ],
+        'amazon_debug' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/amazon_debug.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 14,
+            'replace_placeholders' => true,
+        ],
     ],
 
 ];

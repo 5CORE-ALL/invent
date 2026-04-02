@@ -24,6 +24,7 @@ use App\Models\AmazonListingStatus;
 use App\Models\FbaDailyMetrics;
 use App\Models\MarketplacePercentage;
 use App\Services\ColorService;
+use App\Services\FbaInventoryService;
 use App\Services\FbaManualDataService;
 use App\Services\LmpaDataService;
 use App\Services\AmazonSpApiService;
@@ -74,9 +75,7 @@ class FbaDataController extends Controller
       $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
          ->get()
          ->keyBy(function ($item) {
-            $sku = $item->seller_sku;
-            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
-            return strtoupper(trim($base));
+            return FbaInventoryService::sellerSkuToAnalyticsListingKey($item->seller_sku ?? '');
          });
 
       $fbaPriceData = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
@@ -593,6 +592,17 @@ class FbaDataController extends Controller
       $data = $this->getFbaData();
 
       $fbaData = $data['fbaData'];
+
+      if (filter_var(env('FBA_INVENTORY_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {
+         foreach (['CAPO AL BLK', 'ET 10FT BLU', 'ET 6FT BLU'] as $probeKey) {
+            $fbaRow = $fbaData->get($probeKey);
+            Log::channel('fba_debug')->info('FBA Analytics data probe', [
+               'analytics_key' => $probeKey,
+               'seller_sku' => $fbaRow?->seller_sku,
+               'quantity_available' => $fbaRow ? (int) ($fbaRow->quantity_available ?? 0) : null,
+            ]);
+         }
+      }
       $fbaPriceData = $data['fbaPriceData'];
       $fbaReportsData = $data['fbaReportsData'];
       $shopifyData = $data['shopifyData'];
