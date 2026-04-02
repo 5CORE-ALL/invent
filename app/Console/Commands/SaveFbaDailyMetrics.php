@@ -4,14 +4,8 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\FbaDailyMetrics;
-use App\Models\FbaTable;
-use App\Models\FbaPrice;
-use App\Models\FbaMonthlySale;
-use App\Models\FbaManualData;
-use App\Models\FbaReportsMaster;
-use App\Models\FbaShipCalculation;
-use App\Models\MarketplacePercentage;
-use App\Models\AmazonSpCampaignReport;
+use App\Http\Controllers\FbaDataController;
+use Illuminate\Http\Request;
 
 class SaveFbaDailyMetrics extends Command
 {
@@ -22,82 +16,71 @@ class SaveFbaDailyMetrics extends Command
     {
         $today = now()->toDateString();
 
-        // ── Fetch all needed data ─────────────────────────────────────────
-        $fbaData   = FbaTable::where('quantity_available', '>', 0)->get()->keyBy(fn($r) => strtoupper(trim($r->seller_sku)));
-        $prices    = FbaPrice::all()->keyBy(fn($r) => strtoupper(trim($r->seller_sku)));
-        $sales     = FbaMonthlySale::all()->keyBy(fn($r) => strtoupper(trim($r->sku)));
-        $manuals   = FbaManualData::all()->keyBy(fn($r) => strtoupper(trim($r->sku)));
-        $reports   = FbaReportsMaster::all()->keyBy(fn($r) => strtoupper(trim($r->seller_sku)));
-        $ships     = FbaShipCalculation::all()->keyBy(fn($r) => strtoupper(trim($r->sku)));
+        // Reuse the exact same data pipeline as the frontend
+        $controller = app(FbaDataController::class);
+        $request    = Request::create('/fba-data-json', 'GET');
+        $response   = $controller->fbaDataJson($request);
+        $rows       = json_decode($response->getContent(), true);
 
-        $amazonPct = MarketplacePercentage::where('marketplace', 'amazon')->value('percentage') ?? 34;
+        if (!is_array($rows)) {
+            $this->error('Failed to fetch FBA data.');
+            return Command::FAILURE;
+        }
 
-        // Ad spend (L30 sponsored products)
-        $skus = $fbaData->keys()->toArray();
-        $adSpendTotal = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%'.$sku.'%');
-            })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->sum('cost');
-
-        // ── Aggregate ─────────────────────────────────────────────────────
-        $totalSales = 0; $totalPft = 0; $totalInv = 0; $totalL30 = 0;
+        // Aggregate — same logic as updateSummary() in JS
+        $totalSales = 0; $totalPft = 0;
         $gpftSum = 0; $gpftCount = 0;
         $priceSum = 0; $priceCount = 0;
         $cvrSum = 0; $cvrCount = 0;
         $dilSum = 0; $dilCount = 0;
-        $zeroSold = 0;
-        $totalViews = 0;
+        $totalInv = 0; $totalL30 = 0;
+        $totalViews = 0; $zeroSold = 0;
+        $totalSpend = 0;
 
-        foreach ($fbaData as $sku => $fba) {
-            $inv   = (int) ($fba->quantity_available ?? 0);
-            $price = (float) ($prices->get($sku)?->price ?? 0);
-            $l30   = (int)  ($sales->get($sku)?->l30_units ?? 0);
-            $views = (int)  ($reports->get($sku)?->current_month_views ?? 0);
-            $ship  = (float)($ships->get($sku)?->ship_calculation ?? 0);
+        foreach ($rows as $row) {
+            if (!empty($row['is_parent'])) continue;
+            if (($row['FBA_Quantity'] ?? 0) <= 0) continue;
 
-            $manual = $manuals->get($sku);
-            $lp     = 0;
-            if ($manual) {
-                $data = is_array($manual->data) ? $manual->data : (json_decode($manual->data, true) ?? []);
-                $lp   = (float) ($data['lp'] ?? $data['LP'] ?? 0);
-            }
+            $totalSales  += (float) ($row['SALES_AMT']       ?? 0);
+            $totalPft    += (float) ($row['PFT_AMT']         ?? 0);
+            $totalInv    += (int)   ($row['FBA_Quantity']    ?? 0);
+            $totalL30    += (int)   ($row['l30_units']       ?? 0);
+            $totalViews  += (int)   ($row['Current_Month_Views'] ?? 0);
+            $totalSpend  += (float) ($row['Total_Spend_L30'] ?? 0);
 
-            $totalInv   += $inv;
-            $totalL30   += $l30;
-            $totalViews += $views;
+            // Parse GPFT% HTML string: "<span ...>22 %</span>"
+            $gpftStr = strip_tags($row['GPFT%'] ?? '');
+            $gpft    = (float) str_replace(['%',' '], '', $gpftStr);
+            if ($gpft != 0 || $gpftStr !== '') { $gpftSum += $gpft; $gpftCount++; }
+
+            $price = (float) ($row['FBA_Price'] ?? 0);
+            if ($price > 0) { $priceSum += $price; $priceCount++; }
+
+            // CVR from HTML: "4.3%"
+            $cvrStr = strip_tags($row['FBA_CVR'] ?? '');
+            $cvr    = (float) str_replace('%', '', $cvrStr);
+            if ($cvr > 0) { $cvrSum += $cvr; $cvrCount++; }
+
+            $l30 = (int) ($row['l30_units'] ?? 0);
             if ($l30 === 0) $zeroSold++;
 
-            if ($price > 0) {
-                $salesAmt = $price * $l30;
-                $totalSales += $salesAmt;
-
-                $gpft = ($price * (1 - ($amazonPct / 100 + 0.05)) - $lp - $ship) / $price * 100;
-                $pft  = ($price * (1 - ($amazonPct / 100 + 0.05)) - $lp - $ship) * $l30;
-                $totalPft  += $pft;
-                $gpftSum   += $gpft; $gpftCount++;
-
-                $priceSum  += $price; $priceCount++;
-
-                if ($views > 0) { $cvrSum += ($l30 / $views) * 100; $cvrCount++; }
-                if ($inv   > 0) { $dilSum += ($l30 / $inv)   * 100; $dilCount++; }
-            }
+            // DIL = (l30 / inv) * 100
+            $inv = (int) ($row['FBA_Quantity'] ?? 0);
+            if ($inv > 0 && $l30 > 0) { $dilSum += ($l30 / $inv) * 100; $dilCount++; }
         }
 
         $avgGpft  = $gpftCount  > 0 ? round($gpftSum  / $gpftCount,  2) : 0;
         $avgPrice = $priceCount > 0 ? round($priceSum  / $priceCount, 2) : 0;
         $avgCvr   = $cvrCount   > 0 ? round($cvrSum    / $cvrCount,   2) : 0;
         $avgDil   = $dilCount   > 0 ? round($dilSum    / $dilCount,   2) : 0;
-        $adsPct   = $totalSales > 0 ? round(($adSpendTotal / $totalSales) * 100, 2) : 0;
-        $roi      = $totalSales > 0 ? round(($totalPft / $totalSales) * 100, 2) : 0;
+        $adsPct   = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 2) : 0;
+        $roi      = $totalSales > 0 ? round(($totalPft  / $totalSales) * 100, 2) : 0;
 
         FbaDailyMetrics::updateOrCreate(
             ['record_date' => $today],
             [
                 'sales'     => round($totalSales, 2),
-                'pft'       => round($totalPft, 2),
+                'pft'       => round($totalPft,   2),
                 'gpft'      => $avgGpft,
                 'price'     => $avgPrice,
                 'cvr'       => $avgCvr,
@@ -107,12 +90,12 @@ class SaveFbaDailyMetrics extends Command
                 'dil'       => $avgDil,
                 'zero_sold' => $zeroSold,
                 'ads_pct'   => $adsPct,
-                'spend'     => round($adSpendTotal, 2),
+                'spend'     => round($totalSpend, 2),
                 'roi'       => $roi,
             ]
         );
 
-        $this->info("FBA daily metrics saved for {$today}.");
+        $this->info("FBA daily metrics saved for {$today}: Sales=$" . number_format($totalSales, 0));
         return Command::SUCCESS;
     }
 }
