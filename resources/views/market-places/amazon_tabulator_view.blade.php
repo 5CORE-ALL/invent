@@ -1050,7 +1050,7 @@
         const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'fba_price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'];
         const SECTION_MISSING_COLUMNS = ['image_path', '(Child) sku', 'NR', 'is_missing', 'inv_map', 'variation_dot'];
         const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_2ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_l2_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
-        const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
+        const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid_m', 'hl_sbid', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
 
         function amzFmtVal(v) {
             if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
@@ -3994,12 +3994,13 @@
                     },
                     {
                         title: "HL SBID",
-                        field: "hl_sbid",
+                        field: "hl_sbid_m",
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
                         sorter: "number",
                         sorterParams: { alignEmptyValues: "bottom" },
+                        editor: "input",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName))
@@ -4018,11 +4019,10 @@
                     },
                     {
                         title: "HL SBID M",
-                        field: "hl_sbid_m",
+                        field: "hl_sbid",
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
-                        editor: "input",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName))
@@ -6420,9 +6420,9 @@
                     table.moveColumn("hl_l7_cpc", "hl_avg_cpc", true);             // 28. HL L7 CPC
                     table.moveColumn("hl_l1_cpc", "hl_l7_cpc", true);              // 29. HL L1 CPC
                     table.moveColumn("hl_last_sbid", "hl_l1_cpc", true);           // 30. HL Last SBID
-                    table.moveColumn("hl_sbid", "hl_last_sbid", true);             // 31. HL SBID
-                    table.moveColumn("hl_sbid_m", "hl_sbid", true);                // 32. HL SBID M
-                    table.moveColumn("hl_apr_bid", "hl_sbid_m", true);             // 33. HL APR BID
+                    table.moveColumn("hl_sbid_m", "hl_last_sbid", true);           // 31. HL SBID (field hl_sbid_m)
+                    table.moveColumn("hl_sbid", "hl_sbid_m", true);                // 32. HL SBID M (field hl_sbid)
+                    table.moveColumn("hl_apr_bid", "hl_sbid", true);              // 33. HL APR BID
                     
                     // 34-35: Campaign and TPFT at the end
                     table.moveColumn("hl_campaignName", "hl_apr_bid", true);       // 34. HL CAMPAIGN
@@ -8641,7 +8641,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     '(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating',
                     'hl_campaignBudgetAmount', 'hl_sbgt', 'NRA', 'hl_campaignName', 'hl_campaign_status',
                     'hl_sales_L30', 'hl_sold_L30', 'INV', 'L30', 'price', 'GPFT%', 'GROI%',
-                    'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'TPFT'
+                    'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid_m', 'hl_sbid', 'TPFT'
                 ];
             } else {
                 // Pricing/All - export main columns
