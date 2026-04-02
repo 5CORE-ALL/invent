@@ -61,7 +61,6 @@ use App\Http\Controllers\Channels\HealthController;
 use App\Http\Controllers\Channels\NewMarketplaceController;
 use App\Http\Controllers\Channels\OpportunityController;
 use App\Http\Controllers\Channels\ReturnController;
-use App\Http\Controllers\Channels\ReviewController;
 use App\Http\Controllers\Channels\SetupAccountChannelController;
 use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
@@ -2937,7 +2936,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // channel master index view routes
     Route::get('/return-analysis', [ReturnController::class, 'return_master_index'])->name('return.master');
     Route::get('/expenses-analysis', [ExpensesController::class, 'expenses_master_index'])->name('expenses.master');
-    Route::get('/review-analysis', [ReviewController::class, 'review_master_index'])->name('review.master');
     Route::get('/health-analysis', [HealthController::class, 'health_master_index'])->name('health.master');
 
     // product master index view routes
@@ -4646,6 +4644,23 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             Route::post('/stock/unlock', [$c, 'pickUnlock'])->name('stock.unlock');
             Route::get('/scan-lookup', [$c, 'scanLookup'])->name('scan.lookup');
         });
+    });
+
+    // =========================================================================
+    // REVIEW INTELLIGENCE MASTER SYSTEM
+    // =========================================================================
+    Route::prefix('reviews')->name('reviews.')->group(function () {
+        Route::get('/',                          [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'index'])->name('index');
+        Route::get('/data',                      [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'getData'])->name('data');
+        Route::get('/sku/{sku}/detail',          [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'skuDetail'])->name('sku.detail');
+        Route::get('/supplier-intelligence',     [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'supplierIntelligence'])->name('supplier-intelligence');
+        Route::get('/ai-insights',               [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'aiInsights'])->name('ai-insights');
+        Route::get('/alerts',                    [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'alerts'])->name('alerts');
+        Route::post('/alerts/{id}/resolve',      [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'resolveAlert'])->name('alerts.resolve');
+        Route::post('/upload-csv',               [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'uploadCsv'])->name('upload-csv');
+        Route::post('/{id}/generate-reply',      [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'generateReply'])->name('generate-reply');
+        Route::post('/trigger-fetch',            [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'triggerFetch'])->name('trigger-fetch');
+        Route::post('/refresh-summary',          [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'refreshSummary'])->name('refresh-summary');
     });
 
     Route::get('', [RoutingController::class, 'index'])->name('root');

@@ -25,6 +25,14 @@
 
             <li class="side-nav-title">Main</li>
 
+            {{-- Review Intelligence --}}
+            <li class="side-nav-item">
+                <a href="{{ route('reviews.index') }}" class="side-nav-link {{ request()->routeIs('reviews.*') ? 'active' : '' }}">
+                    <i class="ri-star-smile-line"></i>
+                    <span>Review Intelligence</span>
+                </a>
+            </li>
+
                             <li class="side-nav-item">
                     <a href="{{ route('any', 'index') }}" class="side-nav-link">
                         <i class="ri-dashboard-3-line"></i>
@@ -575,9 +583,6 @@
                             </li>
                             <li>
                                 <a href="{{ route('expenses.master') }}">Expenses Analysis</a>
-                            </li>
-                            <li>
-                                <a href="{{ route('review.master') }}">Review Analysis</a>
                             </li>
                             <li>
                                 <a href="{{ route('health.master') }}">Health Analysis</a>

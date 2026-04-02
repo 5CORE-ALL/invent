@@ -1215,6 +1215,19 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | REVIEW INTELLIGENCE MASTER SYSTEM
+        |--------------------------------------------------------------------------
+        */
+        // Analyze unprocessed reviews every hour (batch of 100)
+        $schedule->command('reviews:analyze --batch=100')
+            ->hourly()
+            ->name('reviews-analyze-batch')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**

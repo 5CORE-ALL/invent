@@ -105,6 +105,18 @@
                 </div>
             </li>
 
+            {{-- Review Intelligence --}}
+            <li class="side-nav-item">
+                <a href="{{ route('reviews.index') }}" class="side-nav-link {{ request()->routeIs('reviews.*') ? 'active' : '' }}">
+                    <i class="ri-star-smile-line"></i>
+                    <span>Review Intelligence</span>
+                    @php $openAlertCount = \App\Models\ReviewAlert::where('status','open')->count(); @endphp
+                    @if($openAlertCount > 0)
+                        <span class="badge bg-danger rounded-pill ms-auto">{{ $openAlertCount }}</span>
+                    @endif
+                </a>
+            </li>
+
             {{-- Marketplace Sync (Reverb, Amazon, eBay, Walmart) --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarMarketplaceSync" aria-expanded="false" aria-controls="sidebarMarketplaceSync" class="side-nav-link">
@@ -947,9 +959,6 @@
                         </li>
                         <li>
                             <a href="{{ route('expenses.master') }}">Expenses Analysis</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('review.master') }}">Review Analysis</a>
                         </li>
                         <li>
                             <a href="{{ route('health.master') }}">Health Analysis</a>
