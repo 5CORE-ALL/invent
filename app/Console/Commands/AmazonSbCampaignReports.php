@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Models\AmazonSbCampaignReport;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -294,6 +295,8 @@ class AmazonSbCampaignReports extends Command
                 DB::connection()->disconnect();
             }
 
+            $this->syncSbidFromSbKeywordsApi($reportName, $rows, $profileId, $adType);
+
             $this->info("[SPONSORED_BRANDS - $finalRangeKey] Stored " . $totalStored . " rows to DB.");
             $this->info("[$reportName] Report saved successfully.");
         } catch (\Exception $e) {
@@ -301,6 +304,50 @@ class AmazonSbCampaignReports extends Command
             $this->info("Error trace: " . $e->getTraceAsString());
         } finally {
             DB::connection()->disconnect();
+        }
+    }
+
+    /**
+     * Campaign reports (sbCampaigns) do not include live keyword bids. Populate sbid from the
+     * Sponsored Brands Keywords API (same source as bid updates).
+     */
+    private function syncSbidFromSbKeywordsApi(string $reportName, array $rows, $profileId, string $adType): void
+    {
+        $campaignIds = [];
+        foreach ($rows as $row) {
+            if (! empty($row['campaignId'])) {
+                $campaignIds[] = (string) $row['campaignId'];
+            }
+        }
+        $campaignIds = array_values(array_unique($campaignIds));
+        if ($campaignIds === []) {
+            return;
+        }
+
+        try {
+            $controller = app(AmazonSbBudgetController::class);
+            $rowsUpdated = 0;
+            foreach (array_chunk($campaignIds, AmazonSbBudgetController::HL_BATCH_SIZE) as $batchIndex => $batch) {
+                if ($batchIndex > 0) {
+                    sleep(AmazonSbBudgetController::HL_BATCH_DELAY_SECONDS);
+                }
+                $bidsByCampaign = $controller->getMaxKeywordBidForCampaigns($batch);
+                foreach ($bidsByCampaign as $cid => $bid) {
+                    if ($bid === null || $bid <= 0) {
+                        continue;
+                    }
+                    $rowsUpdated += AmazonSbCampaignReport::where('profile_id', $profileId)
+                        ->where('campaign_id', $cid)
+                        ->where('ad_type', $adType)
+                        ->update([
+                            'sbid' => round((float) $bid, 4),
+                            'updated_at' => now(),
+                        ]);
+                }
+            }
+            $this->info("[{$reportName}] sbid synced from SB Keywords API ({$rowsUpdated} row updates, " . count($campaignIds) . " campaigns).");
+        } catch (\Throwable $e) {
+            $this->warn("[{$reportName}] sbid sync from SB Keywords API skipped: " . $e->getMessage());
         }
     }
 
