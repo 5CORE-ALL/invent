@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'FBA Pricing Data (> 0 INV)', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'FBA Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -9,8 +9,71 @@
         .tabulator-col-sorter {
             display: none !important;
         }
-        
-        /* Circular button styling */
+
+        /* Vertical column headers */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .tabulator .tabulator-header .tabulator-col {
+            height: 80px !important;
+        }
+        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0px !important;
+        }
+
+        /* FBA SKU / Parent hover-expand using absolute overlay */
+        .fba-sku-wrapper {
+            position: relative;
+            display: block;
+            width: 100%;
+        }
+        .fba-sku-short {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fba-sku-full {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+            background: #fff;
+            white-space: nowrap;
+            z-index: 50;
+            padding: 4px 8px;
+            box-shadow: 3px 0 10px rgba(0,0,0,0.18);
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+            align-items: center;
+            gap: 4px;
+            pointer-events: auto;
+        }
+        .fba-sku-wrapper:hover .fba-sku-short { visibility: hidden; }
+        .fba-sku-wrapper:hover .fba-sku-full  { display: flex; }
+        .tabulator-cell:has(.fba-sku-wrapper:hover) {
+            overflow: visible !important;
+            z-index: 50 !important;
+        }
+        .fba-copy-btn {
+            cursor: pointer;
+            border: none;
+            background: none;
+            color: #6c757d;
+            padding: 0 2px;
+            font-size: 12px;
+        }
+        .fba-copy-btn:hover { color: #0d6efd; }
         .btn-circle {
             border-radius: 50% !important;
             width: 35px;
@@ -26,39 +89,30 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 @endsection
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'FBA pricing data (> 0 INV)',
-        'sub_title' => 'FBA pricing data (> 0 INV)',
+        'page_title' => 'FBA Analytics',
+        'sub_title'  => 'FBA Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>FBA pricing data (> 0 INV)</h4>
+                <h4>FBA Analytics</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Inventory</option>
                         <option value="zero">0 Inventory</option>
-                        <option value="more" id="more-inventory-option" selected>More than 0</option>
+                        <option value="more" id="more-inventory-option" selected>&gt; 0</option>
                     </select>
                     <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
                         <option value="hide" selected>Hide Parent</option>
-                    </select>
-
-                    <select id="pft-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">All Gpft</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="11-14">11-14%</option>
-                        <option value="15-20">15-20%</option>
-                        <option value="21-49">21-49%</option>
-                        <option value="50+">50%+</option>
                     </select>
 
                     <select id="gpft-filter" class="form-select form-select-sm"
@@ -107,6 +161,23 @@
                         <option value="error">Error</option>
                     </select>
 
+                    <select id="inv-age-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Inv Age</option>
+                        <option value="0-30">0 – 30</option>
+                        <option value="31-60">31 – 60</option>
+                        <option value="61-90">61 – 90</option>
+                        <option value="91-180">91 – 180</option>
+                        <option value="181-270">181 – 270</option>
+                        <option value="271-365">271 – 365</option>
+                        <option value="366-455">366 – 455</option>
+                        <option value="456plus">456+</option>
+                        <option value="excess">Excess</option>
+                        <option value="healthy">Healthy</option>
+                        <option value="low_stock">Low Stock</option>
+                        <option value="out_of_stock">Out of Stock</option>
+                    </select>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -123,7 +194,7 @@
                     </button>
 
                     <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info">
-                        <i class="fa fa-download"></i> Sample Template
+                        <i class="fa fa-download"></i> Template
                     </a>
                     <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success">
                         <i class="fa fa-file-excel"></i>
@@ -133,57 +204,33 @@
                         <i class="fa fa-upload"></i>
                     </button>
                     
-                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
-                        <i class="fa fa-eye-slash"></i> Hide Chart
-                    </button>
-                    
                     <button id="decrease-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
                         <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
                 </div>
 
-                <!-- Metrics Chart Section -->
-                <div id="metrics-chart-section" class="mt-2 p-2 bg-white rounded border" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Metrics Trend</h6>
-                        <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
-                            <option value="7" selected>Last 7 Days</option>
-                            <option value="14">Last 14 Days</option>
-                            <option value="30">Last 30 Days</option>
-                            <option value="60">Last 60 Days</option>
-                        </select>
-                    </div>
-                    <div style="height: 200px;">
-                        <canvas id="metricsChart"></canvas>
-                    </div>
-                </div>
-
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">All Calculations Summary</h6>
+                    <h6 class="mb-3">All Calculations Summary <small class="text-muted fw-normal" style="font-size:11px;">(click any badge for trend chart)</small></h6>
                     <div class="d-flex flex-wrap gap-2">
                         <!-- Top Metrics -->
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
-                        
+                        <span class="badge bg-primary fs-6 p-2 fba-badge-chart" id="total-sales-amt-badge" data-metric="sales"    style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Sales: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2 fba-badge-chart" id="total-pft-amt-badge"  data-metric="pft"      style="color:black;font-weight:bold;cursor:pointer;" title="View trend">PFT: $0.00</span>
+                        <span class="badge bg-info    fs-6 p-2 fba-badge-chart" id="avg-gpft-badge"       data-metric="gpft"     style="color:black;font-weight:bold;cursor:pointer;" title="View trend">GPFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2 fba-badge-chart" id="avg-price-badge"      data-metric="price"    style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Price: $0.00</span>
+                        <span class="badge bg-danger  fs-6 p-2 fba-badge-chart" id="avg-cvr-badge"        data-metric="cvr"      style="color:black;font-weight:bold;cursor:pointer;" title="View trend">CVR: 0.00%</span>
+                        <span class="badge bg-info    fs-6 p-2 fba-badge-chart" id="total-views-badge"    data-metric="views"    style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Views: 0</span>
+
                         <!-- FBA Metrics -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total FBA INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total FBA L30: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-sku-count-badge" style="color: black; font-weight: bold;">0 Sold SKU: 0</span>
-                        
+                        <span class="badge bg-primary fs-6 p-2 fba-badge-chart" id="total-fba-inv-badge"       data-metric="inv"       style="color:black;font-weight:bold;cursor:pointer;" title="View trend">INV: 0</span>
+                        <span class="badge bg-success fs-6 p-2 fba-badge-chart" id="total-fba-l30-badge"       data-metric="l30"       style="color:black;font-weight:bold;cursor:pointer;" title="View trend">L30: 0</span>
+                        <span class="badge bg-warning fs-6 p-2 fba-badge-chart" id="avg-dil-percent-badge"     data-metric="dil"       style="color:black;font-weight:bold;cursor:pointer;" title="View trend">DIL: 0%</span>
+                        <span class="badge bg-danger  fs-6 p-2 fba-badge-chart" id="zero-sold-sku-count-badge" data-metric="zero_sold" style="color:black;font-weight:bold;cursor:pointer;" title="View trend">0 Sold: 0</span>
+
                         <!-- Financial Metrics -->
-                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-danger   fs-6 p-2 fba-badge-chart" id="total-tcos-badge"     data-metric="ads_pct" style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Ads: 0%</span>
+                        <span class="badge bg-warning  fs-6 p-2 fba-badge-chart" id="total-spend-l30-badge" data-metric="spend"  style="color:black;font-weight:bold;cursor:pointer;" title="View trend">Spend: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2 fba-badge-chart" id="roi-percent-badge"   data-metric="roi"    style="color:black;font-weight:bold;cursor:pointer;" title="View trend">ROI: 0%</span>
                     </div>
                 </div>
             </div>
@@ -326,16 +373,74 @@
             </div>
         </div>
 
+    {{-- ── FBA Badge Trend Chart Modal ─────────────────────────────── --}}
+    <div class="modal fade" id="fbaBadgeChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none" style="max-width:98vw;width:98vw;margin:10px auto 0;">
+            <div class="modal-content" style="border-radius:8px;overflow:hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size:13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="fbaBadgeChartTitle">FBA – Trend</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="fbaBadgeChartRange" class="form-select form-select-sm bg-white"
+                            style="width:110px;height:26px;font-size:11px;padding:1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="fbaBadgeLineWrap" style="display:none;height:38vh;align-items:stretch;">
+                        <div style="flex:1;min-width:0;position:relative;">
+                            <canvas id="fbaBadgeLineCanvas"></canvas>
+                        </div>
+                        <div id="fbaBadgeStatPanel" style="width:100px;display:flex;flex-direction:column;justify-content:center;
+                                gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;border-radius:0 4px 4px 0;">
+                            <div style="text-align:center;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">Highest</div>
+                                <div id="fbaBadgeHighest" style="font-size:13px;font-weight:700;color:#dc3545;">–</div>
+                            </div>
+                            <div style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">Median</div>
+                                <div id="fbaBadgeMedian" style="font-size:13px;font-weight:700;color:#6c757d;">–</div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">Lowest</div>
+                                <div id="fbaBadgeLowest" style="font-size:13px;font-weight:700;color:#198754;">–</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="fbaBadgeBarWrap" style="display:none;height:160px;margin-top:8px;">
+                        <canvas id="fbaBadgeBarCanvas"></canvas>
+                    </div>
+                    <div id="fbaBadgeLoading" class="text-center py-3" style="display:none;">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data…</p>
+                    </div>
+                    <div id="fbaBadgeNoData" class="text-center py-3" style="display:none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No data yet. Runs daily at 23:50 UTC.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     @endsection
 
     @section('script-bottom')
         <script>
             const COLUMN_VIS_KEY = "fba_tabulator_column_visibility";
-            let metricsChart = null;
             let table = null; // Global table reference
             let decreaseModeActive = false; // Track decrease mode state
             let increaseModeActive = false; // Track increase mode state
             let selectedSkus = new Set(); // Track selected SKUs across all pages
+            window._fbaGlobalAdsPercent = 0; // Global Ads% shared across all rows
             
             // Toast notification function
             function showToast(message, type = 'info') {
@@ -357,190 +462,6 @@
                 const bsToast = new bootstrap.Toast(toast);
                 bsToast.show();
                 toast.addEventListener('hidden.bs.toast', () => toast.remove());
-            }
-
-            // Initialize Metrics Chart
-            function initMetricsChart() {
-                const ctx = document.getElementById('metricsChart').getContext('2d');
-                metricsChart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: [],
-                        datasets: [
-                            {
-                                label: 'Avg Price ($)',
-                                data: [],
-                                borderColor: 'rgb(75, 192, 192)',
-                                backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                yAxisID: 'y',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'Total Views',
-                                data: [],
-                                borderColor: 'rgb(54, 162, 235)',
-                                backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                yAxisID: 'y1',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'Avg GPFT%',
-                                data: [],
-                                borderColor: 'rgb(255, 206, 86)',
-                                backgroundColor: 'rgba(255, 206, 86, 0.1)',
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                yAxisID: 'y',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'Avg GROI%',
-                                data: [],
-                                borderColor: 'rgb(153, 102, 255)',
-                                backgroundColor: 'rgba(153, 102, 255, 0.1)',
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                yAxisID: 'y',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'Avg TACOS%',
-                                data: [],
-                                borderColor: 'rgb(255, 99, 132)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                yAxisID: 'y',
-                                tension: 0.4
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                        },
-                        plugins: {
-                            legend: {
-                                position: 'top',
-                                labels: {
-                                    usePointStyle: true,
-                                    padding: 10
-                                }
-                            },
-                            title: {
-                                display: false
-                            },
-                            tooltip: {
-                                enabled: true,
-                                mode: 'index',
-                                intersect: false,
-                                callbacks: {
-                                    label: function(context) {
-                                        let label = context.dataset.label || '';
-                                        let value = context.parsed.y || 0;
-                                        
-                                        // Format based on dataset label
-                                        if (label.includes('Price') || label.includes('price')) {
-                                            return label + ': $' + value.toFixed(2);
-                                        } else if (label.includes('Views') || label.includes('views')) {
-                                            return label + ': ' + value.toLocaleString();
-                                        } else if (label.includes('TACOS')) {
-                                            // TACOS: round figure (e.g., 100%, 15%)
-                                            return label + ': ' + Math.round(value) + '%';
-                                        } else if (label.includes('GPFT') || label.includes('GROI') || label.includes('%')) {
-                                            return label + ': ' + value.toFixed(2) + '%';
-                                        }
-                                        return label + ': ' + value;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                type: 'linear',
-                                display: true,
-                                position: 'left',
-                                title: {
-                                    display: true,
-                                    text: 'Price / Percentages'
-                                },
-                                beginAtZero: false,
-                                ticks: {
-                                    callback: function(value, index, values) {
-                                        // Format based on value range - prices are typically larger numbers
-                                        // Percentages are typically 0-100 range
-                                        if (value >= 0 && value <= 200) {
-                                            // Likely a percentage
-                                            return value.toFixed(0) + '%';
-                                        } else {
-                                            // Likely a price
-                                            return '$' + value.toFixed(0);
-                                        }
-                                    }
-                                }
-                            },
-                            y1: {
-                                type: 'linear',
-                                display: true,
-                                position: 'right',
-                                title: {
-                                    display: true,
-                                    text: 'Views'
-                                },
-                                beginAtZero: true,
-                                grid: {
-                                    drawOnChartArea: false,
-                                },
-                                ticks: {
-                                    callback: function(value) {
-                                        return value.toLocaleString();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
-            // Load Metrics Data
-            function loadMetricsData(days = 7) {
-                fetch(`/fba-metrics-history?days=${days}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.length > 0) {
-                            // Update chart
-                            if (metricsChart) {
-                                metricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
-                                metricsChart.data.datasets[0].data = data.map(d => d.avg_price || 0);
-                                metricsChart.data.datasets[1].data = data.map(d => d.total_views || 0);
-                                metricsChart.data.datasets[2].data = data.map(d => d.avg_gprft || 0);
-                                metricsChart.data.datasets[3].data = data.map(d => d.avg_groi_percent || 0);
-                                metricsChart.data.datasets[4].data = data.map(d => d.avg_tacos || 0);
-                                metricsChart.update();
-                            }
-                            
-                            // Update metrics summary with latest data
-                            const latest = data[data.length - 1];
-                            $('#metric-avg-gprft').text(latest.avg_gprft + '%');
-                            $('#metric-avg-groi').text(latest.avg_groi_percent + '%');
-                            $('#metric-avg-tacos').text(latest.avg_tacos + '%');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error loading metrics data:', error);
-                    });
             }
 
             // SKU-specific chart
@@ -1452,29 +1373,8 @@
             };
 
             $(document).ready(function() {
-                // Initialize charts
-                initMetricsChart();
-                loadMetricsData(7);
                 initSkuMetricsChart();
 
-                // Toggle chart button
-                $('#toggle-chart-btn').on('click', function() {
-                    const $chartSection = $('#metrics-chart-section');
-                    const $btn = $(this);
-                    
-                    if ($chartSection.is(':visible')) {
-                        $chartSection.slideUp();
-                        $btn.html('<i class="fa fa-eye"></i> Show Chart');
-                    } else {
-                        $chartSection.slideDown();
-                        $btn.html('<i class="fa fa-eye-slash"></i> Hide Chart');
-                    }
-                });
-
-                // Show chart button by default on first load
-                $('#toggle-chart-btn').show();
-
-                // Decrease button toggle
                 // Price Mode button – cycles: Off → Decrease → Increase → Off (mirrors AliExpress)
                 $('#decrease-btn').on('click', function() {
                     if (!decreaseModeActive && !increaseModeActive) {
@@ -1577,12 +1477,6 @@
                     window.applyAllSelectedPrices();
                 });
 
-                // Chart days filter
-                $('#chart-days-filter').on('change', function() {
-                    const days = $(this).val();
-                    loadMetricsData(days);
-                });
-
                 // SKU chart days filter
                 $('#sku-chart-days-filter').on('change', function() {
                     const days = $(this).val();
@@ -1658,35 +1552,107 @@
                         //     }
                         // },
                         {
-                            title: "FBA <br>SKU",
+                            title: "Parent",
+                            field: "Parent",
+                            headerFilter: "input",
+                            headerFilterPlaceholder: "Search Parent...",
+                            frozen: true,
+                            width: 65,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const val = (cell.getValue() || '').trim();
+                                if (!val) return '<span style="color:#adb5bd;">—</span>';
+                                return `<div class="fba-sku-wrapper">
+                                    <span class="fba-sku-short" style="color:#0d6efd;font-size:11px;font-weight:600;">${val}</span>
+                                    <span class="fba-sku-full">
+                                        <span style="color:#0d6efd;font-size:11px;font-weight:600;">${val}</span>
+                                        <button class="fba-copy-btn" data-copy="${val.replace(/"/g,'&quot;')}" title="Copy"><i class="fa fa-copy"></i></button>
+                                    </span>
+                                </div>`;
+                            }
+                        },
+                        {
+                            title: "Image",
+                            field: "image_path",
+                            hozAlign: "center",
+                            headerSort: false,
+                            width: 60,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const src = cell.getValue();
+                                if (!src) return '';
+                                return `<img src="${src}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">`;
+                            }
+                        },
+                        {
+                            title: "B/S",
+                            field: "buyer_link",
+                            hozAlign: "center",
+                            headerSort: false,
+                            width: 40,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const buyerLink  = rowData.buyer_link  || '';
+                                const sellerLink = rowData.seller_link || '';
+                                if (!buyerLink && !sellerLink) return '<span style="color:#ccc;">—</span>';
+                                const bDot = buyerLink
+                                    ? `<a href="${buyerLink}" target="_blank" rel="noopener" title="Buyer link"
+                                           style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#0d6efd;margin:0 2px;"></a>`
+                                    : '';
+                                const sDot = sellerLink
+                                    ? `<a href="${sellerLink}" target="_blank" rel="noopener" title="Seller link"
+                                           style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#ffc107;margin:0 2px;"></a>`
+                                    : '';
+                                return `<div style="display:flex;align-items:center;justify-content:center;gap:2px;">${bDot}${sDot}</div>`;
+                            }
+                        },
+                        {
+                            title: "FBA SKU",
                             field: "FBA_SKU",
                             headerFilter: "input",
                             headerFilterPlaceholder: "Search SKU...",
                             cssClass: "font-weight-bold",
-                            tooltip: true,
+                            tooltip: false,
                             frozen: true,
+                            width: 140,
                             formatter: function(cell) {
                                 const fbaSku = cell.getValue();
-                                const sku = cell.getRow().getData().SKU;
-                                const ratings = cell.getRow().getData().Ratings;
-                                if (!fbaSku || cell.getRow().getData().is_parent) return fbaSku;
-                                
+                                const rowData = cell.getRow().getData();
+                                const sku = rowData.SKU;
+                                const ratings = rowData.Ratings;
+                                if (!fbaSku || rowData.is_parent) return fbaSku;
+
                                 let ratingDisplay = '';
                                 if (ratings && ratings > 0) {
-                                    ratingDisplay = ` <i class="fa fa-star" style="color: orange;"></i> ${ratings}`;
+                                    ratingDisplay = ` <i class="fa fa-star" style="color:orange;"></i> ${ratings}`;
                                 }
-                                
-                                return `${fbaSku}${ratingDisplay} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+
+                                const copyBtn = `<button class="fba-copy-btn" data-copy="${fbaSku.replace(/"/g,'&quot;')}" title="Copy SKU"><i class="fa fa-copy"></i></button>`;
+                                const infoBtn = `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart"
+                                        style="border:none;background:none;color:#87CEEB;padding:2px 4px;">
+                                        <i class="fa fa-info-circle"></i></button>`;
+
+                                return `<div class="fba-sku-wrapper">
+                                    <span class="fba-sku-short" style="font-weight:600;">${fbaSku}</span>
+                                    <span class="fba-sku-full">
+                                        <span style="font-weight:600;">${fbaSku}</span>
+                                        ${ratingDisplay}${copyBtn}${infoBtn}
+                                    </span>
+                                </div>`;
                             }
                         },
                         {
-                            title: "Product<br>SKU",
+                            title: "Product SKU",
                             field: "SKU",
                             headerFilter: "input",
                             headerFilterPlaceholder: "CP / base SKU...",
                             cssClass: "text-secondary",
                             tooltip: true,
                             frozen: true,
+                            visible: false,
                             formatter: function(cell) {
                                 const sku = cell.getValue();
                                 if (!sku || cell.getRow().getData().is_parent) return sku || '';
@@ -1701,7 +1667,7 @@
                         //     hozAlign: "center"
                         // },
                         {
-                            title: "FBA <br> INV",
+                            title: "FBA INV",
                             field: "FBA_Quantity",
                             hozAlign: "center"
                         },
@@ -1714,7 +1680,7 @@
                         // },
 
                         {
-                            title: "L30 <br> FBA",
+                            title: "L30 FBA",
                             field: "l30_units",
                             hozAlign: "center"
                         },
@@ -1741,7 +1707,7 @@
 
 
                         {
-                            title: "FBA <br> CVR",
+                            title: "FBA CVR",
                             field: "FBA_CVR",
                             sorter: function(a, b) {
                                 const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
@@ -1765,7 +1731,7 @@
 
 
                         {
-                            title: "Inv<br> age",
+                            title: "Inv age",
                             field: "Inv_age",
                             hozAlign: "center",
                             cellClick: function(e, cell) {
@@ -1804,7 +1770,7 @@
                         },
 
                         {
-                            title: "FBA<br> Price",
+                            title: "FBA Price",
                             field: "FBA_Price",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -1879,7 +1845,7 @@
                             minWidth: 70
                         },
                         {
-                            title: "AMZ<br>GPFT%",
+                            title: "FBM GPFT",
                             field: "AMZ_GPFT",
                             hozAlign: "center",
                             visible: true,
@@ -1893,182 +1859,12 @@
                                 else if (pct >= 10 && pct < 20) color = '#3591dc';
                                 else if (pct >= 20 && pct <= 40) color = '#28a745';
                                 else color = '#e83e8c';
-                                return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                                return `<span style="color: ${color}; font-weight: 600;">${Math.round(pct)}%</span>`;
                             },
                             minWidth: 70
                         },
                         {
-                            title: "AMZ<br>AD%",
-                            field: "AMZ_AD",
-                            hozAlign: "center",
-                            visible: true,
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                if (value == null || value === '') return '<span class="text-muted">-</span>';
-                                const pct = parseFloat(value);
-                                let color = '';
-                                // AD% color: lower is better
-                                if (pct >= 100) color = '#a00211';
-                                else if (pct >= 50) color = '#dc3545';
-                                else if (pct >= 20) color = '#ffc107';
-                                else if (pct >= 10) color = '#3591dc';
-                                else if (pct > 0) color = '#28a745';
-                                else color = '#6c757d';
-                                return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
-                            },
-                            minWidth: 70
-                        },
-                        {
-                            title: "AMZ<br>NPFT%",
-                            field: "AMZ_NPFT",
-                            hozAlign: "center",
-                            visible: true,
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                if (value == null || value === '') return '<span class="text-muted">-</span>';
-                                const pct = parseFloat(value);
-                                let color = '';
-                                if (pct < 0) color = '#a00211';
-                                else if (pct >= 0 && pct < 10) color = '#ffc107';
-                                else if (pct >= 10 && pct < 20) color = '#3591dc';
-                                else if (pct >= 20 && pct <= 40) color = '#28a745';
-                                else color = '#e83e8c';
-                                return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
-                            },
-                            minWidth: 70
-                        },
-                        {
-                            title: "CVR<br>L60<br>amz",
-                            field: "CVR_L60_amz",
-                            hozAlign: "center",
-                            visible: true,
-                            formatter: function(cell) {
-                                const row = cell.getRow().getData();
-                                if (row.is_parent) return '';
-                                
-                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
-                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
-                                
-                                if (sess60 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-                                
-                                const cvr = (aL60 / sess60) * 100;
-                                let color = '';
-                                if (cvr <= 4) color = '#a00211'; // red
-                                else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                                else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
-                                else color = '#e83e8c'; // pink
-                                
-                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
-                            },
-                            sorter: function(a, b, aRow, bRow) {
-                                const calcCVR = (row) => {
-                                    const aL60 = parseFloat(row['AMZ_L60'] || 0);
-                                    const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
-                                    return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
-                                };
-                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                            },
-                            minWidth: 65
-                        },
-                        {
-                            title: "CVR<br>L45<br>amz",
-                            field: "CVR_L45_amz",
-                            hozAlign: "center",
-                            visible: true,
-                            formatter: function(cell) {
-                                const row = cell.getRow().getData();
-                                if (row.is_parent) return '';
-                                
-                                // 45-day: use average of L30 and L60 (sold and views) for 45-day approximation
-                                const aL30 = parseFloat(row['AMZ_L30'] || 0);
-                                const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
-                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
-                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
-                                const aL45 = (aL30 + aL60) / 2;
-                                const sess45 = (sess30 + sess60) / 2;
-                                
-                                if (sess45 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-                                
-                                const cvr = (aL45 / sess45) * 100;
-                                let color = '';
-                                if (cvr <= 4) color = '#a00211'; // red
-                                else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                                else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
-                                else color = '#e83e8c'; // pink
-                                
-                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
-                            },
-                            sorter: function(a, b, aRow, bRow) {
-                                const calcCVR = (row) => {
-                                    const aL30 = parseFloat(row['AMZ_L30'] || 0);
-                                    const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
-                                    const aL60 = parseFloat(row['AMZ_L60'] || 0);
-                                    const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
-                                    const aL45 = (aL30 + aL60) / 2;
-                                    const sess45 = (sess30 + sess60) / 2;
-                                    return sess45 === 0 ? 0 : (aL45 / sess45) * 100;
-                                };
-                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                            },
-                            minWidth: 65
-                        },
-                        {
-                            title: "CVR<br>L30<br>amz",
-                            field: "CVR_L30_amz",
-                            hozAlign: "center",
-                            visible: true,
-                            formatter: function(cell) {
-                                const row = cell.getRow().getData();
-                                if (row.is_parent) return '';
-                                
-                                const sku = row['SKU'] || '';
-                                const aL30 = parseFloat(row['AMZ_L30'] || 0);
-                                const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
-                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
-                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
-                                const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                                const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
-                                const tol = 0.1;
-                                
-                                let arrowHtml = '';
-                                if (sku) {
-                                    let arrowColor = '#6c757d';
-                                    let arrowIcon = 'fa-minus';
-                                    if (cvrL30 > cvrL60 + tol) {
-                                        arrowColor = '#28a745';
-                                        arrowIcon = 'fa-arrow-up';
-                                    } else if (cvrL30 < cvrL60 - tol) {
-                                        arrowColor = '#a00211';
-                                        arrowIcon = 'fa-arrow-down';
-                                    }
-                                    arrowHtml = `<i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px; margin-left: 4px;"></i>`;
-                                }
-                                
-                                if (sess30 === 0) {
-                                    return `<span style="color: #a00211; font-weight: 600;">0.0%</span>${arrowHtml}`.trim();
-                                }
-                                
-                                const cvr = cvrL30;
-                                let color = '';
-                                if (cvr <= 4) color = '#a00211';
-                                else if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                                else if (cvr > 7 && cvr <= 10) color = '#28a745';
-                                else color = '#e83e8c';
-                                
-                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>${arrowHtml}`.trim();
-                            },
-                            sorter: function(a, b, aRow, bRow) {
-                                const calcCVR = (row) => {
-                                    const aL30 = parseFloat(row['AMZ_L30'] || 0);
-                                    const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
-                                    return sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                                };
-                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                            },
-                            minWidth: 65
-                        },
-                        {
-                            title: "Rating<br>amz",
+                            title: "Rating amz",
                             field: "AMZ_Rating",
                             hozAlign: "center",
                             visible: true,
@@ -2095,14 +1891,9 @@
                                 const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
                                 const fontWeight = '600';
                                 
-                                return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                                    <span style="color: ${ratingColor}; font-weight: ${fontWeight};">
-                                        <i class="fa fa-star"></i> ${rating.toFixed(1)}
-                                    </span>
-                                    <span style="font-size: 11px; color: ${reviewColor}; font-weight: ${fontWeight};">
-                                        ${reviews.toLocaleString()} reviews
-                                    </span>
-                                </div>`;
+                                return `<span style="color:${ratingColor};font-weight:${fontWeight};">
+                                    <i class="fa fa-star"></i> ${rating.toFixed(1)}${reviews > 0 ? ` (${reviews.toLocaleString()})` : ''}
+                                </span>`;
                             },
                             sorter: function(a, b, aRow, bRow) {
                                 const ratingA = parseFloat(aRow.getData()['AMZ_Rating'] || 0);
@@ -2220,34 +2011,36 @@
                         },
 
                         {
-                            title: "TACOS",
+                            title: "Ads%",
                             field: "TCOS_Percentage",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                return value.toFixed(0) + '%';
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const pct = window._fbaGlobalAdsPercent ?? 0;
+                                let color = '#6c757d';
+                                if      (pct >= 50)  color = '#a00211';
+                                else if (pct >= 20)  color = '#dc3545';
+                                else if (pct >= 10)  color = '#ffc107';
+                                else if (pct > 0)    color = '#28a745';
+                                return `<span style="color:${color};font-weight:600;">${pct.toFixed(1)}%</span>`;
                             }
                         },
 
                         {
-                            title: "PRFT<br>%",
+                            title: "PRFT%",
                             field: "TPFT",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                let style = '';
-                                if (value < 10) {
-                                    style = 'color: red;';
-                                } else if (value >= 11 && value <= 15) {
-                                    style = 'background-color: yellow; color: black;';
-                                } else if (value >= 16 && value <= 20) {
-                                    style = 'color: blue;';
-                                } else if (value >= 21 && value <= 40) {
-                                    style = 'color: green;';
-                                } else if (value > 40) {
-                                    style = 'color: purple;';
-                                }
-                                return `<span style="${style}">${value.toFixed(1)}%</span>`;
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                // PRFT% = GPFT% - Ads%
+                                const gpftRaw = String(rowData['GPFT%'] || '').replace(/<[^>]*>/g, '').replace('%', '').trim();
+                                const gpft    = parseFloat(gpftRaw) || 0;
+                                const ads     = window._fbaGlobalAdsPercent || 0;
+                                const value   = gpft - ads;
+                                let color = value < 0 ? 'red' : value < 10 ? 'red' : value <= 15 ? '#ffc107' : value <= 20 ? 'blue' : value <= 40 ? 'green' : 'purple';
+                                return `<span style="color:${color};font-weight:600;">${Math.round(value)}%</span>`;
                             },
                         },
 
@@ -2256,23 +2049,15 @@
                             field: "ROI",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                const el = cell.getElement();
-
-                                // remove old styles
-                                el.style.color = "";
-                                el.style.fontWeight = "bold";
-
-                                // 🎨 Text Color Conditions
-                                if (value >= 0 && value <= 50) {
-                                    el.style.color = "red"; // 0–50
-                                } else if (value >= 51 && value <= 100) {
-                                    el.style.color = "green"; // 51–100
-                                } else if (value >= 101) {
-                                    el.style.color = "magenta"; // 101+ (Pink shade)
-                                }
-
-                                return value.toFixed(0) + "%";
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                // ROI% = GROI% - Ads%
+                                const groiRaw = String(rowData['GROI%'] || '').replace(/<[^>]*>/g, '').replace('%', '').trim();
+                                const groi    = parseFloat(groiRaw) || 0;
+                                const ads     = window._fbaGlobalAdsPercent || 0;
+                                const value   = groi - ads;
+                                let color = value <= 0 ? 'red' : value <= 50 ? 'red' : value <= 100 ? 'green' : 'magenta';
+                                return `<span style="color:${color};font-weight:bold;">${Math.round(value)}%</span>`;
                             },
                         },
 
@@ -2280,30 +2065,39 @@
 
 
                         {
-                            title: "S <br> Price",
+                            title: "S Price",
                             field: "S_Price",
                             hozAlign: "center",
                             editor: "input",
                             cellEdited: function(cell) {
-                                var data = cell.getRow().getData();
+                                var row  = cell.getRow();
+                                var data = row.getData();
                                 var value = parseFloat(cell.getValue());
 
-                                // ❌ Stop if value is 0 or < 1
                                 if (isNaN(value) || value < 1) {
                                     alert("Price must be 1 or greater. Cannot push 0 or invalid prices.");
-                                    // Reset previous value
                                     cell.restoreOldValue();
                                     return;
                                 }
 
-                                // ✅ Additional safety check - prevent empty or 0 from being saved
-                                if (!value || value === 0) {
-                                    alert("Cannot save or push 0 price.");
-                                    cell.restoreOldValue();
-                                    return;
-                                }
+                                // ── Instantly recalculate derived S_Price metrics ──────────
+                                const LP       = parseFloat(data.LP)   || 0;
+                                const FBA_SHIP = parseFloat(data.FBA_Ship_Calculation) || 0;
+                                const COMM     = parseFloat(data.Commission_Percentage) || 34;
 
-                                // ✔️ Update in database
+                                const sPft  = value > 0 ? ((value * 0.66 - LP - FBA_SHIP) / value) * 100 : 0;
+                                const sRoi  = LP > 0   ? ((value * 0.66 - LP - FBA_SHIP) / LP)    * 100 : 0;
+                                const sGpft = value > 0 ? ((value * (1 - (COMM / 100 + 0.05)) - LP - FBA_SHIP) / value) * 100 : 0;
+                                const sGroi = LP > 0   ? ((value * (1 - (COMM / 100 + 0.05)) - LP - FBA_SHIP) / LP)    * 100 : 0;
+
+                                row.update({
+                                    'SGPFT%': `${sGpft.toFixed(1)} %`,
+                                    'SGROI%': `${sGroi.toFixed(1)} %`,
+                                    SPFT    : sPft,
+                                    'SROI%' : `${sRoi.toFixed(1)} %`,
+                                });
+
+                                // ── Save to DB in background ───────────────────────────────
                                 $.ajax({
                                     url: '/update-fba-manual-data',
                                     method: 'POST',
@@ -2317,8 +2111,6 @@
                                         if (response.success === false) {
                                             alert('Failed to save: ' + (response.error || 'Unknown error'));
                                             cell.restoreOldValue();
-                                        } else {
-                                            table.replaceData();
                                         }
                                     },
                                     error: function(xhr) {
@@ -2327,7 +2119,7 @@
                                     }
                                 });
 
-                                // ✔️ Push price to Amazon (only if valid)
+                                // ── Push price to Amazon ───────────────────────────────────
                                 if (value > 0) {
                                     $.ajax({
                                         url: '/push-fba-price',
@@ -2508,7 +2300,7 @@
                         },
 
                         {
-                            title: "FBA<br> Ship",
+                            title: "FBA Ship",
                             field: "FBA_Ship_Calculation",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -2544,13 +2336,13 @@
                         //     }
                         // },
                         {
-                            title: "FBA<br> Fee",
+                            title: "FBA Fee",
                             field: "Fulfillment_Fee",
                             hozAlign: "center"
                         },
 
                         {
-                            title: "FBA <br> Fee <br> M",
+                            title: "FBA Fee M",
                             field: "FBA_Fee_Manual",
                             hozAlign: "center",
                             editable: function(cell) {
@@ -2658,7 +2450,7 @@
                         //     editor: "input"
                         // },
                         {
-                            title: "Send <br> Cost",
+                            title: "Send Cost",
                             field: "Send_Cost",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -3011,7 +2803,7 @@
                         }
                     });
                     const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
-                    $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
+                    $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
 
                     let totalViews = 0;
                     data.forEach(row => {
@@ -3020,28 +2812,36 @@
                         }
                     });
                     const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
-                    $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
+                    $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
                     $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                     
 
-                    $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos) + '%');
-                    $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
-                    $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
-                    $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
-                    $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
+                    const adsPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100).toFixed(1) : 0;
+                    $('#total-tcos-badge').text('Ads: ' + adsPercent + '%');
+                    window._fbaGlobalAdsPercent = parseFloat(adsPercent) || 0;
+                    if (table) {
+                        const col = table.getColumn('TCOS_Percentage');
+                        if (col) col.getCells().forEach(c => c.setValue(c.getValue(), true));
+                        // Redraw PRFT% and ROI% since they depend on global Ads%
+                        ['TPFT', 'ROI'].forEach(function(f) {
+                            const c2 = table.getColumn(f);
+                            if (c2) c2.getCells().forEach(c => c.setValue(c.getValue(), true));
+                        });
+                    }
+                    $('#total-spend-l30-badge').text('Spend: $' + Math.round(totalSpendL30));
                     const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
-                    $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
-                    $('#total-fba-inv-badge').text('Total FBA INV: ' + Math.round(totalFbaInv).toLocaleString());
-                    $('#total-fba-l30-badge').text('Total FBA L30: ' + Math.round(totalFbaL30).toLocaleString());
+                    $('#roi-percent-badge').text('ROI: ' + roiPercent + '%');
+                    $('#total-fba-inv-badge').text('INV: ' + Math.round(totalFbaInv).toLocaleString());
+                    $('#total-fba-l30-badge').text('L30: ' + Math.round(totalFbaL30).toLocaleString());
                     const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
-                    $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
-                    $('#zero-sold-sku-count-badge').text('0 Sold SKU: ' + zeroSoldSkuCount);
+                    $('#avg-dil-percent-badge').text('DIL: ' + Math.round(avgDilPercent) + '%');
+                    $('#zero-sold-sku-count-badge').text('0 Sold: ' + zeroSoldSkuCount);
                     $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
-                    $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
+                    $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
                     $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));
-                    $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+                    $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSalesAmt));
                     const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
-                    $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+                    $('#avg-gpft-badge').text('GPFT: ' + avgGpft + '%');
                     $('#avg-gpft-summary').text(avgGpft + '%');
                 }
 
@@ -3050,11 +2850,11 @@
                 function applyFilters() {
                     const inventoryFilter = $('#inventory-filter').val();
                     const parentFilter = $('#parent-filter').val();
-                    const pftFilter = $('#pft-filter').val();
                     const gpftFilter = $('#gpft-filter').val();
                     const roiFilter = $('#roi-filter').val();
                     const cvrFilter = $('#cvr-filter').val();
                     const statusFilter = $('#status-filter').val();
+                    const invAgeFilter = $('#inv-age-filter').val();
 
                     table.clearFilter(true);
 
@@ -3067,28 +2867,6 @@
                     if (parentFilter === 'hide') {
                         table.addFilter(function(data) {
                             return data.is_parent !== true;
-                        });
-                    }
-
-                    if (pftFilter !== 'all') {
-                        table.addFilter(function(data) {
-                            const value = parseFloat(data['Gpft']);
-                            if (isNaN(value)) return false;
-
-                            switch (pftFilter) {
-                                case '0-10':
-                                    return value >= 0 && value <= 10;
-                                case '11-14':
-                                    return value >= 11 && value <= 14;
-                                case '15-20':
-                                    return value >= 15 && value <= 20;
-                                case '21-49':
-                                    return value >= 21 && value <= 49;
-                                case '50+':
-                                    return value >= 50;
-                                default:
-                                    return true;
-                            }
                         });
                     }
 
@@ -3160,6 +2938,36 @@
                             return true;
                         });
                     }
+
+                    if (invAgeFilter !== 'all') {
+                        table.addFilter(function(data) {
+                            if (data.is_parent) return true;
+
+                            // Health-status based options
+                            if (['excess','healthy','low_stock','out_of_stock'].includes(invAgeFilter)) {
+                                const health = (data.Inv_age || '').toLowerCase().replace(/\s+/g,'_');
+                                return health === invAgeFilter;
+                            }
+
+                            // Bucket-range based options – find oldest bucket with units
+                            const ageData = data.age_data;
+                            if (!ageData) return false;
+
+                            const buckets = [
+                                { key: '456plus', val: ageData.inv_age_456_plus_days   || 0 },
+                                { key: '366-455', val: ageData.inv_age_366_to_455_days || 0 },
+                                { key: '271-365', val: ageData.inv_age_271_to_365_days || 0 },
+                                { key: '181-270', val: ageData.inv_age_181_to_270_days || 0 },
+                                { key: '91-180',  val: ageData.inv_age_91_to_180_days  || 0 },
+                                { key: '61-90',   val: ageData.inv_age_61_to_90_days   || 0 },
+                                { key: '31-60',   val: ageData.inv_age_31_to_60_days   || 0 },
+                                { key: '0-30',    val: ageData.inv_age_0_to_30_days    || 0 },
+                            ];
+
+                            const oldest = buckets.find(b => b.val > 0);
+                            return oldest ? oldest.key === invAgeFilter : false;
+                        });
+                    }
                 }
 
                 $('#inventory-filter').on('change', function() {
@@ -3168,11 +2976,6 @@
                 });
 
                 $('#parent-filter').on('change', function() {
-                    applyFilters();
-                    updateSummary();
-                });
-
-                $('#pft-filter').on('change', function() {
                     applyFilters();
                     updateSummary();
                 });
@@ -3193,6 +2996,11 @@
                 });
 
                 $('#status-filter').on('change', function() {
+                    applyFilters();
+                    updateSummary();
+                });
+
+                $('#inv-age-filter').on('change', function() {
                     applyFilters();
                     updateSummary();
                 });
@@ -3456,6 +3264,24 @@
                             console.error('Error toggling CTN column', colName, err);
                         }
                     });
+                });
+            });
+
+            // Copy SKU to clipboard (generic fba-copy-btn)
+            $(document).on('click', '.fba-copy-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const text = $(this).data('copy');
+                navigator.clipboard.writeText(text).then(function() {
+                    showToast(`"${text}" copied!`, 'success');
+                }).catch(function() {
+                    const t = document.createElement('textarea');
+                    t.value = text;
+                    document.body.appendChild(t);
+                    t.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(t);
+                    showToast(`"${text}" copied!`, 'success');
                 });
             });
 
@@ -3757,6 +3583,148 @@
             $('#invage-modal-body').html(html);
             $('#invageModal').modal('show');
         };
+
+        // ── FBA Badge Trend Chart ─────────────────────────────────────────
+        const fbaBadgeMetricLabels = {
+            sales: 'Sales ($)', pft: 'PFT ($)', gpft: 'GPFT (%)',
+            price: 'Avg Price ($)', cvr: 'CVR (%)', views: 'Views',
+            inv: 'FBA INV', l30: 'L30', dil: 'DIL (%)',
+            zero_sold: '0 Sold SKUs', ads_pct: 'Ads% (%)', spend: 'Spend ($)', roi: 'ROI (%)',
+        };
+        const fbaDollarMetrics  = ['sales','pft','price','spend'];
+        const fbaPercentMetrics = ['gpft','cvr','dil','ads_pct','roi'];
+
+        let fbaBadgeLineChart = null, fbaBadgeBarChart = null;
+        let fbaBadgeMetric = '', fbaBadgeDays = 30, fbaBadgeAjax = null;
+
+        function fbaFmtVal(v) {
+            const n = Number(v) || 0;
+            if (fbaDollarMetrics.includes(fbaBadgeMetric))  return '$' + Math.round(n).toLocaleString('en-US');
+            if (fbaPercentMetrics.includes(fbaBadgeMetric)) return n.toFixed(1) + '%';
+            return Math.round(n).toLocaleString('en-US');
+        }
+
+        function fbaRenderCharts(points) {
+            if (!Array.isArray(points) || !points.length) return false;
+            const labels = points.map(p => p.date);
+            const values = points.map(p => Number(p.value) || 0);
+            const sorted = [...values].sort((a, b) => a - b);
+            const mid    = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 ? sorted[mid] : (sorted[mid-1] + sorted[mid]) / 2;
+
+            $('#fbaBadgeHighest').text(fbaFmtVal(sorted[sorted.length - 1]));
+            $('#fbaBadgeMedian').text(fbaFmtVal(median));
+            $('#fbaBadgeLowest').text(fbaFmtVal(sorted[0]));
+
+            const lineCtx = document.getElementById('fbaBadgeLineCanvas');
+            const barCtx  = document.getElementById('fbaBadgeBarCanvas');
+            if (!lineCtx || typeof Chart === 'undefined') return false;
+            if (fbaBadgeLineChart) fbaBadgeLineChart.destroy();
+            if (fbaBadgeBarChart)  fbaBadgeBarChart.destroy();
+
+            const label       = fbaBadgeMetricLabels[fbaBadgeMetric] || fbaBadgeMetric;
+            const pointColors = values.map(v => v >= median ? '#28a745' : '#dc3545');
+
+            if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
+
+            fbaBadgeLineChart = new Chart(lineCtx.getContext('2d'), {
+                type: 'line',
+                plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : [],
+                data: {
+                    labels,
+                    datasets: [{ label, data: values, borderColor: '#adb5bd', backgroundColor: 'rgba(173,181,189,0.08)',
+                        pointBackgroundColor: pointColors, pointBorderColor: pointColors,
+                        pointRadius: 5, pointHoverRadius: 7, borderWidth: 2, tension: 0.2, fill: true }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    layout: { padding: { top: 24 } },
+                    scales: {
+                        y: { min: sorted[0] >= 0 ? 0 : undefined,
+                             ticks: { callback: v => fbaFmtVal(v), font: { size: 11 } },
+                             grid: { color: 'rgba(0,0,0,0.05)' } },
+                        x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => label + ': ' + fbaFmtVal(ctx.parsed.y) } },
+                        datalabels: typeof ChartDataLabels !== 'undefined' ? {
+                            align: 'top', anchor: 'end', font: { size: 10, weight: '600' },
+                            color: ctx => ctx.dataset.pointBackgroundColor[ctx.dataIndex],
+                            formatter: v => fbaFmtVal(v), clip: false
+                        } : false
+                    }
+                }
+            });
+
+            fbaBadgeBarChart = new Chart(barCtx.getContext('2d'), {
+                type: 'bar',
+                plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : [],
+                data: {
+                    labels,
+                    datasets: [{ label, data: values,
+                        backgroundColor: values.map(v => v >= median ? 'rgba(13,110,253,0.7)' : 'rgba(13,110,253,0.4)'),
+                        borderRadius: 3 }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { ticks: { callback: v => fbaFmtVal(v), font: { size: 10 } }, beginAtZero: false },
+                        x: { ticks: { maxRotation: 45, font: { size: 9 } } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => label + ': ' + fbaFmtVal(ctx.parsed.y) } },
+                        datalabels: { display: false }
+                    }
+                }
+            });
+            return true;
+        }
+
+        function fbaLoadChart() {
+            if (!fbaBadgeMetric) return;
+            if (fbaBadgeAjax) fbaBadgeAjax.abort();
+            $('#fbaBadgeNoData,#fbaBadgeLineWrap,#fbaBadgeBarWrap').hide();
+            $('#fbaBadgeLoading').show();
+            fbaBadgeAjax = $.ajax({
+                url: '/fba-badge-chart-data',
+                method: 'GET',
+                data: { metric: fbaBadgeMetric, days: fbaBadgeDays },
+                success: function(res) {
+                    fbaBadgeAjax = null;
+                    $('#fbaBadgeLoading').hide();
+                    const pts = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+                    if (fbaRenderCharts(pts)) {
+                        $('#fbaBadgeLineWrap').css('display','flex');
+                        $('#fbaBadgeBarWrap').show();
+                    } else {
+                        $('#fbaBadgeNoData').show();
+                    }
+                },
+                error: function() {
+                    fbaBadgeAjax = null;
+                    $('#fbaBadgeLoading').hide();
+                    $('#fbaBadgeNoData').show();
+                }
+            });
+        }
+
+        $(document).on('click', '.fba-badge-chart', function() {
+            fbaBadgeMetric = $(this).data('metric');
+            fbaBadgeDays   = 30;
+            $('#fbaBadgeChartRange').val('30');
+            $('#fbaBadgeChartTitle').text('FBA – ' + (fbaBadgeMetricLabels[fbaBadgeMetric] || fbaBadgeMetric) + ' Trend');
+            $('#fbaBadgeChartModal').modal('show');
+            fbaLoadChart();
+        });
+
+        $(document).on('change', '#fbaBadgeChartRange', function() {
+            const d = parseInt($(this).val(), 10) || 30;
+            if (d === fbaBadgeDays) return;
+            fbaBadgeDays = d;
+            fbaLoadChart();
+        });
 
         </script>
     @endsection

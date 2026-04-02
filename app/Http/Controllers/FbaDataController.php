@@ -20,6 +20,8 @@ use App\Models\FbaSkuDailyData;
 use App\Models\FbaAgeData;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonProductReview;
+use App\Models\AmazonListingStatus;
+use App\Models\FbaDailyMetrics;
 use App\Models\MarketplacePercentage;
 use App\Services\ColorService;
 use App\Services\FbaManualDataService;
@@ -612,6 +614,11 @@ class FbaDataController extends Controller
          return strtoupper(trim($item->sku));
       });
 
+      // Fetch Amazon listing statuses for B&S links – keyed by normalised SKU
+      $amazonListingStatuses = AmazonListingStatus::all()->keyBy(function ($item) {
+         return strtoupper(trim($item->sku));
+      });
+
       // Fetch KW (Keyword) ads data - campaigns NOT ending with 'pt'
       $skus = $fbaData->keys()->toArray();
       $amazonSpCampaignReportsL30KW = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -708,7 +715,7 @@ class FbaDataController extends Controller
       $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage, $fbaAgeData) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage, $fbaAgeData, $amazonListingStatuses) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -926,10 +933,21 @@ class FbaDataController extends Controller
             if (empty($height)) $height = $dimensionsParts[2] ?? '';
          }
 
+         // Resolve B&S links from AmazonListingStatus using base SKU (strip FBA suffix)
+         $baseSku = strtoupper(trim(preg_replace('/\s*FBA\s*(new)?$/i', '', $sku)));
+         $amazonListing = $amazonListingStatuses->get($baseSku)
+                       ?? $amazonListingStatuses->get(strtoupper(trim($sku)));
+         $amazonListingValue = ($amazonListing && is_array($amazonListing->value)) ? $amazonListing->value : [];
+         $buyerLink  = $amazonListingValue['buyer_link']  ?? null;
+         $sellerLink = $amazonListingValue['seller_link'] ?? null;
+
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
             'FBA_SKU' => $fba->seller_sku,
+            'image_path' => $product
+                ? ($product->main_image ?? $product->image1 ?? (is_array($product->Values) ? ($product->Values['image_path'] ?? null) : null))
+                : null,
             'NRL_FBA' => $listingStatus ? ($listingStatus->status_value['status'] ?? 'FBA') : 'FBA',
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
@@ -975,6 +993,8 @@ class FbaDataController extends Controller
             'Fulfillment_Fee' => $fbaReportsInfo ? round(($fbaReportsInfo->fulfillment_fee ?? 0), 2) : 0,
             'FBA_Fee_Manual' => $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
             'ASIN' => $fba->asin,
+            'buyer_link'  => $buyerLink,
+            'seller_link' => $sellerLink,
             'Barcode' => $manual ? ($manual->data['barcode'] ?? '') : '',
             'Dispatch_Date' => $dispatchDate ? $dispatchDate->dispatch_date : ($manual ? ($manual->data['dispatch_date'] ?? '') : ''),
             'Weight' => $manual ? ($manual->data['weight'] ?? 0) : 0,
@@ -1974,5 +1994,42 @@ class FbaDataController extends Controller
          'message' => 'NRL FBA status updated successfully',
          'data' => $listingStatus
       ]);
+   }
+
+   /**
+    * Return daily badge metrics for the FBA chart modal.
+    * GET /fba-badge-chart-data?metric=sales&days=30
+    */
+   public function fbaBadgeChartData(Request $request)
+   {
+      $metric = $request->input('metric', 'sales');
+      $days   = max(7, min(365, (int) $request->input('days', 30)));
+
+      $allowed = ['sales','pft','gpft','price','cvr','views','inv','l30','dil','zero_sold','ads_pct','spend','roi'];
+      if (!in_array($metric, $allowed)) {
+         return response()->json(['success' => false, 'data' => []]);
+      }
+
+      $rows = FbaDailyMetrics::where('record_date', '>=', now()->subDays($days)->toDateString())
+         ->orderBy('record_date')
+         ->get(['record_date', $metric]);
+
+      $data = $rows->map(fn($r) => [
+         'date'  => \Carbon\Carbon::parse($r->record_date)->format('M d'),
+         'value' => (float) $r->{$metric},
+      ]);
+
+      return response()->json(['success' => true, 'data' => $data]);
+   }
+
+   /**
+    * Save today's FBA badge snapshot (called by Artisan command).
+    */
+   public function saveDailyFbaMetrics(array $metrics): void
+   {
+      FbaDailyMetrics::updateOrCreate(
+         ['record_date' => now()->toDateString()],
+         $metrics
+      );
    }
 }

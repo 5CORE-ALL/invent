@@ -438,6 +438,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        $schedule->command('fba:save-daily-metrics')
+            ->dailyAt('23:50')
+            ->timezone('UTC')
+            ->name('fba-save-daily-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('fba:sync-shipment-status')
             ->dailyAt('04:00')
             ->timezone('Asia/Kolkata')

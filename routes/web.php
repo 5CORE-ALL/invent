@@ -4494,6 +4494,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-column-visibility', 'getFbaColumnVisibility');
         Route::post('fba-column-visibility', 'setFbaColumnVisibility');
         Route::get('fba-metrics-history', 'getMetricsHistory');
+        Route::get('fba-badge-chart-data', 'fbaBadgeChartData');
         Route::post('update-fba-listing-status', 'updateFbaListingStatus');
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {
