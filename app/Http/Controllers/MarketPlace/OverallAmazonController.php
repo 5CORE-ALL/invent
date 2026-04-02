@@ -1480,13 +1480,101 @@ class OverallAmazonController extends Controller
                 return strtoupper(str_replace(' ', '', trim($base)));
             });
 
-        // FBA available units (FBA INV) — same keying as FbaPrice
-        $fbaInventoryBySku = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-            ->get()
-            ->keyBy(function ($item) {
-                $base = preg_replace('/\s*FBA\s*/i', '', $item->seller_sku ?? '');
-                return strtoupper(str_replace(' ', '', trim($base)));
-            });
+        // FBA INV: mirror FbaDataController::getFbaData() / fba-data-json quantity_available.
+        // 1) Prefer exact match ProductMaster.sku ↔ fba_table.seller_sku (NBSP/space/case tolerant).
+        // 2) Then FBA Analytics base key: strtoupper(trim(preg_replace FBA)) — spaces kept (avoids "A B C" vs "ABC" collisions).
+        // 3) Compact-base fallback when unambiguous or seller_sku matches product sku.
+        $normalizeFbaSkuChars = static function (?string $s): string {
+            $s = (string) $s;
+            $s = str_replace("\xC2\xA0", ' ', $s);
+            $s = preg_replace('/\s+/u', ' ', trim($s));
+
+            return $s;
+        };
+        $fbaAnalyticsBaseKey = static function (string $raw) use ($normalizeFbaSkuChars): string {
+            $s = $normalizeFbaSkuChars($raw);
+            if ($s === '') {
+                return '';
+            }
+            $base = preg_replace('/\s*FBA\s*/i', '', $s);
+
+            return strtoupper(trim($base));
+        };
+        $fbaSkuCompact = static function (string $raw) use ($normalizeFbaSkuChars): string {
+            return strtoupper(str_replace(' ', '', $normalizeFbaSkuChars($raw)));
+        };
+
+        $fbaTableFbaRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
+        $fbaInventoryByFbaAnalyticsKey = $fbaTableFbaRows->keyBy(function ($item) use ($fbaAnalyticsBaseKey) {
+            return $fbaAnalyticsBaseKey($item->seller_sku ?? '');
+        });
+        $fbaRowByFullSellerSkuCompact = [];
+        foreach ($fbaTableFbaRows as $fbaRow) {
+            $k = $fbaSkuCompact($fbaRow->seller_sku ?? '');
+            if ($k !== '') {
+                $fbaRowByFullSellerSkuCompact[$k] = $fbaRow;
+            }
+        }
+        $fbaRowsByCompactKey = [];
+        foreach ($fbaTableFbaRows as $fbaRow) {
+            $base = preg_replace('/\s*FBA\s*/i', '', $normalizeFbaSkuChars($fbaRow->seller_sku ?? ''));
+            $ck = $fbaSkuCompact($base);
+            if ($ck === '') {
+                continue;
+            }
+            if (! isset($fbaRowsByCompactKey[$ck])) {
+                $fbaRowsByCompactKey[$ck] = [];
+            }
+            $fbaRowsByCompactKey[$ck][] = $fbaRow;
+        }
+        $resolveFbaTableRowForProductSku = function (string $pmSku) use (
+            $fbaInventoryByFbaAnalyticsKey,
+            $fbaRowsByCompactKey,
+            $fbaRowByFullSellerSkuCompact,
+            $normalizeFbaSkuChars,
+            $fbaAnalyticsBaseKey,
+            $fbaSkuCompact
+        ): ?FbaTable {
+            $norm = $normalizeFbaSkuChars($pmSku);
+            if ($norm === '') {
+                return null;
+            }
+            // Exact listing: PM sku is the same MSKU as fba_table.seller_sku (most FBA rows on Analytics)
+            $pmFullCompact = $fbaSkuCompact($norm);
+            if (isset($fbaRowByFullSellerSkuCompact[$pmFullCompact])) {
+                return $fbaRowByFullSellerSkuCompact[$pmFullCompact];
+            }
+            $analyticsKey = $fbaAnalyticsBaseKey($norm);
+            if ($analyticsKey !== '') {
+                $hit = $fbaInventoryByFbaAnalyticsKey->get($analyticsKey);
+                if ($hit) {
+                    return $hit;
+                }
+            }
+            $baseRaw = preg_replace('/\s*FBA\s*/i', '', $norm);
+            $compactKey = $fbaSkuCompact($baseRaw);
+            $cands = $fbaRowsByCompactKey[$compactKey] ?? [];
+            if (count($cands) === 1) {
+                return $cands[0];
+            }
+            if (count($cands) > 1) {
+                foreach ($cands as $c) {
+                    if ($fbaSkuCompact($c->seller_sku ?? '') === $pmFullCompact) {
+                        return $c;
+                    }
+                }
+
+                return null;
+            }
+
+            return null;
+        };
+
+        Log::debug('Amazon tabulator getViewAmazonData: FBA inventory map loaded', [
+            'fba_table_rows' => $fbaTableFbaRows->count(),
+            'fba_analytics_key_count' => $fbaInventoryByFbaAnalyticsKey->count(),
+            'product_master_skus' => count($skus),
+        ]);
 
         // Get Amazon inventory from product_stock_mappings table
         $stockMappings = ProductStockMapping::whereIn('sku', $skus)
@@ -2363,8 +2451,9 @@ class OverallAmazonController extends Controller
             $fbaPriceRecord = $fbaPriceBySku->get($skuLookupKey) ?? $fbaPriceBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaPriceBySku->get($sku);
             $row['fba_price'] = $fbaPriceRecord ? round(floatval($fbaPriceRecord->price ?? 0), 2) : null;
 
-            $fbaInvRecord = $fbaInventoryBySku->get($skuLookupKey) ?? $fbaInventoryBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaInventoryBySku->get($sku);
+            $fbaInvRecord = $resolveFbaTableRowForProductSku((string) $pm->sku);
             $row['FBA_Quantity'] = $fbaInvRecord ? (int) ($fbaInvRecord->quantity_available ?? 0) : 0;
+            $row['FBA_SKU'] = $fbaInvRecord ? ($fbaInvRecord->seller_sku ?? null) : null;
 
             $row['INV'] = $shopify->inv ?? 0;
             
@@ -3186,6 +3275,14 @@ class OverallAmazonController extends Controller
             $result[] = (object) $row;
         }
 
+        $fbaInvPositiveCount = collect($result)->filter(function ($r) {
+            return (int) ($r->FBA_Quantity ?? 0) > 0;
+        })->count();
+        Log::debug('Amazon tabulator getViewAmazonData: FBA_Quantity snapshot (product rows, before parent summaries)', [
+            'rows_with_fba_inv_gt_0' => $fbaInvPositiveCount,
+            'product_rows' => count($result),
+        ]);
+
         // Parent-wise grouping
         $groupedByParent = collect($result)->groupBy('Parent');
         $parentSkus = $groupedByParent->keys()->filter(function ($p) { return $p !== '' && $p !== null; })->values()->toArray();
@@ -3234,6 +3331,17 @@ class OverallAmazonController extends Controller
                     $v = $row->FBA_Quantity ?? 0;
                     return is_numeric($v) ? (int) $v : 0;
                 }),
+                'FBA_SKU' => (function () use ($rows) {
+                    foreach ($rows as $row) {
+                        $childSku = strtoupper((string) ($row->{'(Child) sku'} ?? ''));
+                        $fbaSku = strtoupper((string) ($row->FBA_SKU ?? ''));
+                        if (str_contains($childSku, 'FBA') || str_contains($fbaSku, 'FBA')) {
+                            $seller = (string) ($row->FBA_SKU ?? '');
+                            return $seller !== '' ? $seller : 'FBA';
+                        }
+                    }
+                    return '';
+                })(),
                 'is_missing_amazon' => false, // Parent rows are never missing
                 'L30' => $rows->sum('L30'),
                 'price' => '',
