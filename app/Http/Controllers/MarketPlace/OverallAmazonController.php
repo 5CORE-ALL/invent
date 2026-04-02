@@ -33,6 +33,7 @@ use App\Models\AmazonSeoAuditHistory;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\FbaPrice;
 use App\Models\FbaTable;
+use App\Services\FbaInventoryService;
 
 class OverallAmazonController extends Controller
 {
@@ -1480,101 +1481,26 @@ class OverallAmazonController extends Controller
                 return strtoupper(str_replace(' ', '', trim($base)));
             });
 
-        // FBA INV: mirror FbaDataController::getFbaData() / fba-data-json quantity_available.
-        // 1) Prefer exact match ProductMaster.sku ↔ fba_table.seller_sku (NBSP/space/case tolerant).
-        // 2) Then FBA Analytics base key: strtoupper(trim(preg_replace FBA)) — spaces kept (avoids "A B C" vs "ABC" collisions).
-        // 3) Compact-base fallback when unambiguous or seller_sku matches product sku.
-        $normalizeFbaSkuChars = static function (?string $s): string {
-            $s = (string) $s;
-            $s = str_replace("\xC2\xA0", ' ', $s);
-            $s = preg_replace('/\s+/u', ' ', trim($s));
-
-            return $s;
-        };
-        $fbaAnalyticsBaseKey = static function (string $raw) use ($normalizeFbaSkuChars): string {
-            $s = $normalizeFbaSkuChars($raw);
-            if ($s === '') {
-                return '';
-            }
-            $base = preg_replace('/\s*FBA\s*/i', '', $s);
-
-            return strtoupper(trim($base));
-        };
-        $fbaSkuCompact = static function (string $raw) use ($normalizeFbaSkuChars): string {
-            return strtoupper(str_replace(' ', '', $normalizeFbaSkuChars($raw)));
-        };
-
+        // FBA INV: shared resolver (same rules as FbaInventoryService / FBA Analytics base key).
         $fbaTableFbaRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
-        $fbaInventoryByFbaAnalyticsKey = $fbaTableFbaRows->keyBy(function ($item) use ($fbaAnalyticsBaseKey) {
-            return $fbaAnalyticsBaseKey($item->seller_sku ?? '');
-        });
-        $fbaRowByFullSellerSkuCompact = [];
-        foreach ($fbaTableFbaRows as $fbaRow) {
-            $k = $fbaSkuCompact($fbaRow->seller_sku ?? '');
-            if ($k !== '') {
-                $fbaRowByFullSellerSkuCompact[$k] = $fbaRow;
-            }
-        }
-        $fbaRowsByCompactKey = [];
-        foreach ($fbaTableFbaRows as $fbaRow) {
-            $base = preg_replace('/\s*FBA\s*/i', '', $normalizeFbaSkuChars($fbaRow->seller_sku ?? ''));
-            $ck = $fbaSkuCompact($base);
-            if ($ck === '') {
-                continue;
-            }
-            if (! isset($fbaRowsByCompactKey[$ck])) {
-                $fbaRowsByCompactKey[$ck] = [];
-            }
-            $fbaRowsByCompactKey[$ck][] = $fbaRow;
-        }
-        $resolveFbaTableRowForProductSku = function (string $pmSku) use (
-            $fbaInventoryByFbaAnalyticsKey,
-            $fbaRowsByCompactKey,
-            $fbaRowByFullSellerSkuCompact,
-            $normalizeFbaSkuChars,
-            $fbaAnalyticsBaseKey,
-            $fbaSkuCompact
-        ): ?FbaTable {
-            $norm = $normalizeFbaSkuChars($pmSku);
-            if ($norm === '') {
-                return null;
-            }
-            // Exact listing: PM sku is the same MSKU as fba_table.seller_sku (most FBA rows on Analytics)
-            $pmFullCompact = $fbaSkuCompact($norm);
-            if (isset($fbaRowByFullSellerSkuCompact[$pmFullCompact])) {
-                return $fbaRowByFullSellerSkuCompact[$pmFullCompact];
-            }
-            $analyticsKey = $fbaAnalyticsBaseKey($norm);
-            if ($analyticsKey !== '') {
-                $hit = $fbaInventoryByFbaAnalyticsKey->get($analyticsKey);
-                if ($hit) {
-                    return $hit;
-                }
-            }
-            $baseRaw = preg_replace('/\s*FBA\s*/i', '', $norm);
-            $compactKey = $fbaSkuCompact($baseRaw);
-            $cands = $fbaRowsByCompactKey[$compactKey] ?? [];
-            if (count($cands) === 1) {
-                return $cands[0];
-            }
-            if (count($cands) > 1) {
-                foreach ($cands as $c) {
-                    if ($fbaSkuCompact($c->seller_sku ?? '') === $pmFullCompact) {
-                        return $c;
-                    }
-                }
-
-                return null;
-            }
-
-            return null;
-        };
+        $fbaInventoryService = FbaInventoryService::fromFbaRows($fbaTableFbaRows);
 
         Log::debug('Amazon tabulator getViewAmazonData: FBA inventory map loaded', [
             'fba_table_rows' => $fbaTableFbaRows->count(),
-            'fba_analytics_key_count' => $fbaInventoryByFbaAnalyticsKey->count(),
+            'fba_analytics_key_count' => $fbaInventoryService->distinctAnalyticsKeyCount(),
             'product_master_skus' => count($skus),
         ]);
+
+        if (filter_var(env('FBA_INVENTORY_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {
+            foreach (['CAPO AL BLK', 'CAPO AL BLK FBA', 'ET 10FT BLU FBA', 'ET 6FT BLU fba'] as $probeSku) {
+                $hit = $fbaInventoryService->resolve($probeSku);
+                Log::channel('amazon_debug')->info('Amazon FBM FBA inventory probe', [
+                    'product_sku' => $probeSku,
+                    'matched_seller_sku' => $hit?->seller_sku,
+                    'fba_quantity' => $hit ? (int) ($hit->quantity_available ?? 0) : null,
+                ]);
+            }
+        }
 
         // Get Amazon inventory from product_stock_mappings table
         $stockMappings = ProductStockMapping::whereIn('sku', $skus)
@@ -2451,7 +2377,7 @@ class OverallAmazonController extends Controller
             $fbaPriceRecord = $fbaPriceBySku->get($skuLookupKey) ?? $fbaPriceBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaPriceBySku->get($sku);
             $row['fba_price'] = $fbaPriceRecord ? round(floatval($fbaPriceRecord->price ?? 0), 2) : null;
 
-            $fbaInvRecord = $resolveFbaTableRowForProductSku((string) $pm->sku);
+            $fbaInvRecord = $fbaInventoryService->resolve((string) $pm->sku);
             $row['FBA_Quantity'] = $fbaInvRecord ? (int) ($fbaInvRecord->quantity_available ?? 0) : 0;
             $row['FBA_SKU'] = $fbaInvRecord ? ($fbaInvRecord->seller_sku ?? null) : null;
 
@@ -4084,6 +4010,9 @@ class OverallAmazonController extends Controller
                 'seo_audit_history' => [],
                 'has_custom_sprice' => false,
             ];
+            $fbaOrphan = $fbaInventoryService->resolve($baseSku);
+            $orphanRow['FBA_Quantity'] = $fbaOrphan ? (int) ($fbaOrphan->quantity_available ?? 0) : 0;
+            $orphanRow['FBA_SKU'] = $fbaOrphan ? ($fbaOrphan->seller_sku ?? null) : null;
             $finalResult[] = (object) $orphanRow;
         }
 
