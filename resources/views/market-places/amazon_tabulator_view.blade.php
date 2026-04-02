@@ -4110,9 +4110,23 @@
                                 || ((parseFloat(row.hl_spend_L30 || 0) > 0 || parseFloat(row.hl_sales_L30 || 0) > 0) && !!(row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
                             var paused = (row.hl_campaign_status || '').toUpperCase() !== 'ENABLED';
-                            // Priority: hl_sbid (Amazon) > avg CPC from spend/clicks (L30, else L7) > hl_sbid_m > blank
+                            // Backend sets hl_sbid to 0 when missing — treat 0 as empty so CPC fallback runs.
+                            function hlBidIsEmpty(v) {
+                                return v === null || v === undefined || v === '' || v === 0 || v === '0';
+                            }
+                            // Priority: hl_sbid > hl_sbid_m > CPC (cost/clicks, hl_spend_L30/L7, avg/l7/l1 CPC) > blank
                             var raw = row.hl_sbid;
-                            if (raw === null || raw === undefined || raw === '') {
+                            if (hlBidIsEmpty(raw)) {
+                                raw = row.hl_sbid_m;
+                            }
+                            if (hlBidIsEmpty(raw)) {
+                                var c = parseFloat(row.cost || 0);
+                                var clk = parseFloat(row.clicks || 0);
+                                if (c > 0 && clk > 0) {
+                                    raw = c / clk;
+                                }
+                            }
+                            if (hlBidIsEmpty(raw)) {
                                 var spend30 = parseFloat(row.hl_spend_L30 || 0);
                                 var clicks30 = parseFloat(row.hl_clicks_L30 || 0);
                                 if (spend30 > 0 && clicks30 > 0) {
@@ -4125,10 +4139,19 @@
                                     }
                                 }
                             }
-                            if (raw === null || raw === undefined || raw === '') {
-                                raw = row.hl_sbid_m;
+                            if (hlBidIsEmpty(raw)) {
+                                var ac = parseFloat(row.hl_avg_cpc || 0);
+                                if (ac > 0) raw = ac;
                             }
-                            if (raw === null || raw === undefined || raw === '') {
+                            if (hlBidIsEmpty(raw)) {
+                                var l7c = parseFloat(row.hl_l7_cpc || 0);
+                                if (l7c > 0) raw = l7c;
+                                else {
+                                    var l1c = parseFloat(row.hl_l1_cpc || 0);
+                                    if (l1c > 0) raw = l1c;
+                                }
+                            }
+                            if (hlBidIsEmpty(raw)) {
                                 return '';
                             }
                             var num = parseFloat(raw);
