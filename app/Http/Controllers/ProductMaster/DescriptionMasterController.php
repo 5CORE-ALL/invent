@@ -665,7 +665,7 @@ class DescriptionMasterController extends Controller
         }
 
         $map = [
-            'amazon' => [AmazonSpApiService::class, 'updateDescription'],
+            'amazon' => [AmazonSpApiService::class, 'updateAplusContent'],
             'temu' => [TemuApiService::class, 'updateDescription'],
             'reverb' => [ReverbApiService::class, 'updateDescription'],
             'macy' => [MacysApiService::class, 'updateDescription'],

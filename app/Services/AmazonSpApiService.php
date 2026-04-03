@@ -3750,11 +3750,48 @@ class AmazonSpApiService
     }
 
     /**
+     * Rich listing update: HTML description (Listings Items API) plus gallery images when URLs are provided.
+     * True Brand A+ Content Documents use the separate A+ Content API (see updateAplusContent); many sellers
+     * still surface copy and images via product_description + main/other image locators.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, image_warning?: string}
+     */
+    public function updateAplusContent(string $identifier, string $description, array $imageUrls = []): array
+    {
+        $descResult = $this->updateDescription($identifier, $description, $imageUrls);
+        if (! ($descResult['success'] ?? false)) {
+            return $descResult;
+        }
+
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 9);
+        if ($urls === []) {
+            return $descResult;
+        }
+
+        $imgResult = $this->updateListingImages($identifier, $urls);
+        if (! ($imgResult['success'] ?? false)) {
+            return [
+                'success' => true,
+                'message' => ($descResult['message'] ?? 'Amazon product description updated.').' Listing images: '.($imgResult['message'] ?? 'failed'),
+                'image_warning' => (string) ($imgResult['message'] ?? ''),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Amazon product description and listing images updated (listing attributes; use Brand A+ Content API for published A+ modules).',
+        ];
+    }
+
+    /**
      * PATCH listing `product_description` (SP-API Listings Items API). Retries token / transient errors like other listing patches.
      *
+     * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string}
      */
-    public function updateDescription(string $identifier, string $description): array
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
         if (trim($identifier) === '' || trim($description) === '') {
             return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and description are required.'];
@@ -3771,7 +3808,8 @@ class AmazonSpApiService
             $identifier,
             $sku,
             'Product Image',
-            9
+            9,
+            $imageUrls
         )['html'];
 
         $value = [[
@@ -3860,10 +3898,11 @@ class AmazonSpApiService
     }
 
     /**
+     * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string}
      */
-    public function updateProductDescription(string $identifier, string $description): array
+    public function updateProductDescription(string $identifier, string $description, array $imageUrls = []): array
     {
-        return $this->updateDescription($identifier, $description);
+        return $this->updateDescription($identifier, $description, $imageUrls);
     }
 }

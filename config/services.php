@@ -303,6 +303,12 @@ return [
         // SKU list field for title update. Official docs use skuList (https://partner-eu.temu.com/documentation)
         'update_sku_list_field' => env('TEMU_UPDATE_SKU_LIST_FIELD', 'skuList'),
         'goods_basic_field' => env('TEMU_GOODS_BASIC_FIELD', 'goodsBasic'),
+        /** Long description field inside goodsBasic (no carousel images — use carouselImageUrlList). */
+        'goods_desc_field' => env('TEMU_GOODS_DESC_FIELD', 'goodsDesc'),
+        /** Carousel / gallery field inside goodsBasic (Temu-hosted URLs after upload). */
+        'goods_image_urls_field' => env('TEMU_GOODS_IMAGE_URLS_FIELD', 'carouselImageUrlList'),
+        /** Comma-separated `type` values to try for image upload (Partner OpenAPI router). */
+        'image_upload_types' => array_values(array_filter(array_map('trim', explode(',', env('TEMU_IMAGE_UPLOAD_TYPES', 'bg.local.goods.image.upload'))))),
         'list_price_field' => env('TEMU_LIST_PRICE_FIELD', 'listPrice'),
         'sku_id_field' => env('TEMU_SKU_ID_FIELD', 'skuId'),
         'sku_code_field' => env('TEMU_SKU_CODE_FIELD', 'outSkuSn'),

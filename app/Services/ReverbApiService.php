@@ -685,20 +685,23 @@ class ReverbApiService
         $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
         $incomingPlain = trim($description);
         $skuForImages = $product && $product->sku ? (string) $product->sku : $trim;
-        $incomingHtml = '<div class="product-description">'.
-            DescriptionWithImagesFormatter::buildHtmlWithImages(
-                $incomingPlain,
-                $trim,
-                $skuForImages,
-                'Product Image',
-                12,
-                $imageUrls
-            )['html'].
-            '</div>';
+        $incomingHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
+            $incomingPlain,
+            $trim,
+            $skuForImages,
+            'Product Image',
+            12,
+            $imageUrls
+        )['html'];
         $mergedPlain = $this->appendUniqueText($current['plain'], $incomingPlain);
-        $mergedHtml = $current['html'] !== ''
-            ? $this->appendUniqueHtml($current['html'], $incomingHtml, $incomingPlain)
-            : $incomingHtml;
+        $hasImagePush = array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== '') !== [];
+        if ($hasImagePush) {
+            $mergedHtml = $incomingHtml;
+        } elseif ($current['html'] !== '') {
+            $mergedHtml = $this->appendUniqueHtml($current['html'], $incomingHtml, $incomingPlain);
+        } else {
+            $mergedHtml = $incomingHtml;
+        }
 
         $payload = [
             'description' => $mergedHtml,
@@ -709,6 +712,19 @@ class ReverbApiService
             $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
+                $photoUrls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+                $photoUrls = array_slice($photoUrls, 0, 25);
+                if ($photoUrls !== []) {
+                    $imgRes = $this->updateListingImages($trim, $photoUrls);
+                    if (! ($imgRes['success'] ?? false)) {
+                        return [
+                            'success' => true,
+                            'message' => 'Reverb listing description updated. Photos: '.($imgRes['message'] ?? 'update skipped'),
+                            'listing_id' => $listingId,
+                        ];
+                    }
+                }
+
                 return [
                     'success' => true,
                     'message' => 'Reverb listing description updated.',

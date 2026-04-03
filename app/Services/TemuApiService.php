@@ -1225,6 +1225,91 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
     }
 
+    /**
+     * Upload a remote image via Temu Open API so carousel/sku fields accept Temu-hosted URLs.
+     *
+     * @return array{success: bool, url: ?string, message: string}
+     */
+    public function uploadTemuImageFromUrl(string $imageUrl): array
+    {
+        $imageUrl = trim($imageUrl);
+        if ($imageUrl === '' || ! preg_match('#^https?://#i', $imageUrl)) {
+            return ['success' => false, 'url' => null, 'message' => 'Invalid image URL.'];
+        }
+
+        $types = config('services.temu.image_upload_types');
+        if (! is_array($types) || $types === []) {
+            $types = ['bg.local.goods.image.upload'];
+        }
+
+        $router = 'https://openapi-b-us.temu.com/openapi/router';
+        $lastMsg = '';
+
+        foreach ($types as $type) {
+            $type = trim((string) $type);
+            if ($type === '') {
+                continue;
+            }
+
+            $variants = [
+                ['type' => $type, 'url' => $imageUrl],
+                ['type' => $type, 'imageUrl' => $imageUrl],
+                ['type' => $type, 'imgUrl' => $imageUrl],
+            ];
+
+            foreach ($variants as $body) {
+                try {
+                    $signedRequest = $this->generateSignValue($body);
+                    $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                    if (config('filesystems.default') === 'local') {
+                        $request = $request->withoutVerifying();
+                    }
+                    $response = $request->post($router, $signedRequest);
+                    $data = $response->json() ?? [];
+                    $lastMsg = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
+
+                    if ($response->successful() && ($data['success'] ?? false)) {
+                        $hosted = $this->extractTemuUploadedImageUrl($data);
+                        if ($hosted !== null && $hosted !== '') {
+                            return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $lastMsg = $e->getMessage();
+                }
+            }
+        }
+
+        return ['success' => false, 'url' => null, 'message' => $lastMsg !== '' ? $lastMsg : 'Temu image upload failed for all configured types.'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function extractTemuUploadedImageUrl(array $data): ?string
+    {
+        $r = $data['result'] ?? null;
+        if (is_string($r) && preg_match('#^https?://#i', trim($r))) {
+            return trim($r);
+        }
+        if (! is_array($r)) {
+            $r = $data;
+        }
+        foreach (['url', 'imageUrl', 'image_url', 'fileUrl', 'file_url', 'cdnUrl', 'picUrl'] as $k) {
+            if (! empty($r[$k]) && is_string($r[$k]) && preg_match('#^https?://#i', trim($r[$k]))) {
+                return trim($r[$k]);
+            }
+        }
+        if (! empty($r['image']['url']) && is_string($r['image']['url'])) {
+            return trim($r['image']['url']);
+        }
+        if (! empty($r['data']['url']) && is_string($r['data']['url'])) {
+            return trim($r['data']['url']);
+        }
+
+        return null;
+    }
+
     private function saveTemuBulletAndDescToMetrics(string $sku, string $goodsSummary, string $goodsDesc): bool
     {
         try {
@@ -1260,11 +1345,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
-     * Long-form description via `goodsDesc` (configurable) in goods partial update — not `goodsSummary` / bullets.
+     * Long-form description via `goodsDesc` (text only — images go to carouselImageUrlList after upload).
      *
+     * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string}
      */
-    public function updateDescription(string $identifier, string $description): array
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
         if (trim($identifier) === '' || trim($description) === '') {
             return ['success' => false, 'message' => 'SKU (or goods_id) and description are required.'];
@@ -1280,30 +1366,74 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $resolved = $this->resolveTemuGoodsAndSku($identifier);
         $skuForImages = (string) ($resolved['sku'] ?? $identifier);
 
-        $descriptionWithImages = DescriptionWithImagesFormatter::buildHtmlWithImages(
+        $built = DescriptionWithImagesFormatter::buildHtmlWithImages(
             $description,
             $identifier,
             $skuForImages,
             'Product Image',
-            12
-        )['html'];
+            12,
+            $imageUrls
+        );
+        $descriptionForGoodsDesc = $built['text_html'];
 
-        return $this->pushTemuGoodsBasicField(
+        $res = $this->pushTemuGoodsBasicField(
             $identifier,
-            $descriptionWithImages,
+            $descriptionForGoodsDesc,
             $field,
             'Temu product description updated.',
             'SKU (or goods_id) and description are required.',
             'Temu updateDescription'
         );
+
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $raw = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $raw = array_slice($raw, 0, 12);
+        if ($raw === []) {
+            return $res;
+        }
+
+        $temuUrls = [];
+        foreach ($raw as $u) {
+            $up = $this->uploadTemuImageFromUrl($u);
+            if ($up['success'] && ! empty($up['url'])) {
+                $temuUrls[] = $up['url'];
+            }
+            usleep(100000);
+        }
+
+        if ($temuUrls === []) {
+            Log::warning('Temu updateDescription: no images uploaded; carousel unchanged', ['sku' => $skuForImages]);
+
+            return [
+                'success' => true,
+                'message' => ($res['message'] ?? 'Temu product description updated.').' Image upload failed — carousel not updated.',
+            ];
+        }
+
+        $imgRes = $this->updateListingImages($identifier, $temuUrls);
+        if (! ($imgRes['success'] ?? false)) {
+            return [
+                'success' => true,
+                'message' => ($res['message'] ?? 'Temu product description updated.').' Carousel: '.($imgRes['message'] ?? 'failed'),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => ($res['message'] ?? 'Temu product description updated.').' Carousel images updated.',
+        ];
     }
 
     /**
+     * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string}
      */
-    public function updateProductDescription(string $identifier, string $description): array
+    public function updateProductDescription(string $identifier, string $description, array $imageUrls = []): array
     {
-        return $this->updateDescription($identifier, $description);
+        return $this->updateDescription($identifier, $description, $imageUrls);
     }
 
     /**

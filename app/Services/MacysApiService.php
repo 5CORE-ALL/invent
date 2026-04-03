@@ -370,13 +370,33 @@ class MacysApiService
                 12,
                 $imageUrls
             )['html'];
-            $merged = $this->appendUniqueText($current, $descriptionWithImages);
+            $hasImages = array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== '') !== [];
+            $merged = $hasImages
+                ? $descriptionWithImages
+                : $this->appendUniqueText($current, $descriptionWithImages);
             $attributes = [
                 'longDescription' => $merged,
                 'productDescription' => $merged,
             ];
 
-            return $this->pushMacyMiraklProductAttributes($sku, $attributes, 'Macy product description updated.', 'Macy description update failed');
+            $push = $this->pushMacyMiraklProductAttributes($sku, $attributes, 'Macy product description updated.', 'Macy description update failed');
+            if (! ($push['success'] ?? false)) {
+                return $push;
+            }
+
+            $photoUrls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+            $photoUrls = array_slice($photoUrls, 0, 12);
+            if ($photoUrls !== []) {
+                $img = $this->updateListingImages($identifier, $photoUrls);
+                if (! ($img['success'] ?? false)) {
+                    $push['message'] = ($push['message'] ?? 'Macy product description updated.').' Images: '.($img['message'] ?? 'failed');
+
+                    return $push;
+                }
+                $push['message'] = ($push['message'] ?? 'Macy product description updated.').' Images synced.';
+            }
+
+            return $push;
         } catch (\Throwable $e) {
             Log::error('Macy description update failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
 

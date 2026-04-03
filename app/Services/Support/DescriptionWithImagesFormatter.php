@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
 class DescriptionWithImagesFormatter
 {
     /**
-     * @return array{html: string, images: array<int, string>}
+     * @return array{html: string, text_html: string, images: array<int, string>}
      */
     public static function buildHtmlWithImages(
         string $descriptionPlain,
@@ -24,19 +24,25 @@ class DescriptionWithImagesFormatter
             $images = self::resolveImageUrls($identifier, $skuHint, $maxImages);
         }
 
-        $descriptionHtml = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+        $textInner = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+
         if ($images === []) {
-            return ['html' => $descriptionHtml, 'images' => []];
+            $html = '<div class="product-description"><div class="product-text">'.$textInner.'</div></div>';
+
+            return ['html' => $html, 'text_html' => $textInner, 'images' => []];
         }
 
-        $safeAlt = htmlspecialchars(trim($altText) !== '' ? $altText : 'Product Image', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $imageHtml = '';
-        foreach ($images as $url) {
+        $imageParts = [];
+        foreach ($images as $idx => $url) {
             $safeUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $imageHtml .= '<p><img src="'.$safeUrl.'" alt="'.$safeAlt.'" style="max-width:100%; height:auto;"></p>';
+            $n = $idx + 1;
+            $safeAlt = htmlspecialchars(trim($altText) !== '' ? "{$altText} {$n}" : "Product Image {$n}", ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $imageParts[] = '<img src="'.$safeUrl.'" alt="'.$safeAlt.'" style="max-width:100%; height:auto;">';
         }
+        $imageBlock = '<div class="product-images">'.implode("\n", $imageParts).'</div>';
+        $html = '<div class="product-description">'.$imageBlock.'<div class="product-text">'.$textInner.'</div></div>';
 
-        return ['html' => $descriptionHtml."\n".$imageHtml, 'images' => $images];
+        return ['html' => $html, 'text_html' => $textInner, 'images' => $images];
     }
 
     /**
