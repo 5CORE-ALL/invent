@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
+use App\Models\ShopifyVariant;
 use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\ShopifyBulletPointsFormatter;
@@ -57,18 +58,14 @@ class ShopifyApiService
             $domain = preg_replace('#^https?://#', '', $domain);
             $domain = rtrim($domain, '/');
 
-            $shopifySku = ShopifySku::where('sku', $sku)
-                ->orWhere('sku', strtoupper($sku))
-                ->orWhere('sku', strtolower($sku))
-                ->first();
-
-            if (! $shopifySku || ! $shopifySku->variant_id) {
+            $variantId = $this->resolveMainStoreVariantId($sku);
+            if (! $variantId) {
                 Log::warning('Main Shopify: variant mapping not found for SKU', ['sku' => $sku]);
 
                 return false;
             }
 
-            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
             $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
@@ -79,7 +76,7 @@ class ShopifyApiService
             if (! $variantRes->successful()) {
                 Log::error('❌ Push to Main Shopify - Variant lookup failed', [
                     'sku' => $sku,
-                    'variant_id' => $shopifySku->variant_id,
+                    'variant_id' => $variantId,
                     'status' => $variantRes->status(),
                     'body' => $variantRes->body(),
                 ]);
@@ -129,6 +126,60 @@ class ShopifyApiService
     }
 
     /**
+     * Resolve main-store Shopify Admin variant ID for API calls (Description Master, bullets, images).
+     *
+     * Order: (1) main catalog SKU match, case-insensitive — synced Admin data is preferred over stale shopify_skus rows;
+     * (2) shopify_skus exact SKU; (3) shopify_skus case-insensitive (newest row); (4) identifier as variant_id on shopify_skus or catalog.
+     */
+    protected function resolveMainStoreVariantId(string $identifier): ?string
+    {
+        $trim = trim($identifier);
+        if ($trim === '') {
+            return null;
+        }
+
+        $lowerSku = mb_strtolower($trim);
+
+        if (Schema::hasTable('shopify_catalog_variants')) {
+            $cat = ShopifyVariant::query()
+                ->whereRaw('LOWER(TRIM(COALESCE(sku, \'\'))) = ?', [$lowerSku])
+                ->orderByDesc('synced_at')
+                ->orderByDesc('id')
+                ->first();
+            if ($cat && $cat->shopify_variant_id) {
+                return (string) $cat->shopify_variant_id;
+            }
+        }
+
+        $row = ShopifySku::where('sku', $trim)->first();
+        if ($row && $row->variant_id) {
+            return (string) $row->variant_id;
+        }
+
+        $row = ShopifySku::whereRaw('LOWER(TRIM(COALESCE(sku, \'\'))) = ?', [$lowerSku])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+        if ($row && $row->variant_id) {
+            return (string) $row->variant_id;
+        }
+
+        $byVid = ShopifySku::where('variant_id', $trim)->first();
+        if ($byVid && $byVid->variant_id) {
+            return (string) $byVid->variant_id;
+        }
+
+        if (Schema::hasTable('shopify_catalog_variants')) {
+            $catVid = ShopifyVariant::query()->where('shopify_variant_id', $trim)->first();
+            if ($catVid && $catVid->shopify_variant_id) {
+                return (string) $catVid->shopify_variant_id;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Phase 1: Overwrite product `body_html` with Key Features bullets only (see ShopifyBulletPointsFormatter).
      *
      * @return array{success: bool, message: string}
@@ -170,20 +221,19 @@ class ShopifyApiService
             ]);
 
             $trim = trim($identifier);
-            $shopifySku = ShopifySku::where('sku', $trim)
-                ->orWhere('sku', strtoupper($trim))
-                ->orWhere('sku', strtolower($trim))
-                ->first();
-            if (! $shopifySku) {
-                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
-            }
-
-            if (! $shopifySku || ! $shopifySku->variant_id) {
+            $variantId = $this->resolveMainStoreVariantId($trim);
+            if (! $variantId) {
                 Log::warning('Shopify updateBulletPoints mapping missing', ['identifier' => $identifier]);
+
                 return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
             }
 
-            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $mappedSku = ShopifySku::where('variant_id', $variantId)->value('sku');
+            if ($mappedSku === null && Schema::hasTable('shopify_catalog_variants')) {
+                $mappedSku = ShopifyVariant::query()->where('shopify_variant_id', $variantId)->value('sku');
+            }
+
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
             $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
@@ -194,7 +244,7 @@ class ShopifyApiService
             if (! $variantRes->successful()) {
                 Log::warning('Shopify updateBulletPoints variant lookup failed', [
                     'identifier' => $identifier,
-                    'variant_id' => $shopifySku->variant_id,
+                    'variant_id' => $variantId,
                     'status' => $variantRes->status(),
                     'x_request_id' => $variantRes->header('x-request-id'),
                     'retry_after' => $variantRes->header('Retry-After'),
@@ -212,15 +262,15 @@ class ShopifyApiService
             if (! $productId) {
                 Log::warning('Shopify updateBulletPoints missing product_id from variant lookup', [
                     'identifier' => $identifier,
-                    'variant_id' => $shopifySku->variant_id,
+                    'variant_id' => $variantId,
                     'variant_response_preview' => mb_substr($variantRes->body(), 0, 500),
                 ]);
                 return ['success' => false, 'message' => 'Product ID missing.'];
             }
             Log::info('Shopify updateBulletPoints resolved mapping', [
                 'identifier' => $identifier,
-                'mapped_sku' => $shopifySku->sku,
-                'variant_id' => $shopifySku->variant_id,
+                'mapped_sku' => $mappedSku ?? $trim,
+                'variant_id' => $variantId,
                 'product_id' => $productId,
             ]);
 
@@ -234,7 +284,7 @@ class ShopifyApiService
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
             Log::info('Shopify updateBulletPoints request payload', [
                 'identifier' => $identifier,
-                'variant_id' => $shopifySku->variant_id,
+                'variant_id' => $variantId,
                 'product_id' => $productId,
                 'title_len' => mb_strlen($title),
                 'body_html_len' => mb_strlen($formattedHtml),
@@ -254,7 +304,7 @@ class ShopifyApiService
             });
             Log::info('Shopify updateBulletPoints API response', [
                 'identifier' => $identifier,
-                'variant_id' => $shopifySku->variant_id,
+                'variant_id' => $variantId,
                 'product_id' => $productId,
                 'status' => $updateRes->status(),
                 'x_request_id' => $updateRes->header('x-request-id'),
@@ -313,7 +363,7 @@ class ShopifyApiService
                 if (! $verified) {
                     Log::warning('Shopify updateBulletPoints success but verification mismatch', [
                         'identifier' => $identifier,
-                        'variant_id' => $shopifySku->variant_id,
+                        'variant_id' => $variantId,
                         'product_id' => $productId,
                         'expected_body_md5' => md5($formattedHtml),
                         'verified_body_len' => $verifiedBodyLen,
@@ -323,7 +373,7 @@ class ShopifyApiService
                     return [
                         'success' => true,
                         'message' => 'Shopify API returned success, but verification could not confirm persisted body_html yet. Please retry fetch/check in a few seconds.',
-                        'variant_id' => (string) $shopifySku->variant_id,
+                        'variant_id' => (string) $variantId,
                         'product_id' => (string) $productId,
                     ];
                 }
@@ -331,7 +381,7 @@ class ShopifyApiService
                 return [
                     'success' => true,
                     'message' => 'Shopify product bullets updated and verified.',
-                    'variant_id' => (string) $shopifySku->variant_id,
+                    'variant_id' => (string) $variantId,
                     'product_id' => (string) $productId,
                 ];
             }
@@ -373,19 +423,12 @@ class ShopifyApiService
             $domain = rtrim($domain, '/');
 
             $trim = trim($identifier);
-            $shopifySku = ShopifySku::where('sku', $trim)
-                ->orWhere('sku', strtoupper($trim))
-                ->orWhere('sku', strtolower($trim))
-                ->first();
-            if (! $shopifySku) {
-                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
-            }
-
-            if (! $shopifySku || ! $shopifySku->variant_id) {
+            $variantId = $this->resolveMainStoreVariantId($trim);
+            if (! $variantId) {
                 return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
             }
 
-            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
             $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
@@ -491,19 +534,12 @@ class ShopifyApiService
             $domain = rtrim($domain, '/');
 
             $trim = trim($identifier);
-            $shopifySku = ShopifySku::where('sku', $trim)
-                ->orWhere('sku', strtoupper($trim))
-                ->orWhere('sku', strtolower($trim))
-                ->first();
-            if (! $shopifySku) {
-                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
-            }
-
-            if (! $shopifySku || ! $shopifySku->variant_id) {
+            $variantId = $this->resolveMainStoreVariantId($trim);
+            if (! $variantId) {
                 return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
             }
 
-            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
             $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
@@ -584,19 +620,12 @@ class ShopifyApiService
             $domain = rtrim($domain, '/');
 
             $trim = trim($identifier);
-            $shopifySku = ShopifySku::where('sku', $trim)
-                ->orWhere('sku', strtoupper($trim))
-                ->orWhere('sku', strtolower($trim))
-                ->first();
-            if (! $shopifySku) {
-                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
-            }
-
-            if (! $shopifySku || ! $shopifySku->variant_id) {
+            $variantId = $this->resolveMainStoreVariantId($trim);
+            if (! $variantId) {
                 return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
             }
 
-            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
             $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
