@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Incoming', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Incoming Return (Devolución entrante)', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -90,6 +90,18 @@
         #inventoryTable thead th.sorting:after,
         #inventoryTable thead th.sorting_asc:after,
         #inventoryTable thead th.sorting_desc:after {
+            color: white !important;
+            opacity: 0.8 !important;
+        }
+
+        #returnHistoryTable thead th {
+            background-color: #2c6ed5 !important;
+            color: white !important;
+        }
+
+        #returnHistoryTable thead th.sorting:after,
+        #returnHistoryTable thead th.sorting_asc:after,
+        #returnHistoryTable thead th.sorting_desc:after {
             color: white !important;
             opacity: 0.8 !important;
         }
@@ -213,15 +225,15 @@
 
 @section('content')
     @include('layouts.shared/page-title', [
-        'page_title' => 'Incoming Inventory',
-        'sub_title' => 'Incoming',
+        'page_title' => 'Incoming Return (Devolución entrante)',
+        'sub_title' => 'Incoming Return (Devolución entrante)',
     ])
 
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11000;">
         <div id="incomingToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
                 <div class="toast-body" id="incomingToastBody"></div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close (Cerrar)"></button>
             </div>
         </div>
     </div>
@@ -236,7 +248,7 @@
                     <div class="row mb-3">
                         <div class="col-md-6 d-flex align-items-center">
                             <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
-                                <i class="fas fa-plus me-1"></i> CREATE INCOMING
+                                <i class="fas fa-plus me-1"></i> CREATE INCOMING RETURN (CREAR DEVOLUCIÓN ENTRANTE)
                             </button>
                             <div class="dataTables_length ms-3"></div>
                         </div>
@@ -244,8 +256,8 @@
                         <div class="col-md-3 offset-md-3">
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-search"></i></span>
-                                <input type="text" id="customSearch" class="form-control" placeholder="Search Incoming">
-                                <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear</button>
+                                <input type="text" id="customSearch" class="form-control" placeholder="Search Incoming (Buscar entradas)">
+                                <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear (Limpiar)</button>
                             </div>
                         </div>
                     </div>
@@ -264,41 +276,41 @@
                     <!-- Incoming Modal (full-screen on small viewports) -->
                     <div class="modal fade" id="addWarehouseModal" tabindex="-1" aria-labelledby="incomingModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-fullscreen-sm-down modal-lg modal-dialog-scrollable">
-                            <form id="incomingForm" enctype="multipart/form-data">
+                            <form id="incomingReturnForm" enctype="multipart/form-data">
                                 @csrf
                                 <div class="modal-content incoming-mobile">
 
                                     <div class="modal-header bg-primary text-white">
-                                        <h5 class="modal-title" id="incomingModalLabel">Add Incoming</h5>
+                                        <h5 class="modal-title" id="incomingModalLabel">Add Incoming Return (Agregar devolución entrante)</h5>
                                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                     </div>
 
                                     <div class="modal-body">
                                         <div id="incoming-offline-banner" class="alert alert-warning d-none mb-3" role="alert">
-                                            <i class="fas fa-wifi-slash me-2"></i>You are offline. Connect to the internet to submit (camera upload requires a connection).
+                                            <i class="fas fa-wifi-slash me-2"></i>You are offline. Connect to the internet to submit (camera upload requires a connection). <span class="d-block mt-1">(Sin conexión. Conéctese a internet para enviar; la cámara requiere conexión.)</span>
                                         </div>
                                         <div id="incoming-errors" class="mb-2 text-danger"></div>
 
                                         <div class="mb-3">
-                                            <label for="sku" class="form-label fw-bold">SKU</label>
+                                            <label for="sku" class="form-label fw-bold">SKU (SKU)</label>
                                             <div class="d-flex flex-column flex-sm-row gap-2">
-                                                <input type="text" class="form-control flex-grow-1" id="sku" name="sku" required autocomplete="off" placeholder="Scan or type SKU" inputmode="text">
+                                                <input type="text" class="form-control flex-grow-1" id="sku" name="sku" required autocomplete="off" placeholder="Scan or type SKU (Escanee o escriba el SKU)" inputmode="text">
                                                 <button type="button" class="btn btn-outline-primary btn-touch" id="btnScanBarcode">
-                                                    <i class="fas fa-barcode me-1"></i> Scan Barcode
+                                                    <i class="fas fa-barcode me-1"></i> Scan Barcode (Escanear código de barras)
                                                 </button>
                                             </div>
                                             <div id="sku-product-hint" class="incoming-product-hint mt-2 d-none"></div>
                                         </div>
 
                                         <div class="mb-3">
-                                            <label for="qty" class="form-label fw-bold">Quantity</label>
+                                            <label for="qty" class="form-label fw-bold">Quantity (Cantidad)</label>
                                             <input type="number" class="form-control" id="qty" name="qty" required min="1" step="1" inputmode="numeric">
                                         </div>
 
                                         <div class="mb-3">
-                                            <label for="warehouse_id" class="form-label fw-bold">Warehouse</label>
+                                            <label for="warehouse_id" class="form-label fw-bold">Warehouse (Almacén)</label>
                                             <select class="form-select" id="warehouse_id" name="warehouse_id" required>
-                                                <option selected disabled value="">Select Warehouse</option>
+                                                <option selected disabled value="">Select Warehouse (Seleccione almacén)</option>
                                                 @foreach($warehouses as $warehouse)
                                                     <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
                                                 @endforeach
@@ -306,38 +318,38 @@
                                         </div>
 
                                         <div class="mb-3">
-                                            <label for="reason" class="form-label fw-bold">Reason</label>
+                                            <label for="reason" class="form-label fw-bold">Reason (Motivo)</label>
                                             <select class="form-select" id="reason" name="reason" required>
-                                                <option selected disabled value="">Select Reason</option>
-                                                <option value="Returns">Returns</option>
-                                                <option value="Purchase">Purchase</option>
-                                                <option value="Recovered">Recovered</option>
+                                                <option selected disabled value="">Select Reason (Seleccione motivo)</option>
+                                                <option value="Returns">Returns (Devoluciones)</option>
+                                                <option value="Purchase">Purchase (Compra)</option>
+                                                <option value="Recovered">Recovered (Recuperado)</option>
                                             </select>
                                         </div>
 
                                         <div class="mb-3">
-                                            <label class="form-label fw-bold">Photos <span class="text-muted fw-normal">(optional)</span></label>
+                                            <label class="form-label fw-bold">Photos (Fotos) <span class="text-muted fw-normal">(optional / opcional)</span></label>
                                             <div class="d-flex flex-column gap-2">
                                                 <input type="file" id="incoming-photo-input" class="d-none" accept="image/*" capture="environment" multiple>
                                                 <button type="button" class="btn btn-outline-secondary btn-touch" id="btnAddPhotos">
-                                                    <i class="fas fa-camera me-2"></i>Add Photos
+                                                    <i class="fas fa-camera me-2"></i>Add Photos (Agregar fotos)
                                                 </button>
                                             </div>
                                             <div id="incoming-photo-thumbs" class="mt-2"></div>
-                                            <small class="text-muted d-block mt-1">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery.</small>
+                                            <small class="text-muted d-block mt-1">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery. <span class="d-block mt-1">(La cámara requiere HTTPS. Si no está disponible, puede elegir imágenes de la galería.)</span></small>
                                         </div>
 
                                         <p class="small text-muted mb-0">
-                                            <i class="fas fa-clock me-1"></i>Date and time are saved automatically when you submit.
+                                            <i class="fas fa-clock me-1"></i>Date and time are saved automatically when you submit. (La fecha y hora se guardan automáticamente al enviar.)
                                         </p>
                                     </div>
 
-                                    <input type="hidden" name="type" value="incoming">
+                                    <input type="hidden" name="type" value="incoming_return">
 
                                     <div class="modal-footer flex-column flex-sm-row gap-2">
-                                        <button type="button" class="btn btn-secondary btn-touch w-100 w-sm-auto" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="button" class="btn btn-secondary btn-touch w-100 w-sm-auto" data-bs-dismiss="modal">Cancel (Cancelar)</button>
                                         <button type="submit" class="btn btn-success btn-touch w-100 w-sm-auto" id="incomingSubmitBtn">
-                                            <i class="fas fa-save me-1"></i> Save Incoming
+                                            <i class="fas fa-save me-1"></i> Save Incoming Return (Guardar devolución entrante)
                                         </button>
                                     </div>
                                 </div>
@@ -350,15 +362,15 @@
                         <div class="modal-dialog modal-dialog-centered modal-lg">
                             <div class="modal-content">
                                 <div class="modal-header">
-                                    <h5 class="modal-title" id="barcodeScannerLabel">Scan barcode</h5>
-                                    <button type="button" class="btn-close" id="barcodeScannerClose" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    <h5 class="modal-title" id="barcodeScannerLabel">Scan barcode (Escanear código de barras)</h5>
+                                    <button type="button" class="btn-close" id="barcodeScannerClose" data-bs-dismiss="modal" aria-label="Close (Cerrar)"></button>
                                 </div>
                                 <div class="modal-body">
                                     <div id="barcode-reader" class="w-100"></div>
                                     <p id="barcode-scan-status" class="small text-muted mt-2 mb-0"></p>
                                 </div>
                                 <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel (Cancelar)</button>
                                 </div>
                             </div>
                         </div>
@@ -486,18 +498,18 @@
                         <div class="modal-dialog modal-lg">
                             <div class="modal-content">
                                 <div class="modal-header bg-primary text-white">
-                                    <h5 class="modal-title">Processing Data</h5>
+                                    <h5 class="modal-title">Processing Data (Procesando datos)</h5>
                                 </div>
                                 <div class="modal-body">
                                     <div id="progress-container" class="mb-3"></div>
                                     <div id="error-container"></div>
                                     <div id="success-alert" class="alert alert-success" style="display:none">
-                                        All sheets updated successfully!
+                                        All sheets updated successfully! (¡Todas las hojas se actualizaron correctamente!)
                                     </div>
                                 </div>
                                 <div class="modal-footer">
-                                    <button id="cancelUploadBtn" class="btn btn-secondary">Cancel</button>
-                                    <button id="doneBtn" class="btn btn-primary" style="display:none">Done</button>
+                                    <button id="cancelUploadBtn" class="btn btn-secondary">Cancel (Cancelar)</button>
+                                    <button id="doneBtn" class="btn btn-primary" style="display:none">Done (Listo)</button>
                                 </div>
                             </div>
                         </div>
@@ -508,12 +520,12 @@
                         <table id="inventoryTable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th>SKU</th>
-                                    <th>QUANTITY</th>
-                                    <th>WAREHOUSE</th>
-                                    <th>REASON</th>
-                                    <th>CREATED BY</th>
-                                    <th>DATE</th>
+                                    <th>SKU (SKU)</th>
+                                    <th>QUANTITY (CANTIDAD)</th>
+                                    <th>WAREHOUSE (ALMACÉN)</th>
+                                    <th>REASON (MOTIVO)</th>
+                                    <th>CREATED BY (CREADO POR)</th>
+                                    <th>DATE (FECHA)</th>
                                 </tr>
                             </thead>
                             <tbody id="inventory-table-body">
@@ -528,7 +540,53 @@
                         <div class="wave"></div>
                         <div class="wave"></div>
                         <div class="wave"></div>
-                        <div class="loading-text">Loading Incoming Data...</div>
+                        <div class="loading-text">Loading Incoming Data… (Cargando datos de entradas…)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="mb-3">Return History (Historial de devoluciones)</h5>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6 d-flex align-items-center"></div>
+                        <div class="col-md-3 offset-md-3">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                <input type="text" id="customSearchReturnHistory" class="form-control" placeholder="Search Return History (Buscar historial de devoluciones)">
+                                <button class="btn btn-outline-secondary" type="button" id="clearSearchReturnHistory">Clear (Limpiar)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table id="returnHistoryTable" class="table dt-responsive nowrap w-100">
+                            <thead>
+                                <tr>
+                                    <th>SKU (SKU)</th>
+                                    <th>QUANTITY (CANTIDAD)</th>
+                                    <th>WAREHOUSE (ALMACÉN)</th>
+                                    <th>REASON (MOTIVO)</th>
+                                    <th>CREATED BY (CREADO POR)</th>
+                                    <th>DATE (FECHA)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="return-history-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="return-history-rainbow-loader" class="rainbow-loader">
+                        <div class="wave"></div>
+                        <div class="wave"></div>
+                        <div class="wave"></div>
+                        <div class="wave"></div>
+                        <div class="wave"></div>
+                        <div class="loading-text">Loading Return History… (Cargando historial de devoluciones…)</div>
                     </div>
                 </div>
             </div>
@@ -541,7 +599,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-success text-white">
                     <h5 class="modal-title" id="successModalLabel">
-                        <i class="fas fa-check-circle me-2"></i>Success
+                        <i class="fas fa-check-circle me-2"></i>Success (Éxito)
                     </h5>
                 </div>
                 <div class="modal-body text-center py-4">
@@ -552,7 +610,7 @@
                 </div>
                 <div class="modal-footer justify-content-center">
                     <button type="button" class="btn btn-success btn-lg px-5" id="successModalOkBtn">
-                        <i class="fas fa-check me-2"></i>OK
+                        <i class="fas fa-check me-2"></i>OK (Aceptar)
                     </button>
                 </div>
             </div>
@@ -581,9 +639,11 @@
 
             // Show loader immediately
             document.getElementById('rainbow-loader').style.display = 'block';
+            document.getElementById('return-history-rainbow-loader').style.display = 'block';
 
             // Store the loaded data globally
             let tableData = [];
+            let returnHistoryTableData = [];
 
             function setupProgressModal() {
                 const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
@@ -628,7 +688,7 @@
                                     <div id="${sheet.id}-progress" class="progress-bar progress-bar-striped progress-bar-animated" 
                                         role="progressbar" style="width: 0%"></div>
                                 </div>
-                                <div id="${sheet.id}-status" class="small text-muted mt-1">Initializing...</div>
+                                <div id="${sheet.id}-status" class="small text-muted mt-1">Initializing… (Iniciando…)</div>
                                 <div id="${sheet.id}-error" class="small text-danger mt-1"></div>
                             </div>
                         `;
@@ -649,13 +709,13 @@
                         if (isSuccess) {
                             progressEl.classList.remove('progress-bar-animated');
                             progressEl.classList.add('bg-success');
-                            statusEl.textContent = status || 'Completed successfully';
+                            statusEl.textContent = status || 'Completed successfully (Completado correctamente)';
                             statusEl.classList.add('text-success');
                             iconEl.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
                         } else if (progress === 100) {
                             progressEl.classList.remove('progress-bar-animated');
                             progressEl.classList.add('bg-danger');
-                            statusEl.textContent = status || 'Failed';
+                            statusEl.textContent = status || 'Failed (Falló)';
                             statusEl.classList.add('text-danger');
                             iconEl.innerHTML = '<i class="fas fa-times-circle text-danger"></i>';
 
@@ -669,7 +729,7 @@
                                 `;
                             }
                         } else {
-                            statusEl.textContent = status || 'Processing...';
+                            statusEl.textContent = status || 'Processing… (Procesando…)';
                         }
                     }
                 };
@@ -685,7 +745,7 @@
                         document.getElementById('error-container').innerHTML += `
                             <div class="alert alert-warning mt-3">
                                 <i class="fas fa-info-circle me-2"></i>
-                                ${successCount}/${totalCount} sheets updated successfully
+                                ${successCount}/${totalCount} sheets updated successfully (hojas actualizadas correctamente)
                             </div>
                         `;
                         doneBtn.style.display = 'block';
@@ -695,7 +755,9 @@
 
             function initializeTable() {
                 loadData();
+                loadReturnHistoryData();
                 setupSearch();
+                setupReturnHistorySearch();
                 setupAddWarehouseModal();
                 setupProgressModal();
                 setupEditDeleteButtons();
@@ -859,11 +921,11 @@
                                 hint.removeClass('d-none').html(
                                     '<i class="fas fa-check-circle text-success me-1"></i>' +
                                     escapeHtml(res.title || res.sku) +
-                                    (res.parent ? ' · Parent: ' + escapeHtml(res.parent) : '')
+                                    (res.parent ? ' · Parent (Padre): ' + escapeHtml(res.parent) : '')
                                 );
                             } else {
                                 hint.removeClass('d-none').html(
-                                    '<i class="fas fa-info-circle me-1"></i>' + escapeHtml(res.message || 'SKU not in product master (will still try Shopify).')
+                                    '<i class="fas fa-info-circle me-1"></i>' + escapeHtml(res.message || 'SKU not in product master (will still try Shopify). (SKU no está en el catálogo maestro; se intentará en Shopify.)')
                                 );
                             }
                         })
@@ -879,6 +941,7 @@
                         fetchLookupForSku($('#sku').val());
                     }, 400);
                 });
+                // USB scanners often send Enter; match WMS scan — lookup immediately (no debounce wait)
                 $('#sku').on('keydown', function (e) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
@@ -905,11 +968,11 @@
 
                 $('#btnScanBarcode').on('click', function () {
                     if (typeof Html5Qrcode === 'undefined') {
-                        $('#incoming-errors').html('<div class="alert alert-warning mb-0">Barcode scanner library did not load. Refresh the page or type the SKU manually.</div>');
+                        $('#incoming-errors').html('<div class="alert alert-warning mb-0">Barcode scanner library did not load. Refresh the page or type the SKU manually. <span class="d-block mt-1 small">(No se cargó el escáner. Actualice la página o escriba el SKU manualmente.)</span></div>');
                         return;
                     }
                     $('#incoming-errors').html('');
-                    $('#barcode-scan-status').text('Starting camera…');
+                    $('#barcode-scan-status').text('Starting camera… (Iniciando cámara…)');
                     const modalEl = document.getElementById('barcodeScannerModal');
                     const bsScanModal = bootstrap.Modal.getOrCreateInstance(modalEl);
                     $(modalEl).one('shown.bs.modal', function () {
@@ -932,10 +995,10 @@
                             },
                             function () { /* frame — ignore */ }
                         ).then(function () {
-                            $('#barcode-scan-status').text('Point the camera at a barcode.');
+                            $('#barcode-scan-status').text('Point the camera at a barcode. (Apunte la cámara al código de barras.)');
                         }).catch(function (err) {
                             $('#barcode-scan-status').text(
-                                'Camera unavailable (' + (err && err.message ? err.message : 'permission or HTTPS') + '). Type the SKU or allow camera access.'
+                                'Camera unavailable (' + (err && err.message ? err.message : 'permission or HTTPS') + '). Type the SKU or allow camera access. (Cámara no disponible. Escriba el SKU o permita el acceso a la cámara.)'
                             );
                         });
                     });
@@ -945,7 +1008,7 @@
                 // Prevent duplicate form submissions
                 let isSubmitting = false;
 
-                $('#incomingForm').off('submit').on('submit', function (e) {
+                $('#incomingReturnForm').off('submit').on('submit', function (e) {
                     e.preventDefault();
 
                     if (isSubmitting) {
@@ -954,19 +1017,19 @@
                     }
 
                     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-                        $('#incoming-errors').html('<div class="alert alert-danger mb-0">You are offline. Connect to the internet to submit incoming stock.</div>');
+                        $('#incoming-errors').html('<div class="alert alert-danger mb-0">You are offline. Connect to the internet to submit incoming return stock. <span class="d-block mt-1 small">(Sin conexión. Conéctese a internet para enviar la devolución entrante.)</span></div>');
                         return false;
                     }
 
                     $('.error-message').remove();
-                    $('#incomingForm input, #incomingForm select').removeClass('is-invalid');
+                    $('#incomingReturnForm input, #incomingReturnForm select').removeClass('is-invalid');
 
                     let hasError = false;
                     const fields = [
-                        { id: '#sku', name: 'SKU' },
-                        { id: '#qty', name: 'Quantity' },
-                        { id: '#warehouse_id', name: 'Warehouse' },
-                        { id: '#reason', name: 'Reason' },
+                        { id: '#sku', name: 'SKU (SKU)' },
+                        { id: '#qty', name: 'Quantity (Cantidad)' },
+                        { id: '#warehouse_id', name: 'Warehouse (Almacén)' },
+                        { id: '#reason', name: 'Reason (Motivo)' },
                     ];
 
                     fields.forEach(function (f) {
@@ -975,7 +1038,7 @@
                         if (!v || v === 'Select Warehouse' || v === 'Select Reason') {
                             hasError = true;
                             el.addClass('is-invalid');
-                            el.after('<div class="text-danger error-message">' + f.name + ' is required.</div>');
+                            el.after('<div class="text-danger error-message">' + f.name + ' is required. (Obligatorio.)</div>');
                         }
                     });
 
@@ -984,7 +1047,7 @@
                     isSubmitting = true;
                     const submitBtn = $(this).find('button[type="submit"]');
                     const originalBtnText = submitBtn.html();
-                    submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing...');
+                    submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing… (Procesando…)');
 
                     const fd = new FormData(this);
                     fd.set('_token', csrfToken);
@@ -1008,15 +1071,15 @@
                             z-index:9999;
                             font-size:20px;
                         ">
-                            <div style="font-size:28px;">🚀 Processing incoming stock...</div>
+                            <div style="font-size:28px;">🚀 Processing incoming return… (Procesando devolución entrante…)</div>
                             <small style="margin-top:10px;font-size:16px;">
-                                Please wait while we update Shopify inventory.<br>
+                                Please wait while we update Shopify inventory. (Espere mientras actualizamos el inventario en Shopify.)<br>
                                 <span id="retry-status" style="font-size: 14px; opacity: 0.8;"></span>
                             </small>
                         </div>`;
                     document.body.appendChild(overlay);
 
-                    ajaxWithRetry('{{ route("incoming.store") }}', 'POST', fd, 4, {
+                    ajaxWithRetry('{{ route("incoming.return.store") }}', 'POST', fd, 4, {
                         processData: false,
                         contentType: false,
                         headers: {
@@ -1028,11 +1091,11 @@
                         .then(function (response) {
                             document.getElementById('processing-overlay')?.remove();
 
-                            const message = response.message || 'Incoming inventory stored and updated in Shopify successfully!';
+                            const message = response.message || 'Incoming return stored and updated in Shopify successfully!';
 
                             $('#incoming-errors').html('');
                             $('#addWarehouseModal').modal('hide');
-                            $('#incomingForm')[0].reset();
+                            $('#incomingReturnForm')[0].reset();
                             $('#sku-product-hint').addClass('d-none').text('');
                             clearIncomingPhotos();
 
@@ -1048,7 +1111,7 @@
                             console.error('Final error after retries:', error);
 
                             // Parse error message and show prominently in modal
-                            let errorMsg = 'Error storing Incoming.';
+                            let errorMsg = 'Error storing incoming return. (Error al guardar la devolución entrante.)';
 
                             if (error.response && error.response.error) {
                                 errorMsg = error.response.error;
@@ -1056,11 +1119,11 @@
                                     errorMsg += ' — ' + error.response.details;
                                 }
                             } else if (error.status === 0) {
-                                errorMsg = 'Network/timeout error. Please try again.';
+                                errorMsg = 'Network/timeout error. Please try again. (Error de red o tiempo de espera. Inténtelo de nuevo.)';
                             }
 
                             // Display big red error inside modal area
-                            $('#incoming-errors').html(`<div style="color:#b00020;font-size:20px;font-weight:800">${escapeHtml(errorMsg)}<br><small style=\"font-size:13px;color:#6b0b15\">(Attempted ${error.attempt} times)</small></div>`);
+                            $('#incoming-errors').html(`<div style="color:#b00020;font-size:20px;font-weight:800">${escapeHtml(errorMsg)}<br><small style=\"font-size:13px;color:#6b0b15\">(Attempted ${error.attempt} times) (Intentos: ${error.attempt})</small></div>`);
 
                             // Reset submit button on error
                             submitBtn.prop('disabled', false).html(originalBtnText);
@@ -1076,15 +1139,16 @@
                 });
 
                 $(document).on('click', '#openAddWarehouseModal', function () {
-                    $('#incomingForm')[0].reset();
+                    $('#incomingReturnForm')[0].reset();
                     $('#warehouseId').val('');
-                    $('#warehouseModalLabel').text('Create Incoming');
+                    $('#incomingModalLabel').text('Create Incoming Return (Crear devolución entrante)');
+                    $('#warehouseModalLabel').text('Create Incoming Return (Crear devolución entrante)');
                     $('#incoming-errors').html('');
                     $('#sku-product-hint').addClass('d-none').text('');
                     clearIncomingPhotos();
                     isSubmitting = false;
-                    const submitBtn = $('#incomingForm').find('button[type="submit"]');
-                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming');
+                    const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
+                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return (Guardar devolución entrante)');
                     updateOfflineBanner();
                     $('#addWarehouseModal').modal('show');
                 });
@@ -1092,8 +1156,8 @@
                 // Reset submission flag when modal is closed
                 $('#addWarehouseModal').on('hidden.bs.modal', function () {
                     isSubmitting = false;
-                    const submitBtn = $('#incomingForm').find('button[type="submit"]');
-                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming');
+                    const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
+                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return (Guardar devolución entrante)');
                     $('#incoming-errors').html('');
                 });
 
@@ -1118,6 +1182,29 @@
                     },
                     error: function(xhr) {
                         console.error("Load error:", xhr.responseText);
+                        $('#rainbow-loader').hide();
+                    }
+                });
+            }
+
+            function loadReturnHistoryData() {
+                $.ajax({
+                    url: '/incoming-return-history-list',
+                    method: 'GET',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    beforeSend: function () {
+                        $('#return-history-rainbow-loader').show();
+                    },
+                    success: function (response) {
+                        returnHistoryTableData = response.data || [];
+                        renderReturnHistoryTable(returnHistoryTableData);
+                        $('#return-history-rainbow-loader').hide();
+                    },
+                    error: function(xhr) {
+                        console.error("Return history load error:", xhr.responseText);
+                        $('#return-history-rainbow-loader').hide();
                     }
                 });
             }
@@ -1128,7 +1215,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found (No se encontraron registros)</td></tr>';
                     return;
                 }
 
@@ -1144,6 +1231,30 @@
                         <td>${item.approved_at || '-'}</td>
                     `;
 
+                    tbody.appendChild(row);
+                });
+            }
+
+            function renderReturnHistoryTable(data) {
+                const tbody = document.getElementById('return-history-table-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found (No se encontraron registros)</td></tr>';
+                    return;
+                }
+
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.sku || '-'}</td>
+                        <td>${item.verified_stock || '-'}</td>
+                        <td>${item.warehouse_name  || '-'}</td>
+                        <td>${item.reason || '-'}</td>
+                        <td>${item.approved_by || '-'}</td>
+                        <td>${item.approved_at || '-'}</td>
+                    `;
                     tbody.appendChild(row);
                 });
             }
@@ -1177,6 +1288,34 @@
                 });
             }
 
+            function setupReturnHistorySearch() {
+                const searchInput = document.getElementById('customSearchReturnHistory');
+                const clearButton = document.getElementById('clearSearchReturnHistory');
+                if (!searchInput || !clearButton) return;
+
+                searchInput.addEventListener('input', debounce(function() {
+                    const searchTerm = this.value.toLowerCase().trim();
+
+                    if (!searchTerm) {
+                        renderReturnHistoryTable(returnHistoryTableData);
+                        return;
+                    }
+
+                    const filteredData = returnHistoryTableData.filter(item =>
+                        Object.values(item).some(value =>
+                            String(value).toLowerCase().includes(searchTerm)
+                        )
+                    );
+
+                    renderReturnHistoryTable(filteredData);
+                }, 300));
+
+                clearButton.addEventListener('click', function() {
+                    searchInput.value = '';
+                    renderReturnHistoryTable(returnHistoryTableData);
+                });
+            }
+
 
             function setupAddWarehouseModal() {
                 const modal = document.getElementById('addProductModal');
@@ -1194,7 +1333,7 @@
                     const warehouse = tableData.find(w => w.id == id);
 
                     if (warehouse) {
-                        $('#warehouseModalLabel').text('Edit Warehouse');
+                        $('#warehouseModalLabel').text('Edit Warehouse (Editar almacén)');
                         $('#warehouseId').val(warehouse.id);
                         $('#warehouseName').val(warehouse.name);
                         $('#warehouseGroup').val(warehouse.group).trigger('change');
@@ -1207,7 +1346,7 @@
                 $(document).on('click', '.delete-btn', function () {
                     const id = $(this).data('id');
 
-                    if (confirm('Are you sure you want to delete this warehouse?')) {
+                    if (confirm('Are you sure you want to delete this warehouse? (¿Seguro que desea eliminar este almacén?)')) {
                         $.ajax({
                             url: `/warehouses/${id}`,
                             type: 'DELETE',
@@ -1218,7 +1357,7 @@
                                 loadData(); // Refresh table
                             },
                             error: function (xhr) {
-                                alert('Failed to delete warehouse.');
+                                alert('Failed to delete warehouse. (No se pudo eliminar el almacén.)');
                                 console.error(xhr.responseText);
                             }
                         });
@@ -1238,7 +1377,7 @@
                         loadData(); // Refresh table
                     },
                     error: function () {
-                        alert("Failed to delete warehouse.");
+                        alert("Failed to delete warehouse. (No se pudo eliminar el almacén.)");
                     }
                 });
             }
@@ -1251,10 +1390,10 @@
                 requiredFields.forEach(id => {
                     const field = document.getElementById(id);
                     if (!field.value.trim()) {
-                        showFieldError(field, 'This field is required');
+                        showFieldError(field, 'This field is required. (Este campo es obligatorio.)');
                         isValid = false;
                     } else if (isNaN(field.value)) {
-                        showFieldError(field, 'Must be a number');
+                        showFieldError(field, 'Must be a number. (Debe ser un número.)');
                         isValid = false;
                     } else {
                         clearFieldError(field);
@@ -1323,8 +1462,8 @@
                     const saveBtn = document.getElementById('saveProductBtn');
                     saveBtn.disabled = true;
                     saveBtn.innerHTML = formData.operation === 'update' ?
-                        '<i class="fas fa-spinner fa-spin me-2"></i> Updating...' :
-                        '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
+                        '<i class="fas fa-spinner fa-spin me-2"></i> Updating… (Actualizando…)' :
+                        '<i class="fas fa-spinner fa-spin me-2"></i> Saving… (Guardando…)';
 
                     currentUpload = new AbortController();
                     const response = await fetch('/api/sync-sheets', {
@@ -1341,7 +1480,7 @@
                     const contentType = response.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/json')) {
                         const textResponse = await response.text();
-                        throw new Error('Server returned an HTML error page. Please check the server logs.');
+                        throw new Error('Server returned an HTML error page. Please check the server logs. (El servidor devolvió HTML. Revise los registros.)');
                     }
 
                     const data = await response.json();
@@ -1354,28 +1493,28 @@
                     sheets.forEach(sheet => {
                         const result = data.results[sheet.name];
                         if (result?.success) {
-                            updateUploadProgress(sheet.id, 100, 'Completed successfully', true);
+                            updateUploadProgress(sheet.id, 100, 'Completed successfully (Completado correctamente)', true);
                             successCount++;
                         } else {
-                            updateUploadProgress(sheet.id, 100, 'Failed', false, result?.message);
+                            updateUploadProgress(sheet.id, 100, 'Failed (Falló)', false, result?.message);
                         }
                     });
 
                     completeUpload(successCount, sheets.length);
 
                     if (successCount === sheets.length) {
-                        showAlert('success', 'All sheets updated successfully!');
+                        showAlert('success', 'All sheets updated successfully! (¡Todas las hojas se actualizaron!)');
                         return true;
                     } else {
-                        showAlert('warning', `${successCount}/${sheets.length} sheets updated successfully`);
+                        showAlert('warning', `${successCount}/${sheets.length} sheets updated successfully (${successCount}/${sheets.length} hojas actualizadas)`);
                         return false;
                     }
                 } catch (error) {
                     let errorMessage = error.message;
                     if (error.name === 'AbortError') {
-                        errorMessage = 'Request was cancelled';
+                        errorMessage = 'Request was cancelled. (Solicitud cancelada.)';
                     } else if (error.message.includes('HTML error page')) {
-                        errorMessage = 'Server error occurred. Please try again or contact support.';
+                        errorMessage = 'Server error occurred. Please try again or contact support. (Error del servidor. Inténtelo de nuevo o contacte soporte.)';
                     }
 
                     showAlert('danger', errorMessage);
@@ -1387,13 +1526,13 @@
                     const saveBtn = document.getElementById('saveProductBtn');
                     saveBtn.disabled = false;
                     saveBtn.innerHTML = formData.operation === 'update' ?
-                        '<i class="fas fa-save me-2"></i> Update Product' :
-                        '<i class="fas fa-save me-2"></i> Save Product';
+                        '<i class="fas fa-save me-2"></i> Update Product (Actualizar producto)' :
+                        '<i class="fas fa-save me-2"></i> Save Product (Guardar producto)';
                 }
             }
 
             function resetProductForm() {
-                document.getElementById('incomingForm').reset();
+                document.getElementById('incomingReturnForm').reset();
 
                 document.querySelectorAll('.is-invalid').forEach(el => {
                     el.classList.remove('is-invalid');
@@ -1406,7 +1545,7 @@
                 const newSaveBtn = saveBtn.cloneNode(true);
                 saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
 
-                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Save Product';
+                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Save Product (Guardar producto)';
                 newSaveBtn.onclick = async function() {
                     if (!validateProductForm()) return;
 
@@ -1439,7 +1578,7 @@
                 newSaveBtn.setAttribute('data-original-sku', product.SKU || '');
                 newSaveBtn.setAttribute('data-original-parent', product.Parent || '');
 
-                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Update Product';
+                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Update Product (Actualizar producto)';
                 newSaveBtn.addEventListener('click', async function handleUpdate() {
                     if (!validateProductForm()) return;
 
@@ -1506,7 +1645,7 @@
                 
                 if (modalElement && modalMessage) {
                     // Set the message
-                    modalMessage.textContent = message || 'Stock updated successfully in Shopify!';
+                    modalMessage.textContent = message || 'Stock updated successfully in Shopify! (¡Inventario actualizado en Shopify!)';
                     
                     // Initialize Bootstrap modal if not already done
                     const modal = new bootstrap.Modal(modalElement, {
@@ -1527,6 +1666,9 @@
                             } else {
                                 location.reload();
                             }
+                            if (typeof loadReturnHistoryData === 'function') {
+                                loadReturnHistoryData();
+                            }
                         }, 200);
                     });
                     
@@ -1534,7 +1676,7 @@
                     modal.show();
                 } else {
                     // Fallback: use alert if modal elements don't exist
-                    alert(message || 'Stock updated successfully in Shopify!');
+                    alert(message || 'Stock updated successfully in Shopify! (¡Inventario actualizado en Shopify!)');
                     location.reload();
                 }
             }

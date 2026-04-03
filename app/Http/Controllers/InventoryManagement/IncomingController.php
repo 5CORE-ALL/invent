@@ -53,6 +53,8 @@ class IncomingController extends Controller
 
     /**
      * Resolve SKU / barcode to product master row (mobile scanner + optional auto-fill).
+     * Uses the same resolution rules as WMS scan (ProductMaster::findByWmsScanCode): sku, barcode,
+     * upc column, Values JSON (upc/gtin/ean/barcode), numeric leading-zero variants, shopify_skus.
      */
     public function lookupSku(Request $request)
     {
@@ -61,18 +63,7 @@ class IncomingController extends Controller
             return response()->json(['found' => false, 'message' => 'SKU or barcode is required'], 422);
         }
 
-        $needle = strtolower($q);
-
-        $pm = ProductMaster::query()
-            ->where(function ($w) use ($needle) {
-                $w->whereRaw('LOWER(TRIM(sku)) = ?', [$needle])
-                    ->orWhere(function ($w2) use ($needle) {
-                        $w2->whereNotNull('barcode')
-                            ->where('barcode', '!=', '')
-                            ->whereRaw('LOWER(TRIM(barcode)) = ?', [$needle]);
-                    });
-            })
-            ->first();
+        $pm = ProductMaster::findByWmsScanCode($q);
 
         if (! $pm) {
             return response()->json([
@@ -276,6 +267,19 @@ class IncomingController extends Controller
 
 
     public function store(Request $request)
+    {
+        return $this->storeWithType($request, 'incoming', 'incoming');
+    }
+
+    public function storeReturn(Request $request)
+    {
+        return $this->storeWithType($request, 'incoming_return', 'incoming-return');
+    }
+
+    /**
+     * Shared Shopify + DB flow for incoming and incoming-return pages.
+     */
+    protected function storeWithType(Request $request, string $inventoryType, string $imageFolderPrefix)
     {
         // Set execution time limit to 90 seconds to handle slow API responses
         set_time_limit(90);
@@ -696,7 +700,7 @@ class IncomingController extends Controller
             if ($request->hasFile('images')) {
                 foreach ($request->file('images') as $file) {
                     if ($file && $file->isValid()) {
-                        $storedImagePaths[] = $file->store('incoming/'.date('Y/m'), 'public');
+                        $storedImagePaths[] = $file->store($imageFolderPrefix.'/'.date('Y/m'), 'public');
                     }
                 }
             }
@@ -723,7 +727,7 @@ class IncomingController extends Controller
                     'is_approved' => true,
                     'approved_by' => Auth::user()->name ?? 'N/A',
                     'approved_at' => Carbon::now('America/New_York'),
-                    'type' => 'incoming',
+                    'type' => $inventoryType,
                     'warehouse_id' => $validated['warehouse_id'],
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -737,11 +741,13 @@ class IncomingController extends Controller
 
                 DB::commit();
 
-                Log::info('Incoming inventory stored successfully', ['sku' => $sku, 'qty' => $qty]);
+                Log::info('Incoming inventory stored successfully', ['sku' => $sku, 'qty' => $qty, 'type' => $inventoryType]);
+
+                $successLabel = $inventoryType === 'incoming_return' ? 'Incoming return' : 'Incoming stock';
 
                 return response()->json([
                     'success' => true,
-                    'message' => "✓ Incoming stock for {$sku} added successfully! Quantity: {$qty} units.",
+                    'message' => "✓ {$successLabel} for {$sku} added successfully! Quantity: {$qty} units.",
                     'new_stock_level' => $qty,
                     'parent' => $productMaster->parent ?? null,
                     'recorded_at' => Carbon::now('America/New_York')->toIso8601String(),
@@ -836,6 +842,35 @@ class IncomingController extends Controller
                     'warehouse_name' => $item->warehouse->name ?? '',
                     'approved_by' => $item->approved_by,
                     'approved_at' =>  $item->approved_at
+                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('m-d-Y')
+                        : '',
+                ];
+            });
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function incomingReturnIndex()
+    {
+        $warehouses = Warehouse::select('id', 'name')->get();
+
+        return view('inventory-management.incoming-return-view', compact('warehouses'));
+    }
+
+    public function listReturnHistory()
+    {
+        $data = Inventory::with('warehouse')
+            ->where('type', 'incoming_return')
+            ->latest()
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'sku' => $item->sku,
+                    'verified_stock' => $item->verified_stock,
+                    'reason' => $item->reason,
+                    'warehouse_name' => $item->warehouse->name ?? '',
+                    'approved_by' => $item->approved_by,
+                    'approved_at' => $item->approved_at
                         ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('m-d-Y')
                         : '',
                 ];
