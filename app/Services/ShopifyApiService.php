@@ -348,7 +348,7 @@ class ShopifyApiService
 
     /**
      * Description Master (Phase 2): append long-form description below existing `body_html` (e.g. Key Features from Phase 1).
-     * Does not replace bullets; fetches current product HTML and appends formatted description.
+     * Does not replace bullets; always appends the new formatted block (no plain-text dedupe) so casing and images update every push.
      *
      * @return array{success: bool, message: string}
      */
@@ -439,7 +439,7 @@ class ShopifyApiService
                 $imageUrls
             )['html'];
 
-            $combined = $this->appendUniqueHtmlByPlainText($currentBody, $descriptionHtml, $descriptionPlain);
+            $combined = trim($currentBody)."\n\n".$descriptionHtml;
 
             $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $combined, $title) {
                 return Http::withHeaders([
@@ -767,23 +767,6 @@ class ShopifyApiService
         }
 
         return $title;
-    }
-
-    private function appendUniqueHtmlByPlainText(string $currentHtml, string $incomingHtml, string $incomingPlain): string
-    {
-        $currentHtml = trim($currentHtml);
-        $incomingPlain = trim($incomingPlain);
-        if ($currentHtml === '') {
-            return $incomingHtml;
-        }
-        if ($incomingPlain !== '') {
-            $currentPlain = trim(strip_tags($currentHtml));
-            if (str_contains(mb_strtolower($currentPlain), mb_strtolower($incomingPlain))) {
-                return $currentHtml;
-            }
-        }
-
-        return $currentHtml."\n\n".$incomingHtml;
     }
 
     public function getInventory()
