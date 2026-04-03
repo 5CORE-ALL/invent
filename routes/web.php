@@ -589,7 +589,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-verified-status', [VerificationAdjustmentController::class, 'updateVerifiedStatus']);
     Route::post('/update-doubtful-status', [VerificationAdjustmentController::class, 'updateDoubtfulStatus']);
     Route::get('/verified-stock-activity-log', [VerificationAdjustmentController::class, 'getVerifiedStockActivityLog']);
-    Route::get('/view-inventory-data', [VerificationAdjustmentController::class, 'viewInventory'])->name('view-inventory');
+    Route::get('/view-inventory-data', [VerificationAdjustmentController::class, 'viewInventory'])->name('view-inventory-data');
     Route::get('/inventory-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory']);
     Route::get('/shopify-inventory-history-url', [VerificationAdjustmentController::class, 'getShopifyInventoryHistoryUrl']);
     Route::post('/row-hide-toggle', [VerificationAdjustmentController::class, 'toggleHide']);
@@ -1929,6 +1929,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/incoming-return-store', [IncomingController::class, 'storeReturn'])->name('incoming.return.store');
     Route::get('/incoming-return-history-list', [IncomingController::class, 'listReturnHistory']);
     Route::get('/incoming-return-sku-suggest', [IncomingController::class, 'suggestSkusForReturn'])->name('incoming.return.sku.suggest');
+    Route::get('/incoming-return-grid-inventory', [IncomingController::class, 'getIncomingReturnGridInventory']);
+    Route::get('/view-inventory-incoming-return-trash', [IncomingController::class, 'viewInventoryIncomingReturnTrash'])->name('view-inventory-incoming-return-trash');
+    Route::get('/view-inventory-incoming-return-open-box', [IncomingController::class, 'viewInventoryIncomingReturnOpenBox'])->name('view-inventory-incoming-return-open-box');
 
     // incoming orders
     Route::get('/incoming-orders-view', [IncomingController::class, 'incomingOrderIndex'])->name('incoming.orders.view');

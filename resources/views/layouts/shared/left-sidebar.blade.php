@@ -1581,7 +1581,7 @@
                     <ul class="side-nav-second-level">
 
                         <li>
-                            <a href="{{ route('view-inventory') }}">View Inventory</a>
+                            <a href="{{ route('view-inventory-data') }}">Inventory Main</a>
                         </li>
                         {{-- <li>
                             <a href="{{ route('inventory.manage.index') }}">
@@ -1604,6 +1604,12 @@
                         </li>
                         <li>
                             <a href="{{ route('incoming.return.view') }}">Incoming Return</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('view-inventory-incoming-return-trash') }}">View Inventory (Trash Godown)</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('view-inventory-incoming-return-open-box') }}">View Inventory (Open Box Godown)</a>
                         </li>
                         <li>
                             <a href="{{ route('outgoing.view') }}">Outgoing</a>

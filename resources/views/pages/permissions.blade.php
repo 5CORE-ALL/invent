@@ -360,7 +360,7 @@
                             ],
 
                             'Inventory Management' => [
-                                ['value' => 'view_inventory', 'text' => 'View Inventory'],
+                                ['value' => 'view_inventory', 'text' => 'Inventory Main'],
                                 ['value' => 'verifications_adjustments', 'text' => 'Verifications & Adjustments'],
                                 ['value' => 'incoming', 'text' => 'Incoming'],
                                 ['value' => 'outgoing', 'text' => 'Outgoing'],

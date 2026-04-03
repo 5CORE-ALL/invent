@@ -11,7 +11,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
     <style>
         /* Your existing styles */
@@ -212,7 +212,10 @@
             min-height: 280px;
         }
 
-        #barcode-reader video {
+        #barcode-reader video,
+        #barcode-reader canvas {
+            max-width: 100% !important;
+            height: auto !important;
             border-radius: 8px;
         }
 
@@ -266,6 +269,152 @@
             }
         }
 
+        .incoming-table-thumb {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            vertical-align: middle;
+        }
+
+        #inventoryTable th:first-child,
+        #returnHistoryTable th:first-child {
+            width: 64px;
+        }
+
+        /* Warehouse filter + custom dropdown trigger: Main (dark green), Trash (red), Open Box (mustard) */
+        select.warehouse-filter-select.warehouse-filter-theme-main,
+        .incoming-wh-dd-trigger.warehouse-filter-theme-main {
+            color: #0d4d2e;
+            border-color: #14532d;
+            font-weight: 600;
+            background-color: #f0f7f2;
+        }
+
+        select.warehouse-filter-select.warehouse-filter-theme-trash,
+        .incoming-wh-dd-trigger.warehouse-filter-theme-trash {
+            color: #9b1c1c;
+            border-color: #c62828;
+            font-weight: 600;
+            background-color: #fff5f5;
+        }
+
+        select.warehouse-filter-select.warehouse-filter-theme-openbox,
+        .incoming-wh-dd-trigger.warehouse-filter-theme-openbox {
+            color: #7a5f00;
+            border-color: #b8860b;
+            font-weight: 600;
+            background-color: #fffbeb;
+        }
+
+        .incoming-wh-dd-wrap:has(select.is-invalid) .incoming-wh-dd-trigger {
+            border-color: #dc3545 !important;
+        }
+
+        .incoming-wh-dd-panel {
+            z-index: 1080;
+        }
+
+        #addWarehouseModal .incoming-wh-dd-panel {
+            z-index: 2005;
+        }
+
+        .incoming-wh-dd-item-dot {
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 50%;
+            margin-right: 0.45rem;
+            flex-shrink: 0;
+        }
+
+        .incoming-wh-dd-item-dot--main { background-color: #0d4d2e; }
+        .incoming-wh-dd-item-dot--trash { background-color: #9b1c1c; }
+        .incoming-wh-dd-item-dot--openbox { background-color: #7a5f00; }
+
+        .incoming-wh-dd-item--main { color: #0d4d2e; font-weight: 600; }
+        .incoming-wh-dd-item--trash { color: #9b1c1c; font-weight: 600; }
+        .incoming-wh-dd-item--openbox { color: #7a5f00; font-weight: 600; }
+
+        .incoming-wh-dd-item--neutral { color: inherit; }
+
+        .incoming-wh-dd-item:hover {
+            background-color: #f1f3f5;
+        }
+
+        .incoming-wh-dd-trigger-inner {
+            gap: 0.35rem;
+        }
+
+        .incoming-wh-dd-trigger-dot {
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .incoming-wh-dd-trigger-dot--main { background-color: #0d4d2e; }
+        .incoming-wh-dd-trigger-dot--trash { background-color: #9b1c1c; }
+        .incoming-wh-dd-trigger-dot--openbox { background-color: #7a5f00; }
+
+        #inventoryTable tbody td.incoming-wh-main,
+        #returnHistoryTable tbody td.incoming-wh-main,
+        .incoming-wh-cell.incoming-wh-main {
+            color: #0d4d2e !important;
+            font-weight: 600;
+        }
+
+        #inventoryTable tbody td.incoming-wh-trash,
+        #returnHistoryTable tbody td.incoming-wh-trash,
+        .incoming-wh-cell.incoming-wh-trash {
+            color: #9b1c1c !important;
+            font-weight: 600;
+        }
+
+        #inventoryTable tbody td.incoming-wh-openbox,
+        #returnHistoryTable tbody td.incoming-wh-openbox,
+        .incoming-wh-cell.incoming-wh-openbox {
+            color: #7a5f00 !important;
+            font-weight: 600;
+        }
+
+        /* Dot beside warehouse text (same hue as godown theme) */
+        #inventoryTable tbody td.incoming-wh-main::before,
+        #returnHistoryTable tbody td.incoming-wh-main::before {
+            content: '';
+            display: inline-block;
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 50%;
+            margin-right: 0.45rem;
+            vertical-align: 0.1em;
+            background-color: #0d4d2e;
+        }
+
+        #inventoryTable tbody td.incoming-wh-trash::before,
+        #returnHistoryTable tbody td.incoming-wh-trash::before {
+            content: '';
+            display: inline-block;
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 50%;
+            margin-right: 0.45rem;
+            vertical-align: 0.1em;
+            background-color: #9b1c1c;
+        }
+
+        #inventoryTable tbody td.incoming-wh-openbox::before,
+        #returnHistoryTable tbody td.incoming-wh-openbox::before {
+            content: '';
+            display: inline-block;
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 50%;
+            margin-right: 0.45rem;
+            vertical-align: 0.1em;
+            background-color: #7a5f00;
+        }
+
     </style>
 @endsection
 
@@ -290,17 +439,34 @@
                 <div class="card-body">
 
 
-                    <!-- Search Box and Add Button-->
-                    <div class="row mb-3">
-                        <div class="col-md-6 d-flex align-items-center">
+                    <!-- Search Box, warehouse filter, and Add Button-->
+                    <div class="row mb-3 g-2 align-items-end">
+                        <div class="col-xl-4 col-lg-5 col-md-12 d-flex align-items-center flex-wrap gap-2">
                             <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
                                 <i class="fas fa-plus me-1"></i> CREATE INCOMING RETURN (CREAR DEVOLUCIÓN ENTRANTE)
                             </button>
-                            <div class="dataTables_length ms-3"></div>
+                            <div class="dataTables_length"></div>
                         </div>
 
-                        <div class="col-md-3 offset-md-3">
-                            <div class="input-group">
+                        <div class="col-xl-3 col-lg-4 col-md-6">
+                            <label for="filterWarehouseMain_btn" class="form-label small fw-semibold mb-1">Warehouse filter (Filtro almacén)</label>
+                            <div class="incoming-wh-dd-wrap position-relative">
+                                <select id="filterWarehouseMain" class="d-none incoming-wh-dd-native" aria-hidden="true" tabindex="-1">
+                                    <option value="">All warehouses (Todos los almacenes)</option>
+                                    @foreach($warehouses as $warehouse)
+                                        <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" id="filterWarehouseMain_btn" class="form-select form-select-sm incoming-wh-dd-trigger warehouse-filter-select w-100 text-start d-flex align-items-center" aria-haspopup="listbox" aria-expanded="false">
+                                    <span class="incoming-wh-dd-trigger-inner d-flex align-items-center min-w-0 flex-grow-1"></span>
+                                </button>
+                                <div class="incoming-wh-dd-panel list-group position-absolute top-100 start-0 end-0 d-none bg-white border rounded shadow-sm mt-1 py-1" role="listbox"></div>
+                            </div>
+                        </div>
+
+                        <div class="col-xl-5 col-lg-12 col-md-6">
+                            <label for="customSearch" class="form-label small fw-semibold mb-1 d-none d-md-block">&nbsp;</label>
+                            <div class="input-group input-group-sm">
                                 <span class="input-group-text"><i class="fas fa-search"></i></span>
                                 <input type="text" id="customSearch" class="form-control" placeholder="Search Incoming (Buscar entradas)">
                                 <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear (Limpiar)</button>
@@ -351,19 +517,26 @@
                                             <div id="sku-product-hint" class="incoming-product-hint mt-2 d-none"></div>
                                         </div>
 
-                                        <div class="mb-3">
-                                            <label for="qty" class="form-label fw-bold">Quantity (Cantidad)</label>
-                                            <input type="number" class="form-control" id="qty" name="qty" required min="1" step="1" inputmode="numeric">
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <label for="warehouse_id" class="form-label fw-bold">Warehouse (Almacén)</label>
-                                            <select class="form-select" id="warehouse_id" name="warehouse_id" required>
-                                                <option selected disabled value="">Select Warehouse (Seleccione almacén)</option>
-                                                @foreach($warehouses as $warehouse)
-                                                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
-                                                @endforeach
-                                            </select>
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-12 col-md-6">
+                                                <label for="qty" class="form-label fw-bold">Quantity (Cantidad)</label>
+                                                <input type="number" class="form-control" id="qty" name="qty" required min="1" step="1" inputmode="numeric">
+                                            </div>
+                                            <div class="col-12 col-md-6">
+                                                <label for="warehouse_id_btn" class="form-label fw-bold">Warehouse (Almacén)</label>
+                                                <div class="incoming-wh-dd-wrap position-relative">
+                                                    <select class="d-none incoming-wh-dd-native" id="warehouse_id" name="warehouse_id" required aria-hidden="true" tabindex="-1">
+                                                        <option selected disabled value="">Select Warehouse (Seleccione almacén)</option>
+                                                        @foreach($warehouses as $warehouse)
+                                                            <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                    <button type="button" id="warehouse_id_btn" class="form-select incoming-wh-dd-trigger w-100 text-start d-flex align-items-center btn-touch" aria-haspopup="listbox" aria-expanded="false">
+                                                        <span class="incoming-wh-dd-trigger-inner d-flex align-items-center min-w-0 flex-grow-1"></span>
+                                                    </button>
+                                                    <div class="incoming-wh-dd-panel list-group position-absolute top-100 start-0 end-0 d-none bg-white border rounded shadow-sm mt-1 py-1" role="listbox"></div>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div class="mb-3">
@@ -372,17 +545,39 @@
                                             <small class="text-muted">Escriba en español. (Write in Spanish.)</small>
                                         </div>
 
-                                        <div class="mb-3">
-                                            <label class="form-label fw-bold">Photos (Fotos) <span class="text-muted fw-normal">(optional / opcional)</span></label>
-                                            <div class="d-flex flex-column gap-2">
-                                                <input type="file" id="incoming-photo-input" class="d-none" accept="image/*" capture="environment" multiple>
-                                                <button type="button" class="btn btn-outline-secondary btn-touch" id="btnAddPhotos">
-                                                    <i class="fas fa-camera me-2"></i>Add Photos (Agregar fotos)
-                                                </button>
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label fw-bold">Photo 1 (Foto 1) <span class="text-muted fw-normal">(optional / opcional)</span></label>
+                                                <div class="d-flex flex-column gap-2">
+                                                    <input type="file" id="incoming-photo-input" class="d-none" accept="image/*" capture="environment" multiple>
+                                                    <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos">
+                                                        <i class="fas fa-camera me-2"></i>Add Photos (Agregar fotos)
+                                                    </button>
+                                                </div>
+                                                <div id="incoming-photo-thumbs" class="mt-2"></div>
                                             </div>
-                                            <div id="incoming-photo-thumbs" class="mt-2"></div>
-                                            <small class="text-muted d-block mt-1">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery. <span class="d-block mt-1">(La cámara requiere HTTPS. Si no está disponible, puede elegir imágenes de la galería.)</span></small>
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label fw-bold">Photo 2 (Foto 2) <span class="text-muted fw-normal">(optional / opcional)</span></label>
+                                                <div class="d-flex flex-column gap-2">
+                                                    <input type="file" id="incoming-photo-input-2" class="d-none" accept="image/*" capture="environment" multiple>
+                                                    <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos2">
+                                                        <i class="fas fa-camera me-2"></i>Add Photos (Agregar fotos)
+                                                    </button>
+                                                </div>
+                                                <div id="incoming-photo-thumbs-2" class="mt-2"></div>
+                                            </div>
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label fw-bold">Photo 3 (Foto 3) <span class="text-muted fw-normal">(optional / opcional)</span></label>
+                                                <div class="d-flex flex-column gap-2">
+                                                    <input type="file" id="incoming-photo-input-3" class="d-none" accept="image/*" capture="environment" multiple>
+                                                    <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos3">
+                                                        <i class="fas fa-camera me-2"></i>Add Photos (Agregar fotos)
+                                                    </button>
+                                                </div>
+                                                <div id="incoming-photo-thumbs-3" class="mt-2"></div>
+                                            </div>
                                         </div>
+                                        <small class="text-muted d-block mb-3">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery. <span class="d-block mt-1">(La cámara requiere HTTPS. Si no está disponible, puede elegir imágenes de la galería.)</span></small>
 
                                         <p class="small text-muted mb-0">
                                             <i class="fas fa-clock me-1"></i>Date and time are saved automatically when you submit. (La fecha y hora se guardan automáticamente al enviar.)
@@ -565,6 +760,7 @@
                         <table id="inventoryTable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
+                                    <th>IMAGE (IMAGEN)</th>
                                     <th>SKU (SKU)</th>
                                     <th>QUANTITY (CANTIDAD)</th>
                                     <th>WAREHOUSE (ALMACÉN)</th>
@@ -598,10 +794,26 @@
                 <div class="card-body">
                     <h5 class="mb-3">Return History (Historial de devoluciones)</h5>
 
-                    <div class="row mb-3">
-                        <div class="col-md-6 d-flex align-items-center"></div>
-                        <div class="col-md-3 offset-md-3">
-                            <div class="input-group">
+                    <div class="row mb-3 g-2 align-items-end">
+                        <div class="col-xl-4 col-lg-5 col-md-12"></div>
+                        <div class="col-xl-3 col-lg-4 col-md-6">
+                            <label for="filterWarehouseReturn_btn" class="form-label small fw-semibold mb-1">Warehouse filter (Filtro almacén)</label>
+                            <div class="incoming-wh-dd-wrap position-relative">
+                                <select id="filterWarehouseReturn" class="d-none incoming-wh-dd-native" aria-hidden="true" tabindex="-1">
+                                    <option value="">All warehouses (Todos los almacenes)</option>
+                                    @foreach($warehouses as $warehouse)
+                                        <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" id="filterWarehouseReturn_btn" class="form-select form-select-sm incoming-wh-dd-trigger warehouse-filter-select w-100 text-start d-flex align-items-center" aria-haspopup="listbox" aria-expanded="false">
+                                    <span class="incoming-wh-dd-trigger-inner d-flex align-items-center min-w-0 flex-grow-1"></span>
+                                </button>
+                                <div class="incoming-wh-dd-panel list-group position-absolute top-100 start-0 end-0 d-none bg-white border rounded shadow-sm mt-1 py-1" role="listbox"></div>
+                            </div>
+                        </div>
+                        <div class="col-xl-5 col-lg-12 col-md-6">
+                            <label for="customSearchReturnHistory" class="form-label small fw-semibold mb-1 d-none d-md-block">&nbsp;</label>
+                            <div class="input-group input-group-sm">
                                 <span class="input-group-text"><i class="fas fa-search"></i></span>
                                 <input type="text" id="customSearchReturnHistory" class="form-control" placeholder="Search Return History (Buscar historial de devoluciones)">
                                 <button class="btn btn-outline-secondary" type="button" id="clearSearchReturnHistory">Clear (Limpiar)</button>
@@ -613,6 +825,7 @@
                         <table id="returnHistoryTable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
+                                    <th>IMAGE (IMAGEN)</th>
                                     <th>SKU (SKU)</th>
                                     <th>QUANTITY (CANTIDAD)</th>
                                     <th>WAREHOUSE (ALMACÉN)</th>
@@ -799,6 +1012,7 @@
             }
 
             function initializeTable() {
+                setupIncomingWarehouseDropdowns();
                 loadData();
                 loadReturnHistoryData();
                 setupSearch();
@@ -894,7 +1108,23 @@
                 const skuSuggestUrl = @json(route('incoming.return.sku.suggest'));
                 const csrfToken = $('meta[name="csrf-token"]').attr('content');
                 let incomingPhotoFiles = [];
+                let incomingPhoto2Files = [];
+                let incomingPhoto3Files = [];
                 let html5QrCodeInstance = null;
+                /** Avoid double-firing decode before stop() / modal close */
+                let incomingBarcodeDecodeHandled = false;
+                let incomingBarcodeLastAt = 0;
+
+                function incomingReturnBarcodeFormats() {
+                    if (typeof Html5QrcodeSupportedFormats === 'undefined') {
+                        return null;
+                    }
+                    return [
+                        Html5QrcodeSupportedFormats.EAN_13,
+                        Html5QrcodeSupportedFormats.EAN_8,
+                        Html5QrcodeSupportedFormats.CODE_128,
+                    ];
+                }
 
                 function updateOfflineBanner() {
                     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -904,35 +1134,60 @@
                 window.addEventListener('online', updateOfflineBanner);
                 window.addEventListener('offline', updateOfflineBanner);
 
-                function clearIncomingPhotos() {
-                    incomingPhotoFiles.forEach(function (f) {
-                        if (f._url) URL.revokeObjectURL(f._url);
-                    });
-                    incomingPhotoFiles = [];
-                    $('#incoming-photo-thumbs').empty();
-                    $('#incoming-photo-input').val('');
-                }
-
-                function renderIncomingPhotoThumbs() {
-                    const wrap = $('#incoming-photo-thumbs');
-                    wrap.empty();
-                    incomingPhotoFiles.forEach(function (file, idx) {
+                function renderPhotoThumbStrip(files, $wrap) {
+                    $wrap.empty();
+                    files.forEach(function (file, idx) {
                         if (!file._url) file._url = URL.createObjectURL(file);
                         const div = $('<div class="incoming-thumb-wrap"/>');
                         div.append($('<img/>').attr('src', file._url).attr('alt', ''));
                         const rm = $('<button type="button" class="btn btn-danger btn-sm" aria-label="Remove"/>').html('&times;');
                         rm.on('click', function () {
                             if (file._url) URL.revokeObjectURL(file._url);
-                            incomingPhotoFiles.splice(idx, 1);
-                            renderIncomingPhotoThumbs();
+                            files.splice(idx, 1);
+                            renderPhotoThumbStrip(files, $wrap);
                         });
                         div.append(rm);
-                        wrap.append(div);
+                        $wrap.append(div);
                     });
+                }
+
+                function clearIncomingPhotos() {
+                    [incomingPhotoFiles, incomingPhoto2Files, incomingPhoto3Files].forEach(function (arr) {
+                        arr.forEach(function (f) {
+                            if (f._url) URL.revokeObjectURL(f._url);
+                        });
+                        arr.length = 0;
+                    });
+                    $('#incoming-photo-thumbs').empty();
+                    $('#incoming-photo-thumbs-2').empty();
+                    $('#incoming-photo-thumbs-3').empty();
+                    $('#incoming-photo-input').val('');
+                    $('#incoming-photo-input-2').val('');
+                    $('#incoming-photo-input-3').val('');
+                }
+
+                function renderIncomingPhotoThumbs() {
+                    renderPhotoThumbStrip(incomingPhotoFiles, $('#incoming-photo-thumbs'));
+                }
+
+                function renderIncomingPhotoThumbs2() {
+                    renderPhotoThumbStrip(incomingPhoto2Files, $('#incoming-photo-thumbs-2'));
+                }
+
+                function renderIncomingPhotoThumbs3() {
+                    renderPhotoThumbStrip(incomingPhoto3Files, $('#incoming-photo-thumbs-3'));
                 }
 
                 $('#btnAddPhotos').on('click', function () {
                     $('#incoming-photo-input').trigger('click');
+                });
+
+                $('#btnAddPhotos2').on('click', function () {
+                    $('#incoming-photo-input-2').trigger('click');
+                });
+
+                $('#btnAddPhotos3').on('click', function () {
+                    $('#incoming-photo-input-3').trigger('click');
                 });
 
                 $('#incoming-photo-input').on('change', function () {
@@ -942,6 +1197,24 @@
                     });
                     $(this).val('');
                     renderIncomingPhotoThumbs();
+                });
+
+                $('#incoming-photo-input-2').on('change', function () {
+                    const files = Array.from(this.files || []);
+                    files.forEach(function (f) {
+                        if (f.type.indexOf('image/') === 0) incomingPhoto2Files.push(f);
+                    });
+                    $(this).val('');
+                    renderIncomingPhotoThumbs2();
+                });
+
+                $('#incoming-photo-input-3').on('change', function () {
+                    const files = Array.from(this.files || []);
+                    files.forEach(function (f) {
+                        if (f.type.indexOf('image/') === 0) incomingPhoto3Files.push(f);
+                    });
+                    $(this).val('');
+                    renderIncomingPhotoThumbs3();
                 });
 
                 function showIncomingToast(msg) {
@@ -1091,6 +1364,7 @@
 
                 $('#barcodeScannerModal').on('hidden.bs.modal', function () {
                     stopBarcodeScanner();
+                    incomingBarcodeDecodeHandled = false;
                     $('#barcode-scan-status').text('');
                 });
 
@@ -1100,32 +1374,79 @@
                         return;
                     }
                     $('#incoming-errors').html('');
+                    incomingBarcodeDecodeHandled = false;
                     $('#barcode-scan-status').text('Starting camera… (Iniciando cámara…)');
                     const modalEl = document.getElementById('barcodeScannerModal');
                     const bsScanModal = bootstrap.Modal.getOrCreateInstance(modalEl);
                     $(modalEl).one('shown.bs.modal', function () {
                         const regionId = 'barcode-reader';
                         html5QrCodeInstance = new Html5Qrcode(regionId);
-                        const config = { fps: 10, qrbox: function (vw, vh) {
-                            const w = Math.min(280, vw * 0.9);
-                            const h = Math.min(160, vh * 0.35);
-                            return { width: w, height: h };
-                        }};
+                        const formats = incomingReturnBarcodeFormats();
+                        const config = {
+                            fps: 10,
+                            qrbox: function (viewfinderWidth, viewfinderHeight) {
+                                const w = Math.min(320, Math.floor(viewfinderWidth * 0.92));
+                                const h = Math.min(200, Math.floor(viewfinderHeight * 0.38));
+                                return { width: w, height: h };
+                            },
+                        };
+                        if (formats) {
+                            config.formatsToSupport = formats;
+                        }
                         html5QrCodeInstance.start(
                             { facingMode: 'environment' },
                             config,
-                            function (decodedText) {
-                                const text = (decodedText || '').trim();
-                                if (!text) return;
-                                $('#sku').val(text);
-                                hideSkuSuggestions();
-                                fetchLookupForSku(text);
-                                bsScanModal.hide();
+                            function (decodedText /* , decodedResult */) {
+                                const text = String(decodedText || '').trim();
+                                if (!text) {
+                                    return;
+                                }
+                                const now = Date.now();
+                                if (now - incomingBarcodeLastAt < 400) {
+                                    return;
+                                }
+                                if (incomingBarcodeDecodeHandled) {
+                                    return;
+                                }
+                                incomingBarcodeDecodeHandled = true;
+                                incomingBarcodeLastAt = now;
+
+                                function applyScanAndClose() {
+                                    $('#sku').val(text);
+                                    hideSkuSuggestions();
+                                    fetchLookupForSku(text);
+                                    bsScanModal.hide();
+                                }
+
+                                const inst = html5QrCodeInstance;
+                                if (inst) {
+                                    inst.stop()
+                                        .then(function () {
+                                            try {
+                                                inst.clear();
+                                            } catch (e) { /* ignore */ }
+                                            html5QrCodeInstance = null;
+                                            applyScanAndClose();
+                                        })
+                                        .catch(function () {
+                                            try {
+                                                inst.clear();
+                                            } catch (e) { /* ignore */ }
+                                            html5QrCodeInstance = null;
+                                            applyScanAndClose();
+                                        });
+                                } else {
+                                    applyScanAndClose();
+                                }
                             },
-                            function () { /* frame — ignore */ }
+                            function () { /* per frame — no OCR */ }
                         ).then(function () {
-                            $('#barcode-scan-status').text('Point the camera at a barcode. (Apunte la cámara al código de barras.)');
+                            $('#barcode-scan-status').text(
+                                'Point the camera at the bars (EAN-13, EAN-8, or Code 128). Human-readable text under the barcode is ignored. ' +
+                                '(Apunte a las barras; el texto impreso debajo se ignora.)'
+                            );
                         }).catch(function (err) {
+                            incomingBarcodeDecodeHandled = false;
                             $('#barcode-scan-status').text(
                                 'Camera unavailable (' + (err && err.message ? err.message : 'permission or HTTPS') + '). Type the SKU or allow camera access. (Cámara no disponible. Escriba el SKU o permita el acceso a la cámara.)'
                             );
@@ -1178,9 +1499,17 @@
                     const originalBtnText = submitBtn.html();
                     submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing… (Procesando…)');
 
+                    const allPickedPhotos = incomingPhotoFiles.concat(incomingPhoto2Files, incomingPhoto3Files);
+                    if (allPickedPhotos.length > 20) {
+                        $('#incoming-errors').html('<div class="alert alert-danger mb-0">Too many images (max 20). Reduce photos across Photo 1–3. <span class="d-block mt-1 small">(Demasiadas imágenes: máximo 20 en total.)</span></div>');
+                        submitBtn.prop('disabled', false).html(originalBtnText);
+                        isSubmitting = false;
+                        return false;
+                    }
+
                     const fd = new FormData(this);
                     fd.set('_token', csrfToken);
-                    incomingPhotoFiles.forEach(function (file) {
+                    allPickedPhotos.forEach(function (file) {
                         fd.append('images[]', file, file.name);
                     });
 
@@ -1225,6 +1554,7 @@
                             $('#incoming-errors').html('');
                             $('#addWarehouseModal').modal('hide');
                             $('#incomingReturnForm')[0].reset();
+                            if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
                             hideSkuSuggestions();
                             $('#sku-product-hint').addClass('d-none').text('');
                             clearIncomingPhotos();
@@ -1270,6 +1600,7 @@
 
                 $(document).on('click', '#openAddWarehouseModal', function () {
                     $('#incomingReturnForm')[0].reset();
+                    if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
                     hideSkuSuggestions();
                     $('#warehouseId').val('');
                     $('#incomingModalLabel').text('Create Incoming Return (Crear devolución entrante)');
@@ -1296,6 +1627,79 @@
             });
 
 
+            function warehouseThemeKeyFromName(name) {
+                const raw = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\u00a0/g, ' ');
+                const compact = raw.replace(/\s/g, '');
+                // Match plain labels and common "* Godown" warehouse names from the DB
+                if (raw === 'main' || raw === 'main godown') return 'main';
+                if (raw === 'trash' || raw === 'trash godown') return 'trash';
+                if (raw === 'open box' || raw === 'open box godown' || compact === 'openbox') return 'openbox';
+                return null;
+            }
+
+            function syncWarehouseFilterSelectTheme(selectId) {
+                const el = document.getElementById(selectId);
+                if (!el) return;
+                el.classList.remove('warehouse-filter-theme-main', 'warehouse-filter-theme-trash', 'warehouse-filter-theme-openbox');
+                const wrap = el.closest('.incoming-wh-dd-wrap');
+                const btn = wrap ? wrap.querySelector('.incoming-wh-dd-trigger') : null;
+                if (btn) {
+                    btn.classList.remove('warehouse-filter-theme-main', 'warehouse-filter-theme-trash', 'warehouse-filter-theme-openbox');
+                }
+                if (!String(el.value || '').trim()) return;
+                const opt = el.options[el.selectedIndex];
+                const key = warehouseThemeKeyFromName(opt ? opt.text : '');
+                if (key && btn) btn.classList.add('warehouse-filter-theme-' + key);
+            }
+
+            function incomingWarehouseCellClass(warehouseName) {
+                const key = warehouseThemeKeyFromName(warehouseName);
+                if (key) return 'incoming-wh-cell incoming-wh-' + key;
+                return 'incoming-wh-cell';
+            }
+
+            function applyMainTableFilters() {
+                syncWarehouseFilterSelectTheme('filterWarehouseMain');
+                const whEl = document.getElementById('filterWarehouseMain');
+                const searchEl = document.getElementById('customSearch');
+                const wh = whEl ? String(whEl.value || '') : '';
+                const searchTerm = searchEl ? String(searchEl.value || '').toLowerCase().trim() : '';
+
+                let rows = tableData.slice();
+                if (wh !== '') {
+                    rows = rows.filter(item => String(item.warehouse_id ?? '') === wh);
+                }
+                if (searchTerm) {
+                    rows = rows.filter(item =>
+                        Object.values(item).some(value =>
+                            String(value).toLowerCase().includes(searchTerm)
+                        )
+                    );
+                }
+                renderTable(rows);
+            }
+
+            function applyReturnHistoryFilters() {
+                syncWarehouseFilterSelectTheme('filterWarehouseReturn');
+                const whEl = document.getElementById('filterWarehouseReturn');
+                const searchEl = document.getElementById('customSearchReturnHistory');
+                const wh = whEl ? String(whEl.value || '') : '';
+                const searchTerm = searchEl ? String(searchEl.value || '').toLowerCase().trim() : '';
+
+                let rows = returnHistoryTableData.slice();
+                if (wh !== '') {
+                    rows = rows.filter(item => String(item.warehouse_id ?? '') === wh);
+                }
+                if (searchTerm) {
+                    rows = rows.filter(item =>
+                        Object.values(item).some(value =>
+                            String(value).toLowerCase().includes(searchTerm)
+                        )
+                    );
+                }
+                renderReturnHistoryTable(rows);
+            }
+
             function loadData() {
                 $.ajax({
                     url: '/incoming-data-list',
@@ -1308,8 +1712,7 @@
                     },
                     success: function (response) {
                         tableData = response.data || [];
-                        renderTable(tableData);
-                        setupSearch();
+                        applyMainTableFilters();
                         $('#rainbow-loader').hide();
                     },
                     error: function(xhr) {
@@ -1331,7 +1734,7 @@
                     },
                     success: function (response) {
                         returnHistoryTableData = response.data || [];
-                        renderReturnHistoryTable(returnHistoryTableData);
+                        applyReturnHistoryFilters();
                         $('#return-history-rainbow-loader').hide();
                     },
                     error: function(xhr) {
@@ -1347,17 +1750,23 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found (No se encontraron registros)</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No records found (No se encontraron registros)</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
                     const row = document.createElement('tr');
+                    const imgUrl = String(item.image_url || '').trim();
+                    const imgCell = imgUrl
+                        ? `<td class="text-center align-middle"><img class="incoming-table-thumb" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.classList.add('d-none'); var s=this.nextElementSibling; if(s) s.classList.remove('d-none');"><span class="text-muted small d-none">—</span></td>`
+                        : `<td class="text-center align-middle"><span class="text-muted small">—</span></td>`;
 
+                    const whName = String(item.warehouse_name ?? '-');
                     row.innerHTML = `
+                        ${imgCell}
                         <td>${escapeHtml(String(item.sku ?? '-'))}</td>
                         <td>${escapeHtml(String(item.verified_stock ?? '-'))}</td>
-                        <td>${escapeHtml(String(item.warehouse_name ?? '-'))}</td>
+                        <td class="${incomingWarehouseCellClass(whName)}">${escapeHtml(whName)}</td>
                         <td>${escapeHtml(String(item.reason ?? '-'))}</td>
                         <td>${escapeHtml(String(item.approved_by ?? '-'))}</td>
                         <td>${escapeHtml(String(item.approved_at ?? '-'))}</td>
@@ -1373,16 +1782,23 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found (No se encontraron registros)</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No records found (No se encontraron registros)</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
                     const row = document.createElement('tr');
+                    const imgUrl = String(item.image_url || '').trim();
+                    const imgCell = imgUrl
+                        ? `<td class="text-center align-middle"><img class="incoming-table-thumb" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.classList.add('d-none'); var s=this.nextElementSibling; if(s) s.classList.remove('d-none');"><span class="text-muted small d-none">—</span></td>`
+                        : `<td class="text-center align-middle"><span class="text-muted small">—</span></td>`;
+
+                    const whName = String(item.warehouse_name ?? '-');
                     row.innerHTML = `
+                        ${imgCell}
                         <td>${escapeHtml(String(item.sku ?? '-'))}</td>
                         <td>${escapeHtml(String(item.verified_stock ?? '-'))}</td>
-                        <td>${escapeHtml(String(item.warehouse_name ?? '-'))}</td>
+                        <td class="${incomingWarehouseCellClass(whName)}">${escapeHtml(whName)}</td>
                         <td>${escapeHtml(String(item.reason ?? '-'))}</td>
                         <td>${escapeHtml(String(item.approved_by ?? '-'))}</td>
                         <td>${escapeHtml(String(item.approved_at ?? '-'))}</td>
@@ -1396,55 +1812,48 @@
             function setupSearch() {
                 const searchInput = document.getElementById('customSearch');
                 const clearButton = document.getElementById('clearSearch');
+                const whSel = document.getElementById('filterWarehouseMain');
+                if (!searchInput || !clearButton || !whSel) return;
 
-                searchInput.addEventListener('input', debounce(function() {
-                    const searchTerm = this.value.toLowerCase().trim();
+                $(searchInput).off('.incomingReturnMain');
+                $(clearButton).off('.incomingReturnMain');
+                $(whSel).off('.incomingReturnMain');
 
-                    if (!searchTerm) {
-                        renderTable(tableData);
-                        return;
-                    }
-
-                    const filteredData = tableData.filter(item =>
-                        Object.values(item).some(value =>
-                            String(value).toLowerCase().includes(searchTerm)
-                        )
-                    );
-
-                    renderTable(filteredData);
+                $(searchInput).on('input.incomingReturnMain', debounce(function () {
+                    applyMainTableFilters();
                 }, 300));
 
-                clearButton.addEventListener('click', function() {
+                $(clearButton).on('click.incomingReturnMain', function () {
                     searchInput.value = '';
-                    renderTable(tableData);
+                    applyMainTableFilters();
+                });
+
+                $(whSel).on('change.incomingReturnMain', function () {
+                    applyMainTableFilters();
                 });
             }
 
             function setupReturnHistorySearch() {
                 const searchInput = document.getElementById('customSearchReturnHistory');
                 const clearButton = document.getElementById('clearSearchReturnHistory');
-                if (!searchInput || !clearButton) return;
+                const whSel = document.getElementById('filterWarehouseReturn');
+                if (!searchInput || !clearButton || !whSel) return;
 
-                searchInput.addEventListener('input', debounce(function() {
-                    const searchTerm = this.value.toLowerCase().trim();
+                $(searchInput).off('.incomingReturnRH');
+                $(clearButton).off('.incomingReturnRH');
+                $(whSel).off('.incomingReturnRH');
 
-                    if (!searchTerm) {
-                        renderReturnHistoryTable(returnHistoryTableData);
-                        return;
-                    }
-
-                    const filteredData = returnHistoryTableData.filter(item =>
-                        Object.values(item).some(value =>
-                            String(value).toLowerCase().includes(searchTerm)
-                        )
-                    );
-
-                    renderReturnHistoryTable(filteredData);
+                $(searchInput).on('input.incomingReturnRH', debounce(function () {
+                    applyReturnHistoryFilters();
                 }, 300));
 
-                clearButton.addEventListener('click', function() {
+                $(clearButton).on('click.incomingReturnRH', function () {
                     searchInput.value = '';
-                    renderReturnHistoryTable(returnHistoryTableData);
+                    applyReturnHistoryFilters();
+                });
+
+                $(whSel).on('change.incomingReturnRH', function () {
+                    applyReturnHistoryFilters();
                 });
             }
 
@@ -1665,6 +2074,7 @@
 
             function resetProductForm() {
                 document.getElementById('incomingReturnForm').reset();
+                if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
 
                 document.querySelectorAll('.is-invalid').forEach(el => {
                     el.classList.remove('is-invalid');
@@ -1768,6 +2178,114 @@
                     .replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;');
+            }
+
+            function incomingWhDdTriggerInnerHtml(optionText) {
+                const key = warehouseThemeKeyFromName(optionText);
+                const esc = escapeHtml(optionText);
+                if (!key) {
+                    return esc;
+                }
+                return '<span class="incoming-wh-dd-trigger-dot incoming-wh-dd-trigger-dot--' + key + '" aria-hidden="true"></span><span class="min-w-0 text-truncate">' + esc + '</span>';
+            }
+
+            function closeAllIncomingWhDdPanels() {
+                document.querySelectorAll('.incoming-wh-dd-panel').forEach(function (p) {
+                    p.classList.add('d-none');
+                });
+                document.querySelectorAll('.incoming-wh-dd-trigger').forEach(function (t) {
+                    t.setAttribute('aria-expanded', 'false');
+                });
+            }
+
+            function incomingWhDdSyncAll() {
+                document.querySelectorAll('.incoming-wh-dd-wrap select.incoming-wh-dd-native').forEach(function (sel) {
+                    const wrap = sel.closest('.incoming-wh-dd-wrap');
+                    const trigger = wrap ? wrap.querySelector('.incoming-wh-dd-trigger') : null;
+                    const inner = trigger ? trigger.querySelector('.incoming-wh-dd-trigger-inner') : null;
+                    if (!inner) return;
+                    const opt = sel.options[sel.selectedIndex];
+                    const text = opt ? opt.text : '';
+                    inner.innerHTML = incomingWhDdTriggerInnerHtml(text);
+                    syncWarehouseFilterSelectTheme(sel.id);
+                });
+            }
+
+            function setupIncomingWarehouseDropdowns() {
+                if (!window.__incomingWhDdDocCloseBound) {
+                    window.__incomingWhDdDocCloseBound = true;
+                    document.addEventListener('click', function () {
+                        closeAllIncomingWhDdPanels();
+                    });
+                    document.addEventListener('keydown', function (e) {
+                        if (e.key === 'Escape') closeAllIncomingWhDdPanels();
+                    });
+                }
+
+                document.querySelectorAll('.incoming-wh-dd-wrap:not([data-incoming-wh-dd-bound])').forEach(function (wrap) {
+                    wrap.setAttribute('data-incoming-wh-dd-bound', '1');
+                    const sel = wrap.querySelector('select.incoming-wh-dd-native');
+                    const trigger = wrap.querySelector('.incoming-wh-dd-trigger');
+                    const panel = wrap.querySelector('.incoming-wh-dd-panel');
+                    if (!sel || !trigger || !panel) return;
+
+                    function syncTriggerFromSelect() {
+                        const inner = trigger.querySelector('.incoming-wh-dd-trigger-inner');
+                        if (!inner) return;
+                        const opt = sel.options[sel.selectedIndex];
+                        const text = opt ? opt.text : '';
+                        inner.innerHTML = incomingWhDdTriggerInnerHtml(text);
+                        syncWarehouseFilterSelectTheme(sel.id);
+                    }
+
+                    function rebuildPanel() {
+                        panel.innerHTML = '';
+                        Array.from(sel.options).forEach(function (opt) {
+                            if (opt.disabled) return;
+                            const val = opt.value;
+                            const label = opt.text;
+                            const key = warehouseThemeKeyFromName(label);
+                            const row = document.createElement('button');
+                            row.type = 'button';
+                            row.className = 'incoming-wh-dd-item w-100 text-start border-0 bg-transparent py-2 px-3 d-flex align-items-center rounded-0';
+                            if (key) {
+                                row.classList.add('incoming-wh-dd-item--' + key);
+                            } else {
+                                row.classList.add('incoming-wh-dd-item--neutral');
+                            }
+                            row.setAttribute('role', 'option');
+                            let html = '';
+                            if (key) {
+                                html += '<span class="incoming-wh-dd-item-dot incoming-wh-dd-item-dot--' + key + '" aria-hidden="true"></span>';
+                            }
+                            html += '<span class="text-truncate">' + escapeHtml(label) + '</span>';
+                            row.innerHTML = html;
+                            row.addEventListener('click', function (e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                sel.value = val;
+                                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                syncTriggerFromSelect();
+                                closeAllIncomingWhDdPanels();
+                            });
+                            panel.appendChild(row);
+                        });
+                    }
+
+                    rebuildPanel();
+                    syncTriggerFromSelect();
+
+                    trigger.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const willOpen = panel.classList.contains('d-none');
+                        closeAllIncomingWhDdPanels();
+                        if (willOpen) {
+                            panel.classList.remove('d-none');
+                            trigger.setAttribute('aria-expanded', 'true');
+                        }
+                    });
+                });
             }
 
             function showSuccessPopup(message) {
