@@ -51,12 +51,12 @@ class AutoUpdateAmzUnderHlBids extends Command
                 return 0;
             }
 
-            // Filter out campaigns with invalid data
+            // Require campaign id + numeric proposed bid (same shape as over HL job; do not require sbid > 0 beyond being a valid number)
             $validCampaigns = collect($campaigns)->filter(function ($campaign) {
-                return !empty($campaign->campaign_id) && 
-                       isset($campaign->sbid) && 
-                       is_numeric($campaign->sbid) && 
-                       $campaign->sbid > 0;
+                return ! empty($campaign->campaign_id)
+                    && isset($campaign->sbid)
+                    && is_numeric($campaign->sbid)
+                    && floatval($campaign->sbid) > 0;
             })->values();
 
             if ($validCampaigns->isEmpty()) {
@@ -64,7 +64,11 @@ class AutoUpdateAmzUnderHlBids extends Command
                 return 0;
             }
 
-            $this->info("Found " . $validCampaigns->count() . " valid campaigns to update.");
+            $apiCampaigns = $validCampaigns->filter(function ($campaign) {
+                return (int) ($campaign->INV ?? 0) > 0;
+            })->values();
+
+            $this->info("Found " . $validCampaigns->count() . " under-utilized HL campaign(s) (" . $apiCampaigns->count() . " eligible for Amazon API; " . ($validCampaigns->count() - $apiCampaigns->count()) . " INV=0 — persist sbid_m only).");
             $this->line("");
 
             // Log campaigns before update (same format as Under KW/PT)
@@ -85,7 +89,7 @@ class AutoUpdateAmzUnderHlBids extends Command
                 $this->info("  - Campaign ID: {$campaignId}");
                 $this->info("  - Bid: {$newBid}");
                 $this->info("  - 7UB: " . round($ub7, 2) . "% | 1UB: " . round($ub1, 2) . "%");
-                $this->info("  - INV: {$inv}");
+                $this->info("  - INV: {$inv}" . ($inv <= 0 ? ' (API update skipped — persist sbid_m only)' : ''));
                 $this->info("---");
             }
             $this->info("========================================");
@@ -98,8 +102,22 @@ class AutoUpdateAmzUnderHlBids extends Command
                 return 0;
             }
 
-            $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
-            $newBids = $validCampaigns->pluck('sbid')->toArray();
+            if ($apiCampaigns->isEmpty()) {
+                $this->warn("No campaigns with INV > 0 — skipping Amazon API; persisting sbid_m to L30 for all " . $validCampaigns->count() . " row(s).");
+                $persistedRows = 0;
+                foreach ($validCampaigns as $campaign) {
+                    $persistedRows += AmazonBidUtilizationService::persistSbSbidM((string) ($campaign->campaign_id ?? ''), (float) ($campaign->sbid ?? 0));
+                }
+                Log::info('amazon:auto-update-under-hl-bids persisted sbid_m only (INV=0 for all)', [
+                    'campaigns' => $validCampaigns->count(),
+                    'l30_rows_updated' => $persistedRows,
+                ]);
+                $this->info("✓ sbid_m persisted ({$persistedRows} L30 row updates).");
+                return 0;
+            }
+
+            $campaignIds = $apiCampaigns->pluck('campaign_id')->toArray();
+            $newBids = $apiCampaigns->pluck('sbid')->toArray();
 
             // Validate arrays are aligned
             if (count($campaignIds) !== count($newBids)) {
@@ -157,7 +175,7 @@ class AutoUpdateAmzUnderHlBids extends Command
                 if ($isSuccess) {
                     $this->info("✓ HL bids updated successfully!");
                     $this->line("");
-                    $this->info("Updated campaigns:");
+                    $this->info("Updated campaigns (persist sbid_m for all under-utilized rows, including INV=0):");
                     $persistedRows = 0;
                     foreach ($validCampaigns as $campaign) {
                         $campaignName = $campaign->campaignName ?? 'N/A';
@@ -167,6 +185,7 @@ class AutoUpdateAmzUnderHlBids extends Command
                     }
                     Log::info('amazon:auto-update-under-hl-bids persisted sbid_m to L30', [
                         'campaigns' => $validCampaigns->count(),
+                        'api_campaigns' => $apiCampaigns->count(),
                         'l30_rows_updated' => $persistedRows,
                     ]);
                     if ($successCount > 0) {
@@ -248,7 +267,6 @@ class AutoUpdateAmzUnderHlBids extends Command
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                 }
             })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $amazonSpCampaignReportsL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
@@ -258,7 +276,6 @@ class AutoUpdateAmzUnderHlBids extends Command
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                 }
             })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $amazonSpCampaignReportsL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
@@ -268,39 +285,40 @@ class AutoUpdateAmzUnderHlBids extends Command
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                 }
             })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $result = [];
+        $processedCampaignIds = [];
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
 
-            // Skip PARENT rows (same as Under KW/PT: only process child SKU campaigns)
-            if (stripos($pm->sku ?? '', 'PARENT') !== false) {
-                continue;
-            }
-
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                $expected1 = $sku;
-                $expected2 = $sku . ' HEAD';
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                $cleanSku = preg_replace('/\s+/', ' ', $sku);
+                $expected1 = $cleanSku;
+                $expected2 = $cleanSku . ' HEAD';
+
                 return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                $expected1 = $sku;
-                $expected2 = $sku . ' HEAD';
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                $cleanSku = preg_replace('/\s+/', ' ', $sku);
+                $expected1 = $cleanSku;
+                $expected2 = $cleanSku . ' HEAD';
+
                 return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
             $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                $expected1 = $sku;
-                $expected2 = $sku . ' HEAD';
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                $cleanSku = preg_replace('/\s+/', ' ', $sku);
+                $expected1 = $cleanSku;
+                $expected2 = $cleanSku . ' HEAD';
+
                 return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
@@ -308,9 +326,17 @@ class AutoUpdateAmzUnderHlBids extends Command
                 continue;
             }
 
+            $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+            if (! empty($campaignId) && isset($processedCampaignIds[$campaignId])) {
+                continue;
+            }
+            if (! empty($campaignId)) {
+                $processedCampaignIds[$campaignId] = true;
+            }
+
             $row = [];
-            $row['INV']    = $shopify->inv ?? 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+            $row['INV'] = (int) (($shopify?->inv) ?? 0);
+            $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             // Align HL budget source with frontend preference (L30 first, then L7/L1 fallback).
             $budgetCandidates = [
@@ -346,7 +372,9 @@ class AutoUpdateAmzUnderHlBids extends Command
                     ->select(DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
                     ->where('campaign_id', $campaignId)
                     ->where('ad_type', 'SPONSORED_BRANDS')
-                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->where(function ($q) {
+                        $q->whereNull('campaignStatus')->orWhere('campaignStatus', '!=', 'ARCHIVED');
+                    })
                     ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
                     ->whereNotNull('campaign_id')
                     ->first();
@@ -383,9 +411,9 @@ class AutoUpdateAmzUnderHlBids extends Command
                 $baseBid = 0.60;
             }
 
-            // Under-utilized HL: increase bid when 1-day utilization < 50%
+            // Under-utilized HL: increase bid when 1-day utilization < 50% (align with over HL job: do not require INV > 0)
             $row['INV'] = (int) ($row['INV'] ?? 0);
-            if ($row['INV'] > 0 && $row['campaignName'] !== '' && $ub1 < 50) {
+            if ($row['campaignName'] !== '' && $ub1 < 50) {
                 $row['sbid'] = round($baseBid * 1.10, 2);
                 AmazonBidUtilizationService::logBidDecision(
                     (string) $row['campaign_id'],
