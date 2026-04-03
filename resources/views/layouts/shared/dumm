@@ -1074,7 +1074,7 @@
                         <ul class="side-nav-second-level">
                             @if (isset($permissions['view_inventory']) && in_array('view', $permissions['view_inventory']))
                                 <li>
-                                    <a href="{{ route('view-inventory') }}">View Inventory</a>
+                                    <a href="{{ route('view-inventory-data') }}">Inventory Main</a>
                                 </li>
                             @endif
                             @if (isset($permissions['verifications_adjustments']) && in_array('view', $permissions['verifications_adjustments']))

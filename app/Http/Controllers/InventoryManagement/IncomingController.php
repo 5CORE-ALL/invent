@@ -18,8 +18,10 @@ use App\Models\IncomingOrder;
 use App\Models\IncomingReason;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 
 
@@ -103,13 +105,17 @@ class IncomingController extends Controller
     /**
      * Thumbnail URL: shopify_skus.image_src, then Values JSON, then product_master columns.
      */
-    protected function resolveSuggestionImageUrl(ProductMaster $p, ?ShopifySku $shopify): ?string
+    protected function resolveSuggestionImageUrl(?ProductMaster $p, ?ShopifySku $shopify): ?string
     {
         if ($shopify) {
             $u = $this->normalizeSuggestionImageUrl($shopify->image_src ?? null);
             if ($u) {
                 return $u;
             }
+        }
+
+        if (! $p) {
+            return null;
         }
 
         $values = $p->Values;
@@ -130,6 +136,103 @@ class IncomingController extends Controller
             $u = $this->normalizeSuggestionImageUrl($p->{$col} ?? null);
             if ($u) {
                 return $u;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{0: \Illuminate\Support\Collection<string, ProductMaster>, 1: \Illuminate\Support\Collection<string, ShopifySku>}
+     */
+    protected function batchProductMasterAndShopifyBySkuKeys(Collection $skus): array
+    {
+        $keys = $skus->map(fn ($s) => strtolower(trim((string) $s)))->unique()->filter(fn ($k) => $k !== '')->values();
+        if ($keys->isEmpty()) {
+            return [collect(), collect()];
+        }
+
+        $placeholders = implode(',', array_fill(0, $keys->count(), '?'));
+        $params = $keys->all();
+
+        $select = ['id', 'sku', 'parent', 'barcode', 'title150', 'title100'];
+        if (Schema::hasColumn('product_master', 'Values')) {
+            $select[] = 'Values';
+        }
+        foreach (['image_path', 'main_image', 'main_image_brand', 'image1', 'image2', 'image3'] as $col) {
+            if (Schema::hasColumn('product_master', $col)) {
+                $select[] = $col;
+            }
+        }
+
+        $pms = ProductMaster::query()
+            ->select($select)
+            ->whereRaw('LOWER(TRIM(sku)) IN ('.$placeholders.')', $params)
+            ->get();
+
+        $pmByLower = collect();
+        foreach ($pms as $p) {
+            $k = strtolower(trim((string) $p->sku));
+            if (! $pmByLower->has($k)) {
+                $pmByLower->put($k, $p);
+            }
+        }
+
+        $shopifyByLower = collect();
+        $shopifyRows = ShopifySku::query()
+            ->whereRaw('LOWER(TRIM(sku)) IN ('.$placeholders.')', $params)
+            ->get();
+        foreach ($shopifyRows as $s) {
+            $k = strtolower(trim((string) $s->sku));
+            $existing = $shopifyByLower->get($k);
+            $hasImg = trim((string) ($s->image_src ?? '')) !== '';
+            if (! $existing) {
+                $shopifyByLower->put($k, $s);
+            } elseif ($hasImg && trim((string) ($existing->image_src ?? '')) === '') {
+                $shopifyByLower->put($k, $s);
+            }
+        }
+
+        return [$pmByLower, $shopifyByLower];
+    }
+
+    protected function normalizePublicDiskImageUrl(string $path): ?string
+    {
+        $p = trim(str_replace('\\', '/', $path));
+        if ($p === '') {
+            return null;
+        }
+        if (str_starts_with($p, '//')) {
+            return 'https:'.$p;
+        }
+        if (preg_match('#^https?://#i', $p)) {
+            return $p;
+        }
+        $p = ltrim($p, '/');
+        if (str_starts_with($p, 'storage/')) {
+            return asset($p);
+        }
+
+        return asset('storage/'.$p);
+    }
+
+    protected function resolveInventoryRowImageUrl(Inventory $item, ?ProductMaster $pm, ?ShopifySku $shop): ?string
+    {
+        $url = $this->resolveSuggestionImageUrl($pm, $shop);
+        if ($url) {
+            return $url;
+        }
+
+        $incoming = $item->incoming_images;
+        if (! is_array($incoming)) {
+            return null;
+        }
+        foreach ($incoming as $v) {
+            if (is_string($v) && trim($v) !== '') {
+                $u = $this->normalizePublicDiskImageUrl($v);
+                if ($u) {
+                    return $u;
+                }
             }
         }
 
@@ -441,16 +544,31 @@ class IncomingController extends Controller
                 'images.*' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:10240',
             ]);
 
+            if ($inventoryType === 'incoming_return') {
+                $whName = Warehouse::where('id', $validated['warehouse_id'])->value('name');
+                if ($this->isWarehouseExcludedForIncomingReturn($whName)) {
+                    throw ValidationException::withMessages([
+                        'warehouse_id' => ['This warehouse is not available for incoming returns.'],
+                    ]);
+                }
+            }
+
             $sku = trim($validated['sku']);
             $qty = (int) $validated['qty'];
+
+            $warehouseName = trim((string) Warehouse::where('id', $validated['warehouse_id'])->value('name'));
+            $pushToShopify = $this->isMainGodownWarehouse($warehouseName);
 
             Log::info("Incoming request received", [
                 'sku' => $sku,
                 'qty' => $qty,
                 'warehouse_id' => $validated['warehouse_id'],
+                'warehouse_name' => $warehouseName,
+                'push_to_shopify' => $pushToShopify,
                 'user' => Auth::user()->name ?? 'Unknown'
             ]);
 
+            if ($pushToShopify) {
             // Shopify credentials
             $shopifyDomain = config('services.shopify.store_url');
             $accessToken = config('services.shopify.access_token');
@@ -836,9 +954,17 @@ class IncomingController extends Controller
                     'details' => 'Could not complete the adjustment. Please try again.'
                 ], 503);
             }
+            } else {
+                Log::info('Incoming: skipping Shopify sync (warehouse is not Main Godown)', [
+                    'sku' => $sku,
+                    'warehouse_id' => $validated['warehouse_id'],
+                    'warehouse_name' => $warehouseName,
+                    'inventory_type' => $inventoryType,
+                ]);
+            }
 
             /** -----------------------------------------------------------------
-             * Optional photo uploads (public disk) — after Shopify OK
+             * Optional photo uploads (public disk)
              * ----------------------------------------------------------------- */
             if ($request->hasFile('images')) {
                 foreach ($request->file('images') as $file) {
@@ -858,6 +984,92 @@ class IncomingController extends Controller
             try {
                 DB::beginTransaction();
 
+                $successLabel = $inventoryType === 'incoming_return' ? 'Incoming return' : 'Incoming stock';
+                $nowOhio = Carbon::now('America/New_York');
+                $approvedBy = Auth::user()->name ?? 'N/A';
+
+                // Incoming return: same SKU + same warehouse → add quantity to one row (merge duplicates).
+                if ($inventoryType === 'incoming_return') {
+                    $matches = Inventory::query()
+                        ->where('type', 'incoming_return')
+                        ->where('warehouse_id', $validated['warehouse_id'])
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                        ->orderByDesc('id')
+                        ->lockForUpdate()
+                        ->get();
+
+                    if ($matches->isNotEmpty()) {
+                        $keep = $matches->first();
+                        $newVerified = $matches->sum(fn ($i) => (float) ($i->verified_stock ?? 0)) + $qty;
+                        $newToAdjust = $matches->sum(fn ($i) => (float) ($i->to_adjust ?? 0)) + $qty;
+
+                        $reasonParts = $matches->pluck('reason')->map(fn ($r) => trim((string) $r))->filter()->unique()->values()->all();
+                        $reasonParts[] = trim($validated['reason']);
+                        $mergedReason = implode(' | ', array_unique($reasonParts));
+
+                        $allPaths = [];
+                        foreach ($matches as $m) {
+                            $imgs = $m->incoming_images;
+                            if (is_array($imgs)) {
+                                foreach ($imgs as $p) {
+                                    if (is_string($p) && trim($p) !== '') {
+                                        $allPaths[] = trim($p);
+                                    }
+                                }
+                            }
+                        }
+                        foreach ($storedImagePaths as $p) {
+                            if ($p !== '' && $p !== null) {
+                                $allPaths[] = $p;
+                            }
+                        }
+                        $allPaths = array_values(array_unique($allPaths));
+
+                        $update = [
+                            'verified_stock' => $newVerified,
+                            'to_adjust' => $newToAdjust,
+                            'reason' => $mergedReason,
+                            'approved_by' => $approvedBy,
+                            'approved_at' => $nowOhio,
+                            'updated_at' => now(),
+                        ];
+                        if (Schema::hasColumn('inventories', 'incoming_images')) {
+                            $update['incoming_images'] = $allPaths !== [] ? json_encode($allPaths) : null;
+                        }
+
+                        DB::table('inventories')->where('id', $keep->id)->update($update);
+
+                        $otherIds = $matches->pluck('id')->skip(1)->values()->all();
+                        if ($otherIds !== []) {
+                            DB::table('inventories')->whereIn('id', $otherIds)->delete();
+                        }
+
+                        DB::commit();
+
+                        Log::info('Incoming return merged into existing row', [
+                            'sku' => $sku,
+                            'warehouse_id' => $validated['warehouse_id'],
+                            'added_qty' => $qty,
+                            'total_qty' => $newVerified,
+                            'consolidated_rows' => $matches->count(),
+                        ]);
+
+                        $message = $pushToShopify
+                            ? "✓ {$successLabel} for {$sku}: +{$qty} units (total {$newVerified})."
+                            : "✓ {$successLabel} for {$sku}: +{$qty} units (total {$newVerified}). Saved locally — only Main Godown syncs to Shopify.";
+
+                        return response()->json([
+                            'success' => true,
+                            'message' => $message,
+                            'new_stock_level' => $newVerified,
+                            'merged' => true,
+                            'parent' => $productMaster->parent ?? null,
+                            'recorded_at' => $nowOhio->toIso8601String(),
+                            'shopify_synced' => $pushToShopify,
+                        ], 200);
+                    }
+                }
+
                 $incomingImagesJson = count($storedImagePaths) > 0
                     ? json_encode(array_values($storedImagePaths))
                     : null;
@@ -868,8 +1080,8 @@ class IncomingController extends Controller
                     'to_adjust' => $qty,
                     'reason' => $validated['reason'],
                     'is_approved' => true,
-                    'approved_by' => Auth::user()->name ?? 'N/A',
-                    'approved_at' => Carbon::now('America/New_York'),
+                    'approved_by' => $approvedBy,
+                    'approved_at' => $nowOhio,
                     'type' => $inventoryType,
                     'warehouse_id' => $validated['warehouse_id'],
                     'created_at' => now(),
@@ -886,14 +1098,18 @@ class IncomingController extends Controller
 
                 Log::info('Incoming inventory stored successfully', ['sku' => $sku, 'qty' => $qty, 'type' => $inventoryType]);
 
-                $successLabel = $inventoryType === 'incoming_return' ? 'Incoming return' : 'Incoming stock';
+                $message = $pushToShopify
+                    ? "✓ {$successLabel} for {$sku} added successfully! Quantity: {$qty} units."
+                    : "✓ {$successLabel} for {$sku} saved locally ({$qty} units). Shopify was not updated — only Main Godown syncs to Shopify. (Guardado localmente; solo Main Godown sincroniza con Shopify.)";
 
                 return response()->json([
                     'success' => true,
-                    'message' => "✓ {$successLabel} for {$sku} added successfully! Quantity: {$qty} units.",
+                    'message' => $message,
                     'new_stock_level' => $qty,
+                    'merged' => false,
                     'parent' => $productMaster->parent ?? null,
-                    'recorded_at' => Carbon::now('America/New_York')->toIso8601String(),
+                    'recorded_at' => $nowOhio->toIso8601String(),
+                    'shopify_synced' => $pushToShopify,
                 ], 200);
 
             } catch (\Exception $dbException) {
@@ -901,12 +1117,14 @@ class IncomingController extends Controller
                 foreach ($storedImagePaths as $path) {
                     Storage::disk('public')->delete($path);
                 }
-                Log::error("Failed to save to database after successful Shopify update", ['sku' => $sku, 'error' => $dbException->getMessage()]);
+                Log::error('Failed to save incoming record to database', ['sku' => $sku, 'error' => $dbException->getMessage(), 'shopify_was_attempted' => $pushToShopify]);
 
                 return response()->json([
                     'error' => 'Database Error',
-                    'details' => 'Shopify was updated but database record could not be created. Please contact support.',
-                    'shopify_updated' => true
+                    'details' => $pushToShopify
+                        ? 'Shopify was updated but database record could not be created. Please contact support.'
+                        : 'Record could not be saved. Please try again.',
+                    'shopify_updated' => $pushToShopify,
                 ], 500);
             }
 
@@ -973,51 +1191,261 @@ class IncomingController extends Controller
 
     public function list()
     {
-        $data = Inventory::with('warehouse')
-            ->where('type', 'incoming') // Only incoming records
+        $items = Inventory::with('warehouse')
+            ->where('type', 'incoming')
             ->latest()
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'sku' => $item->sku,
-                    'verified_stock' => $item->verified_stock,
-                    'reason' => $item->reason,
-                    'warehouse_name' => $item->warehouse->name ?? '',
-                    'approved_by' => $item->approved_by,
-                    'approved_at' =>  $item->approved_at
-                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('m-d-Y')
-                        : '',
-                ];
-            });
+            ->get();
+
+        [$pmByLower, $shopifyByLower] = $this->batchProductMasterAndShopifyBySkuKeys($items->pluck('sku'));
+
+        $data = $items->map(function ($item) use ($pmByLower, $shopifyByLower) {
+            $k = strtolower(trim((string) ($item->sku ?? '')));
+            $pm = $pmByLower->get($k);
+            $shop = $shopifyByLower->get($k);
+
+            return [
+                'sku' => $item->sku,
+                'verified_stock' => $item->verified_stock,
+                'reason' => $item->reason,
+                'warehouse_id' => $item->warehouse_id,
+                'warehouse_name' => $item->warehouse->name ?? '',
+                'approved_by' => $item->approved_by,
+                'approved_at' => $item->approved_at
+                    ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('m-d-Y')
+                    : '',
+                'image_url' => $this->resolveInventoryRowImageUrl($item, $pm, $shop),
+            ];
+        });
 
         return response()->json(['data' => $data]);
     }
 
+    /**
+     * @return list<string> lowercased names excluded from incoming return pickers
+     */
+    protected function incomingReturnExcludedWarehouseNamesLower(): array
+    {
+        return ['returns godown', 'used item godown'];
+    }
+
+    protected function isWarehouseExcludedForIncomingReturn(?string $name): bool
+    {
+        $n = strtolower(trim((string) $name));
+        return $n !== '' && in_array($n, $this->incomingReturnExcludedWarehouseNamesLower(), true);
+    }
+
+    /**
+     * Only Main Godown (or label "Main") should sync quantity to Shopify for incoming / incoming return.
+     */
+    protected function isMainGodownWarehouse(?string $name): bool
+    {
+        $n = strtolower(trim((string) $name));
+        if ($n === '') {
+            return false;
+        }
+        $compact = str_replace(' ', '', $n);
+
+        return $n === 'main' || $n === 'main godown' || $compact === 'maingodown';
+    }
+
+    /**
+     * @return list<int>
+     */
+    protected function warehouseIdsForIncomingReturnGridScope(string $scope): array
+    {
+        $q = Warehouse::query();
+        if ($scope === 'open_box') {
+            $q->where(function ($w) {
+                $w->whereRaw('LOWER(TRIM(name)) = ?', ['open box'])
+                    ->orWhereRaw('LOWER(TRIM(name)) = ?', ['open box godown'])
+                    ->orWhereRaw("REPLACE(LOWER(TRIM(name)), ' ', '') = ?", ['openbox']);
+            });
+        } elseif ($scope === 'trash') {
+            $q->where(function ($w) {
+                $w->whereRaw('LOWER(TRIM(name)) = ?', ['trash'])
+                    ->orWhereRaw('LOWER(TRIM(name)) = ?', ['trash godown'])
+                    ->orWhereRaw("REPLACE(LOWER(TRIM(name)), ' ', '') = ?", ['trashgodown']);
+            });
+        } else {
+            return [];
+        }
+
+        return $q->pluck('id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
+     * Theme key for warehouse dot/color in grids (matches incoming-return-view.js warehouseThemeKeyFromName).
+     */
+    protected function warehouseThemeKeyFromNameForGrid(?string $name): string
+    {
+        $n = strtolower(trim((string) $name));
+        if ($n === '') {
+            return '';
+        }
+        $c = str_replace(' ', '', $n);
+        if ($n === 'open box' || $n === 'open box godown' || $c === 'openbox') {
+            return 'openbox';
+        }
+        if ($n === 'trash' || $n === 'trash godown' || $c === 'trashgodown') {
+            return 'trash';
+        }
+        if ($n === 'main' || $n === 'main godown' || $c === 'maingodown') {
+            return 'main';
+        }
+
+        return '';
+    }
+
+    /**
+     * Latest incoming_return row per SKU for Trash or Open Box godown — same JSON shape as VerificationAdjustmentController::getVerifiedStock plus IMAGE_URL for View Inventory merge.
+     */
+    public function getIncomingReturnGridInventory(Request $request)
+    {
+        $validated = $request->validate([
+            'warehouse_scope' => 'required|in:trash,open_box',
+        ]);
+
+        $warehouseIds = $this->warehouseIdsForIncomingReturnGridScope($validated['warehouse_scope']);
+        if ($warehouseIds === []) {
+            return response()->json(['data' => []]);
+        }
+
+        $rows = Inventory::query()
+            ->where('type', 'incoming_return')
+            ->whereIn('warehouse_id', $warehouseIds)
+            ->with('warehouse')
+            ->orderByDesc('id')
+            ->get();
+
+        $aggBySku = [];
+        foreach ($rows as $item) {
+            $k = strtoupper(trim((string) ($item->sku ?? '')));
+            if ($k === '') {
+                continue;
+            }
+            if (! isset($aggBySku[$k])) {
+                $aggBySku[$k] = ['qty' => 0.0, 'to_adjust_sum' => 0.0, 'latest' => null, 'maxId' => -1];
+            }
+            $aggBySku[$k]['qty'] += (float) ($item->verified_stock ?? 0);
+            $aggBySku[$k]['to_adjust_sum'] += (float) ($item->to_adjust ?? 0);
+            if ((int) $item->id > $aggBySku[$k]['maxId']) {
+                $aggBySku[$k]['maxId'] = (int) $item->id;
+                $aggBySku[$k]['latest'] = $item;
+            }
+        }
+
+        if ($aggBySku === []) {
+            return response()->json(['data' => []]);
+        }
+
+        $skuCollection = collect(array_keys($aggBySku))->map(fn ($s) => $s);
+        [$pmByLower, $shopifyByLower] = $this->batchProductMasterAndShopifyBySkuKeys($skuCollection);
+
+        $data = [];
+        foreach ($aggBySku as $skuUpper => $bundle) {
+            $item = $bundle['latest'];
+            $totalQty = $bundle['qty'];
+            $totalToAdjust = $bundle['to_adjust_sum'];
+            $k = strtolower(trim((string) ($item->sku ?? '')));
+            $pm = $pmByLower->get($k);
+            $shop = $shopifyByLower->get($k);
+            $img = $this->resolveInventoryRowImageUrl($item, $pm, $shop);
+            $whName = (string) ($item->warehouse?->name ?? '');
+
+            $data[] = [
+                'sku' => $skuUpper,
+                'R&A' => (bool) $item->is_ra_checked,
+                'verified_stock' => $totalQty,
+                'quantity' => $totalQty,
+                'warehouse_name' => $whName,
+                'warehouse_theme' => $this->warehouseThemeKeyFromNameForGrid($whName),
+                'to_adjust' => $totalToAdjust,
+                'reason' => $item->reason,
+                'is_approved' => (bool) $item->is_approved,
+                'approved_by_ih' => (bool) $item->approved_by_ih,
+                'approved_by' => $item->approved_by,
+                'approved_at' => $item->approved_at
+                    ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('Y-m-d H:i:s')
+                    : '',
+                'IMAGE_URL' => $img ? (string) $img : '',
+            ];
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function viewInventoryIncomingReturnTrash()
+    {
+        return view('inventory-management.view-inventory-incoming-return', [
+            'incomingReturnGridScope' => 'trash',
+            'viewTitleSuffix' => ' — Trash Godown',
+            'incomingReturnGridLabel' => 'Trash Godown',
+            'incomingReturnGridDotColor' => '#9b1c1c',
+        ]);
+    }
+
+    public function viewInventoryIncomingReturnOpenBox()
+    {
+        return view('inventory-management.view-inventory-incoming-return', [
+            'incomingReturnGridScope' => 'open_box',
+            'viewTitleSuffix' => ' — Open Box Godown',
+            'incomingReturnGridLabel' => 'Open Box Godown',
+            'incomingReturnGridDotColor' => '#b8860b',
+        ]);
+    }
+
     public function incomingReturnIndex()
     {
-        $warehouses = Warehouse::select('id', 'name')->get();
+        $excluded = $this->incomingReturnExcludedWarehouseNamesLower();
+        $placeholders = implode(',', array_fill(0, count($excluded), '?'));
+
+        $warehouses = Warehouse::select('id', 'name')
+            ->whereRaw("LOWER(TRIM(name)) NOT IN ({$placeholders})", $excluded)
+            ->orderBy('name')
+            ->get();
 
         return view('inventory-management.incoming-return-view', compact('warehouses'));
     }
 
     public function listReturnHistory()
     {
-        $data = Inventory::with('warehouse')
+        $items = Inventory::with('warehouse')
             ->where('type', 'incoming_return')
             ->latest()
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'sku' => $item->sku,
-                    'verified_stock' => $item->verified_stock,
-                    'reason' => $item->reason,
-                    'warehouse_name' => $item->warehouse->name ?? '',
-                    'approved_by' => $item->approved_by,
-                    'approved_at' => $item->approved_at
-                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('m-d-Y')
-                        : '',
-                ];
-            });
+            ->get();
+
+        [$pmByLower, $shopifyByLower] = $this->batchProductMasterAndShopifyBySkuKeys($items->pluck('sku'));
+
+        $grouped = $items->groupBy(function ($item) {
+            $skuKey = strtoupper(trim((string) ($item->sku ?? '')));
+
+            return $skuKey.'|'.(int) ($item->warehouse_id ?? 0);
+        });
+
+        $sorted = $grouped->sortByDesc(fn ($group) => $group->max('id'));
+
+        $data = $sorted->values()->map(function ($group) use ($pmByLower, $shopifyByLower) {
+            $rep = $group->sortByDesc('id')->values()->first();
+            $sumQty = $group->sum(fn ($i) => (float) ($i->verified_stock ?? 0));
+            $k = strtolower(trim((string) ($rep->sku ?? '')));
+            $pm = $pmByLower->get($k);
+            $shop = $shopifyByLower->get($k);
+
+            $reasonParts = $group->pluck('reason')->map(fn ($r) => trim((string) $r))->filter()->unique()->values()->all();
+
+            return [
+                'sku' => $rep->sku,
+                'verified_stock' => $sumQty,
+                'reason' => implode(' | ', $reasonParts),
+                'warehouse_id' => $rep->warehouse_id,
+                'warehouse_name' => $rep->warehouse->name ?? '',
+                'approved_by' => $rep->approved_by,
+                'approved_at' => $rep->approved_at
+                    ? Carbon::parse($rep->approved_at)->timezone('America/New_York')->format('m-d-Y')
+                    : '',
+                'image_url' => $this->resolveInventoryRowImageUrl($rep, $pm, $shop),
+            ];
+        });
 
         return response()->json(['data' => $data]);
     }

@@ -70,7 +70,7 @@ return [
     ['value' => 'outgoing_shipments', 'text' => 'Outgoing Shipments', 'group' => 'Inventory Management'],
     ['value' => 'trash_entries', 'text' => 'Trash Entries', 'group' => 'Inventory Management'],
     ['value' => 'pallete_sales', 'text' => 'Pallete Sales', 'group' => 'Inventory Management'],
-    ['value' => 'view_inventory', 'text' => 'View Inventory', 'group' => 'Inventory Management'],
+    ['value' => 'view_inventory', 'text' => 'Inventory Main', 'group' => 'Inventory Management'],
     ['value' => 'stock_adjustment', 'text' => 'Stock Adjustment', 'group' => 'Inventory Management'],
 
     // Inventory Warehouse
