@@ -538,8 +538,12 @@ class ReverbOrderPushService
     public function fetchReverbOrderDetails(string $orderNumber): ?array
     {
         $url = 'https://api.reverb.com/api/my/orders/selling/' . $orderNumber;
+        $token = ReverbApiService::getReverbBearerToken();
+        if (! $token) {
+            return null;
+        }
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . config('services.reverb.token'),
+            'Authorization' => 'Bearer ' . $token,
             'Accept' => 'application/hal+json',
             'Accept-Version' => '3.0',
         ])->timeout(15)->get($url);

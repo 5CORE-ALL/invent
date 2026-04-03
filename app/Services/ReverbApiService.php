@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request;
 use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -38,7 +39,81 @@ class ReverbApiService
         $this->awsSecretKey = config('services.amazon_sp.aws_secret_key');
         $this->endpoint = 'https://sellingpartnerapi-na.amazon.com';
     }
-    
+
+    /**
+     * Bearer token for Reverb API calls.
+     * Uses OAuth2 client_credentials at config('services.reverb.oauth_url') when client_id + client_secret are set;
+     * otherwise falls back to config('services.reverb.token') (manual personal / legacy token).
+     */
+    public static function getReverbBearerToken(bool $forceRefresh = false): ?string
+    {
+        $cacheKey = 'reverb_oauth_access_token';
+        if (! $forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if (is_string($cached) && $cached !== '') {
+                return $cached;
+            }
+        } else {
+            Cache::forget($cacheKey);
+        }
+
+        $clientId = trim((string) config('services.reverb.client_id', ''));
+        $clientSecret = trim((string) config('services.reverb.client_secret', ''));
+        $staticToken = trim((string) config('services.reverb.token', ''));
+
+        if ($clientId === '' || $clientSecret === '') {
+            return $staticToken !== '' ? $staticToken : null;
+        }
+
+        $oauthUrl = trim((string) config('services.reverb.oauth_url', 'https://reverb.com/oauth/token'));
+        $scope = trim((string) config('services.reverb.scope', 'read_listings write_listings read_orders'));
+
+        try {
+            $response = Http::withoutVerifying()
+                ->asForm()
+                ->acceptJson()
+                ->timeout(45)
+                ->post($oauthUrl, [
+                    'grant_type' => 'client_credentials',
+                    'client_id' => $clientId,
+                    'client_secret' => $clientSecret,
+                    'scope' => $scope,
+                ]);
+
+            if (! $response->successful()) {
+                Log::warning('Reverb OAuth token request failed', [
+                    'url' => $oauthUrl,
+                    'status' => $response->status(),
+                    'body' => substr($response->body(), 0, 800),
+                ]);
+
+                return $staticToken !== '' ? $staticToken : null;
+            }
+
+            $json = $response->json();
+            $access = $json['access_token'] ?? null;
+            if (! is_string($access) || $access === '') {
+                Log::warning('Reverb OAuth response missing access_token', ['response_keys' => is_array($json) ? array_keys($json) : []]);
+
+                return $staticToken !== '' ? $staticToken : null;
+            }
+
+            $expiresIn = (int) ($json['expires_in'] ?? 3500);
+            $ttlSeconds = max(120, $expiresIn - 180);
+            Cache::put($cacheKey, $access, now()->addSeconds($ttlSeconds));
+
+            return $access;
+        } catch (\Throwable $e) {
+            Log::error('Reverb OAuth exception', ['error' => $e->getMessage()]);
+
+            return $staticToken !== '' ? $staticToken : null;
+        }
+    }
+
+    public static function forgetCachedReverbToken(): void
+    {
+        Cache::forget('reverb_oauth_access_token');
+    }
 
     /**
      * Normalize listing state/status from API response.
@@ -67,7 +142,8 @@ class ReverbApiService
     {
         $log = Log::channel('reverb_sync');
         $inventory = [];
-        $url = 'https://api.reverb.com/api/my/listings?state=all&per_page=100';
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $url = $apiBase.'/my/listings?state=all&per_page=100';
         $pageNumber = 0;
         $startedAt = now()->toIso8601String();
 
@@ -80,6 +156,13 @@ class ReverbApiService
                 'initial_url' => $url,
             ]);
 
+            $token = self::getReverbBearerToken();
+            if (! $token) {
+                $log->error('Reverb getInventory: no bearer token (set REVERB_CLIENT_ID/REVERB_CLIENT_SECRET or REVERB_TOKEN)');
+
+                return [];
+            }
+
             while ($url) {
                 $pageNumber++;
                 $log->debug('Reverb getInventory page request', [
@@ -90,7 +173,7 @@ class ReverbApiService
                 $response = Http::withoutVerifying()
                     ->timeout(60)
                     ->withHeaders([
-                        'Authorization' => 'Bearer ' . config('services.reverb.token'),
+                        'Authorization' => 'Bearer '.$token,
                         'Accept' => 'application/hal+json',
                         'Accept-Version' => '3.0',
                     ])->get($url);
@@ -246,9 +329,9 @@ class ReverbApiService
         }
 
         $url = 'https://api.reverb.com/api/my/listings';
-        $token = config('services.reverb.token');
-        if (!$token) {
-            Log::warning('Reverb API token not configured (services.reverb.token)');
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            Log::warning('Reverb API token not configured (REVERB_CLIENT_ID/REVERB_CLIENT_SECRET or REVERB_TOKEN)');
             return null;
         }
 
@@ -307,11 +390,11 @@ class ReverbApiService
      */
     public function updatePrice(string $sku, float $price): array
     {
-        $token = config('services.reverb.token');
-        if (!$token) {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
             return [
                 'success' => false,
-                'message' => 'Reverb API token not configured (services.reverb.token).',
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
             ];
         }
 
@@ -400,11 +483,11 @@ class ReverbApiService
      */
     public function updateTitle(string $sku, string $title): array
     {
-        $token = config('services.reverb.token');
-        if (!$token) {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
             return [
                 'success' => false,
-                'message' => 'Reverb API token not configured (services.reverb.token).',
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
             ];
         }
 
@@ -486,9 +569,9 @@ class ReverbApiService
      */
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $token = config('services.reverb.token');
+        $token = self::getReverbBearerToken();
         if (! $token) {
-            return ['success' => false, 'message' => 'Reverb API token not configured (services.reverb.token).'];
+            return ['success' => false, 'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).'];
         }
 
         $features = self::bulletPointsStringToFeatureList($bulletPoints);
@@ -607,13 +690,15 @@ class ReverbApiService
      */
     private function reverbPutListingWithRetry(string $token, string $listingId, array $payload, int $maxRetries = 4): Response
     {
-        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $updateUrl = $apiBase.'/listings/'.$listingId;
+        $bearer = $token;
         $last = null;
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             $last = Http::withoutVerifying()
                 ->timeout(30)
                 ->withHeaders([
-                    'Authorization' => 'Bearer '.$token,
+                    'Authorization' => 'Bearer '.$bearer,
                     'Accept' => 'application/hal+json',
                     'Accept-Version' => '3.0',
                     'Content-Type' => 'application/hal+json',
@@ -622,6 +707,16 @@ class ReverbApiService
 
             if ($last->successful()) {
                 return $last;
+            }
+            if ($last->status() === 401 && $attempt < $maxRetries - 1) {
+                self::forgetCachedReverbToken();
+                $refreshed = self::getReverbBearerToken(true);
+                if (is_string($refreshed) && $refreshed !== '') {
+                    $bearer = $refreshed;
+                    usleep(400000);
+
+                    continue;
+                }
             }
             if (in_array($last->status(), [429, 503], true) && $attempt < $maxRetries - 1) {
                 $waitMs = (int) (500000 * ($attempt + 1));
@@ -645,9 +740,9 @@ class ReverbApiService
      */
     public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
-        $token = config('services.reverb.token');
+        $token = self::getReverbBearerToken();
         if (! $token) {
-            return ['success' => false, 'message' => 'Reverb API token not configured (services.reverb.token).'];
+            return ['success' => false, 'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).'];
         }
 
         $description = trim($description);
@@ -758,9 +853,9 @@ class ReverbApiService
      */
     public function updateListingImages(string $identifier, array $imageUrls): array
     {
-        $token = config('services.reverb.token');
+        $token = self::getReverbBearerToken();
         if (! $token) {
-            return ['success' => false, 'message' => 'Reverb API token not configured (services.reverb.token).'];
+            return ['success' => false, 'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).'];
         }
 
         $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));

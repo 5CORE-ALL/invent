@@ -69,7 +69,7 @@ class FetchReverbInventory extends Command
         do {
             $pageCount++;
             $response = Http::timeout(60)->withHeaders([
-                'Authorization' => 'Bearer ' . config('services.reverb.token'),
+                'Authorization' => 'Bearer ' . \App\Services\ReverbApiService::getReverbBearerToken(),
                 'Accept' => 'application/hal+json',
                 'Accept-Version' => '3.0',
             ])->get($url);

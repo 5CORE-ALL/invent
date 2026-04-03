@@ -13,9 +13,10 @@ class SyncReverbListingStatuses extends Command
 
     public function handle(): int
     {
-        $token = config('services.reverb.token');
-        if (!$token) {
-            $this->error('Reverb API token not configured (services.reverb.token).');
+        $token = ReverbApiService::getReverbBearerToken();
+        if (! $token) {
+            $this->error('Reverb API token not configured (REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).');
+
             return self::FAILURE;
         }
 

@@ -1237,46 +1237,93 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'url' => null, 'message' => 'Invalid image URL.'];
         }
 
-        $types = config('services.temu.image_upload_types');
-        if (! is_array($types) || $types === []) {
-            $types = ['bg.local.goods.image.upload'];
+        $primary = trim((string) config('services.temu.image_upload_type', 'files/upload_image'));
+        $extra = config('services.temu.image_upload_types');
+        if (! is_array($extra)) {
+            $extra = [];
+        }
+        $types = array_values(array_unique(array_filter(array_map('trim', array_merge(
+            $primary !== '' ? [$primary] : [],
+            $extra
+        )))));
+        if ($types === []) {
+            $types = ['files/upload_image'];
         }
 
-        $router = 'https://openapi-b-us.temu.com/openapi/router';
+        $router = rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
         $lastMsg = '';
 
+        $postSigned = function (array $body) use ($router, &$lastMsg): ?string {
+            try {
+                $signedRequest = $this->generateSignValue($body);
+                $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->timeout(120)->post($router, $signedRequest);
+                $data = $response->json() ?? [];
+                $lastMsg = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
+
+                if ($response->successful() && ($data['success'] ?? false)) {
+                    $hosted = $this->extractTemuUploadedImageUrl($data);
+
+                    return ($hosted !== null && $hosted !== '') ? $hosted : null;
+                }
+            } catch (\Throwable $e) {
+                $lastMsg = $e->getMessage();
+            }
+
+            return null;
+        };
+
         foreach ($types as $type) {
-            $type = trim((string) $type);
             if ($type === '') {
                 continue;
             }
 
-            $variants = [
+            $urlVariants = [
                 ['type' => $type, 'url' => $imageUrl],
                 ['type' => $type, 'imageUrl' => $imageUrl],
                 ['type' => $type, 'imgUrl' => $imageUrl],
+                ['type' => $type, 'image_url' => $imageUrl],
             ];
 
-            foreach ($variants as $body) {
-                try {
-                    $signedRequest = $this->generateSignValue($body);
-                    $request = Http::withHeaders(['Content-Type' => 'application/json']);
-                    if (config('filesystems.default') === 'local') {
-                        $request = $request->withoutVerifying();
-                    }
-                    $response = $request->post($router, $signedRequest);
-                    $data = $response->json() ?? [];
-                    $lastMsg = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
+            foreach ($urlVariants as $body) {
+                $hosted = $postSigned($body);
+                if ($hosted !== null) {
+                    return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+                }
+            }
+        }
 
-                    if ($response->successful() && ($data['success'] ?? false)) {
-                        $hosted = $this->extractTemuUploadedImageUrl($data);
-                        if ($hosted !== null && $hosted !== '') {
-                            return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+        if (config('services.temu.image_upload_try_base64', true)) {
+            try {
+                $imgResp = Http::withoutVerifying()->timeout(90)->get($imageUrl);
+                if ($imgResp->successful()) {
+                    $bytes = $imgResp->body();
+                    $b64 = base64_encode($bytes);
+                    $mime = $imgResp->header('Content-Type') ?: 'image/jpeg';
+                    foreach ($types as $type) {
+                        if ($type === '') {
+                            continue;
+                        }
+                        $baseBodies = [
+                            ['type' => $type, 'image' => $b64],
+                            ['type' => $type, 'imageBase64' => $b64],
+                            ['type' => $type, 'base64' => $b64],
+                            ['type' => $type, 'fileBase64' => $b64],
+                            ['type' => $type, 'content' => $b64, 'mimeType' => $mime],
+                        ];
+                        foreach ($baseBodies as $body) {
+                            $hosted = $postSigned($body);
+                            if ($hosted !== null) {
+                                return ['success' => true, 'url' => $hosted, 'message' => 'OK (base64)'];
+                            }
                         }
                     }
-                } catch (\Throwable $e) {
-                    $lastMsg = $e->getMessage();
                 }
+            } catch (\Throwable $e) {
+                $lastMsg = $e->getMessage();
             }
         }
 

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\ProductStockMapping;
 use App\Models\ReverbProduct;
+use App\Services\ReverbApiService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 
 class CheckReverbListings extends Command
 {
+    private ?string $reverbBearerToken = null;
+
     /**
      * The name and signature of the console command.
      *
@@ -32,9 +35,10 @@ class CheckReverbListings extends Command
      */
     public function handle(): int
     {
-        $token = config('services.reverb.token');
-        if (!$token) {
-            $this->error('Reverb API token not configured (services.reverb.token).');
+        $this->reverbBearerToken = ReverbApiService::getReverbBearerToken();
+        if (! $this->reverbBearerToken) {
+            $this->error('Reverb API token not configured (REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).');
+
             return self::FAILURE;
         }
 
@@ -117,7 +121,7 @@ class CheckReverbListings extends Command
             $response = Http::withoutVerifying()
                 ->timeout(15)
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . config('services.reverb.token'),
+                    'Authorization' => 'Bearer '.$this->reverbBearerToken,
                     'Accept' => 'application/hal+json',
                     'Accept-Version' => '3.0',
                 ])
@@ -160,9 +164,9 @@ class CheckReverbListings extends Command
                 $response = Http::withoutVerifying()
                     ->timeout(60)
                     ->withHeaders([
-                        'Authorization' => 'Bearer ' . config('services.reverb.token'),
-                        'Accept' => 'application/hal+json',
-                        'Accept-Version' => '3.0',
+                    'Authorization' => 'Bearer '.$this->reverbBearerToken,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
                     ])
                     ->get($url);
 

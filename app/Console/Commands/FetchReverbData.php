@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\ImportReverbOrderToShopify;
 use App\Models\ReverbOrderMetric;
+use App\Services\ReverbApiService;
 use App\Models\ReverbProduct;
 use App\Models\ReverbSyncSettings;
 use App\Models\ReverbSyncState;
@@ -125,10 +126,16 @@ class FetchReverbData extends Command
     {
         $listings = [];
         $url = 'https://api.reverb.com/api/my/listings?state=all';
+        $token = ReverbApiService::getReverbBearerToken();
+        if (! $token) {
+            $this->error('Reverb API token not configured (REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).');
+
+            return [];
+        }
 
         do {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . config('services.reverb.token'),
+                'Authorization' => 'Bearer '.$token,
                 'Accept' => 'application/hal+json',
                 'Accept-Version' => '3.0',
             ])->get($url);
@@ -157,8 +164,14 @@ class FetchReverbData extends Command
         $result = [];
         $total = count($listingMap);
         $index = 0;
+        $token = ReverbApiService::getReverbBearerToken();
+        if (! $token) {
+            $this->error('Reverb API token not configured (REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).');
+
+            return [];
+        }
         $headers = [
-            'Authorization' => 'Bearer ' . config('services.reverb.token'),
+            'Authorization' => 'Bearer '.$token,
             'Accept' => 'application/hal+json',
             'Accept-Version' => '3.0',
         ];
@@ -363,8 +376,12 @@ class FetchReverbData extends Command
      */
     protected function fetchWithRetry(string $url, int $maxAttempts, int $timeoutSeconds, int $pageNum = 0): ?\Illuminate\Http\Client\Response
     {
+        $token = ReverbApiService::getReverbBearerToken();
+        if (! $token) {
+            return null;
+        }
         $headers = [
-            'Authorization' => 'Bearer ' . config('services.reverb.token'),
+            'Authorization' => 'Bearer '.$token,
             'Accept' => 'application/hal+json',
             'Accept-Version' => '3.0',
         ];

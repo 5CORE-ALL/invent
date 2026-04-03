@@ -96,12 +96,6 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
-    'reverb' => [
-        'token' => env('REVERB_TOKEN'),
-        'auto_push_debug' => env('REVERB_AUTO_PUSH_DEBUG', false),
-        'webhook_secret' => env('REVERB_WEBHOOK_SECRET'),
-    ],
-
     'macy' => [
         'client_id' => env('MACY_CLIENT_ID'),
         'client_secret' => env('MACY_CLIENT_SECRET'),
@@ -146,11 +140,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Reverb
+    | Reverb — OAuth2 client_credentials at https://reverb.com/oauth/token
+    | (optional static REVERB_TOKEN still works if client credentials unset)
     |--------------------------------------------------------------------------
     */
     'reverb' => [
+        'client_id' => env('REVERB_CLIENT_ID'),
+        'client_secret' => env('REVERB_CLIENT_SECRET'),
         'token' => env('REVERB_TOKEN'),
+        'oauth_url' => env('REVERB_OAUTH_URL', 'https://reverb.com/oauth/token'),
+        'api_url' => env('REVERB_API_URL', 'https://api.reverb.com/api'),
+        'scope' => env('REVERB_SCOPE', 'read_listings write_listings read_orders'),
+        'auto_push_debug' => env('REVERB_AUTO_PUSH_DEBUG', false),
+        'webhook_secret' => env('REVERB_WEBHOOK_SECRET'),
     ],
 
     'topdawg' => [
@@ -307,8 +309,13 @@ return [
         'goods_desc_field' => env('TEMU_GOODS_DESC_FIELD', 'goodsDesc'),
         /** Carousel / gallery field inside goodsBasic (Temu-hosted URLs after upload). */
         'goods_image_urls_field' => env('TEMU_GOODS_IMAGE_URLS_FIELD', 'carouselImageUrlList'),
-        /** Comma-separated `type` values to try for image upload (Partner OpenAPI router). */
-        'image_upload_types' => array_values(array_filter(array_map('trim', explode(',', env('TEMU_IMAGE_UPLOAD_TYPES', 'bg.local.goods.image.upload'))))),
+        /** Primary image upload `type` (Partner router). Community/docs often use `files/upload_image` with `url`. */
+        'image_upload_type' => env('TEMU_IMAGE_UPLOAD_TYPE', 'files/upload_image'),
+        /** Comma-separated extra `type` values to try after the primary (e.g. regional variants). */
+        'image_upload_types' => array_values(array_filter(array_map('trim', explode(',', env('TEMU_IMAGE_UPLOAD_TYPES', 'temu.local.image.upload,bg.local.goods.image.upload'))))),
+        'openapi_router_url' => env('TEMU_OPENAPI_URL', 'https://openapi-b-us.temu.com/openapi/router'),
+        /** If true, after URL-based upload fails, download the image and try base64 fields (implementation-dependent). */
+        'image_upload_try_base64' => filter_var(env('TEMU_IMAGE_UPLOAD_TRY_BASE64', true), FILTER_VALIDATE_BOOLEAN),
         'list_price_field' => env('TEMU_LIST_PRICE_FIELD', 'listPrice'),
         'sku_id_field' => env('TEMU_SKU_ID_FIELD', 'skuId'),
         'sku_code_field' => env('TEMU_SKU_CODE_FIELD', 'outSkuSn'),

@@ -4526,17 +4526,15 @@ GRAPHQL;
         try {
             Log::info("Starting Reverb title update for SKU: {$sku}, Title: {$title}");
 
-            // Get Reverb API token from env or config
-            $reverbToken = config('services.reverb.token');
+            $reverbToken = \App\Services\ReverbApiService::getReverbBearerToken();
 
             if (! $reverbToken) {
-                Log::warning('Reverb token not configured in .env file');
-                Log::warning('Required: REVERB_TOKEN or set in config/services.php');
+                Log::warning('Reverb token not configured: set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN');
 
                 return false;
             }
 
-            Log::info('✓ Reverb token found');
+            Log::info('✓ Reverb bearer token resolved');
 
             // Step 1: Get listing by SKU to find the listing ID
             $listingsUrl = 'https://api.reverb.com/api/my/listings';

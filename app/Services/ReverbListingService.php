@@ -11,7 +11,7 @@ class ReverbListingService
 
     public function __construct()
     {
-        $this->token = (string) (config('services.reverb.token') ?: env('REVERB_TOKEN', ''));
+        $this->token = (string) (ReverbApiService::getReverbBearerToken() ?: '');
     }
 
     /**
@@ -21,7 +21,7 @@ class ReverbListingService
     public function updateListingInventory(string $listingId, int $quantity): bool
     {
         if (! $this->token) {
-            Log::warning('ReverbListingService: REVERB_TOKEN not set.');
+            Log::warning('ReverbListingService: no Reverb bearer token (OAuth or REVERB_TOKEN).');
             return false;
         }
 
