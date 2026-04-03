@@ -520,11 +520,18 @@
                 const quantity = parseInt(row.quantity) || 1;
                 totalQuantity += quantity;
                 
-                const orderAmount = parseFloat(row.order_amount) || 0;
                 const platformCoupon = parseFloat(row.platform_coupon) || 0;
-                
-                // Use order_amount for revenue (it's already total)
-                totalRevenue += orderAmount;
+                // Line revenue: same basis as backend PFT (product_total / qty → unit_price).
+                // Many AliExpress exports leave order_amount empty; summing only that showed $0 revenue and 0% PFT.
+                let lineRevenue = parseFloat(row.product_total) || 0;
+                if (lineRevenue <= 0) {
+                    const up = parseFloat(row.unit_price) || 0;
+                    lineRevenue = up * quantity;
+                }
+                if (lineRevenue <= 0) {
+                    lineRevenue = parseFloat(row.order_amount) || 0;
+                }
+                totalRevenue += lineRevenue;
                 totalCommission += platformCoupon;
                 
                 // For weighted average price - use unit_price from backend

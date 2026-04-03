@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'AliExpress Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Aliexpress Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -94,8 +94,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'AliExpress Pricing',
-        'sub_title'  => 'Separate pricing page (sales page unchanged)',
+        'page_title' => 'Aliexpress Analytics',
+        'sub_title'  => 'SKU metrics, pricing, and trends (separate from the sales view)',
     ])
 
     <div class="row">
@@ -201,6 +201,12 @@
                             data-bs-toggle="modal" data-bs-target="#uploadPriceSheetModal">
                             <i class="fas fa-upload"></i> Upload Price
                         </button>
+                        <a href="{{ route('aliexpress.lmp.sample') }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-download"></i> LMP sample
+                        </a>
+                        <a href="{{ route('aliexpress.lmp') }}" class="btn btn-sm btn-outline-info">
+                            <i class="fas fa-table"></i> LMP sheet
+                        </a>
 
                         {{-- Price Mode (Increase / Decrease) – identical to TikTok --}}
                         <button id="ae-price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
@@ -228,17 +234,15 @@
                     {{-- ── Summary badges ── --}}
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
                         <div class="d-flex flex-wrap gap-2">
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-total-sku-badge"    data-metric="total_sku"   style="font-weight:700;cursor:pointer;">Total SKU: 0</span>
-                            <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Total Sales: $0</span>
-                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">Total AL30: 0</span>
-                            <span class="badge bg-success  fs-6 p-2 ae-badge-chart" id="ae-total-profit-badge" data-metric="total_pft"  style="font-weight:700;cursor:pointer;">Total Profit: $0</span>
-                            <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">AVG GPFT: 0%</span>
-                            <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing: 0</span>
+                            <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Sales: $0</span>
+                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">AL30: 0</span>
+                            <span class="badge bg-success  fs-6 p-2 ae-badge-chart" id="ae-total-profit-badge" data-metric="total_pft"  style="font-weight:700;cursor:pointer;">Profit: $0</span>
+                            <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">GPFT: 0%</span>
+                            <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing L: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#0d6efd;color:#fff;" title="Click for trend / filter">Map: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-zero-sold-badge"   data-metric="zero_sold"     style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click for trend / filter">0 Sold: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-more-sold-badge"   data-metric="more_sold"     style="font-weight:700;cursor:pointer;background:#28a745;color:#fff;" title="Click for trend / filter">&gt;0 Sold: 0</span>
-                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-avg-dil-badge"     data-metric="avg_dil"     style="font-weight:700;color:#111;cursor:pointer;">DIL%: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#111;cursor:pointer;">AVG ROI: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#111;cursor:pointer;">ROI: 0%</span>
                         </div>
                     </div>
 
@@ -255,7 +259,7 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size:13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="aeBadgeChartTitle">AliExpress – Badge Trend</span>
+                        <span id="aeBadgeChartTitle">Aliexpress – Badge Trend</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="aeBadgeChartRange" class="form-select form-select-sm bg-white"
@@ -312,7 +316,7 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Upload Pricing Sheet</h5>
+                    <h5 class="modal-title">Upload price sheet</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -322,6 +326,54 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-warning" id="uploadPriceSheetBtn">Upload</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="aeLmpModal" tabindex="-1" aria-labelledby="aeLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="aeLmpModalLabel"><i class="fas fa-link me-2"></i>LMP for <span id="aeLmpModalSku"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="border rounded p-3 mb-3 bg-light">
+                        <h6 class="mb-3"><i class="fas fa-plus text-success me-1"></i> Add New LMP</h6>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Price <span class="text-danger">*</span></label>
+                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="aeLmpNewPrice" placeholder="e.g. 29.99">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0">Product Link</label>
+                                <input type="text" class="form-control form-control-sm" id="aeLmpNewLink" placeholder="https://...">
+                            </div>
+                            <div class="col-md-3 d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-primary" id="aeLmpAddRowBtn"><i class="fas fa-plus me-1"></i> Add LMP</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="aeLmpClearFormBtn" title="Clear form"><i class="fas fa-undo"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <h6 class="mb-2">LMP List</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0" id="aeLmpListTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 50px;">#</th>
+                                    <th>Price</th>
+                                    <th>Link</th>
+                                    <th style="width: 80px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="aeLmpEntriesContainer"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="aeLmpModalSaveBtn"><i class="fas fa-save me-1"></i> Save</button>
                 </div>
             </div>
         </div>
@@ -336,6 +388,17 @@
     <script>
         let table = null;
         let summaryDataCache = [];
+        let aeLmpModalSku = '';
+
+        function aeNotify(msg, type) {
+            if (window.toastr) {
+                if (type === 'warning') toastr.warning(msg);
+                else if (type === 'error') toastr.error(msg);
+                else toastr.success(msg);
+            } else {
+                alert(msg);
+            }
+        }
 
         // Badge-click filter flags (identical to TikTok pattern)
         let aeMissingActive  = false;
@@ -427,8 +490,8 @@
                 const lp     = parseFloat(rowData.lp)   || 0;
                 const ship   = parseFloat(rowData.ship)  || 0;
                 // Same formulas as GPFT / GROI
-                const sgpft  = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const sroi   = lp > 0        ? Math.round(((newSprice * margin - lp - ship)  / lp)       * 100 * 100) / 100 : 0;
+                const sgpft  = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100) : 0;
+                const sroi   = lp > 0        ? Math.round(((newSprice * margin - lp - ship)  / lp)       * 100) : 0;
 
                 row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
                 updates.push({ sku: sku, sprice: newSprice });
@@ -594,17 +657,12 @@
             let roiSum  = 0, roiCount  = 0;
             let missingCount = 0, mapCount = 0;
             let zeroSold = 0, moreSold = 0;
-            let dilSum = 0, dilCount = 0;
-
-            const childCount = rows.filter(r => !r.is_parent).length;
 
             rows.forEach(row => {
                 if (row.is_parent) return;
                 const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
                 const al30   = parseFloat(row.al30)   || 0;
                 const profit = parseFloat(row.profit) || 0;
-                const inv    = parseFloat(row.inv)    || 0;
-                const ovL30  = parseFloat(row.ov_l30) || 0;
 
                 if (!isMissing) {
                     totalProfit += al30 * profit;
@@ -619,27 +677,23 @@
 
                 totalAl30 += al30;
                 if (al30 === 0) zeroSold++; else moreSold++;
-                if (inv > 0) { dilSum += (ovL30 / inv) * 100; dilCount++; }
                 if (isMissing) missingCount++;
                 if ((row.map || '') === 'Map') mapCount++;
             });
 
             const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
-            const avgDil  = dilCount  > 0 ? dilSum  / dilCount  : 0;
             const avgRoi  = roiCount  > 0 ? roiSum  / roiCount  : 0;
 
-            $('#ae-total-sku-badge').text(`Total SKU: ${childCount.toLocaleString()}`);
-            $('#ae-total-sales-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#ae-total-al30-badge').text(`Total AL30: ${totalAl30.toLocaleString()}`);
-            $('#ae-total-profit-badge').text(`Total Profit: $${Math.round(totalProfit).toLocaleString()}`);
-            $('#ae-avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
-            $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
+            $('#ae-total-sales-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
+            $('#ae-total-al30-badge').text(`AL30: ${totalAl30.toLocaleString()}`);
+            $('#ae-total-profit-badge').text(`Profit: $${Math.round(totalProfit).toLocaleString()}`);
+            $('#ae-avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
+            $('#ae-missing-badge').text(`Missing L: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`>0 Sold: ${moreSold.toLocaleString()}`);
-            $('#ae-avg-dil-badge').text(`DIL%: ${avgDil.toFixed(1)}%`);
             if ($('#ae-avg-roi-badge').length) {
-                $('#ae-avg-roi-badge').text(`AVG ROI: ${avgRoi.toFixed(1)}%`);
+                $('#ae-avg-roi-badge').text(`ROI: ${Math.round(avgRoi)}%`);
             }
         }
 
@@ -799,14 +853,49 @@
                         }
                     },
                     {
-                        title: "Missing",
+                        title: "LMP",
+                        field: "lmp",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const entries = row.lmp_entries || [];
+                            const prices = entries.map(function(e) {
+                                const p = e.price;
+                                return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null;
+                            }).filter(function(p) { return p !== null; });
+                            const lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
+                            const hasLmp = lowest !== null;
+                            const displayNum = hasLmp ? (lowest % 1 === 0 ? lowest.toLocaleString() : lowest.toFixed(2)) : '';
+                            const count = entries.length;
+                            const skuEsc = (row.sku || '').replace(/"/g, '&quot;');
+                            const redDot = '<span class="ae-lmp-missing-dot d-inline-flex align-items-center justify-content-center" style="width:14px;height:14px;border-radius:50%;background:#dc3545;box-shadow:0 0 0 1px rgba(0,0,0,.08);"></span>';
+                            if (hasLmp) {
+                                const title = displayNum + ' (' + count + ' entries) — click to edit';
+                                return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1">' + displayNum + '</span> ' +
+                                    '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn" data-sku="' + skuEsc + '" title="' + title + '"><i class="fas fa-info-circle text-info"></i></button>';
+                            }
+                            return '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn d-inline-flex align-items-center justify-content-center border-0" data-sku="' + skuEsc + '" title="No LMP — click to add" style="min-width:auto;line-height:1;">' + redDot + '</button>';
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.closest('.ae-lmp-eye-btn')) {
+                                e.stopPropagation();
+                                const row = cell.getRow().getData();
+                                aeOpenLmpModal(row.sku, row.lmp_entries || []);
+                            }
+                        }
+                    },
+                    {
+                        title: "Missing L",
                         field: "missing",
                         hozAlign: "center",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
                             const value = (cell.getValue() || '').toString().trim().toUpperCase();
-                            if (value === 'M') return '<span class="badge bg-danger">M</span>';
+                            if (value === 'M') return '<span class="badge bg-danger">L</span>';
                             return '';
                         }
                     },
@@ -836,10 +925,10 @@
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
-                            if (v === 0 && !d.is_parent) return '0.00%';
+                            if (v === 0 && !d.is_parent) return '0%';
                             if (v === 0 &&  d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${v.toFixed(2)}%</span>`;
+                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${Math.round(v)}%</span>`;
                         }
                     },
                     {
@@ -858,7 +947,7 @@
                             else if (v < 125) color = '#3591dc';  // blue   – 75–125%
                             else if (v < 250) color = '#28a745';  // green  – 125–250%
                             else              color = '#e83e8c';  // pink   – > 250%
-                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
+                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
                         }
                     },
                     {
@@ -951,7 +1040,7 @@
                             if (isNaN(v) || v === 0) return '0%';
                             // Same color coding as GPFT
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
+                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
                         }
                     },
                     {
@@ -971,7 +1060,7 @@
                             else if (v < 125) color = '#3591dc';
                             else if (v < 250) color = '#28a745';
                             else              color = '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
+                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
                         }
                     },
                 ],
@@ -1062,8 +1151,8 @@
                 const lp     = parseFloat(d.lp)   || 0;
                 const ship   = parseFloat(d.ship)  || 0;
                 // Same formulas as GPFT / GROI
-                const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100 * 100) / 100 : 0;
-                const sroi  = lp     > 0 ? Math.round(((sprice * margin - lp - ship)  / lp)    * 100 * 100) / 100 : 0;
+                const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100) : 0;
+                const sroi  = lp     > 0 ? Math.round(((sprice * margin - lp - ship)  / lp)    * 100) : 0;
                 cell.getRow().update({ sgpft: sgpft, sroi: sroi });
                 saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
@@ -1095,7 +1184,117 @@
             });
 
             $('#export-pricing-btn').on('click', function() {
-                table.download("csv", "aliexpress_pricing_data.csv");
+                table.download("csv", "aliexpress_analytics_data.csv");
+            });
+
+            function aeOpenLmpModal(sku, entries) {
+                aeLmpModalSku = sku || '';
+                $('#aeLmpModalSku').text(aeLmpModalSku);
+                $('#aeLmpNewPrice').val('');
+                $('#aeLmpNewLink').val('');
+                const tbody = $('#aeLmpEntriesContainer');
+                tbody.empty();
+                const list = Array.isArray(entries) && entries.length > 0 ? entries : [];
+                list.forEach(function(entry) {
+                    aeAppendLmpTableRow(tbody, entry.price !== undefined && entry.price !== null ? entry.price : '', entry.link || '');
+                });
+                aeUpdateLmpLowestHighlight();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('aeLmpModal')).show();
+            }
+            function aeAppendLmpTableRow(tbody, price, link) {
+                const tr = $('<tr class="ae-lmp-entry-row">' +
+                    '<td class="ae-lmp-num text-center align-middle"></td>' +
+                    '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm ae-lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="ae-lmp-lowest-badge"></span></td>' +
+                    '<td class="align-middle"><input type="text" class="form-control form-control-sm ae-lmp-link d-inline-block me-1" style="max-width:220px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary ae-lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
+                    '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger ae-lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
+                tr.find('.ae-lmp-price').val(price !== '' && price != null ? price : '');
+                tr.find('.ae-lmp-link').val(link || '');
+                tbody.append(tr);
+                tr.find('.ae-lmp-remove-row').on('click', function(e) {
+                    e.preventDefault();
+                    tr.remove();
+                    aeRenumberLmpRows();
+                    aeUpdateLmpLowestHighlight();
+                });
+                tr.find('.ae-lmp-price, .ae-lmp-link').on('input', function() { aeUpdateLmpLowestHighlight(); });
+                tr.find('.ae-lmp-open-link').on('click', function(e) {
+                    e.preventDefault();
+                    const href = (tr.find('.ae-lmp-link').val() || '').trim();
+                    if (href && (href.startsWith('http://') || href.startsWith('https://'))) window.open(href, '_blank');
+                });
+                aeRenumberLmpRows();
+            }
+            function aeRenumberLmpRows() {
+                $('#aeLmpEntriesContainer .ae-lmp-entry-row').each(function(i) {
+                    $(this).find('.ae-lmp-num').text(i + 1);
+                });
+            }
+            function aeUpdateLmpLowestHighlight() {
+                let minVal = null;
+                let minTr = null;
+                $('#aeLmpEntriesContainer .ae-lmp-entry-row').each(function() {
+                    const tr = $(this);
+                    tr.removeClass('table-dark');
+                    tr.find('.ae-lmp-lowest-badge').empty();
+                    const val = tr.find('.ae-lmp-price').val();
+                    const num = val !== '' && val != null ? parseFloat(val) : null;
+                    if (num !== null && !isNaN(num)) {
+                        if (minVal === null || num < minVal) { minVal = num; minTr = tr; }
+                    }
+                });
+                if (minTr && minVal !== null) {
+                    minTr.addClass('table-dark');
+                    minTr.find('.ae-lmp-lowest-badge').html(' <span class="badge bg-info">LOWEST</span>');
+                }
+            }
+            $('#aeLmpAddRowBtn').on('click', function() {
+                const price = $('#aeLmpNewPrice').val();
+                const link = $('#aeLmpNewLink').val();
+                if (!price && !link) {
+                    aeNotify('Enter Price or Link', 'warning');
+                    return;
+                }
+                aeAppendLmpTableRow($('#aeLmpEntriesContainer'), price || '', link || '');
+                $('#aeLmpNewPrice').val('');
+                $('#aeLmpNewLink').val('');
+            });
+            $('#aeLmpClearFormBtn').on('click', function() {
+                $('#aeLmpNewPrice').val('');
+                $('#aeLmpNewLink').val('');
+            });
+            $('#aeLmpModalSaveBtn').on('click', function() {
+                const entries = [];
+                $('#aeLmpEntriesContainer .ae-lmp-entry-row').each(function() {
+                    const price = $(this).find('.ae-lmp-price').val();
+                    const link = $(this).find('.ae-lmp-link').val();
+                    if (price || link) entries.push({ price: price ? parseFloat(price) : null, link: link ? link.trim() : null });
+                });
+                if (entries.length === 0) {
+                    aeNotify('Add at least one price or link', 'warning');
+                    return;
+                }
+                $(this).prop('disabled', true);
+                $.ajax({
+                    url: '{{ route("aliexpress.lmp.save") }}',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: aeLmpModalSku,
+                        lmp_entries: entries
+                    },
+                    success: function() {
+                        aeNotify('LMP saved successfully', 'success');
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('aeLmpModal')).hide();
+                        if (table) table.setData('/aliexpress/pricing-data');
+                    },
+                    error: function() {
+                        aeNotify('Failed to save LMP', 'error');
+                    },
+                    complete: function() {
+                        $('#aeLmpModalSaveBtn').prop('disabled', false);
+                    }
+                });
             });
 
             $('#uploadPriceSheetBtn').on('click', function() {
@@ -1145,19 +1344,19 @@
 
             const aeDollarMetrics  = ['total_pft','total_sales','total_cogs'];
             const aeCountMetrics   = ['total_sku','total_al30','missing_count','map_count','zero_sold','more_sold'];
-            const aePercentMetrics = ['avg_gpft','avg_roi','avg_dil'];
+            const aePercentMetrics = ['avg_gpft','avg_roi'];
 
             const aeBadgeLabels = {
-                total_pft: 'Total Profit',   total_sales: 'Total Sales',   total_al30: 'Total AL30',
-                avg_gpft: 'AVG GPFT%',        avg_roi: 'AVG ROI%',          avg_dil: 'DIL%',
-                total_cogs: 'COGS',           missing_count: 'Missing',     map_count: 'Map',
+                total_pft: 'Profit',   total_sales: 'Sales',   total_al30: 'AL30',
+                avg_gpft: 'GPFT%',            avg_roi: 'ROI%',
+                total_cogs: 'COGS',           missing_count: 'Missing L',     map_count: 'Map',
                 total_sku: 'Total SKU',       zero_sold: '0 Sold',          more_sold: '>0 Sold',
             };
 
             function aeFormatChartVal(v) {
                 const n = Number(v) || 0;
                 if (aeDollarMetrics.includes(aeBadgeMetric))  return '$' + Math.round(n).toLocaleString('en-US');
-                if (aePercentMetrics.includes(aeBadgeMetric)) return n.toFixed(1) + '%';
+                if (aePercentMetrics.includes(aeBadgeMetric)) return Math.round(n) + '%';
                 return Math.round(n).toLocaleString('en-US');
             }
 
@@ -1297,7 +1496,7 @@
                 aeBadgeMetric = $(this).data('metric');
                 aeBadgeDays   = 30;
                 $('#aeBadgeChartRange').val('30');
-                $('#aeBadgeChartTitle').text('AliExpress – ' + (aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric) + ' Trend');
+                $('#aeBadgeChartTitle').text('Aliexpress – ' + (aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric) + ' Trend');
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('aeBadgeChartModal')).show();
                 aeLoadChart();
             });
