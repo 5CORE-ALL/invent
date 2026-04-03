@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Wms;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory;
 use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use App\Models\Warehouse;
 use App\Models\Wms\Bin;
 use App\Models\Wms\Rack;
@@ -16,6 +17,7 @@ use App\Services\Wms\StockMovementService;
 use App\Services\Wms\WmsAuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class WmsWebDataController extends Controller
@@ -282,7 +284,7 @@ class WmsWebDataController extends Controller
         ]);
 
         $q = StockMovement::query()
-            ->with(['product', 'fromBin', 'toBin', 'user'])
+            ->with(['product', 'fromBin', 'toBin', 'user', 'inventory.warehouse'])
             ->orderByDesc('id');
 
         if ($request->filled('product_id')) {
@@ -378,6 +380,8 @@ class WmsWebDataController extends Controller
             'type' => ['required', 'string', Rule::in(StockMovement::types())],
             'qty' => ['required', 'integer'],
             'from_bin_id' => ['nullable', 'integer', 'min:1', 'exists:bins,id'],
+            'from_warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+            'source_inventory_id' => ['nullable', 'integer', 'exists:inventories,id'],
             'to_bin_id' => ['nullable', 'integer', 'min:1', 'exists:bins,id'],
             'note' => ['nullable', 'string', 'max:2000'],
             'force_pick_without_lock' => ['sometimes', 'boolean'],
@@ -444,38 +448,72 @@ class WmsWebDataController extends Controller
     {
         $request->validate(['code' => ['required', 'string']]);
         $code = $request->string('code')->trim();
+        Log::info('wms.scan_lookup', ['code' => $code]);
 
-        $product = ProductMaster::query()
-            ->where(function ($q) use ($code) {
-                $q->where('barcode', $code)->orWhere('sku', $code);
-            })
-            ->first();
+        $product = ProductMaster::findByWmsScanCode($code);
 
         if (! $product) {
-            return response()->json(['found' => false], 404);
+            return response()->json([
+                'found' => false,
+                'message' => 'No product found for this code. Check product_master: sku, barcode, upc column, Values (upc/gtin/ean/barcode), and shopify_skus.sku must align with what you scan.',
+                'lookup_code' => $code,
+            ], 404);
         }
 
         $this->auditService->log($request->user(), 'wms.scan', ProductMaster::class, $product->id, ['code' => $code], $request);
 
-        $locations = Inventory::query()
+        $warehouseRows = Inventory::query()
             ->where('sku', $product->sku)
             ->with(['bin', 'warehouse'])
             ->get();
 
+        $shopifyRow = ShopifySku::query()->where('sku', $product->sku)->first();
+
+        // shopify_skus: `inv` = stock on hand; `quantity` = sold (not available inventory).
+        $invVal = $shopifyRow && $shopifyRow->inv !== null && $shopifyRow->inv !== ''
+            ? (int) $shopifyRow->inv
+            : 0;
+        $soldVal = $shopifyRow && $shopifyRow->quantity !== null && $shopifyRow->quantity !== ''
+            ? (int) $shopifyRow->quantity
+            : null;
+
+        $onHand = $invVal;
+        $available = $invVal;
+
+        $lines = [[
+            'inventory_id' => null,
+            'bin_id' => null,
+            'warehouse' => null,
+            'full_path' => $shopifyRow ? 'Shopify (shopify_skus)' : 'Shopify (shopify_skus) — no row',
+            'on_hand' => $onHand,
+            'available' => $available,
+            'sold' => $soldVal,
+            'source' => 'shopify_skus',
+        ]];
+
         return response()->json([
             'found' => true,
+            'lookup_code' => $code,
             'product' => [
                 'id' => $product->id,
                 'sku' => $product->sku,
                 'barcode' => $product->barcode,
                 'title' => $product->title150 ?? $product->sku,
             ],
-            'lines' => $locations->map(function (Inventory $inv) {
+            'shopify' => $shopifyRow ? [
+                'inv' => $invVal,
+                'sold' => $soldVal,
+                'quantity' => $soldVal,
+                'variant_id' => $shopifyRow->variant_id,
+            ] : null,
+            'lines' => $lines,
+            'warehouse_lines' => $warehouseRows->map(function (Inventory $inv) {
                 $bid = $inv->bin_id && (int) $inv->bin_id > 0 ? (int) $inv->bin_id : null;
 
                 return [
                     'inventory_id' => $inv->id,
                     'bin_id' => $bid,
+                    'warehouse_id' => $inv->warehouse_id ? (int) $inv->warehouse_id : null,
                     'warehouse' => $inv->warehouse?->name,
                     'full_path' => $bid ? $inv->bin?->full_location_code : null,
                     'on_hand' => (int) $inv->on_hand,

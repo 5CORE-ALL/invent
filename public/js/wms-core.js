@@ -4,18 +4,36 @@
 (function () {
   window.wmsCsrf = function () {
     var m = document.querySelector('meta[name="csrf-token"]');
-    return m ? m.getAttribute('content') : '';
+    var fromMeta = m ? (m.getAttribute('content') || '') : '';
+    if (typeof fromMeta === 'string') {
+      fromMeta = fromMeta.trim();
+    }
+    if (fromMeta) {
+      return fromMeta;
+    }
+    if (typeof window.__LaravelCsrfToken === 'string' && window.__LaravelCsrfToken.trim()) {
+      return window.__LaravelCsrfToken.trim();
+    }
+    return '';
   };
 
   window.wmsJson = async function (url, options) {
     options = options || {};
+    options.credentials = options.credentials || 'same-origin';
     options.headers = options.headers || {};
+    var token = window.wmsCsrf();
     options.headers['Accept'] = 'application/json';
     options.headers['X-Requested-With'] = 'XMLHttpRequest';
-    options.headers['X-CSRF-TOKEN'] = window.wmsCsrf();
+    if (token) {
+      options.headers['X-CSRF-TOKEN'] = token;
+    }
     if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
       options.headers['Content-Type'] = 'application/json';
-      options.body = JSON.stringify(options.body);
+      var payload = Object.assign({}, options.body);
+      if (token && payload._token === undefined) {
+        payload._token = token;
+      }
+      options.body = JSON.stringify(payload);
     }
     var res = await fetch(url, options);
     var data;

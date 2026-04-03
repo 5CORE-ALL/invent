@@ -442,6 +442,13 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
+                @if (config('app.debug'))
+                // Local dev: SW caches HTML and causes stale CSRF meta → 419 on POST. Disable SW when APP_DEBUG=true.
+                navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                    registrations.forEach(function (r) { r.unregister(); });
+                });
+                return;
+                @endif
                 // Unregister old service workers first
                 navigator.serviceWorker.getRegistrations().then(function(registrations) {
                     for(let registration of registrations) {

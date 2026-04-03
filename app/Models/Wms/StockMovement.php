@@ -2,6 +2,7 @@
 
 namespace App\Models\Wms;
 
+use App\Models\Inventory;
 use App\Models\ProductMaster;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -61,6 +62,12 @@ class StockMovement extends Model
     public function toBin(): BelongsTo
     {
         return $this->belongsTo(Bin::class, 'to_bin_id');
+    }
+
+    /** Row in `inventories` this movement primarily refers to (meaning varies by type). */
+    public function inventory(): BelongsTo
+    {
+        return $this->belongsTo(Inventory::class, 'inventory_id');
     }
 
     public function user(): BelongsTo
