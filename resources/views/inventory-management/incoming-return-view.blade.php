@@ -11,7 +11,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
     <style>
         /* Your existing styles */
@@ -212,7 +212,10 @@
             min-height: 280px;
         }
 
-        #barcode-reader video {
+        #barcode-reader video,
+        #barcode-reader canvas {
+            max-width: 100% !important;
+            height: auto !important;
             border-radius: 8px;
         }
 
@@ -1108,6 +1111,20 @@
                 let incomingPhoto2Files = [];
                 let incomingPhoto3Files = [];
                 let html5QrCodeInstance = null;
+                /** Avoid double-firing decode before stop() / modal close */
+                let incomingBarcodeDecodeHandled = false;
+                let incomingBarcodeLastAt = 0;
+
+                function incomingReturnBarcodeFormats() {
+                    if (typeof Html5QrcodeSupportedFormats === 'undefined') {
+                        return null;
+                    }
+                    return [
+                        Html5QrcodeSupportedFormats.EAN_13,
+                        Html5QrcodeSupportedFormats.EAN_8,
+                        Html5QrcodeSupportedFormats.CODE_128,
+                    ];
+                }
 
                 function updateOfflineBanner() {
                     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -1347,6 +1364,7 @@
 
                 $('#barcodeScannerModal').on('hidden.bs.modal', function () {
                     stopBarcodeScanner();
+                    incomingBarcodeDecodeHandled = false;
                     $('#barcode-scan-status').text('');
                 });
 
@@ -1356,32 +1374,79 @@
                         return;
                     }
                     $('#incoming-errors').html('');
+                    incomingBarcodeDecodeHandled = false;
                     $('#barcode-scan-status').text('Starting camera… (Iniciando cámara…)');
                     const modalEl = document.getElementById('barcodeScannerModal');
                     const bsScanModal = bootstrap.Modal.getOrCreateInstance(modalEl);
                     $(modalEl).one('shown.bs.modal', function () {
                         const regionId = 'barcode-reader';
                         html5QrCodeInstance = new Html5Qrcode(regionId);
-                        const config = { fps: 10, qrbox: function (vw, vh) {
-                            const w = Math.min(280, vw * 0.9);
-                            const h = Math.min(160, vh * 0.35);
-                            return { width: w, height: h };
-                        }};
+                        const formats = incomingReturnBarcodeFormats();
+                        const config = {
+                            fps: 10,
+                            qrbox: function (viewfinderWidth, viewfinderHeight) {
+                                const w = Math.min(320, Math.floor(viewfinderWidth * 0.92));
+                                const h = Math.min(200, Math.floor(viewfinderHeight * 0.38));
+                                return { width: w, height: h };
+                            },
+                        };
+                        if (formats) {
+                            config.formatsToSupport = formats;
+                        }
                         html5QrCodeInstance.start(
                             { facingMode: 'environment' },
                             config,
-                            function (decodedText) {
-                                const text = (decodedText || '').trim();
-                                if (!text) return;
-                                $('#sku').val(text);
-                                hideSkuSuggestions();
-                                fetchLookupForSku(text);
-                                bsScanModal.hide();
+                            function (decodedText /* , decodedResult */) {
+                                const text = String(decodedText || '').trim();
+                                if (!text) {
+                                    return;
+                                }
+                                const now = Date.now();
+                                if (now - incomingBarcodeLastAt < 400) {
+                                    return;
+                                }
+                                if (incomingBarcodeDecodeHandled) {
+                                    return;
+                                }
+                                incomingBarcodeDecodeHandled = true;
+                                incomingBarcodeLastAt = now;
+
+                                function applyScanAndClose() {
+                                    $('#sku').val(text);
+                                    hideSkuSuggestions();
+                                    fetchLookupForSku(text);
+                                    bsScanModal.hide();
+                                }
+
+                                const inst = html5QrCodeInstance;
+                                if (inst) {
+                                    inst.stop()
+                                        .then(function () {
+                                            try {
+                                                inst.clear();
+                                            } catch (e) { /* ignore */ }
+                                            html5QrCodeInstance = null;
+                                            applyScanAndClose();
+                                        })
+                                        .catch(function () {
+                                            try {
+                                                inst.clear();
+                                            } catch (e) { /* ignore */ }
+                                            html5QrCodeInstance = null;
+                                            applyScanAndClose();
+                                        });
+                                } else {
+                                    applyScanAndClose();
+                                }
                             },
-                            function () { /* frame — ignore */ }
+                            function () { /* per frame — no OCR */ }
                         ).then(function () {
-                            $('#barcode-scan-status').text('Point the camera at a barcode. (Apunte la cámara al código de barras.)');
+                            $('#barcode-scan-status').text(
+                                'Point the camera at the bars (EAN-13, EAN-8, or Code 128). Human-readable text under the barcode is ignored. ' +
+                                '(Apunte a las barras; el texto impreso debajo se ignora.)'
+                            );
                         }).catch(function (err) {
+                            incomingBarcodeDecodeHandled = false;
                             $('#barcode-scan-status').text(
                                 'Camera unavailable (' + (err && err.message ? err.message : 'permission or HTTPS') + '). Type the SKU or allow camera access. (Cámara no disponible. Escriba el SKU o permita el acceso a la cámara.)'
                             );
