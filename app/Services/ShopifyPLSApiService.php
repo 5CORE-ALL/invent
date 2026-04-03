@@ -57,7 +57,7 @@ class ShopifyPLSApiService
                 $variantResponse = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
-                    ])->timeout(30)->get($variantUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($variantUrl);
                 });
 
                 if ($variantResponse->successful()) {
@@ -98,7 +98,7 @@ class ShopifyPLSApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -162,7 +162,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->post($graphqlUrl, $payload);
+                    ])->timeout(60)->connectTimeout(25)->post($graphqlUrl, $payload);
                 });
 
                 if (! $response->successful()) {
@@ -247,7 +247,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->get($variantUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($variantUrl);
                 });
                 $hadHttp = true;
 
@@ -265,7 +265,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->get($probeUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($probeUrl);
                 });
                 $hadHttp = true;
                 if ($productProbe->successful() && $productProbe->json('product.id')) {
@@ -303,7 +303,7 @@ class ShopifyPLSApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -369,7 +369,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->get($variantUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($variantUrl);
                 });
                 $hadHttp = true;
 
@@ -387,7 +387,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->get($probeUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($probeUrl);
                 });
                 $hadHttp = true;
                 if ($productProbe->successful() && $productProbe->json('product.id')) {
@@ -420,7 +420,7 @@ class ShopifyPLSApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->get($productUrl);
+                ])->timeout(60)->connectTimeout(25)->get($productUrl);
             });
 
             if (! $getProduct->successful()) {
@@ -452,7 +452,7 @@ class ShopifyPLSApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -515,7 +515,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->get($variantUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($variantUrl);
                 });
                 $hadHttp = true;
 
@@ -533,7 +533,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->get($probeUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($probeUrl);
                 });
                 $hadHttp = true;
                 if ($productProbe->successful() && $productProbe->json('product.id')) {
@@ -571,7 +571,7 @@ class ShopifyPLSApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -634,7 +634,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->get($variantUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($variantUrl);
                 });
                 $hadHttp = true;
 
@@ -652,7 +652,7 @@ class ShopifyPLSApiService
                     return Http::withHeaders([
                         'X-Shopify-Access-Token' => $token,
                         'Content-Type' => 'application/json',
-                    ])->timeout(30)->get($probeUrl);
+                    ])->timeout(60)->connectTimeout(25)->get($probeUrl);
                 });
                 $hadHttp = true;
                 if ($productProbe->successful() && $productProbe->json('product.id')) {
@@ -808,7 +808,7 @@ class ShopifyPLSApiService
             return Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
                 'Content-Type' => 'application/json',
-            ])->timeout(30)->get($productUrl);
+            ])->timeout(60)->connectTimeout(25)->get($productUrl);
         });
 
         if (! $getProduct->successful()) {

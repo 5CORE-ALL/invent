@@ -70,7 +70,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->get($variantUrl);
+                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
             });
 
             if (! $variantRes->successful()) {
@@ -96,7 +96,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -238,7 +238,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->get($variantUrl);
+                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
             });
 
             if (! $variantRes->successful()) {
@@ -274,7 +274,7 @@ class ShopifyApiService
                 'product_id' => $productId,
             ]);
 
-            usleep(500000);
+            usleep(1_000_000);
 
             $title = $this->getProductTitle($domain, $token, $productId);
             if ($title === '') {
@@ -294,7 +294,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -323,7 +323,7 @@ class ShopifyApiService
                         return Http::withHeaders([
                             'X-Shopify-Access-Token' => $token,
                             'Content-Type' => 'application/json',
-                        ])->timeout(30)->get($productUrl);
+                        ])->timeout(60)->connectTimeout(25)->get($productUrl);
                     });
                     if (! $verifyRes->successful()) {
                         Log::warning('Shopify updateBulletPoints verify fetch failed', [
@@ -433,7 +433,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->get($variantUrl);
+                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
             });
 
             if (! $variantRes->successful()) {
@@ -449,14 +449,14 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Product ID missing.'];
             }
 
-            usleep(500000);
+            usleep(1_000_000);
 
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
             $getProduct = $this->retryOnRateLimit(function () use ($token, $productUrl) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->get($productUrl);
+                ])->timeout(60)->connectTimeout(25)->get($productUrl);
             });
 
             if (! $getProduct->successful()) {
@@ -488,7 +488,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -544,7 +544,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->get($variantUrl);
+                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
             });
 
             if (! $variantRes->successful()) {
@@ -560,7 +560,7 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Product ID missing.'];
             }
 
-            usleep(500000);
+            usleep(1_000_000);
 
             $title = $this->getProductTitle($domain, $token, $productId);
             if ($title === '') {
@@ -572,7 +572,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -630,7 +630,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30)->get($variantUrl);
+                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
             });
 
             if (! $variantRes->successful()) {
@@ -657,7 +657,7 @@ class ShopifyApiService
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(90)->put($productUrl, [
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
                     'product' => [
                         'id' => $productId,
                         'title' => $title,
@@ -777,7 +777,7 @@ class ShopifyApiService
             return Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
                 'Content-Type' => 'application/json',
-            ])->timeout(30)->get($productUrl);
+            ])->timeout(60)->connectTimeout(25)->get($productUrl);
         });
 
         if (! $getProduct->successful()) {
