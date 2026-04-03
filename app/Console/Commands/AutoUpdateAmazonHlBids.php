@@ -72,14 +72,16 @@ class AutoUpdateAmazonHlBids extends Command
                         $l1_spend = floatval($campaign->l1_spend ?? 0);
                         $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                         $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
-                        $pinkPink = ($ub7 > 99 && $ub1 > 99);
+                        $overUtilized = $ub1 > 70;
+                        $underUtilized = $ub1 < 50;
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
                             'bid' => $sbid,
                             'ub7' => round($ub7, 2),
                             'ub1' => round($ub1, 2),
-                            'pink_pink' => $pinkPink,
+                            'over_utilized' => $overUtilized,
+                            'under_utilized' => $underUtilized,
                             'inv' => (int)($campaign->INV ?? 0)
                         ];
                     } else {
@@ -118,7 +120,7 @@ class AutoUpdateAmazonHlBids extends Command
                 $this->info("  - Campaign ID: {$campaignId}");
                 $this->info("  - Bid: {$details['bid']}");
                 $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
-                $this->info("  - Pink+Pink (Over): " . (!empty($details['pink_pink']) ? 'Yes' : 'No'));
+                $this->info("  - Over (1UB>70%): " . (!empty($details['over_utilized']) ? 'Yes' : 'No') . " | Under (1UB<50%): " . (!empty($details['under_utilized']) ? 'Yes' : 'No'));
                 $this->info("  - INV: " . ($details['inv'] ?? 0));
                 $this->info("---");
             }
@@ -422,6 +424,17 @@ class AutoUpdateAmazonHlBids extends Command
                 AmazonBidUtilizationService::logBidDecision(
                     (string) $row['campaign_id'],
                     'hl_over',
+                    $ub1,
+                    $baseBid,
+                    (float) $row['sbid'],
+                    $ubSource
+                );
+            } elseif ($ub1 < 50) {
+                // Under-utilized HL: increase when 1-day utilization < 50%
+                $row['sbid'] = round($baseBid * 1.10, 2);
+                AmazonBidUtilizationService::logBidDecision(
+                    (string) $row['campaign_id'],
+                    'hl_under',
                     $ub1,
                     $baseBid,
                     (float) $row['sbid'],
