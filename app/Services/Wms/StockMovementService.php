@@ -53,6 +53,49 @@ class StockMovementService
     }
 
     /**
+     * Lock `inventories` rows with no assigned bin.
+     * Use $sourceInventoryId when several no-bin rows exist (exact row from Scan list).
+     */
+    private function lockNoBinInventory(ProductMaster $product, ?int $warehouseId, ?int $sourceInventoryId = null): Inventory
+    {
+        if ($sourceInventoryId !== null && $sourceInventoryId > 0) {
+            $inv = Inventory::query()
+                ->whereKey($sourceInventoryId)
+                ->where('sku', $product->sku)
+                ->whereNull('bin_id')
+                ->lockForUpdate()
+                ->first();
+            if (! $inv) {
+                throw new RuntimeException('source_inventory_id must be a no-bin `inventories` row for this product.');
+            }
+            if ($warehouseId !== null && $warehouseId > 0 && (int) $inv->warehouse_id !== (int) $warehouseId) {
+                throw new RuntimeException('That inventory row is not in the warehouse you indicated (from_warehouse_id).');
+            }
+
+            return $inv;
+        }
+
+        $q = Inventory::query()
+            ->where('sku', $product->sku)
+            ->whereNull('bin_id')
+            ->lockForUpdate();
+        if ($warehouseId !== null && $warehouseId > 0) {
+            $q->where('warehouse_id', $warehouseId);
+        }
+        $rows = $q->get();
+        if ($rows->isEmpty()) {
+            throw new RuntimeException($warehouseId
+                ? 'No unassigned (no-bin) stock for this SKU in that warehouse.'
+                : 'No unassigned (no-bin) stock for this SKU.');
+        }
+        if ($rows->count() > 1) {
+            throw new RuntimeException('Multiple no-bin rows — tap "Use this row" on the WMS list (or send source_inventory_id = inv row #).');
+        }
+
+        return $rows->first();
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     public function move(array $payload, User $user): StockMovement
@@ -83,6 +126,12 @@ class StockMovementService
 
             $fromBinId = $this->positiveBinId($payload, 'from_bin_id');
             $toBinId = $this->positiveBinId($payload, 'to_bin_id');
+            $fromWarehouseId = isset($payload['from_warehouse_id']) && (int) $payload['from_warehouse_id'] > 0
+                ? (int) $payload['from_warehouse_id']
+                : null;
+            $sourceInventoryId = isset($payload['source_inventory_id']) && (int) $payload['source_inventory_id'] > 0
+                ? (int) $payload['source_inventory_id']
+                : null;
 
             return match ($type) {
                 StockMovement::TYPE_GRN => $this->handleGrn($product, $qty, $toBinId, $user, $note),
@@ -92,7 +141,9 @@ class StockMovementService
                     $fromBinId,
                     $toBinId,
                     $user,
-                    $note
+                    $note,
+                    $fromWarehouseId,
+                    $sourceInventoryId
                 ),
                 StockMovement::TYPE_PICK => $this->handlePick(
                     $product,
@@ -102,7 +153,9 @@ class StockMovementService
                     $user,
                     $note,
                     $force,
-                    StockMovement::TYPE_PICK
+                    StockMovement::TYPE_PICK,
+                    $fromWarehouseId,
+                    $sourceInventoryId
                 ),
                 StockMovement::TYPE_PACK => $this->handlePack(
                     $product,
@@ -120,7 +173,9 @@ class StockMovementService
                     $user,
                     $note,
                     true,
-                    StockMovement::TYPE_DISPATCH
+                    StockMovement::TYPE_DISPATCH,
+                    $fromWarehouseId,
+                    $sourceInventoryId
                 ),
                 default => throw new InvalidArgumentException('Unsupported movement type: '.$type),
             };
@@ -205,7 +260,7 @@ class StockMovementService
         return $movement;
     }
 
-    private function handlePutaway(ProductMaster $product, int $qty, ?int $fromBinId, ?int $toBinId, User $user, ?string $note): StockMovement
+    private function handlePutaway(ProductMaster $product, int $qty, ?int $fromBinId, ?int $toBinId, User $user, ?string $note, ?int $fromWarehouseId = null, ?int $sourceInventoryId = null): StockMovement
     {
         if (! $toBinId) {
             throw new InvalidArgumentException('Putaway requires a valid to_bin_id.');
@@ -217,9 +272,22 @@ class StockMovementService
             throw new RuntimeException('Could not resolve warehouse for destination bin.');
         }
 
-        $fromInv = $this->inventories->findLocked($product->sku, $warehouseId, $fromBinId);
-        if (! $fromInv) {
-            throw new RuntimeException('Source inventory row not found for this SKU and warehouse.');
+        if ($fromBinId) {
+            $fromBin = Bin::query()->with('shelf.rack.zone')->findOrFail($fromBinId);
+            $whFrom = $this->bins->warehouseIdForBin($fromBin);
+            if ($whFrom !== $warehouseId) {
+                throw new RuntimeException('Putaway source bin must be in the same warehouse as destination.');
+            }
+            $fromInv = $this->inventories->findLocked($product->sku, $warehouseId, $fromBinId);
+            if (! $fromInv) {
+                throw new RuntimeException('Source inventory row not found: no `inventories` row for this SKU in that warehouse and from-bin (use WMS list on Scan page, or GRN first).');
+            }
+        } else {
+            $whScope = $fromWarehouseId ?: $warehouseId;
+            $fromInv = $this->lockNoBinInventory($product, $whScope, $sourceInventoryId);
+            if ((int) $fromInv->warehouse_id !== (int) $warehouseId) {
+                throw new RuntimeException('Putaway: unassigned stock must be in the same warehouse as the destination bin.');
+            }
         }
         $available = (int) $fromInv->on_hand - (int) $fromInv->pick_locked_qty;
         if ($available < $qty) {
@@ -238,7 +306,7 @@ class StockMovementService
         $this->syncAvailableQty($toInv);
         $toInv->save();
 
-        $movement = $this->recordMovement($product, $fromBinId, $toBinId, $qty, StockMovement::TYPE_PUTAWAY, $user, (int) $toInv->id, $note);
+        $movement = $this->recordMovement($product, $fromBinId ?: null, $toBinId, $qty, StockMovement::TYPE_PUTAWAY, $user, (int) $toInv->id, $note);
         $this->audit->log($user, 'stock.putaway', StockMovement::class, (int) $movement->id, ['qty' => $qty]);
 
         return $movement;
@@ -252,23 +320,27 @@ class StockMovementService
         User $user,
         ?string $note,
         bool $forceWithoutLock,
-        string $recordType = StockMovement::TYPE_PICK
+        string $recordType = StockMovement::TYPE_PICK,
+        ?int $fromWarehouseId = null,
+        ?int $sourceInventoryId = null,
     ): StockMovement {
-        if (! $fromBinId) {
-            throw new InvalidArgumentException($recordType === StockMovement::TYPE_DISPATCH
-                ? 'Dispatch requires a valid from_bin_id.'
-                : 'Pick requires a valid from_bin_id.');
-        }
+        $warehouseId = null;
+        $fromInv = null;
+        $recordFromBinId = ($fromBinId !== null && $fromBinId > 0) ? $fromBinId : null;
 
-        $fromBin = Bin::query()->with('shelf.rack.zone')->findOrFail($fromBinId);
-        $warehouseId = $this->bins->warehouseIdForBin($fromBin);
-        if (! $warehouseId) {
-            throw new RuntimeException('Could not resolve warehouse for source bin.');
-        }
-
-        $fromInv = $this->inventories->findLocked($product->sku, $warehouseId, $fromBinId);
-        if (! $fromInv) {
-            throw new RuntimeException('Source inventory row not found.');
+        if ($recordFromBinId !== null) {
+            $fromBin = Bin::query()->with('shelf.rack.zone')->findOrFail($recordFromBinId);
+            $warehouseId = $this->bins->warehouseIdForBin($fromBin);
+            if (! $warehouseId) {
+                throw new RuntimeException('Could not resolve warehouse for source bin.');
+            }
+            $fromInv = $this->inventories->findLocked($product->sku, $warehouseId, $recordFromBinId);
+            if (! $fromInv) {
+                throw new RuntimeException('Source inventory row not found: no `inventories` row for this SKU + from bin (see WMS warehouse list on Scan).');
+            }
+        } else {
+            $fromInv = $this->lockNoBinInventory($product, $fromWarehouseId, $sourceInventoryId);
+            $warehouseId = (int) $fromInv->warehouse_id;
         }
 
         if ($forceWithoutLock || WmsAuthorization::canPickWithoutLock($user)) {
@@ -308,7 +380,7 @@ class StockMovementService
             $destInvId = (int) $toInv->id;
         }
 
-        $movement = $this->recordMovement($product, $fromBinId, $toBinId, $qty, $recordType, $user, $destInvId, $note);
+        $movement = $this->recordMovement($product, $recordFromBinId, $toBinId, $qty, $recordType, $user, $destInvId, $note);
         $this->audit->log(
             $user,
             $recordType === StockMovement::TYPE_DISPATCH ? 'stock.dispatch' : 'stock.pick',
@@ -334,7 +406,7 @@ class StockMovementService
 
         $fromInv = $this->inventories->findLocked($product->sku, $warehouseId, $fromBinId);
         if (! $fromInv) {
-            throw new RuntimeException('Source inventory row not found.');
+            throw new RuntimeException('Source inventory row not found: no `inventories` row for this SKU + from bin (see WMS warehouse list on Scan).');
         }
         $available = (int) $fromInv->on_hand - (int) $fromInv->pick_locked_qty;
         if ($available < $qty) {

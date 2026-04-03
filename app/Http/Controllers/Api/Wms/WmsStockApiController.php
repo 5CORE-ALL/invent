@@ -22,6 +22,8 @@ class WmsStockApiController extends Controller
             'type' => ['required', 'string', Rule::in(StockMovement::types())],
             'qty' => ['required', 'integer'],
             'from_bin_id' => ['nullable', 'integer', 'min:1', 'exists:bins,id'],
+            'from_warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+            'source_inventory_id' => ['nullable', 'integer', 'exists:inventories,id'],
             'to_bin_id' => ['nullable', 'integer', 'min:1', 'exists:bins,id'],
             'note' => ['nullable', 'string', 'max:2000'],
             'force_pick_without_lock' => ['sometimes', 'boolean'],

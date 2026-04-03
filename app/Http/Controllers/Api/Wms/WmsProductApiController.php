@@ -45,11 +45,7 @@ class WmsProductApiController extends Controller
 
     public function showByBarcode(string $barcode): JsonResponse
     {
-        $product = ProductMaster::query()
-            ->where(function ($q) use ($barcode) {
-                $q->where('barcode', $barcode)->orWhere('sku', $barcode);
-            })
-            ->first();
+        $product = ProductMaster::findByWmsScanCode($barcode);
 
         if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);

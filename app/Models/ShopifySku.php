@@ -17,8 +17,8 @@ class ShopifySku extends Model
         'product_title',
         'variant_title',
         'product_link',
-        'inv',
-        'quantity',
+        'inv', // stock on hand in this app
+        'quantity', // sold units (not available inventory)
         'price',
         'b2b_price',
         'b2c_price',

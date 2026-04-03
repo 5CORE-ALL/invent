@@ -1,78 +1,93 @@
-const CACHE_NAME = 'invent-v3';
+/**
+ * PWA offline shell — must NOT cache HTML pages: Laravel embeds a fresh CSRF token
+ * in each response; serving cached HTML causes "CSRF token mismatch" on every POST.
+ */
+const CACHE_NAME = 'invent-v4-static';
+
 const urlsToCache = [
-  '/',
-  '/wms',
-  '/wms/scan',
-  '/wms/pick',
-  '/wms/putaway',
-  '/js/wms-core.js'
+  '/js/wms-core.js',
 ];
 
-// Install service worker with error handling
-self.addEventListener('install', function(event) {
-  console.log('Service Worker installing...');
+self.addEventListener('install', function (event) {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(function(cache) {
-        console.log('Opened cache');
-        // Cache URLs one by one with error handling
+    caches
+      .open(CACHE_NAME)
+      .then(function (cache) {
         return Promise.allSettled(
-          urlsToCache.map(url => 
-            cache.add(url).catch(err => {
-              console.warn('Failed to cache:', url, err);
+          urlsToCache.map(function (url) {
+            return cache.add(url).catch(function (err) {
+              console.warn('SW: failed to cache', url, err);
               return Promise.resolve();
-            })
-          )
+            });
+          })
         );
       })
-      .then(() => {
-        console.log('Service Worker installed successfully');
-        self.skipWaiting(); // Activate immediately
-      })
-      .catch(err => {
-        console.error('Service Worker installation failed:', err);
+      .then(function () {
+        return self.skipWaiting();
       })
   );
 });
 
-// Cache and return requests
-self.addEventListener('fetch', function(event) {
+self.addEventListener('fetch', function (event) {
   const url = new URL(event.request.url);
 
-  // Never intercept: AJAX/API calls, non-GET requests, or cross-origin requests
-  if (event.request.method !== 'GET') return;
-  if (url.origin !== location.origin) return;
-  // Skip data endpoints and any XHR/fetch calls (identified by header or path patterns)
-  const skipPaths = ['/forecast-analysis-data-view', '/update-forecast-data', '/mfrg-progresses', '/ready-to-ship', '/api/', '/sanctum/'];
-  if (skipPaths.some(p => url.pathname.startsWith(p))) return;
-  // Skip if it's an AJAX request
-  if (event.request.headers.get('X-Requested-With') === 'XMLHttpRequest') return;
-  if (event.request.headers.get('Accept')?.includes('application/json')) return;
+  if (event.request.method !== 'GET') {
+    return;
+  }
+  if (url.origin !== location.origin) {
+    return;
+  }
+
+  // Never intercept document navigations — always load fresh HTML + CSRF meta.
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    return;
+  }
+
+  const accept = event.request.headers.get('Accept') || '';
+  if (accept.includes('text/html')) {
+    return;
+  }
+
+  const skipPaths = [
+    '/forecast-analysis-data-view',
+    '/update-forecast-data',
+    '/mfrg-progresses',
+    '/ready-to-ship',
+    '/api/',
+    '/sanctum/',
+  ];
+  if (skipPaths.some(function (p) {
+    return url.pathname.startsWith(p);
+  })) {
+    return;
+  }
+
+  if (event.request.headers.get('X-Requested-With') === 'XMLHttpRequest') {
+    return;
+  }
+  if (accept.includes('application/json')) {
+    return;
+  }
 
   event.respondWith(
-    caches.match(event.request)
-      .then(function(response) {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      })
+    caches.match(event.request).then(function (response) {
+      return response || fetch(event.request);
+    })
   );
 });
 
-// Update service worker
-self.addEventListener('activate', function(event) {
-  console.log('Service Worker activating...');
-  const cacheWhitelist = [CACHE_NAME];
+self.addEventListener('activate', function (event) {
   event.waitUntil(
-    caches.keys().then(function(cacheNames) {
+    caches.keys().then(function (cacheNames) {
       return Promise.all(
-        cacheNames.map(function(cacheName) {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
+        cacheNames.map(function (cacheName) {
+          if (cacheName !== CACHE_NAME) {
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(function () {
+      return self.clients.claim();
     })
   );
 });
