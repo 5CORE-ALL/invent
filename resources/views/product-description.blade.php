@@ -1040,14 +1040,38 @@ document.addEventListener('DOMContentLoaded', () => {
             updates.push({ marketplace: mp, description: chunk, image_urls: Array.isArray(imageUrls) ? imageUrls : [] });
         }
         setButtonLoading('modalPushBtn', true, 'Pushing...');
-        pushPayload(sku, updates, (ok) => { if (ok && editModal) editModal.hide(); setButtonLoading('modalPushBtn', false); }, true);
+        pushPayload(sku, updates, (ok) => { if (ok && editModal) editModal.hide(); }, true, 'modalPushBtn');
     });
 
-    function pushPayload(sku, updates, done, doneOnlyOnSuccess) {
+    /** Appends per-marketplace attempt details when the server used automatic retries. */
+    function summarizeMarketplacePushRetries(results) {
+        if (!results || typeof results !== 'object') return '';
+        const parts = [];
+        Object.keys(results).forEach((mp) => {
+            const r = results[mp];
+            if (!r || typeof r !== 'object') return;
+            const label = LABELS[mp] || mp;
+            const att = r.attempts != null ? r.attempts : 1;
+            if (r.success && r.retried) parts.push(`${label}: ok after ${att} attempts`);
+            else if (!r.success && att > 1) parts.push(`${label}: failed after ${att} attempts`);
+        });
+        return parts.length ? parts.join(' · ') : '';
+    }
+
+    /**
+     * @param {string|null} loadingBtnId — optional main push button id: disabled for whole request; shows "Retrying..." after 2s while waiting (server may retry).
+     */
+    function pushPayload(sku, updates, done, doneOnlyOnSuccess, loadingBtnId) {
         const updateMps = Array.isArray(updates) ? updates.map((u) => u.marketplace) : [];
         if (!confirmEbay3Push(updateMps)) {
             if (typeof done === 'function') done(false);
             return;
+        }
+        let retryLabelTimer;
+        if (loadingBtnId) {
+            retryLabelTimer = setTimeout(() => {
+                setButtonLoading(loadingBtnId, true, 'Retrying...');
+            }, 2000);
         }
         fetch('/product-description/update', {
             method: 'POST',
@@ -1056,8 +1080,9 @@ document.addEventListener('DOMContentLoaded', () => {
         })
             .then((r) => r.json())
             .then((res) => {
+                const detail = summarizeMarketplacePushRetries(res.results);
                 if (res.success) {
-                    toast(res.message || 'Pushed');
+                    toast((res.message || 'Pushed') + (detail ? ' — ' + detail : ''));
                     updates.forEach((u) => {
                         const row = bySku.get(String(sku));
                         if (row) {
@@ -1066,13 +1091,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
                     if (typeof done === 'function') done(true);
-                } else toast(res.message || 'Push failed', false);
+                } else {
+                    const failMsg = (res.message || 'Push failed') + (detail ? ' — ' + detail : '');
+                    toast(failMsg, false);
+                    if (typeof done === 'function') done(false);
+                }
                 loadData(currentPage);
-                if (!res.success && typeof done === 'function') done(false);
             })
             .catch((e) => {
                 toast('Push failed: ' + e.message, false);
                 if (typeof done === 'function') done(false);
+            })
+            .finally(() => {
+                if (retryLabelTimer) clearTimeout(retryLabelTimer);
+                if (loadingBtnId) setButtonLoading(loadingBtnId, false);
             });
     }
 
@@ -1097,10 +1129,31 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!byS[p.sku]) byS[p.sku] = [];
             byS[p.sku].push({ marketplace: p.mp, description: p.description });
         });
-        for (const sku of Object.keys(byS)) {
-            await new Promise((resolve) => pushPayload(sku, byS[sku], resolve));
+        const bulkBtn = document.getElementById('pushSelectedBtn');
+        const bulkAllBtn = document.getElementById('pushAllBtn');
+        const prevHtml = bulkBtn ? bulkBtn.innerHTML : '';
+        let retryLabelTimer;
+        if (bulkBtn) {
+            bulkBtn.disabled = true;
+            bulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing...';
+            if (bulkAllBtn) bulkAllBtn.disabled = true;
+            retryLabelTimer = setTimeout(() => {
+                if (bulkBtn && bulkBtn.disabled) bulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Retrying...';
+            }, 2000);
         }
-        toast('Bulk push finished');
+        try {
+            for (const sku of Object.keys(byS)) {
+                await new Promise((resolve) => pushPayload(sku, byS[sku], resolve));
+            }
+            toast('Bulk push finished');
+        } finally {
+            if (retryLabelTimer) clearTimeout(retryLabelTimer);
+            if (bulkBtn) {
+                bulkBtn.disabled = false;
+                bulkBtn.innerHTML = prevHtml;
+            }
+            if (bulkAllBtn) bulkAllBtn.disabled = false;
+        }
     });
 
     document.getElementById('pushAllBtn')?.addEventListener('click', () => {
@@ -1117,9 +1170,31 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
         if (!tasks.length) { toast('No tier descriptions to push on this page.', false); return; }
+        const bulkBtn = document.getElementById('pushAllBtn');
+        const selBtn = document.getElementById('pushSelectedBtn');
+        const prevHtml = bulkBtn ? bulkBtn.innerHTML : '';
+        let retryLabelTimer;
+        if (bulkBtn) {
+            bulkBtn.disabled = true;
+            bulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing...';
+            if (selBtn) selBtn.disabled = true;
+            retryLabelTimer = setTimeout(() => {
+                if (bulkBtn && bulkBtn.disabled) bulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Retrying...';
+            }, 2000);
+        }
         let i = 0;
         function next() {
-            if (i >= tasks.length) { toast('Push ALL complete'); loadData(currentPage); return; }
+            if (i >= tasks.length) {
+                if (retryLabelTimer) clearTimeout(retryLabelTimer);
+                if (bulkBtn) {
+                    bulkBtn.disabled = false;
+                    bulkBtn.innerHTML = prevHtml;
+                }
+                if (selBtn) selBtn.disabled = false;
+                toast('Push ALL complete');
+                loadData(currentPage);
+                return;
+            }
             const { sku, mp, description } = tasks[i++];
             pushPayload(sku, [{ marketplace: mp, description }], next);
         }

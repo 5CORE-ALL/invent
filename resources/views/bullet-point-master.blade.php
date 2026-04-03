@@ -269,6 +269,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return window.confirm(EBAY3_WARNING);
     }
 
+    function summarizeMarketplacePushRetries(results) {
+        if (!results || typeof results !== 'object') return '';
+        const parts = [];
+        Object.keys(results).forEach((mp) => {
+            const r = results[mp];
+            if (!r || typeof r !== 'object') return;
+            const label = LABELS[mp] || mp;
+            const att = r.attempts != null ? r.attempts : 1;
+            if (r.success && r.retried) parts.push(`${label}: ok after ${att} attempts`);
+            else if (!r.success && att > 1) parts.push(`${label}: failed after ${att} attempts`);
+        });
+        return parts.length ? parts.join(' · ') : '';
+    }
+
     function loadData() {
         document.getElementById('rainbow-loader').style.display = 'block';
         fetch('/bullet-point-master-combined-data')
@@ -352,7 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.view-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.bp-mp-stack[data-push-mp]').forEach(b => b.addEventListener('click', () => {
-            pushSingleMarketplace(b.dataset.sku, b.dataset.pushMp);
+            pushSingleMarketplace(b.dataset.sku, b.dataset.pushMp, b);
         }));
     }
 
@@ -546,13 +560,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return splitBulletsForModal((row.default_bullets || '').trim() !== '' ? row.default_bullets : [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5].filter(Boolean).join('\n')).map(s => s.trim());
     }
 
-    function pushSingleMarketplace(sku, mp) {
+    function pushSingleMarketplace(sku, mp, stackEl) {
         const row = bySku.get(String(sku));
         if (!row) return;
         if (!confirmEbay3Push([mp])) return;
         const lines = getBulletLinesForPush(sku, row);
         const combined = bulletLinesToPayload(lines);
         const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined }] };
+        let retryLabelTimer;
+        let origStackHtml;
+        if (stackEl) {
+            origStackHtml = stackEl.innerHTML;
+            stackEl.disabled = true;
+            retryLabelTimer = setTimeout(() => {
+                if (stackEl.disabled) stackEl.innerHTML = '<span class="small text-nowrap">Retrying...</span>';
+            }, 2000);
+        }
         fetch('/bullet-point-master/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
@@ -560,16 +583,24 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(r => r.json())
         .then(res => {
+            const detail = summarizeMarketplacePushRetries(res.results);
             const rmp = res.results && (res.results[mp] || res.results[String(mp).toLowerCase()]);
             if (res.success && rmp && rmp.success) {
-                toast(`${LABELS[mp]} pushed`);
+                toast(`${LABELS[mp]} pushed` + (detail ? ' — ' + detail : ''));
                 loadData();
             } else {
-                const msg = rmp ? rmp.message : (res.message || 'Push failed');
+                const msg = (rmp ? rmp.message : (res.message || 'Push failed')) + (detail ? ' — ' + detail : '');
                 toast(msg, false);
             }
         })
-        .catch(e => toast('Push failed: ' + e.message, false));
+        .catch(e => toast('Push failed: ' + e.message, false))
+        .finally(() => {
+            if (retryLabelTimer) clearTimeout(retryLabelTimer);
+            if (stackEl) {
+                stackEl.disabled = false;
+                if (origStackHtml) stackEl.innerHTML = origStackHtml;
+            }
+        });
     }
 
     function bulkPush(mode) {
@@ -651,7 +682,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!updates.length) { toast('Select at least one marketplace.', false); return; }
         if (!confirmEbay3Push(selected)) return;
 
-        const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
+        let retryLabelTimer = setTimeout(() => {
+            if (btn.disabled) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retrying...';
+        }, 2000);
         fetch('/bullet-point-master/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
@@ -659,11 +693,21 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(r => r.json())
         .then(res => {
-            if (res.success) { toast('Saved marketplace bullet points'); if (editRowModal) editRowModal.hide(); loadData(); }
-            else toast(res.message || 'Save failed', false);
+            const detail = summarizeMarketplacePushRetries(res.results);
+            if (res.success) {
+                toast('Saved marketplace bullet points' + (detail ? ' — ' + detail : ''));
+                if (editRowModal) editRowModal.hide();
+                loadData();
+            } else {
+                toast((res.message || 'Save failed') + (detail ? ' — ' + detail : ''), false);
+            }
         })
         .catch(e => toast('Save failed: ' + e.message, false))
-        .finally(() => { btn.disabled = false; btn.innerHTML = old; });
+        .finally(() => {
+            if (retryLabelTimer) clearTimeout(retryLabelTimer);
+            btn.disabled = false;
+            btn.innerHTML = old;
+        });
     });
 
     const viewCopyAllBtn = document.getElementById('viewCopyAllBtn');

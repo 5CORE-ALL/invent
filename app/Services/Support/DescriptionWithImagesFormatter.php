@@ -40,7 +40,7 @@ class DescriptionWithImagesFormatter
             $imageParts[] = '<img src="'.$safeUrl.'" alt="'.$safeAlt.'" style="max-width:100%; height:auto;">';
         }
         $imageBlock = '<div class="product-images">'.implode("\n", $imageParts).'</div>';
-        $html = '<div class="product-description">'.$imageBlock.'<div class="product-text">'.$textInner.'</div></div>';
+        $html = '<div class="product-description"><div class="product-text">'.$textInner.'</div>'.$imageBlock.'</div>';
 
         return ['html' => $html, 'text_html' => $textInner, 'images' => $images];
     }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Schema;
 
 class BulletPointMasterController extends Controller
 {
+    use RetriesMarketplacePush;
+
     public function index(Request $request)
     {
         $mode = $request->query('mode', '');
@@ -104,7 +107,12 @@ class BulletPointMasterController extends Controller
                 }
 
                 $tableSaved = $this->saveToMarketplaceTable($marketplace, $sku, $text);
-                $serviceResult = $this->callMarketplaceService($marketplace, $sku, $text);
+                $serviceResult = $this->invokeMarketplacePushWithRetries(
+                    fn () => $this->callMarketplaceService($marketplace, $sku, $text),
+                    'BulletPointMaster',
+                    $marketplace,
+                    $sku
+                );
 
                 $success = $tableSaved || ($serviceResult['success'] ?? false);
                 $results[$marketplace] = [
@@ -112,6 +120,8 @@ class BulletPointMasterController extends Controller
                     'message' => $success
                         ? ($serviceResult['message'] ?? 'Updated')
                         : ($serviceResult['message'] ?? 'Unable to update this marketplace'),
+                    'attempts' => (int) ($serviceResult['attempts'] ?? 1),
+                    'retried' => (bool) ($serviceResult['retried'] ?? false),
                 ];
             }
 

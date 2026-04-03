@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
 use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
@@ -22,6 +23,8 @@ use Illuminate\Support\Facades\Schema;
 
 class DescriptionMasterController extends Controller
 {
+    use RetriesMarketplacePush;
+
     public function index(Request $request)
     {
         return view('product-description', [
@@ -202,12 +205,19 @@ class DescriptionMasterController extends Controller
                 }
 
                 $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $text);
-                $serviceResult = $this->callMarketplaceDescriptionService($marketplace, $sku, $text, $imageUrls);
+                $serviceResult = $this->invokeMarketplacePushWithRetries(
+                    fn () => $this->callMarketplaceDescriptionService($marketplace, $sku, $text, $imageUrls),
+                    'DescriptionMaster',
+                    $marketplace,
+                    $sku
+                );
 
                 $success = (bool) ($serviceResult['success'] ?? false);
                 $results[$marketplace] = [
                     'success' => $success,
                     'message' => $serviceResult['message'] ?? ($success ? 'Updated' : 'Update failed'),
+                    'attempts' => (int) ($serviceResult['attempts'] ?? 1),
+                    'retried' => (bool) ($serviceResult['retried'] ?? false),
                 ];
             }
 
