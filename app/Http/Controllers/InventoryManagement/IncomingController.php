@@ -82,6 +82,149 @@ class IncomingController extends Controller
     }
 
     /**
+     * Normalize image path/URL for browser use (aligned with customer-care SKU details).
+     */
+    protected function normalizeSuggestionImageUrl(?string $path): ?string
+    {
+        $p = trim((string) ($path ?? ''));
+        if ($p === '') {
+            return null;
+        }
+        if (str_starts_with($p, '//')) {
+            return 'https:'.$p;
+        }
+        if (preg_match('#^https?://#i', $p) || str_starts_with($p, 'data:')) {
+            return $p;
+        }
+
+        return '/'.ltrim(str_replace('\\', '/', $p), '/');
+    }
+
+    /**
+     * Thumbnail URL: shopify_skus.image_src, then Values JSON, then product_master columns.
+     */
+    protected function resolveSuggestionImageUrl(ProductMaster $p, ?ShopifySku $shopify): ?string
+    {
+        if ($shopify) {
+            $u = $this->normalizeSuggestionImageUrl($shopify->image_src ?? null);
+            if ($u) {
+                return $u;
+            }
+        }
+
+        $values = $p->Values;
+        if (! is_array($values)) {
+            $values = [];
+        }
+        foreach (['image_path', 'main_image', 'image1', 'image2', 'image3'] as $k) {
+            $u = $this->normalizeSuggestionImageUrl(isset($values[$k]) ? (string) $values[$k] : null);
+            if ($u) {
+                return $u;
+            }
+        }
+
+        foreach (['image_path', 'main_image', 'main_image_brand', 'image1', 'image2', 'image3'] as $col) {
+            if (! Schema::hasColumn('product_master', $col)) {
+                continue;
+            }
+            $u = $this->normalizeSuggestionImageUrl($p->{$col} ?? null);
+            if ($u) {
+                return $u;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * SKU autocomplete for Incoming Return modal (product_master: sku, parent, barcode, upc).
+     */
+    public function suggestSkusForReturn(Request $request)
+    {
+        $q = trim((string) $request->query('q', ''));
+        $limit = min(30, max(1, (int) $request->query('limit', 15)));
+
+        if ($q === '') {
+            return response()->json(['items' => []]);
+        }
+
+        $like = '%'.addcslashes($q, '%_\\').'%';
+
+        $select = ['id', 'sku', 'parent', 'barcode', 'title150', 'title100'];
+        if (Schema::hasColumn('product_master', 'Values')) {
+            $select[] = 'Values';
+        }
+        foreach (['image_path', 'main_image', 'main_image_brand', 'image1', 'image2', 'image3'] as $col) {
+            if (Schema::hasColumn('product_master', $col)) {
+                $select[] = $col;
+            }
+        }
+
+        $query = ProductMaster::query()
+            ->select($select)
+            ->where(function ($qq) use ($like) {
+                $qq->where('sku', 'like', $like)
+                    ->orWhere('parent', 'like', $like);
+
+                $qq->orWhere(function ($b) use ($like) {
+                    $b->whereNotNull('barcode')
+                        ->where('barcode', '!=', '')
+                        ->where('barcode', 'like', $like);
+                });
+
+                if (Schema::hasColumn('product_master', 'upc')) {
+                    $qq->orWhere(function ($u) use ($like) {
+                        $u->whereNotNull('upc')
+                            ->where('upc', '!=', '')
+                            ->where('upc', 'like', $like);
+                    });
+                }
+            })
+            ->orderBy('sku')
+            ->limit($limit);
+
+        $rows = $query->get();
+
+        $skuKeys = $rows
+            ->map(fn ($r) => strtolower(trim((string) ($r->sku ?? ''))))
+            ->filter(fn ($k) => $k !== '')
+            ->unique()
+            ->values();
+
+        $shopifyByLowerSku = collect();
+        if ($skuKeys->isNotEmpty()) {
+            $placeholders = implode(',', array_fill(0, $skuKeys->count(), '?'));
+            $shopifyRows = ShopifySku::query()
+                ->whereRaw('LOWER(TRIM(sku)) IN ('.$placeholders.')', $skuKeys->all())
+                ->get();
+            foreach ($shopifyRows as $s) {
+                $k = strtolower(trim((string) $s->sku));
+                $existing = $shopifyByLowerSku->get($k);
+                $hasImg = trim((string) ($s->image_src ?? '')) !== '';
+                if (! $existing) {
+                    $shopifyByLowerSku->put($k, $s);
+                } elseif ($hasImg && trim((string) ($existing->image_src ?? '')) === '') {
+                    $shopifyByLowerSku->put($k, $s);
+                }
+            }
+        }
+
+        return response()->json([
+            'items' => $rows->map(function ($r) use ($shopifyByLowerSku) {
+                $k = strtolower(trim((string) ($r->sku ?? '')));
+                $shop = $shopifyByLowerSku->get($k);
+
+                return [
+                    'sku' => $r->sku,
+                    'parent' => $r->parent,
+                    'label' => $r->title150 ?? $r->title100 ?? $r->sku,
+                    'image_url' => $this->resolveSuggestionImageUrl($r, $shop),
+                ];
+            })->values(),
+        ]);
+    }
+
+    /**
      * Show the form for creating a new resource.
      */
     public function create()
@@ -293,7 +436,7 @@ class IncomingController extends Controller
                 'sku' => 'required|string|max:255',
                 'qty' => 'required|integer|min:1',
                 'warehouse_id' => 'required|integer|exists:warehouses,id',
-                'reason' => 'required|string|max:255',
+                'reason' => 'required|string|max:10000',
                 'images' => 'nullable|array|max:20',
                 'images.*' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:10240',
             ]);

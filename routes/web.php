@@ -1928,6 +1928,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/incoming-return-view', [IncomingController::class, 'incomingReturnIndex'])->name('incoming.return.view');
     Route::post('/incoming-return-store', [IncomingController::class, 'storeReturn'])->name('incoming.return.store');
     Route::get('/incoming-return-history-list', [IncomingController::class, 'listReturnHistory']);
+    Route::get('/incoming-return-sku-suggest', [IncomingController::class, 'suggestSkusForReturn'])->name('incoming.return.sku.suggest');
 
     // incoming orders
     Route::get('/incoming-orders-view', [IncomingController::class, 'incomingOrderIndex'])->name('incoming.orders.view');

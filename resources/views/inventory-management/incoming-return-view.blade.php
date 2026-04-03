@@ -67,6 +67,7 @@
             padding: 10px 15px;
             vertical-align: middle;
             border-bottom: 1px solid #e0e0e0;
+            word-break: break-word;
         }
 
         /* Alternate row coloring for better readability */
@@ -220,6 +221,51 @@
             color: #6c757d;
         }
 
+        .incoming-sku-input-wrap .incoming-sku-suggest {
+            top: 100%;
+            left: 0;
+            margin-top: 2px;
+            border-radius: 0.375rem;
+            border: 1px solid #dee2e6;
+            background: #fff;
+        }
+
+        .incoming-sku-suggest-item {
+            border: none;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+
+        .incoming-sku-suggest-item:last-child {
+            border-bottom: none;
+        }
+
+        .incoming-sku-suggest-item:hover,
+        .incoming-sku-suggest-item:focus {
+            background-color: #e7f1ff;
+        }
+
+        .incoming-sku-suggest-thumb {
+            width: 52px;
+            height: 52px;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .incoming-sku-suggest-thumb-placeholder {
+            width: 52px;
+            height: 52px;
+            flex-shrink: 0;
+            font-size: 0.75rem;
+        }
+
+        /* Wider create / edit form modal (desktop) */
+        @media (min-width: 576px) {
+            #addWarehouseModal .modal-dialog.incoming-return-modal-dialog {
+                max-width: min(96vw, 1400px);
+            }
+        }
+
     </style>
 @endsection
 
@@ -275,7 +321,7 @@
 
                     <!-- Incoming Modal (full-screen on small viewports) -->
                     <div class="modal fade" id="addWarehouseModal" tabindex="-1" aria-labelledby="incomingModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-fullscreen-sm-down modal-lg modal-dialog-scrollable">
+                        <div class="modal-dialog modal-fullscreen-sm-down modal-xl modal-dialog-scrollable incoming-return-modal-dialog">
                             <form id="incomingReturnForm" enctype="multipart/form-data">
                                 @csrf
                                 <div class="modal-content incoming-mobile">
@@ -294,7 +340,10 @@
                                         <div class="mb-3">
                                             <label for="sku" class="form-label fw-bold">SKU (SKU)</label>
                                             <div class="d-flex flex-column flex-sm-row gap-2">
-                                                <input type="text" class="form-control flex-grow-1" id="sku" name="sku" required autocomplete="off" placeholder="Scan or type SKU (Escanee o escriba el SKU)" inputmode="text">
+                                                <div class="incoming-sku-input-wrap flex-grow-1 position-relative">
+                                                    <input type="text" class="form-control w-100" id="sku" name="sku" required autocomplete="off" placeholder="Scan or type SKU (Escanee o escriba el SKU)" inputmode="text">
+                                                    <div id="sku-suggest-list" class="incoming-sku-suggest list-group position-absolute w-100 d-none" style="z-index: 1060; max-height: 240px; overflow-y: auto;" role="listbox" aria-label="SKU suggestions"></div>
+                                                </div>
                                                 <button type="button" class="btn btn-outline-primary btn-touch" id="btnScanBarcode">
                                                     <i class="fas fa-barcode me-1"></i> Scan Barcode (Escanear código de barras)
                                                 </button>
@@ -318,13 +367,9 @@
                                         </div>
 
                                         <div class="mb-3">
-                                            <label for="reason" class="form-label fw-bold">Reason (Motivo)</label>
-                                            <select class="form-select" id="reason" name="reason" required>
-                                                <option selected disabled value="">Select Reason (Seleccione motivo)</option>
-                                                <option value="Returns">Returns (Devoluciones)</option>
-                                                <option value="Purchase">Purchase (Compra)</option>
-                                                <option value="Recovered">Recovered (Recuperado)</option>
-                                            </select>
+                                            <label for="reason" class="form-label fw-bold">Condition / Remarks (Condición / observaciones)</label>
+                                            <textarea class="form-control" id="reason" name="reason" rows="4" required lang="es" maxlength="10000" style="min-height: 100px;" placeholder="Describa la condición del artículo, observaciones de la devolución, daños visibles, embalaje, etc."></textarea>
+                                            <small class="text-muted">Escriba en español. (Write in Spanish.)</small>
                                         </div>
 
                                         <div class="mb-3">
@@ -523,7 +568,7 @@
                                     <th>SKU (SKU)</th>
                                     <th>QUANTITY (CANTIDAD)</th>
                                     <th>WAREHOUSE (ALMACÉN)</th>
-                                    <th>REASON (MOTIVO)</th>
+                                    <th>CONDITION / REMARKS (CONDICIÓN / OBS.)</th>
                                     <th>CREATED BY (CREADO POR)</th>
                                     <th>DATE (FECHA)</th>
                                 </tr>
@@ -571,7 +616,7 @@
                                     <th>SKU (SKU)</th>
                                     <th>QUANTITY (CANTIDAD)</th>
                                     <th>WAREHOUSE (ALMACÉN)</th>
-                                    <th>REASON (MOTIVO)</th>
+                                    <th>CONDITION / REMARKS (CONDICIÓN / OBS.)</th>
                                     <th>CREATED BY (CREADO POR)</th>
                                     <th>DATE (FECHA)</th>
                                 </tr>
@@ -846,6 +891,7 @@
                 }
 
                 const incomingLookupUrl = @json(route('incoming.sku.lookup'));
+                const skuSuggestUrl = @json(route('incoming.return.sku.suggest'));
                 const csrfToken = $('meta[name="csrf-token"]').attr('content');
                 let incomingPhotoFiles = [];
                 let html5QrCodeInstance = null;
@@ -934,19 +980,101 @@
                         });
                 }
 
+                function hideSkuSuggestions() {
+                    $('#sku-suggest-list').addClass('d-none').empty();
+                }
+
+                function renderSkuSuggestions(items) {
+                    const $list = $('#sku-suggest-list');
+                    $list.empty();
+                    if (!items || !items.length) {
+                        $list.addClass('d-none');
+                        return;
+                    }
+                    items.forEach(function (it) {
+                        const $btn = $('<button type="button" class="list-group-item list-group-item-action text-start incoming-sku-suggest-item py-2"/>');
+                        const $row = $('<div class="d-flex gap-2 align-items-center w-100"/>');
+                        if (it.image_url) {
+                            const $img = $('<img class="incoming-sku-suggest-thumb rounded border" alt="" loading="lazy"/>')
+                                .attr('src', it.image_url)
+                                .on('error', function () {
+                                    $(this).replaceWith(
+                                        $('<div class="incoming-sku-suggest-thumb-placeholder rounded border bg-light d-flex align-items-center justify-content-center text-muted"/>').text('—')
+                                    );
+                                });
+                            $row.append($img);
+                        } else {
+                            $row.append(
+                                $('<div class="incoming-sku-suggest-thumb-placeholder rounded border bg-light d-flex align-items-center justify-content-center text-muted"/>').text('—')
+                            );
+                        }
+                        const $text = $('<div class="flex-grow-1 min-w-0"/>');
+                        $text.append($('<div class="fw-semibold"/>').text(it.sku));
+                        if (it.label && String(it.label) !== String(it.sku)) {
+                            $text.append($('<div class="small text-muted text-truncate" style="max-width:100%"/>').text(it.label));
+                        }
+                        if (it.parent) {
+                            $text.append($('<div class="small text-muted"/>').text('Parent (Padre): ' + it.parent));
+                        }
+                        $row.append($text);
+                        $btn.append($row);
+                        $btn.on('mousedown', function (ev) {
+                            ev.preventDefault();
+                            $('#sku').val(it.sku);
+                            hideSkuSuggestions();
+                            fetchLookupForSku(it.sku);
+                        });
+                        $list.append($btn);
+                    });
+                    $list.removeClass('d-none');
+                }
+
+                function fetchSkuSuggestions(raw) {
+                    const q = (raw || '').trim();
+                    if (q.length < 1) {
+                        hideSkuSuggestions();
+                        return;
+                    }
+                    $.get(skuSuggestUrl, { q: q, limit: 15 })
+                        .done(function (res) {
+                            renderSkuSuggestions(res.items || []);
+                        })
+                        .fail(function () {
+                            hideSkuSuggestions();
+                        });
+                }
+
                 let skuLookupTimer = null;
+                let skuSuggestTimer = null;
                 $('#sku').on('input blur', function () {
                     clearTimeout(skuLookupTimer);
                     skuLookupTimer = setTimeout(function () {
                         fetchLookupForSku($('#sku').val());
                     }, 400);
                 });
+                $('#sku').on('input', function () {
+                    clearTimeout(skuSuggestTimer);
+                    skuSuggestTimer = setTimeout(function () {
+                        fetchSkuSuggestions($('#sku').val());
+                    }, 200);
+                });
+                $('#sku').on('focus', function () {
+                    fetchSkuSuggestions($('#sku').val());
+                });
+                $('#sku').on('blur', function () {
+                    setTimeout(hideSkuSuggestions, 250);
+                });
                 // USB scanners often send Enter; match WMS scan — lookup immediately (no debounce wait)
                 $('#sku').on('keydown', function (e) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
                         clearTimeout(skuLookupTimer);
+                        clearTimeout(skuSuggestTimer);
+                        hideSkuSuggestions();
                         fetchLookupForSku($('#sku').val());
+                    }
+                    if (e.key === 'Escape') {
+                        hideSkuSuggestions();
                     }
                 });
 
@@ -990,6 +1118,7 @@
                                 const text = (decodedText || '').trim();
                                 if (!text) return;
                                 $('#sku').val(text);
+                                hideSkuSuggestions();
                                 fetchLookupForSku(text);
                                 bsScanModal.hide();
                             },
@@ -1022,20 +1151,20 @@
                     }
 
                     $('.error-message').remove();
-                    $('#incomingReturnForm input, #incomingReturnForm select').removeClass('is-invalid');
+                    $('#incomingReturnForm input, #incomingReturnForm select, #incomingReturnForm textarea').removeClass('is-invalid');
 
                     let hasError = false;
                     const fields = [
                         { id: '#sku', name: 'SKU (SKU)' },
                         { id: '#qty', name: 'Quantity (Cantidad)' },
                         { id: '#warehouse_id', name: 'Warehouse (Almacén)' },
-                        { id: '#reason', name: 'Reason (Motivo)' },
+                        { id: '#reason', name: 'Condition / Remarks (Condición / observaciones)' },
                     ];
 
                     fields.forEach(function (f) {
                         const el = $(f.id);
                         const v = (el.val() || '').trim();
-                        if (!v || v === 'Select Warehouse' || v === 'Select Reason') {
+                        if (!v || v === 'Select Warehouse') {
                             hasError = true;
                             el.addClass('is-invalid');
                             el.after('<div class="text-danger error-message">' + f.name + ' is required. (Obligatorio.)</div>');
@@ -1096,6 +1225,7 @@
                             $('#incoming-errors').html('');
                             $('#addWarehouseModal').modal('hide');
                             $('#incomingReturnForm')[0].reset();
+                            hideSkuSuggestions();
                             $('#sku-product-hint').addClass('d-none').text('');
                             clearIncomingPhotos();
 
@@ -1140,6 +1270,7 @@
 
                 $(document).on('click', '#openAddWarehouseModal', function () {
                     $('#incomingReturnForm')[0].reset();
+                    hideSkuSuggestions();
                     $('#warehouseId').val('');
                     $('#incomingModalLabel').text('Create Incoming Return (Crear devolución entrante)');
                     $('#warehouseModalLabel').text('Create Incoming Return (Crear devolución entrante)');
@@ -1156,6 +1287,7 @@
                 // Reset submission flag when modal is closed
                 $('#addWarehouseModal').on('hidden.bs.modal', function () {
                     isSubmitting = false;
+                    hideSkuSuggestions();
                     const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
                     submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return (Guardar devolución entrante)');
                     $('#incoming-errors').html('');
@@ -1223,12 +1355,12 @@
                     const row = document.createElement('tr');
 
                     row.innerHTML = `
-                        <td>${item.sku || '-'}</td>
-                        <td>${item.verified_stock || '-'}</td>
-                        <td>${item.warehouse_name  || '-'}</td>
-                        <td>${item.reason || '-'}</td>
-                        <td>${item.approved_by || '-'}</td>
-                        <td>${item.approved_at || '-'}</td>
+                        <td>${escapeHtml(String(item.sku ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.verified_stock ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.warehouse_name ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.reason ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.approved_by ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.approved_at ?? '-'))}</td>
                     `;
 
                     tbody.appendChild(row);
@@ -1248,12 +1380,12 @@
                 data.forEach(item => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>${item.sku || '-'}</td>
-                        <td>${item.verified_stock || '-'}</td>
-                        <td>${item.warehouse_name  || '-'}</td>
-                        <td>${item.reason || '-'}</td>
-                        <td>${item.approved_by || '-'}</td>
-                        <td>${item.approved_at || '-'}</td>
+                        <td>${escapeHtml(String(item.sku ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.verified_stock ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.warehouse_name ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.reason ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.approved_by ?? '-'))}</td>
+                        <td>${escapeHtml(String(item.approved_at ?? '-'))}</td>
                     `;
                     tbody.appendChild(row);
                 });
