@@ -67,22 +67,28 @@ HTML;
             $blocks[] = "  <div class=\"section\">\n    <h3>Product Description</h3>\n    {$descP}\n  </div>";
         }
 
-        $featureBoxes = '';
+        $featureItems = '';
         foreach (array_slice($features, 0, 4) as $f) {
             $t = isset($f['title']) ? trim((string) $f['title']) : '';
             $b = isset($f['body']) ? trim((string) $f['body']) : '';
             if ($t === '' && $b === '') {
                 continue;
             }
-            $featureBoxes .= '<div class="feature-box"><h4>'.$esc($t).'</h4><p>'.$esc($b).'</p></div>';
+            if ($t !== '' && $b !== '') {
+                $featureItems .= '<li><strong>'.$esc($t).'</strong> - '.$esc($b).'</li>';
+            } elseif ($t !== '') {
+                $featureItems .= '<li><strong>'.$esc($t).'</strong></li>';
+            } else {
+                $featureItems .= '<li>'.$esc($b).'</li>';
+            }
         }
-        if ($featureBoxes !== '') {
+        if ($featureItems !== '') {
             $blocks[] = <<<HTML
   <div class="section">
     <h3>Features</h3>
-    <div class="features-grid">
-{$featureBoxes}
-    </div>
+    <ul class="features-list">
+{$featureItems}
+    </ul>
   </div>
 HTML;
         }
@@ -150,10 +156,9 @@ HTML;
   .product-description-v2 h3 { font-size: 1.15rem; margin: 0 0 12px 0; }
   .product-description-v2 .bullet-list { margin: 0; padding-left: 1.25rem; line-height: 1.55; }
   .product-description-v2 .bullet-list li { margin-bottom: 8px; }
-  .product-description-v2 .features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .product-description-v2 .feature-box { border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fafafa; }
-  .product-description-v2 .feature-box h4 { margin: 0 0 8px 0; font-size: 1rem; }
-  .product-description-v2 .feature-box p { margin: 0; line-height: 1.45; font-size: 0.95rem; }
+  .product-description-v2 .features-list { list-style: none; padding: 0; margin: 0; }
+  .product-description-v2 .features-list li { margin-bottom: 15px; line-height: 1.5; }
+  .product-description-v2 .features-list li strong { color: #333; }
   .product-description-v2 .spec-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
   .product-description-v2 .spec-table td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; }
   .product-description-v2 .spec-table td:first-child { font-weight: 600; width: 38%; }
