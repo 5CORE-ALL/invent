@@ -50,6 +50,13 @@ class ProductMaster extends Model
         'description_1000',
         'description_800',
         'description_600',
+        'description_v2_bullets',
+        'description_v2_description',
+        'description_v2_images',
+        'description_v2_features',
+        'description_v2_specifications',
+        'description_v2_package',
+        'description_v2_brand',
         'feature1',
         'feature2',
         'feature3',
@@ -97,6 +104,9 @@ class ProductMaster extends Model
     }
 
     protected $casts = [
+        'description_v2_images' => 'array',
+        'description_v2_features' => 'array',
+        'description_v2_specifications' => 'array',
         'Values' => 'array',
         'sales' => 'array',
         'views' => 'array',

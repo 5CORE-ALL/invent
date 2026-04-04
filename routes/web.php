@@ -223,8 +223,8 @@ use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\ZendropZeroController;
 use App\Http\Controllers\ProductMaster\BulletPointMasterController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
 use App\Http\Controllers\ProductMaster\CostpriceAnalysisController;
+use App\Http\Controllers\ProductMaster\DescriptionMaster2Controller;
 use App\Http\Controllers\ProductMaster\DescriptionMasterController;
-use App\Http\Controllers\ProductMaster\ShopifyHtmlTemplateController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\ProductMaster\MovementAnalysisController;
 use App\Http\Controllers\ProductMaster\PrAnalysisController;
@@ -2235,8 +2235,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/wayfair/pricing-upload-price', [WayfairController::class, 'uploadWayfairPricingPriceSheet'])->name('wayfair.pricing.upload.price');
     Route::post('/wayfair/pricing-save-sprice', [WayfairController::class, 'saveWayfairSpriceUpdates'])->name('wayfair.pricing.save.sprice');
     Route::get('/wayfair/badge-chart-data', [WayfairController::class, 'wayfairBadgeChartData'])->name('wayfair.pricing.badge.chart');
-    Route::get('/wayfair/pricing-column-visibility', [WayfairController::class, 'getWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.get');
-    Route::post('/wayfair/pricing-column-visibility', [WayfairController::class, 'setWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.set');
 
     // Best Buy Sales Routes
     Route::get('/bestbuy/daily-sales-data', [BestBuySalesController::class, 'getData'])->name('bestbuy.daily.sales.data');
@@ -2491,13 +2489,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product-description/fetch-amazon-aplus', [DescriptionMasterController::class, 'fetchAmazonAplusContent'])->name('product.description.fetch.amazon.aplus');
     Route::post('/product-description/regenerate-marketplace', [DescriptionMasterController::class, 'regenerateDescriptionForMarketplace'])->name('product.description.regenerate.marketplace');
     Route::post('/product-description/with-images', [DescriptionMasterController::class, 'getDescriptionWithImages'])->name('product.description.with.images');
-    Route::get('/product-description/shopify-html', [DescriptionMasterController::class, 'getShopifyCustomHtml'])->name('product.description.shopify.html');
-    Route::post('/product-description/shopify-html/save', [DescriptionMasterController::class, 'saveShopifyCustomHtml'])->name('product.description.shopify.html.save');
-    Route::post('/product-description/shopify-html/push', [DescriptionMasterController::class, 'pushShopifyCustomHtml'])->name('product.description.shopify.html.push');
-    Route::post('/product-description/shopify-templates/save', [ShopifyHtmlTemplateController::class, 'save'])->name('product.description.shopify.templates.save');
-    Route::get('/product-description/shopify-templates', [ShopifyHtmlTemplateController::class, 'index'])->name('product.description.shopify.templates');
-    Route::get('/product-description/shopify-templates/{id}', [ShopifyHtmlTemplateController::class, 'show'])->whereNumber('id')->name('product.description.shopify.templates.show');
-    Route::delete('/product-description/shopify-templates/{id}', [ShopifyHtmlTemplateController::class, 'destroy'])->whereNumber('id')->name('product.description.shopify.templates.destroy');
+    Route::get('/product-description-2', [DescriptionMaster2Controller::class, 'index'])->name('product.description2');
+    Route::get('/product-description-2/data', [DescriptionMaster2Controller::class, 'getData'])->name('product.description2.data');
+    Route::post('/product-description-2/save', [DescriptionMaster2Controller::class, 'save'])->name('product.description2.save');
+    Route::post('/product-description-2/push', [DescriptionMaster2Controller::class, 'push'])->name('product.description2.push');
     Route::get('/features', fn () => view('features'))->name('features');
     Route::post('/features/save', [ProductMasterController::class, 'saveFeaturesData'])->name('features.save');
     Route::get('/product-images', fn () => view('images'))->name('images');
@@ -3522,8 +3517,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/faire/pricing-upload-price', [FaireController::class, 'uploadFairePricingPriceSheet'])->name('faire.pricing.upload.price');
     Route::post('/faire/pricing-save-sprice', [FaireController::class, 'saveFaireSpriceUpdates'])->name('faire.pricing.save.sprice');
     Route::get('/faire/badge-chart-data', [FaireController::class, 'faireBadgeChartData'])->name('faire.pricing.badge.chart');
-    Route::get('/faire/pricing-column-visibility', [FaireController::class, 'getFairePricingColumnVisibility'])->name('faire.pricing.column.get');
-    Route::post('/faire/pricing-column-visibility', [FaireController::class, 'setFairePricingColumnVisibility'])->name('faire.pricing.column.set');
 
 
     //pls

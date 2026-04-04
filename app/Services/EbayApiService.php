@@ -1630,6 +1630,53 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
     }
 
     /**
+     * Description Master 2.0: replace listing Description HTML (full body, including rich markup).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingDescriptionRawHtml(string $identifier, string $descriptionHtml): array
+    {
+        $descriptionHtml = trim((string) $descriptionHtml);
+        if ($descriptionHtml === '') {
+            return ['success' => false, 'message' => 'Description HTML is empty.'];
+        }
+
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU (or item_id) is required.'];
+        }
+
+        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_metrics', $identifier, ['item_id']);
+        $itemId = $row ? ($row->item_id ?? null) : null;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'Product not found in ebay_metrics (try SKU or eBay item_id).'];
+        }
+
+        try {
+            $token = $this->generateBearerToken();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        Log::info('eBay updateListingDescriptionRawHtml', [
+            'sku_or_id' => $identifier,
+            'item_id' => $itemId,
+            'html_len' => strlen($descriptionHtml),
+        ]);
+
+        return EbayTradingReviseItem::reviseItemDescription(
+            $this->endpoint,
+            $this->compatLevel,
+            $this->devId,
+            $this->appId,
+            $this->certId,
+            $this->siteId,
+            $token,
+            (string) $itemId,
+            $descriptionHtml
+        );
+    }
+
+    /**
      * Update listing gallery images (PictureDetails, up to 12 URLs; must be publicly reachable by eBay).
      *
      * @param  list<string>  $imageUrls

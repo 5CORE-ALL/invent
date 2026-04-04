@@ -107,15 +107,6 @@ class DescriptionMasterController extends Controller
                 $bulletsShopifyPls = $this->loadBulletPointsForSkuList('shopify_pls_metrics', $rawSkus);
             }
 
-            $shopifyHtmlMain = [];
-            $shopifyHtmlPls = [];
-            if (Schema::hasTable('shopify_metrics') && Schema::hasColumn('shopify_metrics', 'shopify_custom_html')) {
-                $shopifyHtmlMain = $this->loadShopifyCustomHtmlForSkuList('shopify_metrics', $rawSkus);
-            }
-            if (Schema::hasTable('shopify_pls_metrics') && Schema::hasColumn('shopify_pls_metrics', 'shopify_custom_html')) {
-                $shopifyHtmlPls = $this->loadShopifyCustomHtmlForSkuList('shopify_pls_metrics', $rawSkus);
-            }
-
             $result = [];
             foreach ($products as $product) {
                 $sku = $this->normalizeSku($product->sku);
@@ -144,8 +135,6 @@ class DescriptionMasterController extends Controller
                 $row['descriptions'] = $desc;
                 $row['shopify_main_bullets'] = $bulletsShopifyMain[$sku] ?? $this->defaultBulletsFromPmArray($row);
                 $row['shopify_pls_bullets'] = $bulletsShopifyPls[$sku] ?? $this->defaultBulletsFromPmArray($row);
-                $row['shopify_main_custom_html'] = $shopifyHtmlMain[$sku] ?? '';
-                $row['shopify_pls_custom_html'] = $shopifyHtmlPls[$sku] ?? '';
                 $result[] = $row;
             }
 
@@ -477,110 +466,6 @@ class DescriptionMasterController extends Controller
     }
 
     /**
-     * GET /product-description/shopify-html — load saved custom HTML template for a SKU (Advanced mode).
-     */
-    public function getShopifyCustomHtml(Request $request)
-    {
-        try {
-            $sku = $this->normalizeSku((string) $request->query('sku', ''));
-            $marketplace = strtolower(trim((string) $request->query('marketplace', 'shopify_main')));
-            if ($sku === '') {
-                return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
-            }
-            $table = $this->shopifyHtmlMetricsTable($marketplace);
-            if ($table === null || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_custom_html')) {
-                return response()->json(['success' => true, 'html' => '']);
-            }
-            $html = $this->fetchShopifyCustomHtmlForSku($table, $sku);
-
-            return response()->json(['success' => true, 'html' => $html]);
-        } catch (\Throwable $e) {
-            Log::error('DescriptionMaster: getShopifyCustomHtml failed', ['error' => $e->getMessage()]);
-
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * POST /product-description/shopify-html/save — persist HTML template for reuse.
-     */
-    public function saveShopifyCustomHtml(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'sku' => 'required|string',
-                'marketplace' => 'required|string|in:shopify_main,shopify_pls',
-                'html' => 'nullable|string',
-            ]);
-            $sku = $this->normalizeSku($validated['sku']);
-            $marketplace = $validated['marketplace'];
-            $html = (string) ($validated['html'] ?? '');
-            if (strlen($html) > 500000) {
-                return response()->json(['success' => false, 'message' => 'HTML exceeds maximum length (500,000 characters).'], 422);
-            }
-            $ok = $this->persistShopifyCustomHtml($marketplace, $sku, $html);
-            if (! $ok) {
-                return response()->json(['success' => false, 'message' => 'Could not save HTML template.'], 500);
-            }
-            Log::info('DescriptionMaster: shopify custom HTML saved', ['sku' => $sku, 'marketplace' => $marketplace, 'len' => strlen($html)]);
-
-            return response()->json(['success' => true, 'message' => 'HTML template saved.']);
-        } catch (\Throwable $e) {
-            Log::error('DescriptionMaster: saveShopifyCustomHtml failed', ['error' => $e->getMessage()]);
-
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * POST /product-description/shopify-html/push — replace Shopify product body_html with custom HTML.
-     */
-    public function pushShopifyCustomHtml(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'sku' => 'required|string',
-                'marketplace' => 'required|string|in:shopify_main,shopify_pls',
-                'html' => 'nullable|string',
-            ]);
-            $sku = $this->normalizeSku($validated['sku']);
-            $marketplace = $validated['marketplace'];
-            $html = isset($validated['html']) ? trim((string) $validated['html']) : '';
-
-            if ($html === '') {
-                $table = $this->shopifyHtmlMetricsTable($marketplace);
-                if ($table && Schema::hasColumn($table, 'shopify_custom_html')) {
-                    $html = $this->fetchShopifyCustomHtmlForSku($table, $sku);
-                }
-            }
-
-            if ($html === '') {
-                return response()->json(['success' => false, 'message' => 'No HTML to push. Paste HTML or save a template first.'], 422);
-            }
-
-            if ($marketplace === 'shopify_main') {
-                $result = app(ShopifyApiService::class)->updateBodyHtml($sku, $html);
-            } else {
-                $result = app(ShopifyPLSApiService::class)->updateBodyHtml($sku, $html);
-            }
-
-            $success = (bool) ($result['success'] ?? false);
-            if ($success) {
-                $this->persistShopifyCustomHtml($marketplace, $sku, $html);
-            }
-
-            return response()->json([
-                'success' => $success,
-                'message' => (string) ($result['message'] ?? ($success ? 'Pushed' : 'Failed')),
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('DescriptionMaster: pushShopifyCustomHtml failed', ['error' => $e->getMessage()]);
-
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
      * POST /product-description/with-images
      */
     public function getDescriptionWithImages(Request $request)
@@ -820,83 +705,6 @@ class DescriptionMasterController extends Controller
             return ['success' => (bool) $result, 'message' => $result ? 'Updated' : 'Failed'];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
-        }
-    }
-
-    private function shopifyHtmlMetricsTable(string $marketplace): ?string
-    {
-        return match ($marketplace) {
-            'shopify_main' => 'shopify_metrics',
-            'shopify_pls' => 'shopify_pls_metrics',
-            default => null,
-        };
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function loadShopifyCustomHtmlForSkuList(string $table, array $rawSkus): array
-    {
-        if ($rawSkus === [] || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_custom_html')) {
-            return [];
-        }
-        try {
-            return DB::table($table)
-                ->whereIn('sku', $rawSkus)
-                ->select('sku', 'shopify_custom_html')
-                ->get()
-                ->mapWithKeys(function ($row) {
-                    return [$this->normalizeSku($row->sku) => (string) ($row->shopify_custom_html ?? '')];
-                })
-                ->toArray();
-        } catch (\Throwable $e) {
-            Log::warning("DescriptionMaster: loadShopifyCustomHtmlForSkuList failed ({$table})", ['error' => $e->getMessage()]);
-
-            return [];
-        }
-    }
-
-    private function fetchShopifyCustomHtmlForSku(string $table, string $sku): string
-    {
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_custom_html')) {
-            return '';
-        }
-        $t = trim($sku);
-        $row = DB::table($table)
-            ->where(function ($q) use ($t) {
-                $q->where('sku', $t)->orWhere('sku', strtoupper($t))->orWhere('sku', strtolower($t));
-            })
-            ->first();
-
-        return $row ? (string) ($row->shopify_custom_html ?? '') : '';
-    }
-
-    private function persistShopifyCustomHtml(string $marketplace, string $sku, string $html): bool
-    {
-        $table = $this->shopifyHtmlMetricsTable($marketplace);
-        if ($table === null || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_custom_html')) {
-            return false;
-        }
-        try {
-            $t = trim($sku);
-            $query = DB::table($table)->where(function ($q2) use ($t) {
-                $q2->where('sku', $t)->orWhere('sku', strtoupper($t))->orWhere('sku', strtolower($t));
-            });
-            $updated = $query->update(['shopify_custom_html' => $html, 'updated_at' => now()]);
-            if ($updated > 0) {
-                return true;
-            }
-            $insert = ['sku' => $t, 'shopify_custom_html' => $html, 'updated_at' => now()];
-            if (Schema::hasColumn($table, 'created_at')) {
-                $insert['created_at'] = now();
-            }
-            DB::table($table)->insert($insert);
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning('DescriptionMaster: persistShopifyCustomHtml failed', ['table' => $table, 'sku' => $sku, 'error' => $e->getMessage()]);
-
-            return false;
         }
     }
 

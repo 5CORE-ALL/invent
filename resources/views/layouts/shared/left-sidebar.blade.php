@@ -506,6 +506,9 @@
                             <a href="{{ route('product.description') }}">Description Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('product.description2') }}">Description Master 2.0</a>
+                        </li>
+                        <li>
                             <a href="{{ route('features') }}">Features</a>
                         </li>
                         <li>
