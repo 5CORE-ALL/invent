@@ -397,8 +397,8 @@ class ShopifyApiService
     }
 
     /**
-     * Description Master (Phase 2): append long-form description below existing `body_html` (e.g. Key Features from Phase 1).
-     * Does not replace bullets; always appends the new formatted block (no plain-text dedupe) so casing and images update every push.
+     * Description Master: sets `body_html` to a unified layout — About Item (from Bullet Points Master / shopify_metrics),
+     * Product Description, optional Features 2×2 grid (from product_master.Values.shopify_feature_grid), then Images.
      *
      * @return array{success: bool, message: string}
      */
@@ -473,16 +473,31 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Product title missing from Shopify.'];
             }
 
+            $aboutBullets = $this->loadShopifyMetricsBulletPoints($trim);
+            $featureGrid = $this->loadShopifyFeatureGridForSku($trim);
+
             $descriptionHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
                 $descriptionPlain,
                 $trim,
                 $trim,
                 $title,
                 12,
-                $imageUrls
+                $imageUrls,
+                $aboutBullets,
+                $featureGrid,
+                true
             )['html'];
 
-            $combined = trim($currentBody)."\n\n".$descriptionHtml;
+            $combined = $descriptionHtml;
+
+            Log::info('Shopify updateDescription: body_html set to unified rich layout (About Item → Product Description → Features → Images)', [
+                'sku' => $trim,
+                'product_id' => $productId,
+                'about_bullets_chars' => strlen($aboutBullets),
+                'feature_box_count' => count($featureGrid),
+                'previous_body_html_chars' => strlen($currentBody),
+                'new_body_html_chars' => strlen($combined),
+            ]);
 
             $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $combined, $title) {
                 return Http::withHeaders([
@@ -498,7 +513,7 @@ class ShopifyApiService
             });
 
             if ($updateRes->successful()) {
-                return ['success' => true, 'message' => 'Shopify product description appended.'];
+                return ['success' => true, 'message' => 'Shopify product description updated (unified layout).'];
             }
 
             $errBody = $updateRes->status() === 429
@@ -1102,5 +1117,68 @@ class ShopifyApiService
         }
 
         return $map;
+    }
+
+    /**
+     * @return array<int, array{title: string, body: string}>
+     */
+    private function loadShopifyFeatureGridForSku(string $sku): array
+    {
+        try {
+            $pm = ProductMaster::query()
+                ->where(function ($q) use ($sku) {
+                    $t = trim($sku);
+                    $q->where('sku', $t)
+                        ->orWhere('sku', strtoupper($t))
+                        ->orWhere('sku', strtolower($t));
+                })
+                ->first();
+            if (! $pm || ! is_array($pm->Values)) {
+                return [];
+            }
+            $raw = $pm->Values['shopify_feature_grid'] ?? null;
+            if (! is_array($raw)) {
+                return [];
+            }
+            $out = [];
+            foreach (array_slice($raw, 0, 4) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $out[] = [
+                    'title' => trim((string) ($item['title'] ?? '')),
+                    'body' => trim((string) ($item['body'] ?? '')),
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyApiService: loadShopifyFeatureGridForSku failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    private function loadShopifyMetricsBulletPoints(string $sku): string
+    {
+        try {
+            if (! Schema::hasTable('shopify_metrics') || ! Schema::hasColumn('shopify_metrics', 'bullet_points')) {
+                return '';
+            }
+            $t = trim($sku);
+            $row = DB::table('shopify_metrics')
+                ->where(function ($q) use ($t) {
+                    $q->where('sku', $t)
+                        ->orWhere('sku', strtoupper($t))
+                        ->orWhere('sku', strtolower($t));
+                })
+                ->first();
+
+            return $row ? trim((string) ($row->bullet_points ?? '')) : '';
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyApiService: loadShopifyMetricsBulletPoints failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return '';
+        }
     }
 }

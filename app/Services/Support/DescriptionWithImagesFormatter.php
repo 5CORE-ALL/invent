@@ -3,11 +3,13 @@
 namespace App\Services\Support;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class DescriptionWithImagesFormatter
 {
     /**
+     * @param  array<int, array{title?: string, body?: string}>|null  $featureBoxes  Up to four title/body pairs for the 2×2 Features grid (Shopify rich layout).
      * @return array{html: string, text_html: string, images: array<int, string>}
      */
     public static function buildHtmlWithImages(
@@ -16,7 +18,10 @@ class DescriptionWithImagesFormatter
         ?string $skuHint = null,
         string $altText = 'Product Image',
         int $maxImages = 12,
-        array $preferredImages = []
+        array $preferredImages = [],
+        ?string $aboutItemBulletsPlain = null,
+        ?array $featureBoxes = null,
+        bool $shopifyRichLayout = false
     ): array {
         $descriptionPlain = trim($descriptionPlain);
         $images = self::normalizeProvidedImages($preferredImages, $maxImages);
@@ -25,6 +30,53 @@ class DescriptionWithImagesFormatter
         }
 
         $textInner = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+
+        if ($shopifyRichLayout) {
+            $aboutHtml = self::formatAboutItemHtml((string) ($aboutItemBulletsPlain ?? ''));
+            $featuresHtml = self::buildFeaturesGridHtml(is_array($featureBoxes) ? $featureBoxes : []);
+
+            $imageParts = [];
+            foreach ($images as $idx => $url) {
+                $safeUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $n = $idx + 1;
+                $safeAlt = htmlspecialchars(trim($altText) !== '' ? "{$altText} {$n}" : "Product Image {$n}", ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $imageParts[] = '<img src="'.$safeUrl.'" alt="'.$safeAlt.'" style="max-width:40%; height:auto; display:inline-block; margin:5px;">';
+            }
+            $imageSection = '';
+            if ($imageParts !== []) {
+                $imageSection = '<h3 style="margin-top:1.25em;">Images</h3>'
+                    .'<div class="product-images" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">'
+                    .implode("\n", $imageParts)
+                    .'</div>';
+            }
+
+            $blocks = [];
+            $blocks[] = '<div class="product-description" style="max-width:100%;">';
+            if ($aboutHtml !== '') {
+                $blocks[] = '<h3 style="margin-top:0;">About Item</h3>';
+                $blocks[] = '<div class="about-item" style="margin:15px 0; line-height:1.6;">'.$aboutHtml.'</div>';
+            }
+            $blocks[] = '<h3 style="margin-top:1.25em;">Product Description</h3>';
+            $blocks[] = '<div class="product-text" style="margin-bottom:1em;">'.$textInner.'</div>';
+            if ($featuresHtml !== '') {
+                $blocks[] = $featuresHtml;
+            }
+            if ($imageSection !== '') {
+                $blocks[] = $imageSection;
+            }
+            $blocks[] = '</div>';
+            $html = implode("\n", $blocks);
+
+            Log::info('DescriptionWithImagesFormatter: Shopify rich layout built', [
+                'identifier' => $identifier,
+                'has_about_item' => $aboutHtml !== '',
+                'has_features_grid' => $featuresHtml !== '',
+                'image_count' => count($images),
+                'html_length' => strlen($html),
+            ]);
+
+            return ['html' => $html, 'text_html' => $textInner, 'images' => $images];
+        }
 
         if ($images === []) {
             $html = '<div class="product-description"><div class="product-text">'.$textInner.'</div></div>';
@@ -37,12 +89,81 @@ class DescriptionWithImagesFormatter
             $safeUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $n = $idx + 1;
             $safeAlt = htmlspecialchars(trim($altText) !== '' ? "{$altText} {$n}" : "Product Image {$n}", ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $imageParts[] = '<img src="'.$safeUrl.'" alt="'.$safeAlt.'" style="max-width:20%; height:auto; display:inline-block; margin:5px;">';
+            $imageParts[] = '<img src="'.$safeUrl.'" alt="'.$safeAlt.'" style="max-width:40%; height:auto; display:inline-block; margin:5px;">';
         }
-        $imageBlock = '<div class="product-images" style="display:flex; flex-wrap:wrap; gap:10px;">'.implode("\n", $imageParts).'</div>';
+        $imageBlock = '<div class="product-images" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">'.implode("\n", $imageParts).'</div>';
         $html = '<div class="product-description"><div class="product-text">'.$textInner.'</div>'.$imageBlock.'</div>';
 
+        Log::debug('DescriptionWithImagesFormatter: standard layout built', [
+            'identifier' => $identifier,
+            'image_count' => count($images),
+        ]);
+
         return ['html' => $html, 'text_html' => $textInner, 'images' => $images];
+    }
+
+    /**
+     * Bullet / about lines: supports lines like **LABEL** - body text (markdown-style bold lead-in).
+     */
+    public static function formatAboutItemHtml(string $bulletPlain): string
+    {
+        $bulletPlain = trim($bulletPlain);
+        if ($bulletPlain === '') {
+            return '';
+        }
+        $lines = preg_split('/\r\n|\r|\n/', $bulletPlain);
+        $parts = [];
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            if (preg_match('/^\*\*(.+?)\*\*\s*-\s*(.+)$/s', $line, $m)) {
+                $label = htmlspecialchars(trim($m[1]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $rest = htmlspecialchars(trim($m[2]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $parts[] = '<p style="margin:0 0 10px 0;"><strong>'.$label.'</strong> - '.$rest.'</p>';
+            } else {
+                $parts[] = '<p style="margin:0 0 10px 0;">'.nl2br(htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+            }
+        }
+
+        return implode("\n", $parts);
+    }
+
+    /**
+     * @param  array<int, array{title?: string, body?: string}>  $boxes
+     */
+    public static function buildFeaturesGridHtml(array $boxes): string
+    {
+        $normalized = [];
+        foreach (array_slice($boxes, 0, 4) as $b) {
+            if (! is_array($b)) {
+                continue;
+            }
+            $t = trim((string) ($b['title'] ?? ''));
+            $body = trim((string) ($b['body'] ?? ''));
+            if ($t === '' && $body === '') {
+                continue;
+            }
+            $normalized[] = ['title' => $t, 'body' => $body];
+        }
+        if ($normalized === []) {
+            return '';
+        }
+
+        $out = '<h3 style="margin-top:1.25em;">Features</h3>';
+        $out .= '<div class="features-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin:20px 0;">';
+        foreach ($normalized as $box) {
+            $t = htmlspecialchars($box['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $body = htmlspecialchars($box['body'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $out .= '<div class="feature-box" style="border:1px solid #ddd; border-radius:8px; padding:15px; background:#f9f9f9;">';
+            $out .= '<h4 style="margin:0 0 10px 0; color:#333; font-weight:bold;">'.$t.'</h4>';
+            $out .= '<p style="margin:0; line-height:1.5;">'.$body.'</p>';
+            $out .= '</div>';
+        }
+        $out .= '</div>';
+
+        return $out;
     }
 
     /**

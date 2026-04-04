@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use App\Services\Support\DescriptionWithImagesFormatter;
@@ -327,7 +328,7 @@ class ShopifyPLSApiService
     }
 
     /**
-     * Description Master (Phase 2): append long-form description below existing `body_html` (e.g. Key Features from Phase 1).
+     * Description Master: sets `body_html` to unified layout (About Item → Product Description → Features → Images).
      *
      * @return array{success: bool, message: string}
      */
@@ -437,16 +438,31 @@ class ShopifyPLSApiService
                 return ['success' => false, 'message' => 'Product title missing from Shopify PLS.'];
             }
 
+            $aboutBullets = $this->loadPlsMetricsBulletPoints($trim);
+            $featureGrid = $this->loadShopifyFeatureGridForSku($trim);
+
             $descriptionHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
                 $descriptionPlain,
                 $trim,
                 $trim,
                 $title,
                 12,
-                $imageUrls
+                $imageUrls,
+                $aboutBullets,
+                $featureGrid,
+                true
             )['html'];
 
-            $combined = $this->appendUniqueHtmlByPlainText($currentBody, $descriptionHtml, $descriptionPlain);
+            $combined = $descriptionHtml;
+
+            Log::info('Shopify PLS updateDescription: body_html set to unified rich layout', [
+                'sku' => $trim,
+                'product_id' => $productId,
+                'about_bullets_chars' => strlen($aboutBullets),
+                'feature_box_count' => count($featureGrid),
+                'previous_body_html_chars' => strlen($currentBody),
+                'new_body_html_chars' => strlen($combined),
+            ]);
 
             $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $combined) {
                 return Http::withHeaders([
@@ -462,7 +478,7 @@ class ShopifyPLSApiService
             });
 
             if ($response->successful()) {
-                return ['success' => true, 'message' => 'Shopify PLS product description appended.'];
+                return ['success' => true, 'message' => 'Shopify PLS product description updated (unified layout).'];
             }
 
             $errBody = $response->status() === 429
@@ -844,5 +860,68 @@ class ShopifyPLSApiService
         }
 
         return $currentHtml."\n\n".$incomingHtml;
+    }
+
+    /**
+     * @return array<int, array{title: string, body: string}>
+     */
+    private function loadShopifyFeatureGridForSku(string $sku): array
+    {
+        try {
+            $pm = ProductMaster::query()
+                ->where(function ($q) use ($sku) {
+                    $t = trim($sku);
+                    $q->where('sku', $t)
+                        ->orWhere('sku', strtoupper($t))
+                        ->orWhere('sku', strtolower($t));
+                })
+                ->first();
+            if (! $pm || ! is_array($pm->Values)) {
+                return [];
+            }
+            $raw = $pm->Values['shopify_feature_grid'] ?? null;
+            if (! is_array($raw)) {
+                return [];
+            }
+            $out = [];
+            foreach (array_slice($raw, 0, 4) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $out[] = [
+                    'title' => trim((string) ($item['title'] ?? '')),
+                    'body' => trim((string) ($item['body'] ?? '')),
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyPLSApiService: loadShopifyFeatureGridForSku failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    private function loadPlsMetricsBulletPoints(string $sku): string
+    {
+        try {
+            if (! Schema::hasTable('shopify_pls_metrics') || ! Schema::hasColumn('shopify_pls_metrics', 'bullet_points')) {
+                return '';
+            }
+            $t = trim($sku);
+            $row = DB::table('shopify_pls_metrics')
+                ->where(function ($q) use ($t) {
+                    $q->where('sku', $t)
+                        ->orWhere('sku', strtoupper($t))
+                        ->orWhere('sku', strtolower($t));
+                })
+                ->first();
+
+            return $row ? trim((string) ($row->bullet_points ?? '')) : '';
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyPLSApiService: loadPlsMetricsBulletPoints failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return '';
+        }
     }
 }
