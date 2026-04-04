@@ -37,9 +37,9 @@ class DescriptionWithImagesFormatter
             $safeUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $n = $idx + 1;
             $safeAlt = htmlspecialchars(trim($altText) !== '' ? "{$altText} {$n}" : "Product Image {$n}", ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $imageParts[] = '<img src="'.$safeUrl.'" alt="'.$safeAlt.'" style="max-width:100%; height:auto;">';
+            $imageParts[] = '<img src="'.$safeUrl.'" alt="'.$safeAlt.'" style="max-width:20%; height:auto; display:inline-block; margin:5px;">';
         }
-        $imageBlock = '<div class="product-images">'.implode("\n", $imageParts).'</div>';
+        $imageBlock = '<div class="product-images" style="display:flex; flex-wrap:wrap; gap:10px;">'.implode("\n", $imageParts).'</div>';
         $html = '<div class="product-description"><div class="product-text">'.$textInner.'</div>'.$imageBlock.'</div>';
 
         return ['html' => $html, 'text_html' => $textInner, 'images' => $images];
