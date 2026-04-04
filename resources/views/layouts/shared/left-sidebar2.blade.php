@@ -1863,8 +1863,9 @@
                                             <li><a href="{{ route('listing.aliexpress') }}">Listing Aliexpress</a>
                                             </li>
 
-                                            <li><a href="{{ route('aliexpress.pricing.view') }}">Alixpress Pricing</a>
+                                            <li><a href="{{ route('aliexpress.pricing.view') }}">Aliexpress Analytics</a>
                                             </li>
+                                            <li><a href="{{ route('aliexpress.lmp') }}">Aliexpress LMP</a></li>
                                     </ul>
                                 </div>
                             </li>

@@ -8,6 +8,7 @@ use App\Http\Controllers\ApiController;
 use App\Models\MarketplacePercentage;
 use App\Models\AliexpressDataView;
 use App\Models\AliexpressDailyData;
+use App\Models\AliexpressLmpDataSheet;
 use App\Models\AliexpressPricingPrice;
 use App\Models\ChannelMaster;
 use App\Models\AmazonChannelSummary;
@@ -386,8 +387,8 @@ class AliexpressController extends Controller
                 return response()->json(['success' => false, 'message' => 'File is empty'], 400);
             }
 
-            // Get headers (first row)
-            $headers = array_shift($rows);
+            // Get headers (first row) — trim + strip BOM so keys match export templates
+            $headers = $this->trimSheetHeaders(array_shift($rows));
             
             // Truncate table on first chunk
             if ($chunk == 0) {
@@ -431,8 +432,15 @@ class AliexpressController extends Controller
                         'order_date' => $this->parseDate($rowData['Order Date'] ?? null),
                         'payment_time' => $this->parseDate($rowData['Payment time'] ?? null),
                         'payment_method' => $rowData['Payment method'] ?? null,
-                        'supply_price' => $this->sanitizePrice($rowData['Supply Price'] ?? null),
-                        'product_total' => $this->sanitizePrice($rowData['Product Total'] ?? null),
+                        'supply_price' => $this->firstSanitizedPriceFromRow($rowData, [
+                            'Supply Price',
+                            'Supply price',
+                        ]),
+                        'product_total' => $this->firstSanitizedPriceFromRow($rowData, [
+                            'Product Total',
+                            'Product total',
+                            'PRODUCT TOTAL',
+                        ]),
                         'shipping_cost' => $this->sanitizePrice($rowData['Shipping Cost'] ?? null),
                         'estimated_vat' => $this->sanitizePrice($rowData['Estimated VAT'] ?? null),
                         'platform_collects' => $rowData['Whether the platform collects and pays for itself'] ?? null,
@@ -558,7 +566,7 @@ class AliexpressController extends Controller
         }
 
         $dilPct  = $sumInv   > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0;
-        $gpftPct = $sumSales > 0 ? round(($sumProfit  / $sumSales) * 100, 2) : 0;
+        $gpftPct = $sumSales > 0 ? (int) round(($sumProfit / $sumSales) * 100) : 0;
 
         $key = 'PARENT ' . $parentName;
         return [
@@ -583,6 +591,9 @@ class AliexpressController extends Controller
             'ov_l30'      => (int) $sumOvL30,
             'ae_stock'    => (int) $sumAeStock,
             'dil_percent' => $dilPct,
+            'lmp'         => null,
+            'lmp_link'    => null,
+            'lmp_entries' => [],
         ];
     }
 
@@ -610,6 +621,37 @@ class AliexpressController extends Controller
         $cleaned = preg_replace('/US\s*\$|[$,\s]/', '', $value);
         
         return is_numeric($cleaned) ? (float)$cleaned : null;
+    }
+
+    /**
+     * First numeric price found under any of the given export column names (handles header spelling variants).
+     */
+    private function firstSanitizedPriceFromRow(array $rowData, array $headerCandidates): ?float
+    {
+        foreach ($headerCandidates as $name) {
+            if (!array_key_exists($name, $rowData)) {
+                continue;
+            }
+            $v = $this->sanitizePrice($rowData[$name]);
+            if ($v !== null) {
+                return $v;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, mixed>  $headers
+     * @return array<int, string>
+     */
+    private function trimSheetHeaders(array $headers): array
+    {
+        return array_map(static function ($h) {
+            $s = is_string($h) ? $h : (string) $h;
+
+            return trim(preg_replace('/^\x{FEFF}/u', '', $s));
+        }, $headers);
     }
 
     /**
@@ -670,10 +712,16 @@ class AliexpressController extends Controller
                     ->keyBy('sku');
             }
 
-            // Get marketplace percentage from ChannelMaster (like other channels)
+            // Net revenue % after fees (was historically ~89%). If channel row is missing or <= 0, margin
+            // becomes 0 and PFT shows 0 whenever LP/ship are also 0 — common when SKUs lack ProductMaster.
             $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
-            $percentage = $marketplaceData ? ($marketplaceData->channel_percentage ?? 100) : 100;
-            $margin = $percentage / 100; // Convert % to fraction
+            $percentage = $marketplaceData !== null
+                ? (float) ($marketplaceData->channel_percentage ?? 100)
+                : 100.0;
+            if ($percentage <= 0) {
+                $percentage = 89.0;
+            }
+            $margin = $percentage / 100.0;
 
             $data = [];
             foreach ($aliexpressData as $item) {
@@ -706,10 +754,13 @@ class AliexpressController extends Controller
                         : (isset($productMaster->ship) ? floatval($productMaster->ship) : 0);
                 }
 
-                // Calculate unit price (price per item) - same as eBay
-                $quantity = floatval($item->quantity) ?: 1;
-                $productTotal = floatval($item->product_total) ?: 0;
-                $unitPrice = $quantity > 0 ? $productTotal / $quantity : 0;
+                // Line total: prefer product_total; some exports only fill supply_price
+                $quantity = max(1, (int) $item->quantity);
+                $lineTotal = (float) ($item->product_total ?? 0);
+                if ($lineTotal <= 0) {
+                    $lineTotal = (float) ($item->supply_price ?? 0);
+                }
+                $unitPrice = $lineTotal > 0 ? $lineTotal / $quantity : 0;
 
                 // Calculate PFT Each (per unit) = (unit_price * 0.89) - lp - ship (same as eBay)
                 $pftEach = ($unitPrice * $margin) - $lp - $ship;
@@ -944,8 +995,12 @@ class AliexpressController extends Controller
         try {
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed'];
 
+            // Line revenue: many AE exports omit order_amount; use product_total / supply_price first (same idea as getDailyData).
             $salesAgg = AliexpressDailyData::query()
-                ->selectRaw('sku_code, SUM(COALESCE(quantity, 0)) as al30, SUM(COALESCE(order_amount, 0)) as sales')
+                ->selectRaw(
+                    'sku_code, SUM(COALESCE(quantity, 0)) as al30, '
+                    . 'SUM(COALESCE(NULLIF(product_total, 0), NULLIF(supply_price, 0), order_amount, 0)) as sales'
+                )
                 ->whereNotNull('sku_code')
                 ->where('sku_code', '!=', '')
                 ->where(function ($query) use ($excludedStatuses) {
@@ -958,6 +1013,15 @@ class AliexpressController extends Controller
 
             $normalizeSku = static function ($value) {
                 return strtoupper(trim((string) $value));
+            };
+
+            // LMP sheet uses the same SKU normalization as Temu LMP (upload + save).
+            $normalizeLmpSku = static function ($value) {
+                $s = strtoupper(trim((string) $value));
+                $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+                $s = preg_replace('/\s+/', ' ', $s);
+
+                return $s;
             };
 
             $salesBySku = $salesAgg->keyBy(fn($row) => $normalizeSku($row->sku_code));
@@ -993,6 +1057,14 @@ class AliexpressController extends Controller
                     ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
                     ->get()
                     ->keyBy(fn($row) => $normalizeSku($row->sku));
+            }
+
+            $aeLmpByNormalizedSku = [];
+            foreach (AliexpressLmpDataSheet::all() as $lmpRow) {
+                $nk = $normalizeLmpSku($lmpRow->sku);
+                if (!isset($aeLmpByNormalizedSku[$nk])) {
+                    $aeLmpByNormalizedSku[$nk] = $lmpRow;
+                }
             }
 
             $marketplaceData = MarketplacePercentage::query()
@@ -1038,7 +1110,6 @@ class AliexpressController extends Controller
                 $profit = ($price * $margin) - $lp - $ship;
                 $gpft = $price > 0 ? ($profit / $price) * 100 : 0;
                 $groi = $lp > 0 ? ($profit / $lp) * 100 : 0;
-                $sgpft = $gpft;
 
                 $displaySku = $productMaster->sku ?? ($sale->sku_code ?? $normalizedSku);
                 $isMissing  = !$productMaster || $price <= 0;
@@ -1053,9 +1124,32 @@ class AliexpressController extends Controller
                     $mapValue = "N Map|{$diff}";
                 }
 
-                // Calculate SPRICE derived values (same formulas as GPFT/GROI)
-                $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
-                $sroi  = $lp    > 0 ? round((($sprice * $margin - $lp - $ship) / $lp)     * 100, 2) : 0;
+                // Calculate SPRICE derived values (whole-number %, matches grid)
+                $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp - $ship) / $sprice) * 100) : 0;
+                $sroi  = $lp    > 0 ? (int) round((($sprice * $margin - $lp - $ship) / $lp)     * 100) : 0;
+
+                $aeLmpRow = $aeLmpByNormalizedSku[$normalizeLmpSku($displaySku)] ?? $aeLmpByNormalizedSku[$normalizeLmpSku($normalizedSku)] ?? null;
+                $lmpEntries = [];
+                if ($aeLmpRow) {
+                    $entries = $aeLmpRow->lmp_entries;
+                    if (is_array($entries) && count($entries) > 0) {
+                        $lmpEntries = $entries;
+                    } else {
+                        if ($aeLmpRow->lmp !== null || $aeLmpRow->lmp_link) {
+                            $lmpEntries[] = ['price' => $aeLmpRow->lmp, 'link' => $aeLmpRow->lmp_link];
+                        }
+                        if ($aeLmpRow->lmp_2 !== null || $aeLmpRow->lmp_link_2) {
+                            $lmpEntries[] = ['price' => $aeLmpRow->lmp_2, 'link' => $aeLmpRow->lmp_link_2];
+                        }
+                    }
+                }
+                $lmpPrices = array_values(array_filter(array_map(static function ($e) {
+                    $p = $e['price'] ?? null;
+
+                    return $p !== null && $p !== '' ? (float) $p : null;
+                }, $lmpEntries)));
+                $lmp = count($lmpPrices) > 0 ? min($lmpPrices) : ($aeLmpRow ? $aeLmpRow->lmp : null);
+                $lmpLink = $lmpEntries[0]['link'] ?? ($aeLmpRow ? $aeLmpRow->lmp_link : null);
 
                 $rows[] = [
                     'sku'         => trim((string) $displaySku),
@@ -1063,18 +1157,21 @@ class AliexpressController extends Controller
                     'is_parent'   => false,
                     'image'       => $imageSrc,
                     'price'       => round($price, 2),
+                    'lmp'         => $lmp !== null ? round((float) $lmp, 2) : null,
+                    'lmp_link'    => $lmpLink,
+                    'lmp_entries' => $lmpEntries,
                     'missing'     => $isMissing ? 'M' : '',
                     'map'         => $mapValue,
-                    'gpft'        => round($gpft, 2),
-                    'groi'        => round($groi, 2),
+                    'gpft'        => (int) round($gpft),
+                    'groi'        => (int) round($groi),
                     'profit'      => round($profit, 2),
                     'sales'       => round($sales, 2),
                     'al30'        => (int) round($al30),
                     'lp'          => round($lp, 2),
                     'ship'        => round($ship, 2),
                     'sprice'      => round($sprice, 2),
-                    'sgpft'       => round($sgpft, 2),
-                    'sroi'        => round($sroi, 2),
+                    'sgpft'       => $sgpft,
+                    'sroi'        => $sroi,
                     '_margin'     => round($margin, 4),
                     'inv'         => $inv,
                     'ov_l30'      => $ovL30,
@@ -1154,8 +1251,8 @@ class AliexpressController extends Controller
                 }
 
                 // Calculate derived values (same formulas as TikTok)
-                $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
-                $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp - $ship) / $lp)     * 100, 2) : 0;
+                $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp - $ship) / $sprice) * 100) : 0;
+                $sroi  = $lp     > 0 ? (int) round((($sprice * $margin - $lp - $ship) / $lp)     * 100) : 0;
 
                 // Merge into existing JSON (preserve Listed, Live, etc.)
                 $view   = AliexpressDataView::firstOrNew(['sku' => $sku]);
@@ -1303,6 +1400,185 @@ class AliexpressController extends Controller
             Log::error('AliExpress badge chart data error: ' . $e->getMessage());
             return response()->json(['success' => false, 'data' => []], 500);
         }
+    }
+
+    /**
+     * AliExpress LMP sheet page (same layout as Temu LMP).
+     */
+    public function aliexpressLmpPage()
+    {
+        $records = AliexpressLmpDataSheet::orderBy('sku')->paginate(100);
+
+        return view('market-places.aliexpress_lmp', compact('records'));
+    }
+
+    /**
+     * Sample LMP file: tab-separated .csv matching routes/alicsv format —
+     * (Child) sku, LMP, C link, LMP, C link (same column order as upload).
+     */
+    public function downloadAliexpressLmpSample()
+    {
+        $fileName = 'Aliexpress_LMP_sample.csv';
+        $rows = [
+            ['(Child) sku', 'LMP', 'C link', 'LMP', 'C link'],
+            [
+                'YOUR-SKU-001',
+                '19.99',
+                'https://www.aliexpress.com/item/example-first-listing.html',
+                '12.50',
+                'https://www.aliexpress.com/item/example-second-listing.html',
+            ],
+            ['YOUR-SKU-002', '', '', '', ''],
+            ['PARENT YOUR-PARENT', '', '', '', ''],
+        ];
+
+        $buffer = fopen('php://temp', 'r+');
+        foreach ($rows as $row) {
+            fputcsv($buffer, $row, "\t");
+        }
+        rewind($buffer);
+        $body = stream_get_contents($buffer);
+        fclose($buffer);
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        echo "\xEF\xBB\xBF".$body;
+        exit;
+    }
+
+    /**
+     * Upload AliExpress LMP (Excel/CSV/TSV) — truncate then insert; columns by index like Temu.
+     */
+    public function uploadAliexpressLmp(Request $request)
+    {
+        $request->validate([
+            'lmp_file' => 'required|file|mimes:xlsx,xls,csv,txt|max:20480',
+        ]);
+
+        try {
+            $file = $request->file('lmp_file');
+            $path = $file->getPathname();
+            $ext = strtolower($file->getClientOriginalExtension());
+
+            $rows = [];
+            if (in_array($ext, ['xlsx', 'xls'], true)) {
+                $spreadsheet = IOFactory::load($path);
+                $rows = $spreadsheet->getActiveSheet()->toArray();
+            } else {
+                $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                $delimiter = (strpos($lines[0] ?? '', "\t") !== false) ? "\t" : ',';
+                foreach ($lines as $line) {
+                    $rows[] = str_getcsv($line, $delimiter);
+                }
+            }
+
+            if (count($rows) < 2) {
+                return back()->with('error', 'File is empty or has no data rows.');
+            }
+
+            AliexpressLmpDataSheet::truncate();
+            $imported = 0;
+            $errors = [];
+
+            for ($i = 1; $i < count($rows); $i++) {
+                $row = $rows[$i];
+                $sku = isset($row[0]) ? trim((string) $row[0]) : '';
+                if ($sku === '') {
+                    continue;
+                }
+                $lmp = isset($row[1]) && $row[1] !== '' ? $this->sanitizePrice($row[1]) : null;
+                $lmpLink = isset($row[2]) && trim((string) $row[2]) !== '' ? trim((string) $row[2]) : null;
+                $lmp2 = isset($row[3]) && $row[3] !== '' ? $this->sanitizePrice($row[3]) : null;
+                $lmpLink2 = isset($row[4]) && trim((string) $row[4]) !== '' ? trim((string) $row[4]) : null;
+
+                try {
+                    AliexpressLmpDataSheet::create([
+                        'sku' => $sku,
+                        'lmp' => $lmp,
+                        'lmp_link' => $lmpLink,
+                        'lmp_2' => $lmp2,
+                        'lmp_link_2' => $lmpLink2,
+                    ]);
+                    $imported++;
+                } catch (\Exception $e) {
+                    $errors[] = 'Row ' . ($i + 1) . ': ' . $e->getMessage();
+                }
+            }
+
+            $msg = "Successfully imported {$imported} AliExpress LMP records.";
+            if (!empty($errors)) {
+                $msg .= ' ' . count($errors) . ' row(s) had errors.';
+            }
+
+            return back()->with('success', $msg)->with('upload_errors', $errors);
+        } catch (\Exception $e) {
+            Log::error('AliExpress LMP upload error: ' . $e->getMessage());
+
+            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save LMP entries from grid modal (normalized SKU match; same rules as Temu saveTemuLmp).
+     */
+    public function saveAliexpressLmp(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string|max:255',
+            'lmp_entries' => 'nullable|array',
+            'lmp_entries.*.price' => 'nullable|numeric|min:0',
+            'lmp_entries.*.link' => 'nullable|string|max:2000',
+        ]);
+
+        $sku = trim($request->sku);
+        $rawEntries = $request->input('lmp_entries', []);
+        $lmpEntries = [];
+        foreach ($rawEntries as $e) {
+            $price = isset($e['price']) && $e['price'] !== '' && $e['price'] !== null
+                ? $this->sanitizePrice($e['price'])
+                : null;
+            $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim($e['link']) : null;
+            if ($price !== null || $link !== null) {
+                $lmpEntries[] = ['price' => $price, 'link' => $link];
+            }
+        }
+        $prices = array_values(array_filter(array_map(static function ($e) {
+            return $e['price'] ?? null;
+        }, $lmpEntries)));
+        $firstPrice = count($prices) > 0 ? min($prices) : null;
+        $firstLink = $lmpEntries[0]['link'] ?? null;
+
+        $normalizeSku = static function ($s) {
+            $s = strtoupper(trim((string) $s));
+            $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+            $s = preg_replace('/\s+/', ' ', $s);
+
+            return $s;
+        };
+
+        $targetNormalized = $normalizeSku($sku);
+        $existing = AliexpressLmpDataSheet::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
+            return $normalizeSku($row->sku) === $targetNormalized;
+        });
+
+        $payload = [
+            'sku' => $sku,
+            'lmp' => $firstPrice,
+            'lmp_link' => $firstLink,
+            'lmp_entries' => $lmpEntries,
+            'lmp_2' => null,
+            'lmp_link_2' => null,
+        ];
+
+        if ($existing) {
+            $existing->update($payload);
+        } else {
+            AliexpressLmpDataSheet::create($payload);
+        }
+
+        return response()->json(['success' => true, 'message' => 'LMP saved successfully']);
     }
 
     /**

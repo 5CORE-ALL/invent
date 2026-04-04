@@ -3305,6 +3305,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/aliexpress/upload-daily-data', [AliexpressController::class, 'uploadDailyDataChunk'])->name('aliexpress.upload.daily.data');
     Route::get('/aliexpress/daily-data', [AliexpressController::class, 'getDailyData'])->name('aliexpress.get.daily.data');
     Route::get('/aliexpress-tabulator', [AliexpressController::class, 'aliexpressTabulatorView'])->name('aliexpress.tabulator.view');
+    Route::get('/aliexpress-lmp', [AliexpressController::class, 'aliexpressLmpPage'])->name('aliexpress.lmp');
+    Route::post('/aliexpress-lmp/upload', [AliexpressController::class, 'uploadAliexpressLmp'])->name('aliexpress.lmp.upload');
+    Route::post('/aliexpress-lmp/save', [AliexpressController::class, 'saveAliexpressLmp'])->name('aliexpress.lmp.save');
+    Route::get('/aliexpress-lmp/sample', [AliexpressController::class, 'downloadAliexpressLmpSample'])->name('aliexpress.lmp.sample');
     Route::get('/aliexpress-pricing', [AliexpressController::class, 'aliexpressPricingView'])->name('aliexpress.pricing.view');
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');
     Route::get('/aliexpress/pricing-price-sample', [AliexpressController::class, 'downloadPricingPriceSample'])->name('aliexpress.pricing.price.sample');
