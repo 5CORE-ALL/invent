@@ -71,7 +71,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Faire Daily Data',
-        'sub_title' => 'Faire Daily Data Upload and View',
+        'sub_title' => 'Rows live in faire_daily_data (this table). After uploads, run php artisan app:update-marketplace-daily-metrics so All Marketplace Master uses the same rollups.',
     ])
 
     <div class="toast-container"></div>

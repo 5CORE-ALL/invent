@@ -16,6 +16,26 @@
             display: none !important;
         }
 
+        /* Root overflow:hidden breaks position:sticky on the header when the page scrolls */
+        #marketplace-table.tabulator {
+            overflow: visible;
+        }
+
+        /* Keep header visible under the fixed topbar while scrolling long tables */
+        #marketplace-table.tabulator .tabulator-header {
+            position: sticky;
+            top: var(--tz-topbar-height, 70px);
+            z-index: 24;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+        #marketplace-table.tabulator .tabulator-header .tabulator-frozen {
+            z-index: 26;
+        }
+
+        #marketplace-table.tabulator .tabulator-header .tabulator-col {
+            background-color: #e6e6e6;
+        }
 
         /* Vertical column headers */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
@@ -30,10 +50,13 @@
             font-size: 11px;
             font-weight: 600;
             color: black !important;
+            overflow: visible;
+            text-overflow: clip;
         }
 
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
+            overflow: visible;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -315,9 +338,8 @@
             </div>
 
             <div class="card-body" style="padding: 0;">
-                <div id="marketplace-table-wrapper"
-                    style="height: calc(100vh - 300px); display: flex; flex-direction: column;">
-                    <div id="marketplace-table" style="flex: 1;"></div>
+                <div id="marketplace-table-wrapper" style="width: 100%;">
+                    <div id="marketplace-table"></div>
                 </div>
             </div>
         </div>
@@ -898,9 +920,8 @@
                 ajaxURL: "/channels-master-data",
                 ajaxSorting: false,
                 layout: "fitDataStretch",
-                pagination: true,
-                paginationSize: 50,
-                paginationCounter: "rows",
+                height: false,
+                pagination: false,
                 columnCalcs: "both",
                 initialSort: [{
                     column: "L30 Sales",
@@ -3135,6 +3156,9 @@
             table.on('dataLoaded', function() {
                 setTimeout(function() {
                     buildColumnDropdown();
+                    if (typeof table !== 'undefined' && table.redraw) {
+                        table.redraw(true);
+                    }
                 }, 100);
                 if (!dotTrendsLoadedOnce && table.getData && table.getData().length) {
                     dotTrendsLoadedOnce = true;
