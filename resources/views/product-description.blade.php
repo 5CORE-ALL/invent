@@ -64,6 +64,9 @@
         .dm-aplus-preview img { max-width:100%; height:auto; border-radius:6px; margin-bottom:.5rem; }
         .dm-mp-group-title { font-size:11px; font-weight:600; color:#334155; }
         .btn.is-loading { opacity:.75; pointer-events:none; }
+        #dmHtmlPanel .font-monospace { font-size: 11px; line-height: 1.4; }
+        #dmHtmlPreviewFrame { width: 100%; min-height: 360px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+        #dmModeTabs .nav-link { cursor: pointer; font-size: 12px; padding: .35rem .75rem; }
     </style>
 @endsection
 
@@ -83,6 +86,15 @@
                         <span id="loadErrorText"></span>
                         <button type="button" class="btn btn-sm btn-outline-danger ms-2" id="retryLoadBtn">Retry</button>
                     </div>
+                    <ul class="nav nav-pills gap-1 mb-2" id="dmModeTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button type="button" class="nav-link active" id="dmModeSimpleTab" data-dm-mode="simple" aria-selected="true">Simple mode</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button type="button" class="nav-link" id="dmModeHtmlTab" data-dm-mode="html" aria-selected="false">HTML Editor</button>
+                        </li>
+                    </ul>
+
                     <div class="mb-3 dm-master-toolbar">
                         <label class="small text-muted mb-0 me-1">Per page</label>
                         <select id="perPageSelect" class="form-select form-select-sm" style="width:88px;display:inline-block;vertical-align:middle;">
@@ -98,6 +110,35 @@
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
         </div>
 
+                    <div id="dmHtmlPanel" class="mb-3 dm-modal-section" style="display: none;">
+                        <div class="dm-modal-section-title">Shopify — custom HTML (Advanced)</div>
+                        <p class="small text-muted mb-2">Paste full HTML for the product page body. <strong>Push</strong> replaces <code>body_html</code> on Shopify. Saved templates are stored per SKU and store.</p>
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <label class="form-label small mb-0">SKU</label>
+                                <input type="text" id="dmHtmlSku" class="form-control form-control-sm mb-2" placeholder="e.g. 138 RU" autocomplete="off">
+                                <label class="form-label small mb-0">Shopify store</label>
+                                <select id="dmHtmlMarketplace" class="form-select form-select-sm mb-2">
+                                    <option value="shopify_main">Shopify Main</option>
+                                    <option value="shopify_pls">Shopify PLS</option>
+                                </select>
+                                <label class="form-label small mb-0">HTML</label>
+                                <textarea id="dmHtmlTextarea" class="form-control font-monospace" rows="16" placeholder="&lt;div class=&quot;product-description&quot;&gt;...&lt;/div&gt;"></textarea>
+                                <div class="d-flex flex-wrap gap-2 mt-2">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="dmHtmlLoadBtn"><i class="fas fa-download"></i> Load saved template</button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="dmHtmlPreviewBtn"><i class="fas fa-eye"></i> Preview</button>
+                                    <button type="button" class="btn btn-info btn-sm" id="dmHtmlSaveBtn"><i class="fas fa-save"></i> Save template</button>
+                                    <button type="button" class="btn btn-success btn-sm" id="dmHtmlPushBtn"><i class="fas fa-cloud-upload-alt"></i> Push to Shopify</button>
+                                </div>
+                            </div>
+                            <div class="col-lg-6">
+                                <label class="form-label small mb-0">Preview <span class="text-muted">(isolated iframe)</span></label>
+                                <iframe id="dmHtmlPreviewFrame" title="HTML preview" sandbox="allow-same-origin"></iframe>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="dmSimplePanel">
                     <div id="dmTableShell">
                         <div id="dmSkeleton" class="mb-2" style="display:none;">
                             <table class="dm-skel-table"><tbody id="dmSkeletonBody"></tbody></table>
@@ -143,6 +184,7 @@
                             <div class="small text-muted" id="dmPageInfo"></div>
                             <nav><ul class="pagination pagination-sm mb-0" id="dmPagination"></ul></nav>
                         </div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -229,7 +271,7 @@
         </div>
     </div>
 
-    <div class="modal fade" id="viewDescModal" tabindex="-1">
+                    <div class="modal fade" id="viewDescModal" tabindex="-1">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
@@ -1262,6 +1304,110 @@ document.addEventListener('DOMContentLoaded', () => {
             ev.target.value = '';
         };
         reader.readAsArrayBuffer(file);
+    });
+
+    function setDmMode(mode) {
+        const simple = document.getElementById('dmSimplePanel');
+        const htmlPanel = document.getElementById('dmHtmlPanel');
+        const toolbar = document.querySelector('.dm-master-toolbar');
+        document.querySelectorAll('#dmModeTabs [data-dm-mode]').forEach((b) => {
+            const on = b.getAttribute('data-dm-mode') === mode;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        if (mode === 'html') {
+            if (simple) simple.style.display = 'none';
+            if (htmlPanel) htmlPanel.style.display = 'block';
+            if (toolbar) toolbar.style.display = 'none';
+        } else {
+            if (simple) simple.style.display = 'block';
+            if (htmlPanel) htmlPanel.style.display = 'none';
+            if (toolbar) toolbar.style.display = '';
+        }
+    }
+
+    document.querySelectorAll('#dmModeTabs [data-dm-mode]').forEach((btn) => {
+        btn.addEventListener('click', () => setDmMode(btn.getAttribute('data-dm-mode')));
+    });
+
+    function dmHtmlSyncFromRow() {
+        const sku = document.getElementById('dmHtmlSku')?.value.trim();
+        const mp = document.getElementById('dmHtmlMarketplace')?.value;
+        if (!sku || !mp) return;
+        const row = bySku.get(String(sku));
+        if (!row) return;
+        const key = mp === 'shopify_pls' ? 'shopify_pls_custom_html' : 'shopify_main_custom_html';
+        const ta = document.getElementById('dmHtmlTextarea');
+        if (ta && row[key]) ta.value = row[key];
+    }
+
+    document.getElementById('dmHtmlSku')?.addEventListener('blur', dmHtmlSyncFromRow);
+    document.getElementById('dmHtmlMarketplace')?.addEventListener('change', dmHtmlSyncFromRow);
+
+    document.getElementById('dmHtmlLoadBtn')?.addEventListener('click', async () => {
+        const sku = document.getElementById('dmHtmlSku')?.value.trim();
+        const mp = document.getElementById('dmHtmlMarketplace')?.value;
+        if (!sku) { toast('Enter a SKU', false); return; }
+        try {
+            const u = new URLSearchParams({ sku, marketplace: mp });
+            const r = await fetch('/product-description/shopify-html?' + u.toString(), { headers: { Accept: 'application/json' } });
+            const j = await r.json();
+            if (j.success) {
+                const ta = document.getElementById('dmHtmlTextarea');
+                if (ta) ta.value = j.html || '';
+                toast(j.html ? 'Template loaded' : 'No saved template for this SKU');
+            } else toast(j.message || 'Load failed', false);
+        } catch (e) { toast(e.message, false); }
+    });
+
+    document.getElementById('dmHtmlPreviewBtn')?.addEventListener('click', () => {
+        const raw = document.getElementById('dmHtmlTextarea')?.value || '';
+        const iframe = document.getElementById('dmHtmlPreviewFrame');
+        if (iframe) iframe.srcdoc = raw || '<p style="font-family:sans-serif;color:#64748b;padding:12px;">(empty)</p>';
+    });
+
+    document.getElementById('dmHtmlSaveBtn')?.addEventListener('click', async () => {
+        const sku = document.getElementById('dmHtmlSku')?.value.trim();
+        const mp = document.getElementById('dmHtmlMarketplace')?.value;
+        const html = document.getElementById('dmHtmlTextarea')?.value || '';
+        if (!sku) { toast('Enter a SKU', false); return; }
+        try {
+            const r = await fetch('/product-description/shopify-html/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                body: JSON.stringify({ sku, marketplace: mp, html }),
+            });
+            const j = await r.json();
+            toast(j.message || (j.success ? 'Saved' : 'Save failed'), !!j.success);
+            if (j.success) {
+                const row = bySku.get(String(sku));
+                if (row) {
+                    if (mp === 'shopify_pls') row.shopify_pls_custom_html = html;
+                    else row.shopify_main_custom_html = html;
+                }
+            }
+        } catch (e) { toast(e.message, false); }
+    });
+
+    document.getElementById('dmHtmlPushBtn')?.addEventListener('click', async () => {
+        const sku = document.getElementById('dmHtmlSku')?.value.trim();
+        const mp = document.getElementById('dmHtmlMarketplace')?.value;
+        const html = document.getElementById('dmHtmlTextarea')?.value || '';
+        if (!sku) { toast('Enter a SKU', false); return; }
+        const btn = document.getElementById('dmHtmlPushBtn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...'; }
+        try {
+            const r = await fetch('/product-description/shopify-html/push', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                body: JSON.stringify({ sku, marketplace: mp, html }),
+            });
+            const j = await r.json();
+            toast(j.message || (j.success ? 'Pushed to Shopify' : 'Push failed'), !!j.success);
+        } catch (e) { toast(e.message, false); }
+        finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Push to Shopify'; }
+        }
     });
 
     loadData(1);

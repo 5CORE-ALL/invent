@@ -347,6 +347,133 @@ class ShopifyPLSApiService
     }
 
     /**
+     * HTML Editor: set PLS product `body_html` to raw HTML (full replace).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBodyHtml(string $identifier, string $bodyHtml): array
+    {
+        $bodyHtml = trim((string) $bodyHtml);
+        if ($bodyHtml === '') {
+            return ['success' => false, 'message' => 'HTML body is empty.'];
+        }
+        if (strlen($bodyHtml) > 500000) {
+            return ['success' => false, 'message' => 'HTML exceeds maximum length (500,000 characters).'];
+        }
+
+        try {
+            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
+            $token = config('services.prolightsounds.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $trim = trim($identifier);
+            $productId = null;
+            $hadHttp = false;
+            $shopifySku = ShopifySku::where('sku', $trim)
+                ->orWhere('sku', strtoupper($trim))
+                ->orWhere('sku', strtolower($trim))
+                ->first();
+
+            if (! $shopifySku) {
+                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
+            }
+
+            if ($shopifySku && $shopifySku->variant_id) {
+                $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+                $variantResponse = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(60)->connectTimeout(25)->get($variantUrl);
+                });
+                $hadHttp = true;
+
+                if ($variantResponse->successful()) {
+                    $productId = $variantResponse->json('variant.product_id');
+                }
+            }
+
+            if (! $productId && ctype_digit($trim)) {
+                if ($hadHttp) {
+                    usleep(500000);
+                }
+                $probeUrl = "https://{$domain}/admin/api/2024-01/products/{$trim}.json";
+                $productProbe = $this->retryOnRateLimit(function () use ($token, $probeUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(60)->connectTimeout(25)->get($probeUrl);
+                });
+                $hadHttp = true;
+                if ($productProbe->successful() && $productProbe->json('product.id')) {
+                    $productId = (int) $productProbe->json('product.id');
+                }
+            }
+
+            if (! $productId) {
+                if ($hadHttp) {
+                    usleep(500000);
+                }
+                $found = $this->findProductBySkuViaGraphQL($domain, $token, $trim);
+                if ($found) {
+                    $productId = $found['product_id'];
+                }
+            }
+
+            if (! $productId) {
+                return ['success' => false, 'message' => 'PLS product not found for SKU, variant_id, or product_id.'];
+            }
+
+            usleep(500000);
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $getProduct = $this->retryOnRateLimit(function () use ($token, $productUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->get($productUrl);
+            });
+
+            if (! $getProduct->successful()) {
+                return ['success' => false, 'message' => 'Could not load product: '.$getProduct->body()];
+            }
+
+            $title = (string) ($getProduct->json('product.title') ?? '');
+            if ($title === '') {
+                return ['success' => false, 'message' => 'Product title missing from Shopify PLS.'];
+            }
+
+            Log::info('Shopify PLS updateBodyHtml', ['sku' => $trim, 'product_id' => $productId, 'len' => strlen($bodyHtml)]);
+
+            $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $bodyHtml) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                        'body_html' => $bodyHtml,
+                    ],
+                ]);
+            });
+
+            if ($response->successful()) {
+                return ['success' => true, 'message' => 'Shopify PLS body HTML updated.'];
+            }
+
+            return ['success' => false, 'message' => 'PLS update failed: '.$response->body()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Description Master: sets `body_html` to unified layout (About Item → Product Description → Features → Images).
      *
      * @return array{success: bool, message: string}

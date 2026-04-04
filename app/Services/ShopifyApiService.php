@@ -407,6 +407,114 @@ class ShopifyApiService
     }
 
     /**
+     * Description Master (HTML Editor): set `body_html` to the given HTML string (full replace, no server templating).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBodyHtml(string $identifier, string $bodyHtml): array
+    {
+        $bodyHtml = trim((string) $bodyHtml);
+        if ($bodyHtml === '') {
+            return ['success' => false, 'message' => 'HTML body is empty.'];
+        }
+        if (strlen($bodyHtml) > 500000) {
+            return ['success' => false, 'message' => 'HTML exceeds maximum length (500,000 characters).'];
+        }
+
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify credentials not configured.'];
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $trim = trim($identifier);
+            $variantId = $this->resolveMainStoreVariantId($trim);
+            if (! $variantId) {
+                return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
+            }
+
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
+            $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
+            });
+
+            if (! $variantRes->successful()) {
+                $msg = $variantRes->status() === 429
+                    ? 'Variant lookup rate limited after retries.'
+                    : 'Variant lookup failed: '.$variantRes->body();
+
+                return ['success' => false, 'message' => $msg];
+            }
+
+            $productId = $variantRes->json('variant.product_id');
+            if (! $productId) {
+                return ['success' => false, 'message' => 'Product ID missing.'];
+            }
+
+            usleep(1_000_000);
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $getProduct = $this->retryOnRateLimit(function () use ($token, $productUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->get($productUrl);
+            });
+
+            if (! $getProduct->successful()) {
+                $msg = $getProduct->status() === 429
+                    ? 'Product fetch rate limited after retries.'
+                    : 'Could not load product: '.$getProduct->body();
+
+                return ['success' => false, 'message' => $msg];
+            }
+
+            $title = (string) ($getProduct->json('product.title') ?? '');
+            if ($title === '') {
+                return ['success' => false, 'message' => 'Product title missing from Shopify.'];
+            }
+
+            Log::info('Shopify updateBodyHtml: replacing body_html with custom HTML', [
+                'sku' => $trim,
+                'product_id' => $productId,
+                'body_html_chars' => strlen($bodyHtml),
+            ]);
+
+            $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $bodyHtml, $title) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                        'body_html' => $bodyHtml,
+                    ],
+                ]);
+            });
+
+            if ($updateRes->successful()) {
+                return ['success' => true, 'message' => 'Shopify product body HTML updated.'];
+            }
+
+            $errBody = $updateRes->status() === 429
+                ? 'Shopify update rate limited after retries.'
+                : $updateRes->body();
+
+            return ['success' => false, 'message' => 'Shopify update failed: '.$errBody];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Description Master: sets `body_html` to a unified layout — About Item (from Bullet Points Master / shopify_metrics),
      * Product Description, optional Features 2×2 grid (from product_master.Values.shopify_feature_grid), then Images.
      *
