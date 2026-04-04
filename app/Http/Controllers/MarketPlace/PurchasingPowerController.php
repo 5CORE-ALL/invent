@@ -58,7 +58,12 @@ class PurchasingPowerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData  = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Match Product Master / marketplace pricing: NBSP → space, trim, uppercase; full Shopify map (whereIn misses NBSP variants).
+        $canonicalSku = static function ($value): string {
+            return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+        };
+
+        $shopifyData = ShopifySku::all()->keyBy(fn ($row) => $canonicalSku($row->sku));
         $ppMetrics    = PurchasingPowerProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $dataViews    = PurchasingPowerDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         $amazonData   = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper($i->sku));
@@ -79,7 +84,7 @@ class PurchasingPowerController extends Controller
             $sku     = strtoupper($pm->sku);
             $parent  = $pm->parent;
 
-            $shopify   = $shopifyData[$pm->sku] ?? null;
+            $shopify   = $shopifyData->get($canonicalSku($pm->sku));
             $ppMetric  = $ppMetrics[$pm->sku] ?? null;
             $amazon    = $amazonData[strtoupper($pm->sku)] ?? null;
 
@@ -87,8 +92,8 @@ class PurchasingPowerController extends Controller
             $row['Parent']      = $parent;
             $row['(Child) sku'] = $pm->sku;
 
-            $row['INV']  = $shopify->inv      ?? 0;
-            $row['L30']  = $shopify->quantity ?? 0;
+            $row['INV']  = $shopify ? (int) ($shopify->inv ?? 0) : 0;
+            $row['L30']  = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
             $row['PP L30']   = $salesQty[strtoupper($pm->sku)] ?? $ppMetric->m_l30 ?? 0;
             $row['PP Price'] = $ppMetric->price ?? 0;
@@ -158,7 +163,7 @@ class PurchasingPowerController extends Controller
             $row['SPFT']  = $sgpft;
             $row['SROI']  = round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
 
-            $row['image_path'] = $shopify->image_src ?? ($values['image_path'] ?? ($pm->image_path ?? null));
+            $row['image_path'] = $shopify?->image_src ?? ($values['image_path'] ?? ($pm->image_path ?? null));
 
             $result[] = (object) $row;
         }

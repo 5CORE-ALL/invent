@@ -85,10 +85,13 @@ class MacyController extends Controller
             ->values()
             ->all();
 
+        // Match Product Master / marketplace pricing: NBSP → space, trim, uppercase; full Shopify map (whereIn misses NBSP variants).
+        $canonicalSku = static function ($value): string {
+            return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+        };
+
         // 3. Related Models
-        $shopifyData = ShopifySku::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
+        $shopifyData = ShopifySku::all()->keyBy(fn ($row) => $canonicalSku($row->sku));
 
         $macysMetrics = MacyProduct::whereIn('sku', $skus)
             ->get()
@@ -137,7 +140,7 @@ class MacyController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($canonicalSku($pm->sku));
             $macysMetric = $macysMetrics[$pm->sku] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
             $priceData = $priceDataCollection[strtoupper($pm->sku)] ?? null; // Use uppercase for lookup
@@ -148,8 +151,8 @@ class MacyController extends Controller
             $row["(Child) sku"] = $pm->sku;
 
             // Shopify data
-            $row["INV"] = $shopify->inv ?? 0;
-            $row["L30"] = $shopify->quantity ?? 0;
+            $row["INV"] = $shopify ? (int) ($shopify->inv ?? 0) : 0;
+            $row["L30"] = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
             // Macys Metrics from macy_products table
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
@@ -299,7 +302,7 @@ class MacyController extends Controller
             );
 
             // Image
-            $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
+            $row["image_path"] = $shopify?->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
 
             $result[] = (object) $row;
         }
@@ -807,16 +810,21 @@ class MacyController extends Controller
         $productMasters = ProductMaster::all();
         $skus = $productMasters->pluck('sku')->toArray();
 
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $canonicalSku = static function ($value): string {
+            return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+        };
+
+        $shopifySkus = ShopifySku::all()->keyBy(fn ($row) => $canonicalSku($row->sku));
         $macyProducts = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $macyDataViews = MacyDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        $processedData = $productMasters->map(function ($product) use ($shopifySkus, $macyProducts, $macyDataViews) {
+        $processedData = $productMasters->map(function ($product) use ($shopifySkus, $macyProducts, $macyDataViews, $canonicalSku) {
             $sku = $product->sku;
+            $shopifyRow = $shopifySkus->get($canonicalSku($sku));
 
             // 🟢 Shopify + Macy base metrics
-            $product->INV = $shopifySkus->has($sku) ? $shopifySkus[$sku]->inv : 0;
-            $product->L30 = $shopifySkus->has($sku) ? $shopifySkus[$sku]->quantity : 0;
+            $product->INV = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
+            $product->L30 = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
             $product->m_l30 = $macyProducts->has($sku) ? $macyProducts[$sku]->m_l30 : null;
             $product->m_l60 = $macyProducts->has($sku) ? $macyProducts[$sku]->m_l60 : null;
             $product->price = $macyProducts->has($sku) ? $macyProducts[$sku]->price : null;

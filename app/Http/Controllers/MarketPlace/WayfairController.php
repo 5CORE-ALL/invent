@@ -625,7 +625,8 @@ class WayfairController extends Controller
                 ->groupBy('sku')
                 ->get();
 
-            $normalizeSku = static fn ($value) => strtoupper(trim((string) $value));
+            // Match ProductMaster getViewProductData: NBSP → space, then trim + uppercase (ShopifySku::all() keying).
+            $normalizeSku = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
 
             $salesBySku = $salesAgg->keyBy(fn ($row) => $normalizeSku($row->sku));
 
@@ -653,13 +654,8 @@ class WayfairController extends Controller
                     ->keyBy(fn ($row) => $normalizeSku($row->sku));
             }
 
-            $shopifyBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $shopifyBySku = ShopifySku::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
-            }
+            // Load full Shopify map like Product Master — whereIn(UPPER(TRIM(sku))) misses UTF-8 NBSP / variant spacing.
+            $shopifyBySku = ShopifySku::all()->keyBy(fn ($row) => $normalizeSku($row->sku));
 
             $listingStatusBySku = collect();
             if ($allNormalizedSkus->isNotEmpty()) {
@@ -1232,5 +1228,23 @@ class WayfairController extends Controller
 
         return str_starts_with($magic, "\x50\x4B\x03\x04")
             || str_starts_with($magic, "\xD0\xCF\x11\xE0");
+    }
+
+    public function getWayfairPricingColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "wayfair_pricing_tabulator_column_visibility_{$userId}";
+
+        return response()->json(Cache::get($key, []));
+    }
+
+    public function setWayfairPricingColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "wayfair_pricing_tabulator_column_visibility_{$userId}";
+        $visibility = $request->input('visibility', []);
+        Cache::put($key, $visibility, now()->addDays(365));
+
+        return response()->json(['success' => true]);
     }
 }

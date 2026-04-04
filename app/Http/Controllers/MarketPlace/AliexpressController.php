@@ -1011,8 +1011,9 @@ class AliexpressController extends Controller
                 ->groupBy('sku_code')
                 ->get();
 
+            // Match Product Master + Faire/Wayfair pricing: NBSP → space, trim, uppercase (Shopify join).
             $normalizeSku = static function ($value) {
-                return strtoupper(trim((string) $value));
+                return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
             };
 
             // LMP sheet uses the same SKU normalization as Temu LMP (upload + save).
@@ -1050,14 +1051,8 @@ class AliexpressController extends Controller
             $uploadedPriceBySku = AliexpressPricingPrice::all()
                 ->keyBy(fn($row) => $normalizeSku($row->sku));
 
-            // INV + OV L30 from shopify_skus
-            $shopifyBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $shopifyBySku = ShopifySku::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn($row) => $normalizeSku($row->sku));
-            }
+            // Full Shopify map like Product Master — whereIn(UPPER(TRIM(sku))) misses UTF-8 NBSP / spacing variants.
+            $shopifyBySku = ShopifySku::all()->keyBy(fn ($row) => $normalizeSku($row->sku));
 
             $aeLmpByNormalizedSku = [];
             foreach (AliexpressLmpDataSheet::all() as $lmpRow) {

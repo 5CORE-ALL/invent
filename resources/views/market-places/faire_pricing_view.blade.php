@@ -159,6 +159,16 @@
                         <button type="button" id="fr-export-pricing" class="btn btn-sm btn-success">
                             <i class="fas fa-file-csv"></i> Export CSV
                         </button>
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="frColumnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fa fa-eye"></i> Columns
+                            </button>
+                            <ul class="dropdown-menu py-1" aria-labelledby="frColumnVisibilityDropdown" id="fr-column-dropdown-menu" style="max-height: 400px; overflow-y: auto; min-width: 220px;">
+                            </ul>
+                        </div>
+                        <button type="button" id="fr-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
+                            <i class="fa fa-eye"></i> Show all
+                        </button>
                         <button id="fr-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
                             <i class="fas fa-exchange-alt"></i> Pricing mode
                         </button>
@@ -183,11 +193,11 @@
                         <div class="d-flex flex-wrap gap-2">
                             <span class="badge bg-primary fs-6 p-2" id="fr-total-sales-badge" style="font-weight:700;">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="fr-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
-                            <span class="badge bg-success fs-6 p-2" id="fr-total-profit-badge" style="font-weight:700;">Profit: 0</span>
+                            <span class="badge bg-success fs-6 p-2 d-none" id="fr-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="fr-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty).">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2" id="fr-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
                             <span class="badge bg-danger fs-6 p-2" id="fr-missing-badge" style="font-weight:700;">Missing L: 0</span>
-                            <span class="badge fs-6 p-2" id="fr-map-badge" style="font-weight:700;background:#0d6efd;color:#fff;">Map: 0</span>
+                            <span class="badge fs-6 p-2" id="fr-map-badge" style="font-weight:700;background:#0d6efd;color:#fff;">N Map: 0</span>
                             <span class="badge fs-6 p-2" id="fr-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;">0 Sold: 0</span>
                             <span class="badge fs-6 p-2" id="fr-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;">&gt;0 Sold: 0</span>
                         </div>
@@ -227,7 +237,7 @@
         let table = null;
         let summaryDataCache = [];
         let frMissingActive = false;
-        let frMapActive = false;
+        let frNMapActive = false;
         let frZeroSoldActive = false;
         let frMoreSoldActive = false;
 
@@ -502,7 +512,7 @@
 
                 if (fqty === 0) zeroSold++; else moreSold++;
                 if (isMissing) missingCount++;
-                if ((row.map || '') === 'Map') mapCount++;
+                if ((row.map || '').startsWith('N Map|')) mapCount++;
             });
 
             const pftPct = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
@@ -514,7 +524,7 @@
             $('#fr-avg-gpft-badge').text('PFt: ' + Math.round(pftPct) + '%');
             $('#fr-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
             $('#fr-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
-            $('#fr-map-badge').text('Map: ' + mapCount.toLocaleString());
+            $('#fr-map-badge').text('N Map: ' + mapCount.toLocaleString());
             $('#fr-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#fr-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
         }
@@ -544,7 +554,7 @@
                     if (d.is_parent === true) {
                         return p.includes(parentSearch) || sku.includes(parentSearch);
                     }
-                    return p.includes(parentSearch);
+                    return p.includes(parentSearch) || sku.includes(parentSearch);
                 });
             }
             if (rowType === 'parents') {
@@ -609,9 +619,73 @@
                 });
             }
             if (frMissingActive) table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
-            if (frMapActive) table.addFilter(d => (d.map || '') === 'Map');
+            if (frNMapActive) table.addFilter(d => (d.map || '').startsWith('N Map|'));
             if (frZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (frMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
+        }
+
+        function frBuildColumnDropdown() {
+            if (!table) return;
+            const menu = document.getElementById('fr-column-dropdown-menu');
+            if (!menu) return;
+            let html = '';
+            table.getColumns().forEach(function(col) {
+                const field = col.getField();
+                const def = col.getDefinition();
+                const titleRaw = def.title;
+                const titleStr = titleRaw != null ? String(titleRaw) : '';
+                const label = titleStr.replace(/<[^>]*>/g, '').trim() || field;
+                if (field && field !== '_fr_select' && label) {
+                    const isVisible = col.isVisible();
+                    const fEsc = String(field).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                    const lEsc = String(label).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                    html += '<li class="dropdown-item px-2 py-1">' +
+                        '<label class="d-flex align-items-center gap-2 mb-0 w-100" style="cursor:pointer;">' +
+                        '<input type="checkbox" class="fr-column-toggle" data-field="' + fEsc + '" ' + (isVisible ? 'checked' : '') + '>' +
+                        '<span>' + lEsc + '</span>' +
+                        '</label></li>';
+                }
+            });
+            menu.innerHTML = html;
+        }
+
+        function frSaveColumnVisibilityToServer() {
+            if (!table) return;
+            const visibility = {};
+            table.getColumns().forEach(function(col) {
+                const field = col.getField();
+                if (field && field !== '_fr_select') {
+                    visibility[field] = col.isVisible();
+                }
+            });
+            $.ajax({
+                url: '{{ route("faire.pricing.column.set") }}',
+                method: 'POST',
+                data: { visibility: visibility, _token: '{{ csrf_token() }}' }
+            });
+        }
+
+        function frApplyColumnVisibilityFromServer() {
+            if (!table) return;
+            $.ajax({
+                url: '{{ route("faire.pricing.column.get") }}',
+                method: 'GET',
+                success: function(visibility) {
+                    if (visibility && typeof visibility === 'object' && Object.keys(visibility).length > 0) {
+                        Object.keys(visibility).forEach(function(field) {
+                            const col = table.getColumn(field);
+                            if (col) {
+                                if (visibility[field]) {
+                                    col.show();
+                                } else {
+                                    col.hide();
+                                }
+                            }
+                        });
+                        frBuildColumnDropdown();
+                    }
+                }
+            });
         }
 
         $(document).ready(function() {
@@ -714,6 +788,31 @@
                         }
                     },
                     {
+                        title: 'B/S',
+                        field: 'buyer_link',
+                        headerSort: false,
+                        hozAlign: 'center',
+                        width: 64,
+                        download: false,
+                        frozen: true,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const b = d.buyer_link;
+                            const s = d.seller_link;
+                            const parts = [];
+                            if (b) {
+                                parts.push('<a href="' + frEscUrlAttr(b) + '" target="_blank" rel="noopener noreferrer" ' +
+                                    'class="fw-semibold" style="color:#0d6efd;" title="Buyer (Faire)">B</a>');
+                            }
+                            if (s) {
+                                parts.push('<a href="' + frEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" ' +
+                                    'class="fw-semibold" style="color:#6f42c1;" title="Seller (portal)">S</a>');
+                            }
+                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '';
+                        }
+                    },
+                    {
                         title: 'INV', field: 'inv', sorter: 'number', hozAlign: 'center', width: 55,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -791,30 +890,6 @@
                         }
                     },
                     {
-                        title: 'B/S',
-                        field: 'buyer_link',
-                        headerSort: false,
-                        hozAlign: 'center',
-                        width: 64,
-                        download: false,
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '';
-                            const b = d.buyer_link;
-                            const s = d.seller_link;
-                            const parts = [];
-                            if (b) {
-                                parts.push('<a href="' + frEscUrlAttr(b) + '" target="_blank" rel="noopener noreferrer" ' +
-                                    'class="fw-semibold" style="color:#0d6efd;" title="Buyer (Faire)">B</a>');
-                            }
-                            if (s) {
-                                parts.push('<a href="' + frEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" ' +
-                                    'class="fw-semibold" style="color:#6f42c1;" title="Seller (portal)">S</a>');
-                            }
-                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '';
-                        }
-                    },
-                    {
                         title: 'GPFT', field: 'gpft', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -842,7 +917,7 @@
                         }
                     },
                     {
-                        title: 'Profit', field: 'profit', sorter: 'number', hozAlign: 'right',
+                        title: 'Profit', field: 'profit', sorter: 'number', hozAlign: 'right', visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue()) || 0;
@@ -855,7 +930,7 @@
                         }
                     },
                     {
-                        title: 'Sales', field: 'sales', sorter: 'number', hozAlign: 'right',
+                        title: 'Sales', field: 'sales', sorter: 'number', hozAlign: 'right', visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue()) || 0;
@@ -919,6 +994,11 @@
                 dataFiltered: function(filters, rows) { updateSummary(rows); },
                 dataProcessed: function() { updateSummary(); },
                 renderComplete: function() { updateSummary(); }
+            });
+
+            table.on('tableBuilt', function() {
+                frBuildColumnDropdown();
+                frApplyColumnVisibilityFromServer();
             });
 
             table.on('scrollVertical', frRemoveImagePreview);
@@ -1051,22 +1131,22 @@
 
             $('#fr-missing-badge').on('click', function() {
                 frMissingActive = !frMissingActive;
-                frMapActive = frZeroSoldActive = frMoreSoldActive = false;
+                frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
                 applyFilters();
             });
             $('#fr-map-badge').on('click', function() {
-                frMapActive = !frMapActive;
+                frNMapActive = !frNMapActive;
                 frMissingActive = frZeroSoldActive = frMoreSoldActive = false;
                 applyFilters();
             });
             $('#fr-zero-sold-badge').on('click', function() {
                 frZeroSoldActive = !frZeroSoldActive;
-                frMoreSoldActive = frMissingActive = frMapActive = false;
+                frMoreSoldActive = frMissingActive = frNMapActive = false;
                 applyFilters();
             });
             $('#fr-more-sold-badge').on('click', function() {
                 frMoreSoldActive = !frMoreSoldActive;
-                frZeroSoldActive = frMissingActive = frMapActive = false;
+                frZeroSoldActive = frMissingActive = frNMapActive = false;
                 applyFilters();
             });
 
@@ -1075,6 +1155,35 @@
             });
             $('#fr-export-pricing').on('click', function() {
                 table.download('csv', 'faire_analytics_data.csv');
+            });
+
+            const frColMenu = document.getElementById('fr-column-dropdown-menu');
+            if (frColMenu) {
+                frColMenu.addEventListener('change', function(e) {
+                    if (e.target.classList.contains('fr-column-toggle')) {
+                        const field = e.target.getAttribute('data-field');
+                        const col = field ? table.getColumn(field) : null;
+                        if (col) {
+                            if (e.target.checked) {
+                                col.show();
+                            } else {
+                                col.hide();
+                            }
+                            frSaveColumnVisibilityToServer();
+                        }
+                    }
+                });
+            }
+            document.getElementById('fr-show-all-columns-btn')?.addEventListener('click', function() {
+                if (!table) return;
+                table.getColumns().forEach(function(col) {
+                    const f = col.getField();
+                    if (f && f !== '_fr_select') {
+                        col.show();
+                    }
+                });
+                frBuildColumnDropdown();
+                frSaveColumnVisibilityToServer();
             });
 
             $('#frUploadPriceSheetBtn').on('click', function() {
