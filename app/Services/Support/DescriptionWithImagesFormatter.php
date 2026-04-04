@@ -44,8 +44,7 @@ class DescriptionWithImagesFormatter
             }
             $imageSection = '';
             if ($imageParts !== []) {
-                $imageSection = '<h3 style="margin-top:1.25em;">Images</h3>'
-                    .'<div class="product-images" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">'
+                $imageSection = '<div class="product-images" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">'
                     .implode("\n", $imageParts)
                     .'</div>';
             }
@@ -118,13 +117,30 @@ class DescriptionWithImagesFormatter
             if ($line === '') {
                 continue;
             }
+            // Phase-1 checklist style: "✅ LABEL" or "✅ LABEL - rest"
+            $line = preg_replace('/^\s*✅\s*/u', '', $line);
+            $line = trim(preg_replace('/^[•\-\*]\s+/', '', $line));
+            if ($line === '') {
+                continue;
+            }
             if (preg_match('/^\*\*(.+?)\*\*\s*-\s*(.+)$/s', $line, $m)) {
                 $label = htmlspecialchars(trim($m[1]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 $rest = htmlspecialchars(trim($m[2]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 $parts[] = '<p style="margin:0 0 10px 0;"><strong>'.$label.'</strong> - '.$rest.'</p>';
-            } else {
-                $parts[] = '<p style="margin:0 0 10px 0;">'.nl2br(htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+
+                continue;
             }
+            $dashPos = mb_strpos($line, ' - ');
+            if ($dashPos !== false && $dashPos > 0 && $dashPos < mb_strlen($line) - 3) {
+                $label = trim(mb_substr($line, 0, $dashPos));
+                $rest = trim(mb_substr($line, $dashPos + 3));
+                if ($label !== '' && $rest !== '' && mb_strlen($label) <= 120) {
+                    $parts[] = '<p style="margin:0 0 10px 0;"><strong>'.htmlspecialchars($label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</strong> - '.htmlspecialchars($rest, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</p>';
+
+                    continue;
+                }
+            }
+            $parts[] = '<p style="margin:0 0 10px 0;">'.nl2br(htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
         }
 
         return implode("\n", $parts);

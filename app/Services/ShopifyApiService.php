@@ -180,7 +180,8 @@ class ShopifyApiService
     }
 
     /**
-     * Phase 1: Overwrite product `body_html` with Key Features bullets only (see ShopifyBulletPointsFormatter).
+     * Bullet Points Master: replace `body_html` with unified layout (About Item → Product Description → Features → Images)
+     * using bullets from this push plus Product Master long description and optional Values.shopify_feature_grid.
      *
      * @return array{success: bool, message: string}
      */
@@ -194,10 +195,11 @@ class ShopifyApiService
             return ['success' => false, 'message' => 'At least one bullet line is required.'];
         }
 
-        $formattedHtml = ShopifyBulletPointsFormatter::formatBodyHtml($bulletPoints);
         $firstBullet = '';
         foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
-            $line = trim((string) $line, " \t\n\r\0\x0B-•*");
+            $line = trim((string) $line);
+            $line = preg_replace('/^\s*✅\s*/u', '', $line);
+            $line = trim($line, " \t\n\r\0\x0B-•*");
             if ($line !== '') {
                 $firstBullet = $line;
                 break;
@@ -213,13 +215,6 @@ class ShopifyApiService
 
             $domain = preg_replace('#^https?://#', '', $domain);
             $domain = rtrim($domain, '/');
-            Log::info('Shopify updateBulletPoints start', [
-                'identifier' => $identifier,
-                'domain' => $domain,
-                'formatted_html_len' => mb_strlen($formattedHtml),
-                'formatted_html_md5' => md5($formattedHtml),
-            ]);
-
             $trim = trim($identifier);
             $variantId = $this->resolveMainStoreVariantId($trim);
             if (! $variantId) {
@@ -281,15 +276,30 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Could not load product title (Shopify rate limit or API error).'];
             }
 
-            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
-            Log::info('Shopify updateBulletPoints request payload', [
+            $descriptionPlain = $this->resolveProductMasterLongDescription($trim);
+            $featureGrid = $this->loadShopifyFeatureGridForSku($trim);
+            $formattedHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
+                $descriptionPlain,
+                $trim,
+                $trim,
+                $title,
+                12,
+                [],
+                $bulletPoints,
+                $featureGrid,
+                true
+            )['html'];
+
+            Log::info('Shopify updateBulletPoints unified layout built (replaces Key Features list)', [
                 'identifier' => $identifier,
-                'variant_id' => $variantId,
+                'mapped_sku' => $mappedSku ?? $trim,
                 'product_id' => $productId,
-                'title_len' => mb_strlen($title),
-                'body_html_len' => mb_strlen($formattedHtml),
-                'body_html_md5' => md5($formattedHtml),
+                'description_from_pm_chars' => strlen($descriptionPlain),
+                'feature_box_count' => count($featureGrid),
+                'body_html_len' => strlen($formattedHtml),
             ]);
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
             $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $formattedHtml, $title) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
@@ -527,14 +537,15 @@ class ShopifyApiService
     }
 
     /**
-     * Description Master: set body_html to Key Features (from bullet lines) + long description, preserving title.
+     * Set `body_html` to the same unified layout as Description Master / bullet push (no legacy Key Features list).
      *
      * @return array{success: bool, message: string}
      */
     public function updateProductDescriptionWithBullets(string $identifier, string $bulletPointsPlain, string $descriptionPlain): array
     {
-        $combined = ShopifyBulletPointsFormatter::combineBulletPointsAndDescription($bulletPointsPlain, $descriptionPlain);
-        if (trim($combined) === '') {
+        $bulletTrim = trim($bulletPointsPlain);
+        $descTrim = trim($descriptionPlain);
+        if ($bulletTrim === '' && $descTrim === '') {
             return ['success' => false, 'message' => 'Nothing to push: add bullets (Bullet Points Master) and/or description text.'];
         }
 
@@ -582,6 +593,25 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Could not load product title (Shopify rate limit or API error).'];
             }
 
+            $featureGrid = $this->loadShopifyFeatureGridForSku($trim);
+            $combined = DescriptionWithImagesFormatter::buildHtmlWithImages(
+                $descTrim,
+                $trim,
+                $trim,
+                $title,
+                12,
+                [],
+                $bulletTrim,
+                $featureGrid,
+                true
+            )['html'];
+
+            Log::info('Shopify updateProductDescriptionWithBullets: unified layout', [
+                'sku' => $trim,
+                'product_id' => $productId,
+                'feature_box_count' => count($featureGrid),
+            ]);
+
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
             $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $combined, $title) {
                 return Http::withHeaders([
@@ -597,7 +627,7 @@ class ShopifyApiService
             });
 
             if ($updateRes->successful()) {
-                return ['success' => true, 'message' => 'Shopify product description (bullets + copy) updated.'];
+                return ['success' => true, 'message' => 'Shopify product description (unified layout) updated.'];
             }
 
             $errBody = $updateRes->status() === 429
@@ -1117,6 +1147,41 @@ class ShopifyApiService
         }
 
         return $map;
+    }
+
+    /**
+     * Longest available tier description from Product Master (used when building Shopify body from bullets only).
+     */
+    private function resolveProductMasterLongDescription(string $sku): string
+    {
+        try {
+            $pm = ProductMaster::query()
+                ->where(function ($q) use ($sku) {
+                    $t = trim($sku);
+                    $q->where('sku', $t)
+                        ->orWhere('sku', strtoupper($t))
+                        ->orWhere('sku', strtolower($t));
+                })
+                ->first();
+            if (! $pm) {
+                Log::debug('ShopifyApiService: resolveProductMasterLongDescription no PM row', ['sku' => $sku]);
+
+                return '';
+            }
+            foreach (['description_1500', 'description_1000', 'description_800', 'description_600', 'product_description'] as $col) {
+                if (! Schema::hasColumn('product_master', $col)) {
+                    continue;
+                }
+                $v = trim((string) ($pm->{$col} ?? ''));
+                if ($v !== '') {
+                    return $v;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyApiService: resolveProductMasterLongDescription failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+
+        return '';
     }
 
     /**
