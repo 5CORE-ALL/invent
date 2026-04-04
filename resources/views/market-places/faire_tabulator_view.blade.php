@@ -87,13 +87,16 @@
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
                         <i class="fa fa-upload"></i> Upload Daily Data
                     </button>
+                    <a href="{{ route('faire.pricing.view') }}" class="btn btn-sm btn-outline-warning">
+                        <i class="fa fa-tags"></i> Faire Analytics
+                    </a>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Sold: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-sales-badge" style="color: white; font-weight: bold;">Total Sales: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
@@ -212,7 +215,7 @@
                 { title: "SKU", field: "sku", width: 150 },
                 { title: "GTIN", field: "gtin", width: 130, visible: false },
                 { title: "Status", field: "status", width: 110 },
-                { title: "Quantity", field: "quantity", width: 90, hozAlign: "center", sorter: "number" },
+                { title: "Sold", field: "quantity", width: 90, hozAlign: "center", sorter: "number" },
                 {
                     title: "Price",
                     field: "price",
@@ -306,17 +309,19 @@
                 }
 
                 const quantity = parseInt(row.quantity, 10) || 0;
-                const price = parseFloat(row.price) || 0;
+                const wholesale = parseFloat(row.wholesale_price) || 0;
+                const retail = parseFloat(row.retail_price) || 0;
+                const unitPrice = wholesale > 0 ? wholesale : retail;
                 const pft = parseFloat(row.pft) || 0;
                 const cogs = parseFloat(row.cogs) || 0;
 
                 totalQuantity += quantity;
-                totalSales += price;
+                totalSales += unitPrice * quantity;
                 totalPft += pft;
                 totalCogs += cogs;
 
-                if (quantity > 0 && price > 0) {
-                    totalWeightedPrice += price * quantity;
+                if (quantity > 0 && unitPrice > 0) {
+                    totalWeightedPrice += unitPrice * quantity;
                     totalQuantityForPrice += quantity;
                 }
             });
@@ -326,7 +331,7 @@
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + uniqueOrders.size.toLocaleString());
-            $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
+            $('#total-quantity-badge').text('Sold: ' + totalQuantity.toLocaleString());
             $('#total-sales-badge').text('Total Sales: $' + totalSales.toFixed(2));
             $('#pft-percentage-badge').text('PFT %: ' + pftPercentage.toFixed(1) + '%');
             $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');

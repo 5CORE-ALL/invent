@@ -1,0 +1,867 @@
+@extends('layouts.vertical', ['title' => 'Wayfair Analytics', 'sidenav' => 'condensed'])
+
+@section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
+        .tabulator .tabulator-header { background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
+        .tabulator-col .tabulator-col-sorter { display: none !important; }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
+            white-space: nowrap; height: 78px; display: flex; align-items: center;
+            justify-content: center; font-size: 11px; font-weight: 600;
+        }
+        .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
+        .tabulator .tabulator-row { min-height: 50px; }
+        .tabulator-row.wf-parent-row,
+        .tabulator-row.wf-parent-row .tabulator-cell {
+            background-color: #d1e7dd !important;
+            font-weight: 700 !important;
+            min-height: 48px !important;
+            color: #0f5132;
+        }
+        .tabulator .tabulator-footer {
+            background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important;
+            padding: 10px 16px !important;
+        }
+        .wf-manual-dropdown { position: relative; display: inline-block; }
+        .wf-manual-dropdown .dropdown-menu {
+            position: absolute; top: 100%; left: 0; z-index: 1050;
+            display: none; min-width: 200px; padding: .5rem 0; margin: 0;
+            background: #fff; border: 1px solid #dee2e6; border-radius: .375rem;
+            box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
+        }
+        .wf-manual-dropdown.show .dropdown-menu { display: block; }
+        .wf-dropdown-item {
+            display: block; width: 100%; padding: .5rem 1rem; clear: both;
+            font-weight: 400; color: #212529; text-decoration: none;
+            background: transparent; border: 0; cursor: pointer; white-space: nowrap;
+        }
+        .wf-dropdown-item:hover { background: #e9ecef; }
+        .wf-sc { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; border:1px solid #ddd; }
+        .wf-sc.def { background:#6c757d; }
+        .wf-sc.red { background:#dc3545; }
+        .wf-sc.yellow { background:#ffc107; }
+        .wf-sc.green { background:#28a745; }
+        .wf-sc.pink { background:#e83e8c; }
+    </style>
+@endsection
+
+@section('content')
+    @include('layouts.shared.page-title', [
+        'page_title' => 'Wayfair Analytics',
+        'sub_title'  => 'Base-cost upload, SPRICE, and L30 sales from Wayfair daily; margin from Marketplace % (Wayfair)',
+    ])
+
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-info py-2 mb-3">
+                <strong>Sales</strong> match <a href="{{ route('wayfair.daily.sales') }}" class="alert-link">Wayfair Sales Data</a>
+                (L30, unit price × quantity; join on <strong>Supplier Part Number</strong> / SKU). <strong>Analytics</strong> column is your uploaded base cost (New Base Cost / Current Base Cost; optional stock).
+            </div>
+
+            <div class="card border-warning mb-3">
+                <div class="card-header bg-warning bg-opacity-25 py-2">
+                    <strong><i class="fas fa-upload me-1"></i> Base cost upload</strong>
+                    <span class="text-muted small ms-2">Table below shows merged product masters, sales, and uploaded base costs.</span>
+                </div>
+                <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+                    <a href="{{ route('wayfair.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-download"></i> Sample CSV
+                    </a>
+                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadWayfairPriceModal">
+                        <i class="fas fa-upload"></i> Upload base cost sheet
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <select id="wf-row-type-filter" class="form-select form-select-sm" style="width:120px;">
+                            <option value="all" selected>All Rows</option>
+                            <option value="parents">Parents</option>
+                            <option value="skus">SKUs</option>
+                        </select>
+                        <select id="wf-inv-filter" class="form-select form-select-sm" style="width:140px;">
+                            <option value="all">All Inventory</option>
+                            <option value="zero">0 Inventory</option>
+                            <option value="more" selected>More than 0</option>
+                        </select>
+                        <select id="wf-stock-filter" class="form-select form-select-sm" style="width:150px;">
+                            <option value="all">Wayfair stock</option>
+                            <option value="zero">0 Wayfair stock</option>
+                            <option value="more">Wayfair stock &gt; 0</option>
+                        </select>
+                        <select id="wf-gpft-filter" class="form-select form-select-sm" style="width:130px;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0–10%</option>
+                            <option value="10-20">10–20%</option>
+                            <option value="20-30">20–30%</option>
+                            <option value="30-40">30–40%</option>
+                            <option value="40-50">40–50%</option>
+                            <option value="50-60">50–60%</option>
+                            <option value="60plus">60%+</option>
+                        </select>
+                        <select id="wf-roi-filter" class="form-select form-select-sm" style="width:130px;">
+                            <option value="all">ROI%</option>
+                            <option value="lt40">&lt; 40%</option>
+                            <option value="40-75">40–75%</option>
+                            <option value="75-125">75–125%</option>
+                            <option value="125-250">125–250%</option>
+                            <option value="gt250">&gt; 250%</option>
+                        </select>
+                        <select id="wf-fqty-filter" class="form-select form-select-sm" style="width:130px;" title="Units sold (Wayfair daily L30)">
+                            <option value="all">Sold</option>
+                            <option value="0">0</option>
+                            <option value="0-10">1–10</option>
+                            <option value="10plus">10+</option>
+                        </select>
+                        <select id="wf-map-filter" class="form-select form-select-sm" style="width:120px;">
+                            <option value="all">Map</option>
+                            <option value="map">Map only</option>
+                            <option value="nmap">N Map only</option>
+                        </select>
+                        <div class="wf-manual-dropdown">
+                            <button class="btn btn-light btn-sm wf-dil-toggle" type="button" id="wf-dil-btn">
+                                <span class="wf-sc def"></span>DIL%
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="wf-dropdown-item wf-dil-item active" href="#" data-color="all">
+                                    <span class="wf-sc def"></span>All DIL</a></li>
+                                <li><a class="wf-dropdown-item wf-dil-item" href="#" data-color="red">
+                                    <span class="wf-sc red"></span>Red (&lt;16.7%)</a></li>
+                                <li><a class="wf-dropdown-item wf-dil-item" href="#" data-color="yellow">
+                                    <span class="wf-sc yellow"></span>Yellow (16.7–25%)</a></li>
+                                <li><a class="wf-dropdown-item wf-dil-item" href="#" data-color="green">
+                                    <span class="wf-sc green"></span>Green (25–50%)</a></li>
+                                <li><a class="wf-dropdown-item wf-dil-item" href="#" data-color="pink">
+                                    <span class="wf-sc pink"></span>Pink (50%+)</a></li>
+                            </ul>
+                        </div>
+                        <input type="text" id="wf-pricing-sku-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search SKU...">
+                        <button type="button" id="wf-refresh-pricing" class="btn btn-sm btn-outline-primary">
+                            <i class="fa fa-refresh"></i> Refresh
+                        </button>
+                        <button type="button" id="wf-export-pricing" class="btn btn-sm btn-success">
+                            <i class="fas fa-file-csv"></i> Export CSV
+                        </button>
+                        <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
+                            <i class="fas fa-exchange-alt"></i> Pricing mode
+                        </button>
+                    </div>
+
+                    <div id="wf-discount-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <span id="wf-selected-skus-count" class="fw-bold text-secondary"></span>
+                            <select id="wf-discount-type" class="form-select form-select-sm" style="width:120px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                            <input type="number" id="wf-discount-input" class="form-control form-control-sm" placeholder="Enter %" step="0.01" style="width:110px;">
+                            <button id="wf-apply-discount-btn" type="button" class="btn btn-primary btn-sm">Apply</button>
+                            <button id="wf-clear-sprice-btn" type="button" class="btn btn-danger btn-sm">
+                                <i class="fas fa-eraser"></i> Clear SPRICE
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="wf-summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
+                        <div class="d-flex flex-wrap gap-2">
+                            <span class="badge bg-primary fs-6 p-2" id="wf-total-sales-badge" style="font-weight:700;">Sales: $0</span>
+                            <span class="badge bg-warning fs-6 p-2" id="wf-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
+                            <span class="badge bg-success fs-6 p-2" id="wf-total-profit-badge" style="font-weight:700;">Profit: $0</span>
+                            <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">PFT %: 0%</span>
+                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;">Missing L: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-map-badge" style="font-weight:700;background:#0d6efd;color:#fff;">Map: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;">&gt;0 Sold: 0</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
+                        </div>
+                    </div>
+
+                    <div id="wayfair-pricing-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="uploadWayfairPriceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Upload Wayfair base cost sheet</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="file" class="form-control" id="wfPriceSheetFile" accept=".xlsx,.xls,.csv,.txt">
+                    <small class="text-muted">Minimum columns: <strong>Supplier Part Number</strong> (stored as <code>sku</code>) or column named <strong>sku</strong>, <strong>price</strong>, optional <strong>wayfair stock</strong> / <strong>wayfair_stock</strong>. Full Wayfair export (New Base Cost, etc.) also supported. TSV/CSV/Excel.</small>
+                    <div class="mt-2 small"><a href="{{ asset('sample_excel/wayfair_pricing_sample.csv') }}" class="text-decoration-none" download>Static sample (supplier part)</a> · <a href="{{ asset('sample_excel/wayfair_pricing_sample_sku_column.csv') }}" class="text-decoration-none" download>Static sample (sku header)</a></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-warning" id="wfUploadPriceSheetBtn">Upload</button>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@section('script-bottom')
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script>
+        let table = null;
+        let summaryDataCache = [];
+        let wfMissingActive = false;
+        let wfMapActive = false;
+        let wfZeroSoldActive = false;
+        let wfMoreSoldActive = false;
+
+        let wfDecreaseModeActive = false;
+        let wfIncreaseModeActive = false;
+        let wfSelectedSkus = new Set();
+
+        function money(value) {
+            return '$' + (parseFloat(value) || 0).toFixed(2);
+        }
+
+        function saveWayfairSpriceUpdates(updates) {
+            $.ajax({
+                url: '{{ route("wayfair.pricing.save.sprice") }}',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { _token: '{{ csrf_token() }}', updates: updates },
+                success: function(res) {
+                    if (res.success) console.log('Wayfair SPRICE saved:', res.updated);
+                },
+                error: function(xhr) {
+                    console.error('Wayfair SPRICE save error:', xhr.responseJSON);
+                }
+            });
+        }
+
+        function normalizeRows(rowsInput) {
+            if (Array.isArray(rowsInput)) {
+                return rowsInput.map(row => {
+                    if (row && typeof row.getData === 'function') return row.getData();
+                    return row || {};
+                });
+            }
+            if (rowsInput && typeof rowsInput === 'object') {
+                return Object.values(rowsInput).map(row => {
+                    if (row && typeof row.getData === 'function') return row.getData();
+                    return row || {};
+                });
+            }
+            return [];
+        }
+
+        function wayfairMarginFromRow(row) {
+            const m = parseFloat(row._margin);
+            return Number.isFinite(m) && m > 0 ? m : 0.95;
+        }
+
+        function wfRoundToRetailPrice(price) {
+            return Math.ceil(price) - 0.01;
+        }
+
+        function wfSyncPriceModeUi() {
+            const $btn = $('#wf-price-mode-btn');
+            const selectCol = table ? table.getColumn('_wf_select') : null;
+            if (wfDecreaseModeActive) {
+                $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                if (selectCol) selectCol.show();
+                return;
+            }
+            if (wfIncreaseModeActive) {
+                $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                if (selectCol) selectCol.show();
+                return;
+            }
+            $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+                .html('<i class="fas fa-exchange-alt"></i> Pricing mode');
+            if (selectCol) selectCol.hide();
+            wfSelectedSkus.clear();
+            wfUpdateSelectedCount();
+        }
+
+        function wfUpdateSelectedCount() {
+            const cnt = wfSelectedSkus.size;
+            $('#wf-selected-skus-count').text(cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected');
+            $('#wf-discount-container').toggle(cnt > 0 && (wfDecreaseModeActive || wfIncreaseModeActive));
+        }
+
+        function wfApplyDiscount() {
+            const discountType = $('#wf-discount-type').val();
+            const discountVal = parseFloat($('#wf-discount-input').val());
+            if (isNaN(discountVal) || discountVal === 0 || wfSelectedSkus.size === 0) return;
+
+            const updates = [];
+            wfSelectedSkus.forEach(function(sku) {
+                const rows = table.searchRows('sku', '=', sku);
+                if (!rows.length) return;
+                const row = rows[0];
+                const rowData = row.getData();
+                const currentPrice = parseFloat(rowData.price) || 0;
+                if (currentPrice <= 0) return;
+
+                let newSprice;
+                if (discountType === 'percentage') {
+                    newSprice = wfIncreaseModeActive
+                        ? currentPrice * (1 + discountVal / 100)
+                        : currentPrice * (1 - discountVal / 100);
+                } else {
+                    newSprice = wfIncreaseModeActive
+                        ? currentPrice + discountVal
+                        : currentPrice - discountVal;
+                }
+                newSprice = wfRoundToRetailPrice(Math.max(0.99, newSprice));
+
+                const margin = wayfairMarginFromRow(rowData);
+                const lp = parseFloat(rowData.lp) || 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
+                const sroi = lp > 0 ? Math.round(((newSprice * margin - lp) / lp) * 100) : 0;
+
+                row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                updates.push({ sku: sku, sprice: newSprice });
+            });
+
+            if (updates.length) saveWayfairSpriceUpdates(updates);
+            $('#wf-discount-input').val('');
+        }
+
+        function wfClearSpriceForSelected() {
+            if (!wfSelectedSkus.size) return;
+            if (!confirm('Clear SPRICE for ' + wfSelectedSkus.size + ' SKU(s)?')) return;
+            const updates = [];
+            table.getRows().forEach(function(row) {
+                const d = row.getData();
+                if (wfSelectedSkus.has(d.sku) && !d.is_parent) {
+                    row.update({ sprice: 0, sgpft: 0, sroi: 0 });
+                    updates.push({ sku: d.sku, sprice: 0 });
+                }
+            });
+            if (updates.length) saveWayfairSpriceUpdates(updates);
+        }
+
+        function updateSummary(rowsInput = null) {
+            let rows = normalizeRows(rowsInput);
+            if (!rows.length && table && typeof table.getData === 'function') {
+                const activeRows = normalizeRows(table.getData('active'));
+                const allRows = normalizeRows(table.getData());
+                rows = activeRows.length ? activeRows : allRows;
+            }
+            if (!rows.length) rows = normalizeRows(summaryDataCache);
+
+            let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0;
+            let missingCount = 0, mapCount = 0;
+            let zeroSold = 0, moreSold = 0;
+
+            rows.forEach(row => {
+                if (row.is_parent) return;
+                const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
+                const fqty = parseFloat(row.al30) || 0;
+                const sales = parseFloat(row.sales) || 0;
+                const lp = parseFloat(row.lp) || 0;
+                const listProfitPerUnit = parseFloat(row.profit) || 0;
+
+                totalSales += sales;
+                totalFqty += fqty;
+                totalCogs += lp * fqty;
+
+                const keep = wayfairMarginFromRow(row);
+                let rowOrderPft = 0;
+                if (sales > 0 && fqty > 0) {
+                    rowOrderPft = keep * sales - lp * fqty;
+                } else if (fqty > 0 && !isMissing) {
+                    rowOrderPft = fqty * listProfitPerUnit;
+                }
+                totalProfit += rowOrderPft;
+
+                if (fqty === 0) zeroSold++; else moreSold++;
+                if (isMissing) missingCount++;
+                if ((row.map || '') === 'Map') mapCount++;
+            });
+
+            const pftPct = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
+            const roiPct = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
+
+            $('#wf-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
+            $('#wf-total-fqty-badge').text('Sold: ' + totalFqty.toLocaleString());
+            $('#wf-total-profit-badge').text('Profit: $' + Math.round(totalProfit).toLocaleString());
+            $('#wf-avg-gpft-badge').text('PFT %: ' + pftPct.toFixed(1) + '%');
+            $('#wf-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
+            $('#wf-map-badge').text('Map: ' + mapCount.toLocaleString());
+            $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
+            $('#wf-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
+            $('#wf-avg-roi-badge').text('ROI: ' + roiPct.toFixed(1) + '%');
+        }
+
+        function applyFilters() {
+            if (!table) return;
+            table.clearFilter();
+
+            const skuSearch = ($('#wf-pricing-sku-search').val() || '').toLowerCase().trim();
+            const rowType = $('#wf-row-type-filter').val();
+            const invFilter = $('#wf-inv-filter').val();
+            const stockFilter = $('#wf-stock-filter').val();
+            const gpftFilter = $('#wf-gpft-filter').val();
+            const roiFilter = $('#wf-roi-filter').val();
+            const fqtyFilter = $('#wf-fqty-filter').val();
+            const mapFilter = $('#wf-map-filter').val();
+            const dilColor = $('.wf-dil-item.active').data('color') || 'all';
+
+            if (skuSearch) {
+                table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
+            }
+            if (rowType === 'parents') {
+                table.addFilter(d => d.is_parent === true);
+            } else if (rowType === 'skus') {
+                table.addFilter(d => !d.is_parent);
+            }
+            if (invFilter === 'zero') {
+                table.addFilter(d => (parseInt(d.inv, 10) || 0) === 0);
+            } else if (invFilter === 'more') {
+                table.addFilter(d => (parseInt(d.inv, 10) || 0) > 0);
+            }
+            if (stockFilter === 'zero') {
+                table.addFilter(d => (parseInt(d.ae_stock, 10) || 0) === 0);
+            } else if (stockFilter === 'more') {
+                table.addFilter(d => (parseInt(d.ae_stock, 10) || 0) > 0);
+            }
+            if (gpftFilter !== 'all') {
+                table.addFilter(function(d) {
+                    const gpft = parseFloat(d.gpft) || 0;
+                    if (gpftFilter === 'negative') return gpft < 0;
+                    if (gpftFilter === '60plus') return gpft >= 60;
+                    const parts = gpftFilter.split('-').map(Number);
+                    return gpft >= parts[0] && gpft < parts[1];
+                });
+            }
+            if (roiFilter !== 'all') {
+                table.addFilter(function(d) {
+                    if (d.is_parent) return true;
+                    const roi = parseFloat(d.groi) || 0;
+                    if (roiFilter === 'lt40') return roi < 40;
+                    if (roiFilter === 'gt250') return roi > 250;
+                    const parts = roiFilter.split('-').map(Number);
+                    return roi >= parts[0] && roi <= parts[1];
+                });
+            }
+            if (fqtyFilter !== 'all') {
+                table.addFilter(function(d) {
+                    if ((parseInt(d.inv, 10) || 0) <= 0) return false;
+                    const fqty = parseFloat(d.al30) || 0;
+                    if (fqtyFilter === '0') return fqty === 0;
+                    if (fqtyFilter === '0-10') return fqty > 0 && fqty <= 10;
+                    if (fqtyFilter === '10plus') return fqty > 10;
+                    return true;
+                });
+            }
+            if (mapFilter === 'map') {
+                table.addFilter(d => (d.map || '') === 'Map');
+            } else if (mapFilter === 'nmap') {
+                table.addFilter(d => (d.map || '').startsWith('N Map|'));
+            }
+            if (dilColor !== 'all') {
+                table.addFilter(function(d) {
+                    const inv = parseFloat(d.inv) || 0;
+                    const ovL30 = parseFloat(d.ov_l30) || 0;
+                    const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
+                    if (dilColor === 'red') return dil < 16.66;
+                    if (dilColor === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilColor === 'green') return dil >= 25 && dil < 50;
+                    if (dilColor === 'pink') return dil >= 50;
+                    return true;
+                });
+            }
+            if (wfMissingActive) table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
+            if (wfMapActive) table.addFilter(d => (d.map || '') === 'Map');
+            if (wfZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
+            if (wfMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
+        }
+
+        $(document).ready(function() {
+            table = new Tabulator('#wayfair-pricing-table', {
+                ajaxURL: '{{ route("wayfair.pricing.data") }}',
+                ajaxResponse: function(url, params, response) {
+                    summaryDataCache = normalizeRows(response);
+                    updateSummary(summaryDataCache);
+                    return response;
+                },
+                layout: 'fitDataStretch',
+                pagination: true,
+                paginationSize: 100,
+                initialSort: [],
+                rowFormatter: function(row) {
+                    if (row.getData().is_parent === true) {
+                        row.getElement().classList.add('wf-parent-row');
+                    }
+                },
+                columns: [
+                    {
+                        title: "<input type=\"checkbox\" id=\"wf-select-all\">",
+                        field: '_wf_select',
+                        hozAlign: 'center',
+                        headerSort: false,
+                        width: 38,
+                        download: false,
+                        visible: false,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const sku = String(d.sku || '');
+                            const esc = sku.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            const chk = wfSelectedSkus.has(d.sku) ? 'checked' : '';
+                            return '<input type="checkbox" class="wf-sku-chk" data-sku="' + esc + '" ' + chk + '>';
+                        }
+                    },
+                    {
+                        title: 'Parent', field: 'parent', width: 120, frozen: true,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const v = cell.getValue() || '';
+                            if (!v) return '<span style="color:#adb5bd;">–</span>';
+                            return '<span style="color:#0d6efd;font-size:11px;font-weight:600;">' + v + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Image', field: 'image', width: 60, headerSort: false,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const src = cell.getValue();
+                            if (d.is_parent || !src) return '';
+                            return '<img src="' + src + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'">';
+                        }
+                    },
+                    {
+                        title: 'SKU', field: 'sku', minWidth: 200, frozen: true, headerFilter: 'input',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const val = cell.getValue() || '';
+                            if (d.is_parent) {
+                                return '<span style="color:#0f5132;font-size:13px;font-weight:700;">' + val + '</span>';
+                            }
+                            return '<span class="fw-bold">' + val.replace(/</g, '&lt;') + '</span>';
+                        }
+                    },
+                    {
+                        title: 'INV', field: 'inv', sorter: 'number', hozAlign: 'center', width: 55,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="font-weight:700;">' + cell.getValue() + '</span>';
+                            const val = parseInt(cell.getValue(), 10) || 0;
+                            if (val === 0) return '<span style="color:#dc3545;font-weight:600;">0</span>';
+                            return '<span style="font-weight:600;">' + val + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Wayfair stock', field: 'ae_stock', sorter: 'number', hozAlign: 'center', width: 82,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="font-weight:700;">' + cell.getValue() + '</span>';
+                            const val = parseInt(cell.getValue(), 10) || 0;
+                            if (val === 0) return '<span style="color:#dc3545;font-weight:600;">0</span>';
+                            return '<span style="font-weight:600;">' + val + '</span>';
+                        }
+                    },
+                    {
+                        title: 'OV L30', field: 'ov_l30', sorter: 'number', hozAlign: 'center', width: 60,
+                        formatter: function(cell) {
+                            return '<span style="font-weight:700;">' + (parseInt(cell.getValue(), 10) || 0) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Dil', field: 'dil_percent', sorter: 'number', hozAlign: 'center', width: 55,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const inv = parseFloat(row.inv) || 0;
+                            const ovL30 = parseFloat(row.ov_l30) || 0;
+                            if (inv === 0) return '<span style="color:#6c757d;">0%</span>';
+                            const dil = (ovL30 / inv) * 100;
+                            let color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(dil) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'Sold', field: 'al30', sorter: 'number', hozAlign: 'center', width: 55,
+                        formatter: function(cell) {
+                            const v = parseInt(cell.getValue(), 10) || 0;
+                            return '<span style="font-weight:700;">' + v + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Analytics', field: 'price', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            return money(cell.getValue());
+                        }
+                    },
+                    {
+                        title: 'Missing L', field: 'missing', hozAlign: 'center',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const value = (cell.getValue() || '').toString().trim().toUpperCase();
+                            if (value === 'M') return '<span class="badge bg-danger">L</span>';
+                            return '';
+                        }
+                    },
+                    {
+                        title: 'Map', field: 'map', hozAlign: 'center', width: 90,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const val = (cell.getValue() || '').trim();
+                            if (val === 'Map') return '<span style="color:#0d6efd;font-weight:bold;">Map</span>';
+                            if (val.startsWith('N Map|')) {
+                                const diff = val.split('|')[1];
+                                return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: 'GPFT', field: 'gpft', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const v = parseFloat(cell.getValue());
+                            if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
+                            if (v === 0 && !d.is_parent) return '0%';
+                            if (v === 0 && d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:' + (d.is_parent ? '700' : '600') + ';">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'GROI', field: 'groi', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(cell.getValue()) || 0;
+                            let color;
+                            if (v < 40) color = '#a00211';
+                            else if (v < 75) color = '#ffc107';
+                            else if (v < 125) color = '#3591dc';
+                            else if (v < 250) color = '#28a745';
+                            else color = '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'Profit', field: 'profit', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const v = parseFloat(cell.getValue()) || 0;
+                            if (d.is_parent) {
+                                if (v === 0) return '<span style="color:#6c757d;">–</span>';
+                                const color = v >= 0 ? '#28a745' : '#dc3545';
+                                return '<span style="color:' + color + ';font-weight:700;">' + money(v) + '</span>';
+                            }
+                            return money(v);
+                        }
+                    },
+                    {
+                        title: 'Sales', field: 'sales', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const v = parseFloat(cell.getValue()) || 0;
+                            if (d.is_parent) {
+                                if (v === 0) return '<span style="color:#6c757d;">–</span>';
+                                return '<span style="font-weight:700;">' + money(v) + '</span>';
+                            }
+                            return money(v);
+                        }
+                    },
+                    {
+                        title: 'LP', field: 'lp', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            return money(cell.getValue());
+                        }
+                    },
+                    {
+                        title: 'Sprice', field: 'sprice', sorter: 'number', hozAlign: 'right',
+                        editor: 'number', editorParams: { min: 0, step: 0.01 },
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            return '<span style="font-weight:600;">' + money(parseFloat(cell.getValue()) || 0) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'SGPFT', field: 'sgpft', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(cell.getValue());
+                            if (isNaN(v) || v === 0) return '0%';
+                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'SROI', field: 'sroi', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(cell.getValue());
+                            if (isNaN(v) || v === 0) return '0%';
+                            let color;
+                            if (v < 40) color = '#a00211';
+                            else if (v < 75) color = '#ffc107';
+                            else if (v < 125) color = '#3591dc';
+                            else if (v < 250) color = '#28a745';
+                            else color = '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                ],
+                dataLoaded: function(data) { updateSummary(data); },
+                dataFiltered: function(filters, rows) { updateSummary(rows); },
+                dataProcessed: function() { updateSummary(); },
+                renderComplete: function() { updateSummary(); }
+            });
+
+            wfSyncPriceModeUi();
+
+            $('#wf-price-mode-btn').on('click', function() {
+                if (!wfDecreaseModeActive && !wfIncreaseModeActive) {
+                    wfDecreaseModeActive = true;
+                    wfIncreaseModeActive = false;
+                } else if (wfDecreaseModeActive) {
+                    wfDecreaseModeActive = false;
+                    wfIncreaseModeActive = true;
+                } else {
+                    wfDecreaseModeActive = false;
+                    wfIncreaseModeActive = false;
+                }
+                wfSyncPriceModeUi();
+            });
+
+            $('#wf-discount-type').on('change', function() {
+                $('#wf-discount-input').attr('placeholder', $(this).val() === 'percentage' ? 'Enter %' : 'Enter $');
+            });
+            $('#wf-apply-discount-btn').on('click', function() { wfApplyDiscount(); });
+            $('#wf-discount-input').on('keypress', function(e) { if (e.which === 13) wfApplyDiscount(); });
+            $('#wf-clear-sprice-btn').on('click', function() { wfClearSpriceForSelected(); });
+
+            $(document).on('change', '#wf-select-all', function() {
+                const checked = $(this).prop('checked');
+                const rows = table.getData('active').filter(function(d) { return !d.is_parent; });
+                rows.forEach(function(d) {
+                    if (checked) wfSelectedSkus.add(d.sku); else wfSelectedSkus.delete(d.sku);
+                });
+                $('.wf-sku-chk').prop('checked', checked);
+                wfUpdateSelectedCount();
+            });
+
+            $(document).on('change', '.wf-sku-chk', function() {
+                const sku = $(this).attr('data-sku');
+                if ($(this).prop('checked')) wfSelectedSkus.add(sku); else wfSelectedSkus.delete(sku);
+                wfUpdateSelectedCount();
+            });
+
+            table.on('cellEdited', function(cell) {
+                if (cell.getField() !== 'sprice') return;
+                const d = cell.getRow().getData();
+                if (d.is_parent) return;
+                const sku = d.sku;
+                const sprice = parseFloat(cell.getValue()) || 0;
+                const margin = wayfairMarginFromRow(d);
+                const lp = parseFloat(d.lp) || 0;
+                const sgpft = sprice > 0 ? Math.round(((sprice * margin - lp) / sprice) * 100) : 0;
+                const sroi = lp > 0 ? Math.round(((sprice * margin - lp) / lp) * 100) : 0;
+                cell.getRow().update({ sgpft: sgpft, sroi: sroi });
+                saveWayfairSpriceUpdates([{ sku: sku, sprice: sprice }]);
+            });
+
+            $('#wf-pricing-sku-search').on('input', function() { applyFilters(); });
+            $('#wf-row-type-filter, #wf-inv-filter, #wf-stock-filter, #wf-gpft-filter, #wf-roi-filter, #wf-fqty-filter, #wf-map-filter').on('change', function() { applyFilters(); });
+
+            $(document).on('click', '.wf-dil-toggle', function(e) {
+                e.stopPropagation();
+                $(this).closest('.wf-manual-dropdown').toggleClass('show');
+            });
+            $(document).on('click', '.wf-dil-item', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $('.wf-dil-item').removeClass('active');
+                $(this).addClass('active');
+                const circle = $(this).find('.wf-sc').clone();
+                $('#wf-dil-btn').html('').append(circle).append('DIL%');
+                $(this).closest('.wf-manual-dropdown').removeClass('show');
+                applyFilters();
+            });
+            $(document).on('click', function() { $('.wf-manual-dropdown').removeClass('show'); });
+
+            $('#wf-missing-badge').on('click', function() {
+                wfMissingActive = !wfMissingActive;
+                wfMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                applyFilters();
+            });
+            $('#wf-map-badge').on('click', function() {
+                wfMapActive = !wfMapActive;
+                wfMissingActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                applyFilters();
+            });
+            $('#wf-zero-sold-badge').on('click', function() {
+                wfZeroSoldActive = !wfZeroSoldActive;
+                wfMoreSoldActive = wfMissingActive = wfMapActive = false;
+                applyFilters();
+            });
+            $('#wf-more-sold-badge').on('click', function() {
+                wfMoreSoldActive = !wfMoreSoldActive;
+                wfZeroSoldActive = wfMissingActive = wfMapActive = false;
+                applyFilters();
+            });
+
+            $('#wf-refresh-pricing').on('click', function() {
+                table.setData('{{ route("wayfair.pricing.data") }}');
+            });
+            $('#wf-export-pricing').on('click', function() {
+                table.download('csv', 'wayfair_analytics_data.csv');
+            });
+
+            $('#wfUploadPriceSheetBtn').on('click', function() {
+                const file = document.getElementById('wfPriceSheetFile').files[0];
+                if (!file) {
+                    alert('Please select a file first.');
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('price_file', file);
+                formData.append('_token', '{{ csrf_token() }}');
+                $.ajax({
+                    url: '{{ route("wayfair.pricing.upload.price") }}',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (window.toastr) toastr.success(response.message || 'Upload completed.');
+                        else alert(response.message || 'Upload completed.');
+                        $('#uploadWayfairPriceModal').modal('hide');
+                        $('#wfPriceSheetFile').val('');
+                        table.setData('{{ route("wayfair.pricing.data") }}');
+                    },
+                    error: function(xhr) {
+                        const message = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Upload failed.';
+                        if (window.toastr) toastr.error(message);
+                        else alert(message);
+                    }
+                });
+            });
+        });
+    </script>
+@endsection

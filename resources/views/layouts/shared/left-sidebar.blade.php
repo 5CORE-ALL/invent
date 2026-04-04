@@ -2291,8 +2291,9 @@
                             </a>
                             <div class="collapse" id="sidebarwayfair">
                                 <ul class="side-nav-third-level">
+                                   
                                     <li>
-                                        <a href="{{ route('Wayfair') }}">Wayfair Analytics</a>
+                                        <a href="{{ route('wayfair.pricing.view') }}">Wayfair Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('wayfair.zero.view') }}">Wayfair 0 View</a>
@@ -2725,7 +2726,7 @@
                 </a>
                 <div class="collapse" id="sidebarFaire">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ url('faireAnalysis') }}">Faire Analytics</a></li>
+                        <li><a href="{{ route('faire.pricing.view') }}">Faire Analytics</a></li>
                         <li><a href="{{ route('zero.faire') }}">Faire 0 view</a></li>
                         <li><a href="{{ route('listing.faire') }}">Listing Faire</a></li>
                     </ul>

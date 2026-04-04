@@ -10,8 +10,13 @@ use App\Models\ShopifySku;
 use App\Models\JungleScoutProductData;
 use App\Models\ProductMaster;
 use App\Models\WayfairDataView;
+use App\Models\WayfairDailyData;
+use App\Models\WayfairPricingPrice;
+use App\Models\AmazonChannelSummary;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -440,5 +445,771 @@ class WayfairController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    public function wayfairPricingView()
+    {
+        return view('market-places.wayfair_pricing_view');
+    }
+
+    public function downloadWayfairPricingPriceSample()
+    {
+        $fileName = 'wayfair_pricing_sample.csv';
+        // Maps to wayfair_pricing_prices: sku ← Supplier Part Number (or column "sku"), price, wayfair_stock
+        $rows = [
+            ['Supplier Part Number', 'price', 'wayfair stock'],
+            ['WF-DEMO-001', '24.99', '180'],
+            ['WF-DEMO-002', '19.50', '0'],
+            ['BREQ-EXAMPLE-03', '42.00', '25'],
+            ['MY-PART-KEY-04', '12.25', '1000'],
+        ];
+
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $handle = fopen('php://output', 'w');
+        foreach ($rows as $row) {
+            fputcsv($handle, $row);
+        }
+        fclose($handle);
+        exit;
+    }
+
+    public function uploadWayfairPricingPriceSheet(Request $request)
+    {
+        $request->validate([
+            'price_file' => 'required|file',
+        ]);
+
+        try {
+            $file = $request->file('price_file');
+            $path = $file->getPathName();
+            $extension = strtolower($file->getClientOriginalExtension());
+
+            if (in_array($extension, ['xlsx', 'xls'], true) || $this->isExcelFileForWayfairPricing($path)) {
+                $spreadsheet = IOFactory::load($path);
+                $sheetRows = $spreadsheet->getActiveSheet()->toArray();
+                $sheetRows = $this->dropWayfairPricingHeaderRows($sheetRows);
+                if (empty($sheetRows)) {
+                    return response()->json(['success' => false, 'message' => 'No data rows after headers.'], 422);
+                }
+                $headerRow = array_shift($sheetRows);
+                $indexes = $this->resolveWayfairPricingColumnIndexes($headerRow);
+                $skuIndex = $indexes['sku'];
+                $priceIndex = $indexes['price'];
+                $stockIndex = $indexes['stock'];
+
+                if ($skuIndex === false || $priceIndex === false) {
+                    $preview = implode(', ', array_slice(array_map(
+                        fn ($h) => $this->normalizeWayfairPricingHeaderCell($h),
+                        $headerRow
+                    ), 0, 30));
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Could not find Supplier Part Number (or SKU) and price columns. Expected Wayfair pricing sheet (Supplier Part Number, New Base Cost / Current Base Cost). Seen: [' . $preview . '].',
+                    ], 422);
+                }
+
+                $updated = 0;
+                foreach ($sheetRows as $row) {
+                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $rawPrice = trim((string) ($row[$priceIndex] ?? ''));
+                    $price = (float) preg_replace('/[^0-9.\-]/', '', $rawPrice);
+                    $wfStock = $stockIndex !== false ? (int) preg_replace('/[^0-9\-]/', '', trim((string) ($row[$stockIndex] ?? '0'))) : 0;
+                    WayfairPricingPrice::updateOrCreate(
+                        ['sku' => $sku],
+                        ['price' => max(0, $price), 'wayfair_stock' => max(0, $wfStock)]
+                    );
+                    $updated++;
+                }
+            } else {
+                $handle = fopen($path, 'r');
+                if (!$handle) {
+                    return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422);
+                }
+
+                $bom = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") {
+                    rewind($handle);
+                }
+
+                $firstLine = fgets($handle);
+                rewind($handle);
+                if ($bom === "\xEF\xBB\xBF") {
+                    fread($handle, 3);
+                }
+
+                $delimiter = (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) ? "\t" : ',';
+
+                $allRows = [];
+                while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+                    $allRows[] = $row;
+                }
+                fclose($handle);
+
+                $allRows = $this->dropWayfairPricingHeaderRows($allRows);
+                if (empty($allRows)) {
+                    return response()->json(['success' => false, 'message' => 'Price sheet is empty.'], 422);
+                }
+
+                $headerRow = array_shift($allRows);
+                $indexes = $this->resolveWayfairPricingColumnIndexes($headerRow);
+                $skuIndex = $indexes['sku'];
+                $priceIndex = $indexes['price'];
+                $stockIndex = $indexes['stock'];
+
+                if ($skuIndex === false || $priceIndex === false) {
+                    $preview = implode(', ', array_slice(array_map(
+                        fn ($h) => $this->normalizeWayfairPricingHeaderCell($h),
+                        $headerRow
+                    ), 0, 30));
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Could not find Supplier Part Number (or SKU) and price columns. Seen: [' . $preview . '].',
+                    ], 422);
+                }
+
+                $updated = 0;
+                foreach ($allRows as $row) {
+                    if (!$row || count(array_filter($row, fn ($v) => $v !== '' && $v !== null)) === 0) {
+                        continue;
+                    }
+                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $rawPrice = trim((string) ($row[$priceIndex] ?? ''));
+                    $price = (float) preg_replace('/[^0-9.\-]/', '', $rawPrice);
+                    $wfStock = $stockIndex !== false ? (int) preg_replace('/[^0-9\-]/', '', trim((string) ($row[$stockIndex] ?? '0'))) : 0;
+                    WayfairPricingPrice::updateOrCreate(
+                        ['sku' => $sku],
+                        ['price' => max(0, $price), 'wayfair_stock' => max(0, $wfStock)]
+                    );
+                    $updated++;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Price sheet uploaded successfully. {$updated} SKU rows updated.",
+                'updated' => $updated,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Wayfair pricing upload failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Price upload failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getWayfairPricingData(Request $request)
+    {
+        try {
+            $salesAgg = WayfairDailyData::query()
+                ->selectRaw(
+                    'sku, SUM(COALESCE(quantity, 0)) as al30, '
+                    . 'SUM(COALESCE(unit_price, 0) * COALESCE(quantity, 0)) as sales'
+                )
+                ->where('period', 'l30')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->groupBy('sku')
+                ->get();
+
+            $normalizeSku = static fn ($value) => strtoupper(trim((string) $value));
+
+            $salesBySku = $salesAgg->keyBy(fn ($row) => $normalizeSku($row->sku));
+
+            $productMastersBySku = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
+                ->get()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
+
+            $uploadedPriceBySku = WayfairPricingPrice::all()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
+
+            $allNormalizedSkus = collect(array_merge(
+                $salesBySku->keys()->all(),
+                $productMastersBySku->keys()->all(),
+                $uploadedPriceBySku->keys()->all()
+            ))->unique()->values();
+
+            $viewMetaBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $viewMetaBySku = WayfairDataView::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            }
+
+            $shopifyBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $shopifyBySku = ShopifySku::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            }
+
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
+            $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 100) : 100;
+            $margin = $percentage / 100;
+
+            $rows = [];
+            foreach ($allNormalizedSkus as $normalizedSku) {
+                $sale = $salesBySku->get($normalizedSku);
+                $productMaster = $productMastersBySku->get($normalizedSku);
+                $metaRecord = $viewMetaBySku->get($normalizedSku);
+                $meta = $metaRecord ? ($metaRecord->value ?? []) : [];
+
+                $values = [];
+                if ($productMaster) {
+                    $values = is_array($productMaster->Values)
+                        ? $productMaster->Values
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                }
+
+                $lp = isset($values['lp']) ? (float) $values['lp'] : ($productMaster && isset($productMaster->lp) ? (float) $productMaster->lp : 0);
+
+                $al30 = (float) ($sale->al30 ?? 0);
+                $sales = (float) ($sale->sales ?? 0);
+
+                $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
+                $priceRow = $uploadedPriceBySku->get($normalizedSku);
+                $uploadedPrice = $priceRow ? (float) $priceRow->price : 0;
+                $wfStock = $priceRow ? (int) ($priceRow->wayfair_stock ?? 0) : 0;
+
+                $shopifyRow = $shopifyBySku->get($normalizedSku);
+                $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
+                $ovL30 = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
+                $imageSrc = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;
+
+                $price = $uploadedPrice;
+                $profit = ($price * $margin) - $lp;
+                $gpft = $price > 0 ? ($profit / $price) * 100 : 0;
+                $groi = $lp > 0 ? ($profit / $lp) * 100 : 0;
+
+                $displaySku = $productMaster
+                    ? trim((string) $productMaster->sku)
+                    : ($sale ? (string) $sale->sku : ($priceRow ? trim((string) $priceRow->sku) : $normalizedSku));
+                $isMissing = !$productMaster || $price <= 0;
+
+                if ($isMissing) {
+                    $mapValue = '';
+                } elseif ($inv === $wfStock) {
+                    $mapValue = 'Map';
+                } else {
+                    $diff = abs($inv - $wfStock);
+                    $mapValue = "N Map|{$diff}";
+                }
+
+                $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
+                $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
+
+                $rows[] = [
+                    'sku' => $displaySku,
+                    'parent' => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
+                    'is_parent' => false,
+                    'image' => $imageSrc,
+                    'price' => round($price, 2),
+                    'lmp' => null,
+                    'lmp_link' => null,
+                    'lmp_entries' => [],
+                    'missing' => $isMissing ? 'M' : '',
+                    'map' => $mapValue,
+                    'gpft' => (int) round($gpft),
+                    'groi' => (int) round($groi),
+                    'profit' => round($profit, 2),
+                    'sales' => round($sales, 2),
+                    'al30' => (int) round($al30),
+                    'lp' => round($lp, 2),
+                    'ship' => 0,
+                    'sprice' => round($sprice, 2),
+                    'sgpft' => $sgpft,
+                    'sroi' => $sroi,
+                    '_margin' => round($margin, 4),
+                    'inv' => $inv,
+                    'ov_l30' => $ovL30,
+                    'ae_stock' => $wfStock,
+                    'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
+                ];
+            }
+
+            usort($rows, static function ($a, $b) {
+                $pa = (string) ($a['parent'] ?? '');
+                $pb = (string) ($b['parent'] ?? '');
+                if ($pa === '' && $pb === '') {
+                    return strnatcasecmp($a['sku'], $b['sku']);
+                }
+                if ($pa === '') {
+                    return 1;
+                }
+                if ($pb === '') {
+                    return -1;
+                }
+                $cmp = strnatcasecmp($pa, $pb);
+
+                return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
+            });
+
+            $rows = $this->insertWayfairParentRows($rows);
+            $this->saveWayfairPricingSnapshot($rows);
+
+            return response()->json($rows);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Wayfair pricing data: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function saveWayfairSpriceUpdates(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (empty($updates) && $request->has('sku')) {
+                $updates = [['sku' => $request->input('sku'), 'sprice' => $request->input('sprice')]];
+            }
+
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
+            $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 100) : 100;
+            $margin = $percentage / 100;
+
+            $updatedCount = 0;
+            foreach ($updates as $update) {
+                $sku = $update['sku'] ?? null;
+                $sprice = $update['sprice'] ?? null;
+                if (!$sku || $sprice === null) {
+                    continue;
+                }
+
+                $sprice = (float) $sprice;
+
+                $productMaster = ProductMaster::where('sku', $sku)->first();
+                $lp = 0;
+                if ($productMaster) {
+                    $values = is_array($productMaster->Values)
+                        ? $productMaster->Values
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                    $lp = isset($values['lp']) ? (float) $values['lp'] : 0;
+                }
+
+                $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
+                $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
+
+                $view = WayfairDataView::firstOrNew(['sku' => $sku]);
+                $stored = is_array($view->value) ? $view->value
+                    : (json_decode($view->value, true) ?: []);
+
+                $stored['SPRICE'] = $sprice;
+                $stored['SGPFT'] = $sgpft;
+                $stored['SROI'] = $sroi;
+
+                $view->value = $stored;
+                $view->save();
+                $updatedCount++;
+            }
+
+            return response()->json(['success' => true, 'updated' => $updatedCount]);
+        } catch (\Exception $e) {
+            Log::error('Wayfair SPRICE save failed: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function wayfairBadgeChartData(Request $request)
+    {
+        try {
+            $metric = (string) $request->input('metric', 'avg_gpft');
+            $days = max(1, (int) $request->input('days', 30));
+
+            $validMetrics = [
+                'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
+                'total_al30', 'avg_dil', 'missing_count', 'map_count',
+                'total_sku', 'zero_sold', 'more_sold',
+            ];
+            if (!in_array($metric, $validMetrics, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+            $rows = AmazonChannelSummary::where('channel', 'wayfair')
+                ->where('snapshot_date', '>=', $startDate)
+                ->orderBy('snapshot_date', 'asc')
+                ->get(['snapshot_date', 'summary_data']);
+
+            $data = [];
+            foreach ($rows as $row) {
+                $sd = is_array($row->summary_data)
+                    ? $row->summary_data
+                    : (json_decode($row->summary_data ?? '{}', true) ?: []);
+                $value = (float) ($sd[$metric] ?? 0);
+                $data[] = [
+                    'date' => optional($row->snapshot_date)->format('M d'),
+                    'value' => $value,
+                ];
+            }
+
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Exception $e) {
+            Log::error('Wayfair badge chart data error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'data' => []], 500);
+        }
+    }
+
+    /**
+     * Remove Wayfair export title / instruction rows; return rows starting at the real header
+     * (Supplier Part Number and/or SKU column).
+     *
+     * @param  array<int, array>  $rows
+     * @return array<int, array>
+     */
+    private function dropWayfairPricingHeaderRows(array $rows): array
+    {
+        foreach ($rows as $i => $row) {
+            $joined = strtolower(implode(' ', array_map(fn ($c) => (string) $c, $row)));
+            if (str_contains($joined, 'pre-filled')
+                || str_contains($joined, 'do not edit')
+                || (str_contains($joined, 'enter a numerical') && str_contains($joined, 'decimal'))) {
+                continue;
+            }
+            $norm = array_map(fn ($h) => $this->normalizeWayfairPricingHeaderCell($h), $row);
+            $hasSkuHeader = false;
+            foreach ($norm as $cell) {
+                if ($cell === 'supplier part number' || ($cell !== '' && str_contains($cell, 'supplier part number'))) {
+                    $hasSkuHeader = true;
+                    break;
+                }
+                if ($cell === 'sku' || ($cell !== '' && preg_match('/\bsku\b/', $cell))) {
+                    $hasSkuHeader = true;
+                    break;
+                }
+            }
+            if ($hasSkuHeader) {
+                return array_slice($rows, $i);
+            }
+        }
+
+        return $rows;
+    }
+
+    private function normalizeWayfairPricingHeaderCell($value): string
+    {
+        $s = strtolower(trim(preg_replace('/[^a-zA-Z0-9_ ]/', ' ', (string) $value)));
+
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
+    /**
+     * @return array{sku:int|false,price:int|false,stock:int|false}
+     */
+    private function resolveWayfairPricingColumnIndexes(array $headerRow): array
+    {
+        $headers = [];
+        foreach ($headerRow as $i => $h) {
+            $headers[$i] = $this->normalizeWayfairPricingHeaderCell($h);
+        }
+
+        $findExact = static function (array $headers, array $names) {
+            foreach ($names as $name) {
+                foreach ($headers as $idx => $h) {
+                    if ($h === $name) {
+                        return $idx;
+                    }
+                }
+            }
+
+            return false;
+        };
+
+        $findContains = static function (array $headers, array $needlesInOrder) {
+            foreach ($needlesInOrder as $needle) {
+                foreach ($headers as $idx => $h) {
+                    if ($h !== '' && str_contains($h, $needle)) {
+                        return $idx;
+                    }
+                }
+            }
+
+            return false;
+        };
+
+        // Primary key for matching inventory/sales: Supplier Part Number (Wayfair export).
+        $supplierPartExact = ['supplier part number', 'supplier part no', 'supplier part #'];
+        $skuIndex = $findExact($headers, $supplierPartExact);
+        if ($skuIndex === false) {
+            $skuIndex = $findContains($headers, ['supplier part number']);
+        }
+        if ($skuIndex === false) {
+            $skuNames = ['sku', 'wayfair sku', 'supplier sku', 'child sku'];
+            $skuIndex = $findExact($headers, $skuNames);
+        }
+        if ($skuIndex === false) {
+            foreach ($headers as $idx => $h) {
+                if ($h !== '' && preg_match('/\bsku\b/', $h)) {
+                    $skuIndex = $idx;
+                    break;
+                }
+            }
+        }
+
+        $priceNames = [
+            'new base cost',
+            'new base cost usd',
+            'current base cost',
+            'current base cost usd',
+            'new map usd',
+            'current map usd',
+            'new msrp usd',
+            'base cost',
+            'price',
+        ];
+        $priceIndex = $findExact($headers, $priceNames);
+        if ($priceIndex === false) {
+            $priceIndex = $findContains($headers, [
+                'new base cost',
+                'current base cost',
+                'new map',
+                'base cost',
+            ]);
+        }
+
+        $stockNames = [
+            'wayfair stock',
+            'wayfair_stock',
+            'stock',
+            'inventory',
+            'on hand',
+            'quantity',
+            'qty',
+        ];
+        $stockIndex = $findExact($headers, $stockNames);
+        if ($stockIndex === false) {
+            $stockIndex = $findContains($headers, ['wayfair stock', 'wayfair_stock', 'inventory', 'on hand']);
+        }
+
+        return [
+            'sku' => $skuIndex,
+            'price' => $priceIndex,
+            'stock' => $stockIndex !== false ? $stockIndex : false,
+        ];
+    }
+
+    private function insertWayfairParentRows(array $rows): array
+    {
+        $result = [];
+        $group = [];
+        $currentParent = null;
+
+        foreach ($rows as $row) {
+            $p = $row['parent'] ?? null;
+            $p = ($p !== null && $p !== '') ? (string) $p : null;
+
+            if ($p === null) {
+                if (!empty($group)) {
+                    foreach ($group as $r) {
+                        $result[] = $r;
+                    }
+                    $result[] = $this->buildWayfairParentRow($currentParent, $group);
+                    $group = [];
+                    $currentParent = null;
+                }
+                $result[] = $row;
+                continue;
+            }
+
+            if ($p !== $currentParent) {
+                if (!empty($group)) {
+                    foreach ($group as $r) {
+                        $result[] = $r;
+                    }
+                    $result[] = $this->buildWayfairParentRow($currentParent, $group);
+                    $group = [];
+                }
+                $currentParent = $p;
+            }
+            $group[] = $row;
+        }
+
+        if (!empty($group)) {
+            foreach ($group as $r) {
+                $result[] = $r;
+            }
+            $result[] = $this->buildWayfairParentRow($currentParent, $group);
+        }
+
+        return $result;
+    }
+
+    private function buildWayfairParentRow(string $parentName, array $childRows): array
+    {
+        $sumInv = $sumOvL30 = $sumAeStock = $sumAl30 = $sumSales = 0;
+        $sumProfit = 0;
+
+        foreach ($childRows as $r) {
+            $sumInv += (float) ($r['inv'] ?? 0);
+            $sumOvL30 += (float) ($r['ov_l30'] ?? 0);
+            $sumAeStock += (float) ($r['ae_stock'] ?? 0);
+            $sumAl30 += (float) ($r['al30'] ?? 0);
+            $sumSales += (float) ($r['sales'] ?? 0);
+            $al30 = (float) ($r['al30'] ?? 0);
+            $profit = (float) ($r['profit'] ?? 0);
+            $sumProfit += $al30 * $profit;
+        }
+
+        $dilPct = $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0;
+        $gpftPct = $sumSales > 0 ? (int) round(($sumProfit / $sumSales) * 100) : 0;
+
+        $key = 'PARENT ' . $parentName;
+
+        return [
+            'sku' => $key,
+            'parent' => $key,
+            'is_parent' => true,
+            'image' => null,
+            'price' => '-',
+            'missing' => '-',
+            'map' => '-',
+            'gpft' => $gpftPct,
+            'groi' => '-',
+            'profit' => round($sumProfit, 2),
+            'sales' => round($sumSales, 2),
+            'al30' => (int) round($sumAl30),
+            'lp' => '-',
+            'ship' => '-',
+            'sprice' => '-',
+            'sgpft' => '-',
+            'sroi' => '-',
+            'inv' => (int) $sumInv,
+            'ov_l30' => (int) $sumOvL30,
+            'ae_stock' => (int) $sumAeStock,
+            'dil_percent' => $dilPct,
+            'lmp' => null,
+            'lmp_link' => null,
+            'lmp_entries' => [],
+        ];
+    }
+
+    private function saveWayfairPricingSnapshot(array $rows): void
+    {
+        try {
+            $today = now()->toDateString();
+
+            $allChildRows = collect($rows)->filter(fn ($r) => !($r['is_parent'] ?? false));
+            if ($allChildRows->isEmpty()) {
+                return;
+            }
+
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
+            $pct = $marketplaceData ? (float) ($marketplaceData->percentage ?? 100) : 100;
+            $orderKeep = $pct / 100;
+
+            $totalSales = 0;
+            $totalProfit = 0;
+            $totalCogs = 0;
+            $totalAl30 = 0;
+            $dilSum = 0;
+            $dilCount = 0;
+            $missingCount = 0;
+            $mapCount = 0;
+            $zeroSold = 0;
+            $moreSold = 0;
+
+            foreach ($allChildRows as $r) {
+                $sales = (float) ($r['sales'] ?? 0);
+                $al30r = (float) ($r['al30'] ?? 0);
+                $lp = (float) ($r['lp'] ?? 0);
+                $listProfit = (float) ($r['profit'] ?? 0);
+                $isMissing = (($r['missing'] ?? '') === 'M');
+
+                $totalSales += $sales;
+                $totalCogs += $lp * $al30r;
+
+                if ($sales > 0 && $al30r > 0) {
+                    $totalProfit += ($orderKeep * $sales) - ($lp * $al30r);
+                } elseif ($al30r > 0 && ! $isMissing) {
+                    $totalProfit += $al30r * $listProfit;
+                }
+            }
+
+            foreach ($allChildRows as $r) {
+                $inv = (float) ($r['inv'] ?? 0);
+                $ovL30 = (float) ($r['ov_l30'] ?? 0);
+                $al30 = (float) ($r['al30'] ?? 0);
+
+                $totalAl30 += $al30;
+                if ($al30 === 0.0) {
+                    $zeroSold++;
+                } else {
+                    $moreSold++;
+                }
+                if ($inv > 0) {
+                    $dilSum += ($ovL30 / $inv) * 100;
+                    $dilCount++;
+                }
+                if (($r['missing'] ?? '') === 'M') {
+                    $missingCount++;
+                }
+                if (($r['map'] ?? '') === 'Map') {
+                    $mapCount++;
+                }
+            }
+
+            $totalSkuCount = $allChildRows->count();
+
+            $pftPct = $totalSales > 0 ? ($totalProfit / $totalSales) * 100 : 0;
+            $roiPct = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+
+            $summaryData = [
+                'total_sku' => $totalSkuCount,
+                'total_sales' => round($totalSales, 2),
+                'total_pft' => round($totalProfit, 2),
+                'total_cogs' => round($totalCogs, 2),
+                'total_al30' => round($totalAl30, 0),
+                'avg_gpft' => round($pftPct, 2),
+                'avg_roi' => round($roiPct, 2),
+                'avg_dil' => $dilCount > 0 ? round($dilSum / $dilCount, 2) : 0,
+                'missing_count' => $missingCount,
+                'map_count' => $mapCount,
+                'zero_sold' => $zeroSold,
+                'more_sold' => $moreSold,
+                'calculated_at' => now()->toDateTimeString(),
+            ];
+
+            AmazonChannelSummary::updateOrCreate(
+                ['channel' => 'wayfair', 'snapshot_date' => $today],
+                ['summary_data' => $summaryData, 'notes' => 'Auto-saved Wayfair pricing snapshot']
+            );
+        } catch (\Exception $e) {
+            Log::error('Wayfair daily snapshot save failed: ' . $e->getMessage());
+        }
+    }
+
+    private function isExcelFileForWayfairPricing(string $path): bool
+    {
+        $handle = fopen($path, 'rb');
+        if (!$handle) {
+            return false;
+        }
+        $magic = fread($handle, 4);
+        fclose($handle);
+
+        return str_starts_with($magic, "\x50\x4B\x03\x04")
+            || str_starts_with($magic, "\xD0\xCF\x11\xE0");
     }
 }

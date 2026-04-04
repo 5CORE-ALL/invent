@@ -9,7 +9,10 @@ use App\Models\ChannelMaster;
 use App\Models\FaireDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\FaireDailyData;
+use App\Models\FairePricingPrice;
+use App\Models\AmazonChannelSummary;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -556,11 +559,12 @@ class FaireController extends Controller
                     }
                 }
 
-                $price = floatval($item->retail_price) ?: 0.0;
+                $wholesale = floatval($item->wholesale_price) ?: 0.0;
+                $retail = floatval($item->retail_price) ?: 0.0;
+                $price = $wholesale > 0 ? $wholesale : $retail;
                 $quantity = floatval($item->quantity) ?: 0.0;
 
-                // User-requested formula (without ship):
-                // PFT base amount = (price * 0.75) - LP
+                // PFT each = (wholesale price × 0.75) − LP; falls back to retail if wholesale empty
                 $pftEachAmount = ($price * 0.75) - $lp;
                 $pftEachPct = $price > 0 ? ($pftEachAmount / $price) * 100 : 0;
                 $roi = $lp > 0 ? ($pftEachAmount / $lp) * 100 : 0;
@@ -593,6 +597,734 @@ class FaireController extends Controller
     public function faireTabulatorView()
     {
         return view('market-places.faire_tabulator_view');
+    }
+
+    public function fairePricingView()
+    {
+        return view('market-places.faire_pricing_view');
+    }
+
+    public function downloadFairePricingPriceSample()
+    {
+        $fileName = 'faire_pricing_sample.csv';
+        $rows = [
+            ['sku', 'price', 'stock'],
+            ['SKU-001', '19.99', '10'],
+            ['SKU-002', '24.50', '25'],
+        ];
+
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $handle = fopen('php://output', 'w');
+        foreach ($rows as $row) {
+            fputcsv($handle, $row);
+        }
+        fclose($handle);
+        exit;
+    }
+
+    public function uploadFairePricingPriceSheet(Request $request)
+    {
+        $request->validate([
+            'price_file' => 'required|file',
+        ]);
+
+        try {
+            $file = $request->file('price_file');
+            $path = $file->getPathName();
+            $extension = strtolower($file->getClientOriginalExtension());
+
+            if (in_array($extension, ['xlsx', 'xls'], true) || $this->isExcelFileForPricing($path)) {
+                $spreadsheet = IOFactory::load($path);
+                $sheetRows = $spreadsheet->getActiveSheet()->toArray();
+
+                $headerRow = array_shift($sheetRows);
+                $indexes = $this->resolveFairePricingColumnIndexes($headerRow);
+                $skuIndex = $indexes['sku'];
+                $priceIndex = $indexes['price'];
+                $stockIndex = $indexes['stock'];
+
+                if ($skuIndex === false || $priceIndex === false) {
+                    $preview = implode(', ', array_slice(array_map(
+                        fn ($h) => $this->normalizePricingHeaderCell($h),
+                        $headerRow
+                    ), 0, 25));
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Could not find SKU and price columns. '
+                            . 'Use headers like sku + price, or a Faire export (SKU, USD Unit Wholesale Price, On Hand Inventory). '
+                            . 'First columns seen: [' . $preview . '].',
+                    ], 422);
+                }
+
+                $updated = 0;
+                foreach ($sheetRows as $row) {
+                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $price = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIndex] ?? '')));
+                    $faireStock = $stockIndex !== false ? (int) trim((string) ($row[$stockIndex] ?? '0')) : 0;
+                    FairePricingPrice::updateOrCreate(
+                        ['sku' => $sku],
+                        ['price' => max(0, $price), 'faire_stock' => max(0, $faireStock)]
+                    );
+                    $updated++;
+                }
+            } else {
+                $handle = fopen($path, 'r');
+                if (!$handle) {
+                    return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422);
+                }
+
+                $bom = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") {
+                    rewind($handle);
+                }
+
+                $firstLine = fgets($handle);
+                rewind($handle);
+                if ($bom === "\xEF\xBB\xBF") {
+                    fread($handle, 3);
+                }
+
+                $delimiter = (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) ? "\t" : ',';
+
+                $headerRow = fgetcsv($handle, 0, $delimiter);
+                if (!$headerRow) {
+                    fclose($handle);
+                    return response()->json(['success' => false, 'message' => 'Price sheet is empty.'], 422);
+                }
+
+                $indexes = $this->resolveFairePricingColumnIndexes($headerRow);
+                $skuIndex = $indexes['sku'];
+                $priceIndex = $indexes['price'];
+                $stockIndex = $indexes['stock'];
+
+                if ($skuIndex === false || $priceIndex === false) {
+                    fclose($handle);
+                    $preview = implode(', ', array_slice(array_map(
+                        fn ($h) => $this->normalizePricingHeaderCell($h),
+                        $headerRow
+                    ), 0, 25));
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Could not find SKU and price columns. '
+                            . 'Use headers like sku + price, or a Faire export (SKU, USD Unit Wholesale Price, On Hand Inventory). '
+                            . 'First columns seen: [' . $preview . '].',
+                    ], 422);
+                }
+
+                $updated = 0;
+                while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+                    if (!$row || count(array_filter($row, fn ($v) => $v !== '' && $v !== null)) === 0) {
+                        continue;
+                    }
+                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $price = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIndex] ?? '')));
+                    $faireStock = $stockIndex !== false ? (int) trim((string) ($row[$stockIndex] ?? '0')) : 0;
+                    FairePricingPrice::updateOrCreate(
+                        ['sku' => $sku],
+                        ['price' => max(0, $price), 'faire_stock' => max(0, $faireStock)]
+                    );
+                    $updated++;
+                }
+                fclose($handle);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Price sheet uploaded successfully. {$updated} SKU rows updated.",
+                'updated' => $updated,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Faire pricing upload failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Price upload failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getFairePricingData(Request $request)
+    {
+        try {
+            // Same grain as /faire/daily-data (tabulator): include all rows so badge totals match Sales Data.
+            $salesAgg = FaireDailyData::query()
+                ->selectRaw(
+                    'sku, SUM(COALESCE(quantity, 0)) as al30, '
+                    . 'SUM(COALESCE(wholesale_price, 0) * COALESCE(quantity, 0)) as sales'
+                )
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->groupBy('sku')
+                ->get();
+
+            $normalizeSku = static fn ($value) => strtoupper(trim((string) $value));
+
+            $salesBySku = $salesAgg->keyBy(fn ($row) => $normalizeSku($row->sku));
+
+            $productMastersBySku = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
+                ->get()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
+
+            $uploadedPriceBySku = FairePricingPrice::all()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
+
+            $allNormalizedSkus = collect(array_merge(
+                $salesBySku->keys()->all(),
+                $productMastersBySku->keys()->all(),
+                $uploadedPriceBySku->keys()->all()
+            ))->unique()->values();
+
+            $viewMetaBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $viewMetaBySku = FaireDataView::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            }
+
+            $shopifyBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $shopifyBySku = ShopifySku::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            }
+
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
+            $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 75) : 75;
+            $margin = $percentage / 100;
+
+            $rows = [];
+            foreach ($allNormalizedSkus as $normalizedSku) {
+                $sale = $salesBySku->get($normalizedSku);
+                $productMaster = $productMastersBySku->get($normalizedSku);
+                $metaRecord = $viewMetaBySku->get($normalizedSku);
+                $meta = $metaRecord ? ($metaRecord->value ?? []) : [];
+
+                $values = [];
+                if ($productMaster) {
+                    $values = is_array($productMaster->Values)
+                        ? $productMaster->Values
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                }
+
+                $lp = isset($values['lp']) ? (float) $values['lp'] : ($productMaster && isset($productMaster->lp) ? (float) $productMaster->lp : 0);
+
+                $al30 = (float) ($sale->al30 ?? 0);
+                $sales = (float) ($sale->sales ?? 0);
+
+                $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
+                $priceRow = $uploadedPriceBySku->get($normalizedSku);
+                $uploadedPrice = $priceRow ? (float) $priceRow->price : 0;
+                $faireStock = $priceRow ? (int) ($priceRow->faire_stock ?? 0) : 0;
+
+                $shopifyRow = $shopifyBySku->get($normalizedSku);
+                $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
+                $ovL30 = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
+                $imageSrc = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;
+
+                $price = $uploadedPrice;
+                $profit = ($price * $margin) - $lp;
+                $gpft = $price > 0 ? ($profit / $price) * 100 : 0;
+                $groi = $lp > 0 ? ($profit / $lp) * 100 : 0;
+
+                $displaySku = $productMaster
+                    ? trim((string) $productMaster->sku)
+                    : ($sale ? (string) $sale->sku : ($priceRow ? trim((string) $priceRow->sku) : $normalizedSku));
+                $isMissing = !$productMaster || $price <= 0;
+
+                if ($isMissing) {
+                    $mapValue = '';
+                } elseif ($inv === $faireStock) {
+                    $mapValue = 'Map';
+                } else {
+                    $diff = abs($inv - $faireStock);
+                    $mapValue = "N Map|{$diff}";
+                }
+
+                $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
+                $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
+
+                $rows[] = [
+                    'sku' => $displaySku,
+                    'parent' => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
+                    'is_parent' => false,
+                    'image' => $imageSrc,
+                    'price' => round($price, 2),
+                    'lmp' => null,
+                    'lmp_link' => null,
+                    'lmp_entries' => [],
+                    'missing' => $isMissing ? 'M' : '',
+                    'map' => $mapValue,
+                    'gpft' => (int) round($gpft),
+                    'groi' => (int) round($groi),
+                    'profit' => round($profit, 2),
+                    'sales' => round($sales, 2),
+                    'al30' => (int) round($al30),
+                    'lp' => round($lp, 2),
+                    'ship' => 0,
+                    'sprice' => round($sprice, 2),
+                    'sgpft' => $sgpft,
+                    'sroi' => $sroi,
+                    '_margin' => round($margin, 4),
+                    'inv' => $inv,
+                    'ov_l30' => $ovL30,
+                    'ae_stock' => $faireStock,
+                    'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
+                ];
+            }
+
+            usort($rows, static function ($a, $b) {
+                $pa = (string) ($a['parent'] ?? '');
+                $pb = (string) ($b['parent'] ?? '');
+                if ($pa === '' && $pb === '') {
+                    return strnatcasecmp($a['sku'], $b['sku']);
+                }
+                if ($pa === '') {
+                    return 1;
+                }
+                if ($pb === '') {
+                    return -1;
+                }
+                $cmp = strnatcasecmp($pa, $pb);
+
+                return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
+            });
+
+            $rows = $this->insertFaireParentRows($rows);
+            $this->saveFairePricingSnapshot($rows);
+
+            return response()->json($rows);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Faire pricing data: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function saveFaireSpriceUpdates(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (empty($updates) && $request->has('sku')) {
+                $updates = [['sku' => $request->input('sku'), 'sprice' => $request->input('sprice')]];
+            }
+
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
+            $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 75) : 75;
+            $margin = $percentage / 100;
+
+            $updatedCount = 0;
+            foreach ($updates as $update) {
+                $sku = $update['sku'] ?? null;
+                $sprice = $update['sprice'] ?? null;
+                if (!$sku || $sprice === null) {
+                    continue;
+                }
+
+                $sprice = (float) $sprice;
+
+                $productMaster = ProductMaster::where('sku', $sku)->first();
+                $lp = 0;
+                if ($productMaster) {
+                    $values = is_array($productMaster->Values)
+                        ? $productMaster->Values
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                    $lp = isset($values['lp']) ? (float) $values['lp'] : 0;
+                }
+
+                $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
+                $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
+
+                $view = FaireDataView::firstOrNew(['sku' => $sku]);
+                $stored = is_array($view->value) ? $view->value
+                    : (json_decode($view->value, true) ?: []);
+
+                $stored['SPRICE'] = $sprice;
+                $stored['SGPFT'] = $sgpft;
+                $stored['SROI'] = $sroi;
+
+                $view->value = $stored;
+                $view->save();
+                $updatedCount++;
+            }
+
+            return response()->json(['success' => true, 'updated' => $updatedCount]);
+        } catch (\Exception $e) {
+            Log::error('Faire SPRICE save failed: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function faireBadgeChartData(Request $request)
+    {
+        try {
+            $metric = (string) $request->input('metric', 'avg_gpft');
+            $days = max(1, (int) $request->input('days', 30));
+
+            $validMetrics = [
+                'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
+                'total_al30', 'avg_dil', 'missing_count', 'map_count',
+                'total_sku', 'zero_sold', 'more_sold',
+            ];
+            if (!in_array($metric, $validMetrics, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+            $rows = AmazonChannelSummary::where('channel', 'faire')
+                ->where('snapshot_date', '>=', $startDate)
+                ->orderBy('snapshot_date', 'asc')
+                ->get(['snapshot_date', 'summary_data']);
+
+            $data = [];
+            foreach ($rows as $row) {
+                $sd = is_array($row->summary_data)
+                    ? $row->summary_data
+                    : (json_decode($row->summary_data ?? '{}', true) ?: []);
+                $value = (float) ($sd[$metric] ?? 0);
+                $data[] = [
+                    'date' => optional($row->snapshot_date)->format('M d'),
+                    'value' => $value,
+                ];
+            }
+
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Exception $e) {
+            Log::error('Faire badge chart data error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'data' => []], 500);
+        }
+    }
+
+    private function insertFaireParentRows(array $rows): array
+    {
+        $result = [];
+        $group = [];
+        $currentParent = null;
+
+        foreach ($rows as $row) {
+            $p = $row['parent'] ?? null;
+            $p = ($p !== null && $p !== '') ? (string) $p : null;
+
+            if ($p === null) {
+                if (!empty($group)) {
+                    foreach ($group as $r) {
+                        $result[] = $r;
+                    }
+                    $result[] = $this->buildFaireParentRow($currentParent, $group);
+                    $group = [];
+                    $currentParent = null;
+                }
+                $result[] = $row;
+                continue;
+            }
+
+            if ($p !== $currentParent) {
+                if (!empty($group)) {
+                    foreach ($group as $r) {
+                        $result[] = $r;
+                    }
+                    $result[] = $this->buildFaireParentRow($currentParent, $group);
+                    $group = [];
+                }
+                $currentParent = $p;
+            }
+            $group[] = $row;
+        }
+
+        if (!empty($group)) {
+            foreach ($group as $r) {
+                $result[] = $r;
+            }
+            $result[] = $this->buildFaireParentRow($currentParent, $group);
+        }
+
+        return $result;
+    }
+
+    private function buildFaireParentRow(string $parentName, array $childRows): array
+    {
+        $sumInv = $sumOvL30 = $sumAeStock = $sumAl30 = $sumSales = 0;
+        $sumProfit = 0;
+
+        foreach ($childRows as $r) {
+            $sumInv += (float) ($r['inv'] ?? 0);
+            $sumOvL30 += (float) ($r['ov_l30'] ?? 0);
+            $sumAeStock += (float) ($r['ae_stock'] ?? 0);
+            $sumAl30 += (float) ($r['al30'] ?? 0);
+            $sumSales += (float) ($r['sales'] ?? 0);
+            $al30 = (float) ($r['al30'] ?? 0);
+            $profit = (float) ($r['profit'] ?? 0);
+            $sumProfit += $al30 * $profit;
+        }
+
+        $dilPct = $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0;
+        $gpftPct = $sumSales > 0 ? (int) round(($sumProfit / $sumSales) * 100) : 0;
+
+        $key = 'PARENT ' . $parentName;
+
+        return [
+            'sku' => $key,
+            'parent' => $key,
+            'is_parent' => true,
+            'image' => null,
+            'price' => '-',
+            'missing' => '-',
+            'map' => '-',
+            'gpft' => $gpftPct,
+            'groi' => '-',
+            'profit' => round($sumProfit, 2),
+            'sales' => round($sumSales, 2),
+            'al30' => (int) round($sumAl30),
+            'lp' => '-',
+            'ship' => '-',
+            'sprice' => '-',
+            'sgpft' => '-',
+            'sroi' => '-',
+            'inv' => (int) $sumInv,
+            'ov_l30' => (int) $sumOvL30,
+            'ae_stock' => (int) $sumAeStock,
+            'dil_percent' => $dilPct,
+            'lmp' => null,
+            'lmp_link' => null,
+            'lmp_entries' => [],
+        ];
+    }
+
+    private function saveFairePricingSnapshot(array $rows): void
+    {
+        try {
+            $today = now()->toDateString();
+
+            $allChildRows = collect($rows)->filter(fn ($r) => !($r['is_parent'] ?? false));
+            if ($allChildRows->isEmpty()) {
+                return;
+            }
+
+            $orderKeep = 0.75;
+
+            $totalSales = 0;
+            $totalProfit = 0;
+            $totalCogs = 0;
+            $totalAl30 = 0;
+            $dilSum = 0;
+            $dilCount = 0;
+            $missingCount = 0;
+            $mapCount = 0;
+            $zeroSold = 0;
+            $moreSold = 0;
+
+            foreach ($allChildRows as $r) {
+                $sales = (float) ($r['sales'] ?? 0);
+                $al30r = (float) ($r['al30'] ?? 0);
+                $lp = (float) ($r['lp'] ?? 0);
+                $listProfit = (float) ($r['profit'] ?? 0);
+                $isMissing = (($r['missing'] ?? '') === 'M');
+
+                $totalSales += $sales;
+                $totalCogs += $lp * $al30r;
+
+                if ($sales > 0 && $al30r > 0) {
+                    $totalProfit += ($orderKeep * $sales) - ($lp * $al30r);
+                } elseif ($al30r > 0 && ! $isMissing) {
+                    $totalProfit += $al30r * $listProfit;
+                }
+            }
+
+            foreach ($allChildRows as $r) {
+                $inv = (float) ($r['inv'] ?? 0);
+                $ovL30 = (float) ($r['ov_l30'] ?? 0);
+                $al30 = (float) ($r['al30'] ?? 0);
+
+                $totalAl30 += $al30;
+                if ($al30 === 0.0) {
+                    $zeroSold++;
+                } else {
+                    $moreSold++;
+                }
+                if ($inv > 0) {
+                    $dilSum += ($ovL30 / $inv) * 100;
+                    $dilCount++;
+                }
+                if (($r['missing'] ?? '') === 'M') {
+                    $missingCount++;
+                }
+                if (($r['map'] ?? '') === 'Map') {
+                    $mapCount++;
+                }
+            }
+
+            $totalSkuCount = $allChildRows->count();
+
+            $pftPct = $totalSales > 0 ? ($totalProfit / $totalSales) * 100 : 0;
+            $roiPct = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+
+            $summaryData = [
+                'total_sku' => $totalSkuCount,
+                'total_sales' => round($totalSales, 2),
+                'total_pft' => round($totalProfit, 2),
+                'total_cogs' => round($totalCogs, 2),
+                'total_al30' => round($totalAl30, 0),
+                'avg_gpft' => round($pftPct, 2),
+                'avg_roi' => round($roiPct, 2),
+                'avg_dil' => $dilCount > 0 ? round($dilSum / $dilCount, 2) : 0,
+                'missing_count' => $missingCount,
+                'map_count' => $mapCount,
+                'zero_sold' => $zeroSold,
+                'more_sold' => $moreSold,
+                'calculated_at' => now()->toDateTimeString(),
+            ];
+
+            AmazonChannelSummary::updateOrCreate(
+                ['channel' => 'faire', 'snapshot_date' => $today],
+                ['summary_data' => $summaryData, 'notes' => 'Auto-saved Faire pricing snapshot']
+            );
+        } catch (\Exception $e) {
+            Log::error('Faire daily snapshot save failed: ' . $e->getMessage());
+        }
+    }
+
+    private function isExcelFileForPricing(string $path): bool
+    {
+        $handle = fopen($path, 'rb');
+        if (!$handle) {
+            return false;
+        }
+        $magic = fread($handle, 4);
+        fclose($handle);
+
+        return str_starts_with($magic, "\x50\x4B\x03\x04")
+            || str_starts_with($magic, "\xD0\xCF\x11\xE0");
+    }
+
+    /**
+     * Normalize a spreadsheet header cell for matching (Faire export, AliExpress-style sheets, etc.).
+     */
+    private function normalizePricingHeaderCell($value): string
+    {
+        $s = strtolower(trim(preg_replace('/[^a-zA-Z0-9_ ]/', ' ', (string) $value)));
+
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
+    /**
+     * Map header row to column indexes. Supports Faire product export (SKU, USD Unit Wholesale Price, On Hand Inventory)
+     * and simple uploads (sku, price, stock).
+     *
+     * @return array{sku:int,price:int,stock:int|false}
+     */
+    private function resolveFairePricingColumnIndexes(array $headerRow): array
+    {
+        $headers = [];
+        foreach ($headerRow as $i => $h) {
+            $headers[$i] = $this->normalizePricingHeaderCell($h);
+        }
+
+        $findExact = static function (array $headers, array $names) {
+            foreach ($names as $name) {
+                foreach ($headers as $idx => $h) {
+                    if ($h === $name) {
+                        return $idx;
+                    }
+                }
+            }
+
+            return false;
+        };
+
+        $findContains = static function (array $headers, array $needlesInOrder) {
+            foreach ($needlesInOrder as $needle) {
+                foreach ($headers as $idx => $h) {
+                    if ($h !== '' && str_contains($h, $needle)) {
+                        return $idx;
+                    }
+                }
+            }
+
+            return false;
+        };
+
+        $skuNames = [
+            'sku', 'skus', 'sku code', 'skucode', 'item sku', 'product sku', 'variant sku', 'child sku',
+        ];
+        $skuIndex = $findExact($headers, $skuNames);
+        if ($skuIndex === false) {
+            foreach ($headers as $idx => $h) {
+                if ($h !== '' && preg_match('/\bsku\b/', $h)) {
+                    $skuIndex = $idx;
+                    break;
+                }
+            }
+        }
+
+        $priceNames = [
+            'usd unit wholesale price',
+            'cad unit wholesale price',
+            'gbp unit wholesale price',
+            'gbr unit wholesale price',
+            'eur unit wholesale price',
+            'aud unit wholesale price',
+            'unit wholesale price',
+            'wholesale price',
+            'usd unit retail price',
+            'retail price',
+            'unit retail price',
+            'usd retail price',
+            'list price',
+            'faire price',
+            'price',
+            'supply price',
+            'unit price',
+        ];
+        $priceIndex = $findExact($headers, $priceNames);
+        if ($priceIndex === false) {
+            $priceIndex = $findContains($headers, [
+                'wholesale price',
+                'unit wholesale',
+                'retail price',
+                ' unit price',
+                'list price',
+            ]);
+        }
+
+        $stockNames = [
+            'stock', 'stocks', 'on hand inventory', 'onhand inventory', 'inventory',
+            'available inventory', 'faire stock', 'qty', 'quantity', 'available qty',
+        ];
+        $stockIndex = $findExact($headers, $stockNames);
+        if ($stockIndex === false) {
+            $stockIndex = $findContains($headers, [
+                'on hand inventory',
+                'hand inventory',
+                'inventory',
+            ]);
+        }
+
+        return [
+            'sku' => $skuIndex,
+            'price' => $priceIndex,
+            'stock' => $stockIndex !== false ? $stockIndex : false,
+        ];
     }
 
     private function sanitizeFairePrice($value)

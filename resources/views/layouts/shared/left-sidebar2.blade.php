@@ -1491,6 +1491,9 @@
                                 </a>
                                 <div class="collapse" id="sidebarwayfair">
                                     <ul class="side-nav-third-level">
+                                        <li>
+                                            <a href="{{ route('wayfair.pricing.view') }}">Wayfair Analytics</a>
+                                        </li>
                                         @if (
                                             (isset($permissions['wayfair']) && in_array('view', $permissions['wayfair'])) ||
                                                 (isset($permissions['wayfair_zero_view']) && in_array('view', $permissions['wayfair_zero_view'])) ||
@@ -1503,12 +1506,7 @@
                                                 </a>
                                                 <div class="collapse" id="wayfairSubmenu">
                                                     <ul class="side-nav-fourth-level">
-                                                        @if (isset($permissions['wayfair']) && in_array('view', $permissions['wayfair']))
-                                                            <li>
-                                                                <a href="{{ route('Wayfair') }}">Wayfair
-                                                                    Analytics</a>
-                                                            </li>
-                                                        @endif
+                                                     
                                                         @if (isset($permissions['wayfair_zero_view']) && in_array('view', $permissions['wayfair_zero_view']))
                                                             <li>
                                                                 <a href="{{ route('wayfair.zero.view') }}">Wayfair 0
@@ -1923,8 +1921,9 @@
                                 </a>
                                 <div class="collapse" id="sidebarFaire">
                                     <ul class="side-nav-third-level">
+                                            <li><a href="{{ url('faireAnalysis') }}">Faire dashboard</a></li>
+                                            <li><a href="{{ route('faire.pricing.view') }}">Faire Analytics</a></li>
                                             <li><a href="{{ route('zero.faire') }}">Faire 0 view</a></li>
-
                                             <li><a href="{{ route('listing.faire') }}">Listing Faire</a></li>
                                     </ul>
                                 </div>
