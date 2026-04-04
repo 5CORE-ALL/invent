@@ -47,6 +47,15 @@
         .wf-sc.yellow { background:#ffc107; }
         .wf-sc.green { background:#28a745; }
         .wf-sc.pink { background:#e83e8c; }
+        /* SKU column: smooth width change when hover expands (+20% via JS) */
+        #wayfair-pricing-table .tabulator-col[tabulator-field="sku"],
+        #wayfair-pricing-table .tabulator-cell[tabulator-field="sku"] {
+            transition: width 0.2s ease, min-width 0.2s ease;
+        }
+        #wf-image-hover-preview {
+            pointer-events: auto;
+            z-index: 10050;
+        }
     </style>
 @endsection
 
@@ -73,7 +82,7 @@
                         <i class="fas fa-download"></i> Sample CSV
                     </a>
                     <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadWayfairPriceModal">
-                        <i class="fas fa-upload"></i> Upload base cost sheet
+                        <i class="fas fa-upload"></i> Upload price
                     </button>
                 </div>
             </div>
@@ -143,6 +152,7 @@
                                     <span class="wf-sc pink"></span>Pink (50%+)</a></li>
                             </ul>
                         </div>
+                        <input type="text" id="wf-pricing-parent-search" class="form-control form-control-sm" style="max-width:200px;" placeholder="Search parent..." title="Filter by Parent column">
                         <input type="text" id="wf-pricing-sku-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search SKU...">
                         <button type="button" id="wf-refresh-pricing" class="btn btn-sm btn-outline-primary">
                             <i class="fa fa-refresh"></i> Refresh
@@ -174,13 +184,13 @@
                         <div class="d-flex flex-wrap gap-2">
                             <span class="badge bg-primary fs-6 p-2" id="wf-total-sales-badge" style="font-weight:700;">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="wf-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
-                            <span class="badge bg-success fs-6 p-2" id="wf-total-profit-badge" style="font-weight:700;">Profit: $0</span>
-                            <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">PFT %: 0%</span>
+                            <span class="badge bg-success fs-6 p-2" id="wf-total-profit-badge" style="font-weight:700;">Profit: 0</span>
+                            <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">PFt: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
                             <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;">Missing L: 0</span>
                             <span class="badge fs-6 p-2" id="wf-map-badge" style="font-weight:700;background:#0d6efd;color:#fff;">Map: 0</span>
                             <span class="badge fs-6 p-2" id="wf-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;">0 Sold: 0</span>
                             <span class="badge fs-6 p-2" id="wf-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;">&gt;0 Sold: 0</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
                         </div>
                     </div>
 
@@ -226,8 +236,117 @@
         let wfIncreaseModeActive = false;
         let wfSelectedSkus = new Set();
 
+        let wfSkuColHoverBase = null;
+        let wfSkuColHoverActive = false;
+
+        function wfResetSkuColHoverWidth() {
+            if (table && wfSkuColHoverActive && wfSkuColHoverBase != null) {
+                try {
+                    const col = table.getColumn('sku');
+                    if (col) col.setWidth(wfSkuColHoverBase);
+                } catch (err) { /* ignore */ }
+            }
+            wfSkuColHoverActive = false;
+            wfSkuColHoverBase = null;
+        }
+
+        let wfImagePreviewHideTimer = null;
+        let wfImagePreviewEl = null;
+
+        function wfRemoveImagePreview() {
+            if (wfImagePreviewHideTimer) {
+                clearTimeout(wfImagePreviewHideTimer);
+                wfImagePreviewHideTimer = null;
+            }
+            document.querySelectorAll('#wf-image-hover-preview').forEach(function(el) {
+                el.remove();
+            });
+            wfImagePreviewEl = null;
+        }
+
+        function wfCancelImagePreviewHide() {
+            if (wfImagePreviewHideTimer) {
+                clearTimeout(wfImagePreviewHideTimer);
+                wfImagePreviewHideTimer = null;
+            }
+        }
+
+        function wfScheduleImagePreviewHide() {
+            wfCancelImagePreviewHide();
+            wfImagePreviewHideTimer = setTimeout(wfRemoveImagePreview, 220);
+        }
+
+        function wfEnsureImagePreviewListeners(wrap) {
+            if (wrap.dataset.wfPreviewListeners === '1') return;
+            wrap.dataset.wfPreviewListeners = '1';
+            wrap.addEventListener('mouseenter', wfCancelImagePreviewHide);
+            wrap.addEventListener('mouseleave', wfScheduleImagePreviewHide);
+        }
+
+        function wfClampImagePreviewPosition(wrap, clientX, clientY) {
+            const pad = 12;
+            let left = clientX + pad;
+            let top = clientY + pad;
+            wrap.style.position = 'fixed';
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+            const rect = wrap.getBoundingClientRect();
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const m = 8;
+            if (rect.right > vw - m) left = Math.max(m, vw - rect.width - m);
+            if (rect.bottom > vh - m) top = Math.max(m, vh - rect.height - m);
+            if (left < m) left = m;
+            if (top < m) top = m;
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+        }
+
+        function wfShowImagePreview(clientX, clientY, fullUrl) {
+            if (!fullUrl) return;
+            wfCancelImagePreviewHide();
+            const existing = wfImagePreviewEl;
+            if (existing && document.body.contains(existing)) {
+                const prevImg = existing.querySelector('img');
+                if (prevImg && prevImg.getAttribute('src') === fullUrl) {
+                    wfClampImagePreviewPosition(existing, clientX, clientY);
+                    return;
+                }
+            }
+            document.querySelectorAll('#wf-image-hover-preview').forEach(function(el) {
+                el.remove();
+            });
+            wfImagePreviewEl = null;
+
+            const wrap = document.createElement('div');
+            wrap.id = 'wf-image-hover-preview';
+            wrap.style.zIndex = '10050';
+            wrap.style.pointerEvents = 'auto';
+            wrap.style.border = '1px solid #ccc';
+            wrap.style.background = '#fff';
+            wrap.style.padding = '4px';
+            wrap.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
+            wrap.style.borderRadius = '6px';
+            const big = document.createElement('img');
+            big.style.maxWidth = '350px';
+            big.style.maxHeight = '350px';
+            big.style.display = 'block';
+            big.alt = '';
+            big.src = fullUrl;
+            wrap.appendChild(big);
+            wfEnsureImagePreviewListeners(wrap);
+            document.body.appendChild(wrap);
+            wfImagePreviewEl = wrap;
+            wfClampImagePreviewPosition(wrap, clientX, clientY);
+        }
+
         function money(value) {
             return '$' + (parseFloat(value) || 0).toFixed(2);
+        }
+
+        function wfEscUrlAttr(url) {
+            if (url == null || url === '') return '';
+            return String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         }
 
         function saveWayfairSpriceUpdates(updates) {
@@ -395,13 +514,13 @@
 
             $('#wf-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
             $('#wf-total-fqty-badge').text('Sold: ' + totalFqty.toLocaleString());
-            $('#wf-total-profit-badge').text('Profit: $' + Math.round(totalProfit).toLocaleString());
-            $('#wf-avg-gpft-badge').text('PFT %: ' + pftPct.toFixed(1) + '%');
+            $('#wf-total-profit-badge').text('Profit: ' + Math.round(totalProfit).toLocaleString());
+            $('#wf-avg-gpft-badge').text('PFt: ' + Math.round(pftPct) + '%');
+            $('#wf-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
             $('#wf-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
             $('#wf-map-badge').text('Map: ' + mapCount.toLocaleString());
             $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#wf-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
-            $('#wf-avg-roi-badge').text('ROI: ' + roiPct.toFixed(1) + '%');
         }
 
         function applyFilters() {
@@ -409,6 +528,7 @@
             table.clearFilter();
 
             const skuSearch = ($('#wf-pricing-sku-search').val() || '').toLowerCase().trim();
+            const parentSearch = ($('#wf-pricing-parent-search').val() || '').toLowerCase().trim();
             const rowType = $('#wf-row-type-filter').val();
             const invFilter = $('#wf-inv-filter').val();
             const stockFilter = $('#wf-stock-filter').val();
@@ -420,6 +540,16 @@
 
             if (skuSearch) {
                 table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
+            }
+            if (parentSearch) {
+                table.addFilter(function(d) {
+                    const p = (d.parent || '').toLowerCase();
+                    const sku = (d.sku || '').toLowerCase();
+                    if (d.is_parent === true) {
+                        return p.includes(parentSearch) || sku.includes(parentSearch);
+                    }
+                    return p.includes(parentSearch);
+                });
             }
             if (rowType === 'parents') {
                 table.addFilter(d => d.is_parent === true);
@@ -507,6 +637,43 @@
                 },
                 columns: [
                     {
+                        title: 'Image', field: 'image', width: 60, headerSort: false, frozen: true,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const src = cell.getValue();
+                            if (d.is_parent || !src) return '';
+                            const esc = String(src).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            return '<img src="' + esc + '" data-full="' + esc + '" class="wf-hover-thumb" alt="" ' +
+                                'style="width:44px;height:44px;object-fit:cover;border-radius:4px;cursor:pointer;" ' +
+                                'onerror="this.onerror=null;this.style.display=\'none\'">';
+                        },
+                        cellMouseOver: function(e, cell) {
+                            if (cell.getRow().getData().is_parent) return;
+                            const img = cell.getElement().querySelector('.wf-hover-thumb');
+                            if (!img) return;
+                            const fullUrl = img.getAttribute('data-full');
+                            wfShowImagePreview(e.clientX, e.clientY, fullUrl);
+                        },
+                        cellMouseMove: function(e, cell) {
+                            const preview = wfImagePreviewEl;
+                            if (!preview || !document.body.contains(preview)) return;
+                            if (cell.getRow().getData().is_parent) return;
+                            const img = cell.getElement().querySelector('.wf-hover-thumb');
+                            const fullUrl = img ? img.getAttribute('data-full') : '';
+                            const big = preview.querySelector('img');
+                            if (!fullUrl || !big || big.getAttribute('src') !== fullUrl) return;
+                            wfClampImagePreviewPosition(preview, e.clientX, e.clientY);
+                        },
+                        cellMouseOut: function(e, cell) {
+                            const related = e.relatedTarget;
+                            if (related && typeof related.closest === 'function' && related.closest('#wf-image-hover-preview')) {
+                                wfCancelImagePreviewHide();
+                                return;
+                            }
+                            wfScheduleImagePreviewHide();
+                        }
+                    },
+                    {
                         title: "<input type=\"checkbox\" id=\"wf-select-all\">",
                         field: '_wf_select',
                         hozAlign: 'center',
@@ -514,6 +681,7 @@
                         width: 38,
                         download: false,
                         visible: false,
+                        frozen: true,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -534,23 +702,20 @@
                         }
                     },
                     {
-                        title: 'Image', field: 'image', width: 60, headerSort: false,
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            const src = cell.getValue();
-                            if (d.is_parent || !src) return '';
-                            return '<img src="' + src + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'">';
-                        }
-                    },
-                    {
                         title: 'SKU', field: 'sku', minWidth: 200, frozen: true, headerFilter: 'input',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const val = cell.getValue() || '';
                             if (d.is_parent) {
-                                return '<span style="color:#0f5132;font-size:13px;font-weight:700;">' + val + '</span>';
+                                return '<span style="color:#0f5132;font-size:13px;font-weight:700;">' + String(val).replace(/</g, '&lt;') + '</span>';
                             }
-                            return '<span class="fw-bold">' + val.replace(/</g, '&lt;') + '</span>';
+                            const raw = String(val);
+                            const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                            return '<span class="d-inline-flex align-items-center gap-1">' +
+                                '<span class="fw-bold">' + esc + '</span>' +
+                                '<button type="button" class="btn btn-sm btn-link p-0 wf-copy-sku-btn" data-sku="' + esc + '" title="Copy SKU" ' +
+                                'style="min-width:auto;line-height:1;color:#6c757d;vertical-align:middle;"><i class="fas fa-copy" style="font-size:12px;"></i></button>' +
+                                '</span>';
                         }
                     },
                     {
@@ -599,11 +764,11 @@
                         }
                     },
                     {
-                        title: 'Analytics', field: 'price', sorter: 'number', hozAlign: 'right',
+                        title: 'Price', field: 'price', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return money(cell.getValue());
+                            return '<span style="font-weight:700;">' + money(cell.getValue()) + '</span>';
                         }
                     },
                     {
@@ -631,6 +796,30 @@
                         }
                     },
                     {
+                        title: 'B/S',
+                        field: 'buyer_link',
+                        headerSort: false,
+                        hozAlign: 'center',
+                        width: 64,
+                        download: false,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const b = d.buyer_link;
+                            const s = d.seller_link;
+                            const parts = [];
+                            if (b) {
+                                parts.push('<a href="' + wfEscUrlAttr(b) + '" target="_blank" rel="noopener noreferrer" ' +
+                                    'class="fw-semibold" style="color:#0d6efd;" title="Buyer (Wayfair)">B</a>');
+                            }
+                            if (s) {
+                                parts.push('<a href="' + wfEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" ' +
+                                    'class="fw-semibold" style="color:#6f42c1;" title="Seller (Partners)">S</a>');
+                            }
+                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '';
+                        }
+                    },
+                    {
                         title: 'GPFT', field: 'gpft', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -654,7 +843,7 @@
                             else if (v < 125) color = '#3591dc';
                             else if (v < 250) color = '#28a745';
                             else color = '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                            return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
                     {
@@ -716,21 +905,53 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());
-                            if (isNaN(v) || v === 0) return '0%';
+                            if (isNaN(v) || v === 0) return '<span style="font-weight:700;">0%</span>';
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
                             else if (v < 125) color = '#3591dc';
                             else if (v < 250) color = '#28a745';
                             else color = '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                            return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
                 ],
-                dataLoaded: function(data) { updateSummary(data); },
+                dataLoaded: function(data) {
+                    wfResetSkuColHoverWidth();
+                    wfRemoveImagePreview();
+                    updateSummary(data);
+                },
                 dataFiltered: function(filters, rows) { updateSummary(rows); },
                 dataProcessed: function() { updateSummary(); },
                 renderComplete: function() { updateSummary(); }
+            });
+
+            table.on('scrollVertical', wfRemoveImagePreview);
+            table.on('scrollHorizontal', wfRemoveImagePreview);
+
+            $('#wayfair-pricing-table').on('mouseover', function(e) {
+                if (!table || !e.target || typeof e.target.closest !== 'function') return;
+                if (!e.target.closest('[tabulator-field="sku"]')) return;
+                if (wfSkuColHoverActive) return;
+                const col = table.getColumn('sku');
+                if (!col) return;
+                wfSkuColHoverBase = col.getWidth();
+                if (wfSkuColHoverBase <= 0) return;
+                col.setWidth(Math.round(wfSkuColHoverBase * 1.2));
+                wfSkuColHoverActive = true;
+            });
+
+            $('#wayfair-pricing-table').on('mouseout', function(e) {
+                if (!table || !wfSkuColHoverActive) return;
+                const related = e.relatedTarget;
+                const root = this;
+                if (related && root.contains(related) && typeof related.closest === 'function' && related.closest('[tabulator-field="sku"]')) {
+                    return;
+                }
+                const col = table.getColumn('sku');
+                if (col && wfSkuColHoverBase != null) col.setWidth(wfSkuColHoverBase);
+                wfSkuColHoverActive = false;
+                wfSkuColHoverBase = null;
             });
 
             wfSyncPriceModeUi();
@@ -786,7 +1007,7 @@
                 saveWayfairSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
 
-            $('#wf-pricing-sku-search').on('input', function() { applyFilters(); });
+            $('#wf-pricing-parent-search, #wf-pricing-sku-search').on('input', function() { applyFilters(); });
             $('#wf-row-type-filter, #wf-inv-filter, #wf-stock-filter, #wf-gpft-filter, #wf-roi-filter, #wf-fqty-filter, #wf-map-filter').on('change', function() { applyFilters(); });
 
             $(document).on('click', '.wf-dil-toggle', function(e) {
@@ -804,6 +1025,34 @@
                 applyFilters();
             });
             $(document).on('click', function() { $('.wf-manual-dropdown').removeClass('show'); });
+
+            $(document).on('click', '.wf-copy-sku-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).attr('data-sku');
+                if (!sku) return;
+                const done = function() {
+                    if (window.toastr) toastr.success('SKU copied');
+                };
+                const fail = function() {
+                    if (window.toastr) toastr.error('Could not copy SKU');
+                    else alert('Could not copy SKU');
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(sku).then(done).catch(fail);
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = sku;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try {
+                        if (document.execCommand('copy')) done(); else fail();
+                    } catch (err) { fail(); }
+                    document.body.removeChild(ta);
+                }
+            });
 
             $('#wf-missing-badge').on('click', function() {
                 wfMissingActive = !wfMissingActive;

@@ -67,7 +67,6 @@ use App\Models\EbayMetric;
 use App\Models\EbayOrder;
 use App\Models\EbayOrderItem;
 use App\Models\EbayPriorityReport;
-use App\Models\FaireProductSheet;
 use App\Models\FaireListingStatus;
 use App\Models\FbMarketplaceSheetdata;
 use App\Models\FBMarketplaceListingStatus;
@@ -944,6 +943,7 @@ class ChannelMasterController extends Controller
             'pls'       => 'getPlsChannelData',
             'wayfair'   => 'getWayfairChannelData',
             'faire'     => 'getFaireChannelData',
+            'purchasingpower' => 'getPurchasingPowerChannelData',
             'shein'     => 'getSheinChannelData',
             'tiktokshop'=> 'getTiktokChannelData',
             'tiktokshop2'   => 'getTikTokTwoChannelData',
@@ -1169,6 +1169,7 @@ class ChannelMasterController extends Controller
         'pls'       => 'getPlsChannelData',
         'wayfair'   => 'getWayfairChannelData',
         'faire'     => 'getFaireChannelData',
+        'purchasingpower' => 'getPurchasingPowerChannelData',
         'shein'     => 'getSheinChannelData',
         'tiktokshop'=> 'getTiktokChannelData',
         'tiktokshop2'   => 'getTikTokTwoChannelData',
@@ -3678,100 +3679,72 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $query = FaireProductSheet::where('sku', 'not like', '%Parent%');
+        $metrics = MarketplaceDailyMetric::where('channel', 'Faire')->latest('date')->first();
 
-        $l30Orders = $query->sum('f_l30');
-        $l60Orders = $query->sum('f_l60');
-        $totalQuantity = $l30Orders; // f_l30 is already units sold (quantity)
+        if (! $metrics) {
+            $channelData = ChannelMaster::where('channel', 'Faire')->first();
+            $mapMissCounts = $this->getMapAndMissCounts('faire');
+            $result[] = [
+                'Channel '   => 'Faire',
+                'L-60 Sales' => 0,
+                'L30 Sales'  => 0,
+                'Growth'     => '0%',
+                'L60 Orders' => 0,
+                'L30 Orders' => 0,
+                'Qty'        => 0,
+                'Gprofit%'   => '0%',
+                'gprofitL60' => '0%',
+                'G Roi'      => 0,
+                'G RoiL60'   => 0,
+                'Total PFT'  => 0,
+                'N PFT'      => '0%',
+                'N ROI'      => 0,
+                'KW Spent'   => 0,
+                'PT Spent'   => 0,
+                'HL Spent'   => 0,
+                'PMT Spent'  => 0,
+                'Shopping Spent' => 0,
+                'SERP Spent' => 0,
+                'Total Ad Spend' => 0,
+                'Ads%'       => '0%',
+                'TACOS %'    => '0%',
+                'type'       => $channelData->type ?? '',
+                'W/Ads'      => $channelData->w_ads ?? 0,
+                'NR'         => $channelData->nr ?? 0,
+                'Update'     => $channelData->update ?? 0,
+                'cogs'       => 0,
+                'Map'        => $mapMissCounts['map'],
+                'Miss'       => $mapMissCounts['miss'],
+                'NMap'       => $mapMissCounts['nmap'],
+                'Total Views' => $mapMissCounts['total_views'] ?? 0,
+                ...$this->getChannelHealthAndReviewsStub(),
+            ];
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(f_l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(f_l60 * price) as total')->value('total') ?? 0;
+            return response()->json([
+                'status' => 200,
+                'message' => 'Faire channel data (no metrics yet — run php artisan app:update-marketplace-daily-metrics after Faire sales upload)',
+                'data' => $result,
+            ]);
+        }
+
+        $l60Orders = 0;
+        $l60Sales = 0;
+
+        $l30Sales = (float) ($metrics->total_sales ?? 0);
+        $l30Orders = (int) ($metrics->total_orders ?? 0);
+        $totalQuantity = (int) ($metrics->total_quantity ?? 0);
+        $totalProfit = (float) ($metrics->total_pft ?? 0);
+        $totalCogs = (float) ($metrics->total_cogs ?? 0);
+        $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
+        $gRoi = (float) ($metrics->roi_percentage ?? 0);
+        $nPftPct = (float) ($metrics->n_pft ?? $gProfitPct);
+        $nRoi = (float) ($metrics->n_roi ?? $gRoi);
 
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $gprofitL60 = 0;
+        $gRoiL60 = 0;
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Faire')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'f_l30','f_l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->f_l30;
-            $unitsL60  = (int) $row->f_l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'Faire')->first();
-
-        // Get Map and Miss counts from amazon_channel_summary_data table
         $mapMissCounts = $this->getMapAndMissCounts('faire');
 
         $result[] = [
@@ -3781,12 +3754,14 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Qty'        => intval($totalQuantity),
+            'Qty'        => $totalQuantity,
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
-            'N PFT'      => round($nPft, 2) . '%',
+            'Total PFT'  => round($totalProfit, 2),
+            'N PFT'      => round($nPftPct, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'KW Spent'   => 0,
             'PT Spent'   => 0,
             'HL Spent'   => 0,
@@ -3794,21 +3769,138 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => 0,
+            'Ads%'       => '0%',
+            'TACOS %'    => '0%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
-            'Map' => $mapMissCounts['map'],
-            'Miss' => $mapMissCounts['miss'],
-            'NMap' => $mapMissCounts['nmap'],
+            'Map'        => $mapMissCounts['map'],
+            'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
             'status' => 200,
-            'message' => 'wayfair channel data fetched successfully',
+            'message' => 'Faire channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
+    public function getPurchasingPowerChannelData(Request $request)
+    {
+        $result = [];
+
+        $metrics = MarketplaceDailyMetric::where('channel', 'Purchasing Power')->latest('date')->first();
+
+        if (! $metrics) {
+            $channelData = ChannelMaster::where('channel', 'Purchasing Power')->first();
+            $mapMissCounts = $this->getMapAndMissCounts('purchasingpower');
+            $result[] = [
+                'Channel '   => 'Purchasing Power',
+                'L-60 Sales' => 0,
+                'L30 Sales'  => 0,
+                'Growth'     => '0%',
+                'L60 Orders' => 0,
+                'L30 Orders' => 0,
+                'Qty'        => 0,
+                'Gprofit%'   => '0%',
+                'gprofitL60' => '0%',
+                'G Roi'      => 0,
+                'G RoiL60'   => 0,
+                'Total PFT'  => 0,
+                'N PFT'      => '0%',
+                'N ROI'      => 0,
+                'KW Spent'   => 0,
+                'PT Spent'   => 0,
+                'HL Spent'   => 0,
+                'PMT Spent'  => 0,
+                'Shopping Spent' => 0,
+                'SERP Spent' => 0,
+                'Total Ad Spend' => 0,
+                'Ads%'       => '0%',
+                'TACOS %'    => '0%',
+                'type'       => $channelData->type ?? '',
+                'W/Ads'      => $channelData->w_ads ?? 0,
+                'NR'         => $channelData->nr ?? 0,
+                'Update'     => $channelData->update ?? 0,
+                'cogs'       => 0,
+                'Map'        => $mapMissCounts['map'],
+                'Miss'       => $mapMissCounts['miss'],
+                'NMap'       => $mapMissCounts['nmap'],
+                'Total Views' => $mapMissCounts['total_views'] ?? 0,
+                ...$this->getChannelHealthAndReviewsStub(),
+            ];
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Purchasing Power channel data (no metrics yet — run php artisan app:update-marketplace-daily-metrics after sales upload)',
+                'data' => $result,
+            ]);
+        }
+
+        $l60Orders = 0;
+        $l60Sales = 0;
+
+        $l30Sales = (float) ($metrics->total_sales ?? 0);
+        $l30Orders = (int) ($metrics->total_orders ?? 0);
+        $totalQuantity = (int) ($metrics->total_quantity ?? 0);
+        $totalProfit = (float) ($metrics->total_pft ?? 0);
+        $totalCogs = (float) ($metrics->total_cogs ?? 0);
+        $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
+        $gRoi = (float) ($metrics->roi_percentage ?? 0);
+        $nPftPct = (float) ($metrics->n_pft ?? $gProfitPct);
+        $nRoi = (float) ($metrics->n_roi ?? $gRoi);
+
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $gprofitL60 = 0;
+        $gRoiL60 = 0;
+
+        $channelData = ChannelMaster::where('channel', 'Purchasing Power')->first();
+        $mapMissCounts = $this->getMapAndMissCounts('purchasingpower');
+
+        $result[] = [
+            'Channel '   => 'Purchasing Power',
+            'L-60 Sales' => intval($l60Sales),
+            'L30 Sales'  => intval($l30Sales),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60Orders,
+            'L30 Orders' => $l30Orders,
+            'Qty'        => $totalQuantity,
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => round($gprofitL60, 2) . '%',
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => round($gRoiL60, 2),
+            'Total PFT'  => round($totalProfit, 2),
+            'N PFT'      => round($nPftPct, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
+            'Ads%'       => '0%',
+            'TACOS %'    => '0%',
+            'type'       => $channelData->type ?? '',
+            'W/Ads'      => $channelData->w_ads ?? 0,
+            'NR'         => $channelData->nr ?? 0,
+            'Update'     => $channelData->update ?? 0,
+            'cogs'       => round($totalCogs, 2),
+            'Map'        => $mapMissCounts['map'],
+            'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Purchasing Power channel data fetched successfully',
             'data' => $result,
         ]);
     }
@@ -7644,6 +7736,7 @@ class ChannelMasterController extends Controller
             'pls' => 'PLS',
             'wayfair' => 'Wayfair',
             'faire' => 'Faire',
+            'purchasingpower' => 'Purchasing Power',
             'shein' => 'Shein',
             'tiktokshop' => 'TikTok',
             'tiktokshop2' => 'TikTok 2',

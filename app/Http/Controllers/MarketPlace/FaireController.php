@@ -10,6 +10,7 @@ use App\Models\FaireDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\FaireDailyData;
 use App\Models\FairePricingPrice;
+use App\Models\FaireListingStatus;
 use App\Models\AmazonChannelSummary;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -804,6 +805,14 @@ class FaireController extends Controller
                     ->keyBy(fn ($row) => $normalizeSku($row->sku));
             }
 
+            $listingStatusBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $listingStatusBySku = FaireListingStatus::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            }
+
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
             $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 75) : 75;
             $margin = $percentage / 100;
@@ -859,6 +868,13 @@ class FaireController extends Controller
                 $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
                 $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
 
+                $listingRecord = $listingStatusBySku->get($normalizedSku);
+                $listingPayload = ($listingRecord && is_array($listingRecord->value)) ? $listingRecord->value : [];
+                $buyerLink = isset($listingPayload['buyer_link']) ? trim((string) $listingPayload['buyer_link']) : '';
+                $sellerLink = isset($listingPayload['seller_link']) ? trim((string) $listingPayload['seller_link']) : '';
+                $buyerLink = $buyerLink !== '' ? $buyerLink : null;
+                $sellerLink = $sellerLink !== '' ? $sellerLink : null;
+
                 $rows[] = [
                     'sku' => $displaySku,
                     'parent' => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
@@ -870,6 +886,8 @@ class FaireController extends Controller
                     'lmp_entries' => [],
                     'missing' => $isMissing ? 'M' : '',
                     'map' => $mapValue,
+                    'buyer_link' => $buyerLink,
+                    'seller_link' => $sellerLink,
                     'gpft' => (int) round($gpft),
                     'groi' => (int) round($groi),
                     'profit' => round($profit, 2),
@@ -1091,6 +1109,8 @@ class FaireController extends Controller
             'price' => '-',
             'missing' => '-',
             'map' => '-',
+            'buyer_link' => null,
+            'seller_link' => null,
             'gpft' => $gpftPct,
             'groi' => '-',
             'profit' => round($sumProfit, 2),

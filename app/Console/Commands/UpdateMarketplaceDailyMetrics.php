@@ -23,6 +23,8 @@ use App\Models\DepopSalesData;
 use App\Models\MiraklDailyData;
 use App\Models\DobaDailyData;
 use App\Models\WayfairDailyData;
+use App\Models\FaireDailyData;
+use App\Models\PurchasingPowerSale;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
@@ -53,6 +55,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Shein' => fn() => $this->calculateSheinMetrics($date),
             'Mercari With Ship' => fn() => $this->calculateMercariWithShipMetrics($date),
             'Mercari Without Ship' => fn() => $this->calculateMercariWithoutShipMetrics($date),
+            'Purchasing Power' => fn() => $this->calculatePurchasingPowerMetrics($date),
             'AliExpress' => fn() => $this->calculateAliexpressMetrics($date),
             'Shopify B2C' => fn() => $this->calculateShopifyB2CMetrics($date),
             'Shopify B2B' => fn() => $this->calculateShopifyB2BMetrics($date),
@@ -66,6 +69,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Wayfair' => fn() => $this->calculateWayfairMetrics($date),
             'TopDawg' => fn() => $this->calculateTopDawgMetrics($date),
             'Depop' => fn() => $this->calculateDepopMetrics($date),
+            'Faire' => fn() => $this->calculateFaireMetrics($date),
         ];
 
         foreach ($channels as $channel => $calculator) {
@@ -3240,6 +3244,199 @@ class UpdateMarketplaceDailyMetrics extends Command
             'tacos_percentage' => 0,
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
+        ];
+    }
+
+    /**
+     * Faire — same source and per-line economics as FaireController::getDailyData (faire-tabulator).
+     * Wholesale price preferred over retail; PFT per unit = (price × 0.75) − LP.
+     */
+    private function calculateFaireMetrics($date)
+    {
+        $data = FaireDailyData::query()->orderBy('id')->get();
+
+        if ($data->isEmpty()) {
+            return null;
+        }
+
+        $skus = $data->pluck('sku')->filter()->unique()->values()->all();
+        $productMasters = $skus !== []
+            ? ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku')
+            : collect();
+
+        $totalOrders = $data->count();
+        $totalQuantity = 0;
+        $totalRevenue = 0.0;
+        $totalWeightedPrice = 0.0;
+        $totalQuantityForPrice = 0;
+        $totalPft = 0.0;
+        $totalCogs = 0.0;
+
+        foreach ($data as $item) {
+            $sku = $item->sku;
+            $lp = 0.0;
+
+            if (! empty($sku) && isset($productMasters[$sku])) {
+                $productMaster = $productMasters[$sku];
+                $values = is_array($productMaster->Values)
+                    ? $productMaster->Values
+                    : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+
+                if ($lp === 0.0 && isset($productMaster->lp)) {
+                    $lp = (float) $productMaster->lp;
+                }
+            }
+
+            $wholesale = (float) ($item->wholesale_price ?? 0) ?: 0.0;
+            $retail = (float) ($item->retail_price ?? 0) ?: 0.0;
+            $price = $wholesale > 0 ? $wholesale : $retail;
+            $quantity = (int) ($item->quantity ?? 0);
+
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $lineRevenue = $price * $quantity;
+            $totalRevenue += $lineRevenue;
+            $totalQuantity += $quantity;
+
+            if ($price > 0) {
+                $totalWeightedPrice += $price * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            $pftEach = ($price * 0.75) - $lp;
+            $totalPft += $pftEach * $quantity;
+            $totalCogs += $lp * $quantity;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
+            'avg_price' => round($avgPrice, 2),
+            'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'tacos_percentage' => 0,
+            'n_pft' => round($pftPercentage, 1),
+            'n_roi' => round($roiPercentage, 1),
+        ];
+    }
+
+    /**
+     * Purchasing Power — purchasing_power_sales (same upload as /purchasing-power-sales).
+     * Excludes canceled rows; margin from marketplace_percentages.marketplace = Purchase (default 70%).
+     * PFT per line matches Purchasing Power pricing: (unit_price × margin) − LP − ship, × quantity.
+     */
+    private function calculatePurchasingPowerMetrics($date)
+    {
+        $sales = PurchasingPowerSale::query()
+            ->whereNotIn('status', ['Canceled', 'canceled'])
+            ->orderBy('id')
+            ->get();
+
+        if ($sales->isEmpty()) {
+            return null;
+        }
+
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
+        $pct = (($marketplaceData ? (float) ($marketplaceData->percentage ?? 70) : 70) / 100);
+
+        $productMasters = ProductMaster::all()->keyBy(fn ($pm) => strtoupper(trim((string) ($pm->sku ?? ''))));
+
+        $totalOrders = $sales->count();
+        $totalQuantity = 0;
+        $totalRevenue = 0.0;
+        $totalWeightedPrice = 0.0;
+        $totalQuantityForPrice = 0;
+        $totalPft = 0.0;
+        $totalCogs = 0.0;
+
+        foreach ($sales as $row) {
+            $qty = (int) ($row->quantity ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $unit = (float) ($row->unit_price ?? 0);
+            if ($unit <= 0) {
+                $amt = (float) ($row->amount ?? 0);
+                $unit = $qty > 0 ? $amt / $qty : 0.0;
+            }
+
+            $lineRevenue = $unit * $qty;
+            $totalRevenue += $lineRevenue;
+            $totalQuantity += $qty;
+
+            if ($unit > 0) {
+                $totalWeightedPrice += $unit * $qty;
+                $totalQuantityForPrice += $qty;
+            }
+
+            $sku = strtoupper(trim((string) ($row->offer_sku ?? '')));
+            $lp = 0.0;
+            $ship = 0.0;
+            $pm = $sku !== '' ? ($productMasters[$sku] ?? null) : null;
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+            }
+
+            $profitPerUnit = ($unit * $pct) - $lp - $ship;
+            $totalPft += $profitPerUnit * $qty;
+            $totalCogs += $lp * $qty;
+        }
+
+        if ($totalQuantity <= 0 || $totalRevenue <= 0) {
+            return null;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
+            'avg_price' => round($avgPrice, 2),
+            'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'tacos_percentage' => 0,
+            'n_pft' => round($pftPercentage, 1),
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 }

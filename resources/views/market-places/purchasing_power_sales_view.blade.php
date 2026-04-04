@@ -25,7 +25,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Purchasing Power Sales',
-        'sub_title'  => 'Purchasing Power Order Sales Data',
+        'sub_title'  => 'Data in purchasing_power_sales (this grid). Run php artisan app:update-marketplace-daily-metrics so All Marketplace Master matches these rollups.',
     ])
     <div class="toast-container"></div>
     <div class="row">

@@ -47,6 +47,8 @@
 
         #image-hover-preview {
             transition: opacity 0.2s ease;
+            pointer-events: auto;
+            z-index: 10050;
         }
 
         /* Forecast table: no gray behind headers — Tabulator defaults show gray around title area */
@@ -912,6 +914,97 @@
                 if (posOpt) posOpt.textContent = def.pos + ' (' + def.n + ')';
             });
         }
+
+        let forecastImagePreviewHideTimer = null;
+        let forecastImagePreviewEl = null;
+
+        function forecastRemoveImagePreview() {
+            if (forecastImagePreviewHideTimer) {
+                clearTimeout(forecastImagePreviewHideTimer);
+                forecastImagePreviewHideTimer = null;
+            }
+            document.querySelectorAll('#image-hover-preview').forEach(function(el) {
+                el.remove();
+            });
+            forecastImagePreviewEl = null;
+        }
+
+        function forecastCancelImagePreviewHide() {
+            if (forecastImagePreviewHideTimer) {
+                clearTimeout(forecastImagePreviewHideTimer);
+                forecastImagePreviewHideTimer = null;
+            }
+        }
+
+        function forecastScheduleImagePreviewHide() {
+            forecastCancelImagePreviewHide();
+            forecastImagePreviewHideTimer = setTimeout(forecastRemoveImagePreview, 220);
+        }
+
+        function forecastEnsureImagePreviewListeners(wrap) {
+            if (wrap.dataset.forecastPreviewListeners === '1') return;
+            wrap.dataset.forecastPreviewListeners = '1';
+            wrap.addEventListener('mouseenter', forecastCancelImagePreviewHide);
+            wrap.addEventListener('mouseleave', forecastScheduleImagePreviewHide);
+        }
+
+        function forecastClampPreviewPosition(wrap, clientX, clientY) {
+            const pad = 12;
+            let left = clientX + pad;
+            let top = clientY + pad;
+            wrap.style.position = 'fixed';
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+            const rect = wrap.getBoundingClientRect();
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const m = 8;
+            if (rect.right > vw - m) left = Math.max(m, vw - rect.width - m);
+            if (rect.bottom > vh - m) top = Math.max(m, vh - rect.height - m);
+            if (left < m) left = m;
+            if (top < m) top = m;
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+        }
+
+        function forecastShowImagePreview(clientX, clientY, fullUrl) {
+            if (!fullUrl) return;
+            forecastCancelImagePreviewHide();
+            const existing = forecastImagePreviewEl;
+            if (existing && document.body.contains(existing)) {
+                const prevImg = existing.querySelector('img');
+                if (prevImg && prevImg.getAttribute('src') === fullUrl) {
+                    forecastClampPreviewPosition(existing, clientX, clientY);
+                    return;
+                }
+            }
+            document.querySelectorAll('#image-hover-preview').forEach(function(el) {
+                el.remove();
+            });
+            forecastImagePreviewEl = null;
+
+            const wrap = document.createElement('div');
+            wrap.id = 'image-hover-preview';
+            wrap.style.zIndex = '10050';
+            wrap.style.pointerEvents = 'auto';
+            wrap.style.border = '1px solid #ccc';
+            wrap.style.background = '#fff';
+            wrap.style.padding = '4px';
+            wrap.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
+            wrap.style.borderRadius = '6px';
+            const big = document.createElement('img');
+            big.style.maxWidth = '350px';
+            big.style.maxHeight = '350px';
+            big.style.display = 'block';
+            big.alt = '';
+            big.src = fullUrl;
+            wrap.appendChild(big);
+            forecastEnsureImagePreviewListeners(wrap);
+            document.body.appendChild(wrap);
+            forecastImagePreviewEl = wrap;
+            forecastClampPreviewPosition(wrap, clientX, clientY);
+        }
+
         const table = new Tabulator("#forecast-table", {
             ajaxURL: "/forecast-analysis-data-view",
             ajaxConfig: "GET",
@@ -956,28 +1049,25 @@
                     cellMouseOver: function(e, cell) {
                         const img = cell.getElement().querySelector('.hover-thumb');
                         if (!img) return;
-
                         const fullUrl = img.getAttribute('data-full');
-                        if (!fullUrl) return;
-
-                        let preview = document.createElement('div');
-                        preview.id = 'image-hover-preview';
-                        preview.style.position = 'fixed';
-                        preview.style.top = `${e.clientY + 10}px`;
-                        preview.style.left = `${e.clientX + 10}px`;
-                        preview.style.zIndex = 9999;
-                        preview.style.border = '1px solid #ccc';
-                        preview.style.background = '#fff';
-                        preview.style.padding = '4px';
-                        preview.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
-                        preview.innerHTML =
-                            `<img src="${fullUrl}" style="max-width:350px;max-height:350px;">`;
-
-                        document.body.appendChild(preview);
+                        forecastShowImagePreview(e.clientX, e.clientY, fullUrl);
+                    },
+                    cellMouseMove: function(e, cell) {
+                        const preview = forecastImagePreviewEl;
+                        if (!preview || !document.body.contains(preview)) return;
+                        const img = cell.getElement().querySelector('.hover-thumb');
+                        const fullUrl = img ? img.getAttribute('data-full') : '';
+                        const big = preview.querySelector('img');
+                        if (!fullUrl || !big || big.getAttribute('src') !== fullUrl) return;
+                        forecastClampPreviewPosition(preview, e.clientX, e.clientY);
                     },
                     cellMouseOut: function(e, cell) {
-                        const preview = document.getElementById('image-hover-preview');
-                        if (preview) preview.remove();
+                        const related = e.relatedTarget;
+                        if (related && typeof related.closest === 'function' && related.closest('#image-hover-preview')) {
+                            forecastCancelImagePreviewHide();
+                            return;
+                        }
+                        forecastScheduleImagePreviewHide();
                     },
                     width: 52,
                     minWidth: 48,
@@ -3087,6 +3177,9 @@
                 console.error("Error loading data:", textStatus);
             },
         });
+
+        table.on('scrollVertical', forecastRemoveImagePreview);
+        table.on('scrollHorizontal', forecastRemoveImagePreview);
 
         (function bindForecastTableViewportHeight() {
             function applyForecastTableHeight() {

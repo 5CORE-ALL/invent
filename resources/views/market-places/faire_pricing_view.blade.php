@@ -47,6 +47,14 @@
         .fr-sc.yellow { background:#ffc107; }
         .fr-sc.green { background:#28a745; }
         .fr-sc.pink { background:#e83e8c; }
+        #faire-pricing-table .tabulator-col[tabulator-field="sku"],
+        #faire-pricing-table .tabulator-cell[tabulator-field="sku"] {
+            transition: width 0.2s ease, min-width 0.2s ease;
+        }
+        #fr-image-hover-preview {
+            pointer-events: auto;
+            z-index: 10050;
+        }
     </style>
 @endsection
 
@@ -60,7 +68,7 @@
         <div class="col-12">
             <div class="alert alert-info py-2 mb-3">
                 <strong>Sales data</strong> is aggregated from <a href="{{ route('faire.tabulator.view') }}" class="alert-link">Faire Sales Data</a>
-                (uploaded wholesale × quantity per SKU). <strong>Analytics</strong> column is your uploaded Faire list price (CSV/Excel: sku, price, stock).
+                (uploaded wholesale × quantity per SKU). <strong>Pricing</strong> column is your uploaded Faire list price (CSV/Excel: sku, price, stock).
             </div>
 
             <div class="card border-warning mb-3">
@@ -73,7 +81,7 @@
                         <i class="fas fa-download"></i> Sample CSV
                     </a>
                     <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadFairePriceModal">
-                        <i class="fas fa-upload"></i> Upload list sheet
+                        <i class="fas fa-upload"></i> Upload price
                     </button>
                 </div>
             </div>
@@ -143,6 +151,7 @@
                                     <span class="fr-sc pink"></span>Pink (50%+)</a></li>
                             </ul>
                         </div>
+                        <input type="text" id="fr-pricing-parent-search" class="form-control form-control-sm" style="max-width:200px;" placeholder="Search parent..." title="Filter by Parent column">
                         <input type="text" id="fr-pricing-sku-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search SKU...">
                         <button type="button" id="fr-refresh-pricing" class="btn btn-sm btn-outline-primary">
                             <i class="fa fa-refresh"></i> Refresh
@@ -174,13 +183,13 @@
                         <div class="d-flex flex-wrap gap-2">
                             <span class="badge bg-primary fs-6 p-2" id="fr-total-sales-badge" style="font-weight:700;">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="fr-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
-                            <span class="badge bg-success fs-6 p-2" id="fr-total-profit-badge" style="font-weight:700;">Profit: $0</span>
-                            <span class="badge bg-info fs-6 p-2" id="fr-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty).">PFT %: 0%</span>
+                            <span class="badge bg-success fs-6 p-2" id="fr-total-profit-badge" style="font-weight:700;">Profit: 0</span>
+                            <span class="badge bg-info fs-6 p-2" id="fr-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty).">PFt: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="fr-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
                             <span class="badge bg-danger fs-6 p-2" id="fr-missing-badge" style="font-weight:700;">Missing L: 0</span>
                             <span class="badge fs-6 p-2" id="fr-map-badge" style="font-weight:700;background:#0d6efd;color:#fff;">Map: 0</span>
                             <span class="badge fs-6 p-2" id="fr-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;">0 Sold: 0</span>
                             <span class="badge fs-6 p-2" id="fr-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;">&gt;0 Sold: 0</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="fr-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
                         </div>
                     </div>
 
@@ -226,8 +235,117 @@
         let frIncreaseModeActive = false;
         let frSelectedSkus = new Set();
 
+        let frSkuColHoverBase = null;
+        let frSkuColHoverActive = false;
+
+        function frResetSkuColHoverWidth() {
+            if (table && frSkuColHoverActive && frSkuColHoverBase != null) {
+                try {
+                    const col = table.getColumn('sku');
+                    if (col) col.setWidth(frSkuColHoverBase);
+                } catch (err) { /* ignore */ }
+            }
+            frSkuColHoverActive = false;
+            frSkuColHoverBase = null;
+        }
+
+        let frImagePreviewHideTimer = null;
+        let frImagePreviewEl = null;
+
+        function frRemoveImagePreview() {
+            if (frImagePreviewHideTimer) {
+                clearTimeout(frImagePreviewHideTimer);
+                frImagePreviewHideTimer = null;
+            }
+            document.querySelectorAll('#fr-image-hover-preview').forEach(function(el) {
+                el.remove();
+            });
+            frImagePreviewEl = null;
+        }
+
+        function frCancelImagePreviewHide() {
+            if (frImagePreviewHideTimer) {
+                clearTimeout(frImagePreviewHideTimer);
+                frImagePreviewHideTimer = null;
+            }
+        }
+
+        function frScheduleImagePreviewHide() {
+            frCancelImagePreviewHide();
+            frImagePreviewHideTimer = setTimeout(frRemoveImagePreview, 220);
+        }
+
+        function frEnsureImagePreviewListeners(wrap) {
+            if (wrap.dataset.frPreviewListeners === '1') return;
+            wrap.dataset.frPreviewListeners = '1';
+            wrap.addEventListener('mouseenter', frCancelImagePreviewHide);
+            wrap.addEventListener('mouseleave', frScheduleImagePreviewHide);
+        }
+
+        function frClampImagePreviewPosition(wrap, clientX, clientY) {
+            const pad = 12;
+            let left = clientX + pad;
+            let top = clientY + pad;
+            wrap.style.position = 'fixed';
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+            const rect = wrap.getBoundingClientRect();
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const m = 8;
+            if (rect.right > vw - m) left = Math.max(m, vw - rect.width - m);
+            if (rect.bottom > vh - m) top = Math.max(m, vh - rect.height - m);
+            if (left < m) left = m;
+            if (top < m) top = m;
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+        }
+
+        function frShowImagePreview(clientX, clientY, fullUrl) {
+            if (!fullUrl) return;
+            frCancelImagePreviewHide();
+            const existing = frImagePreviewEl;
+            if (existing && document.body.contains(existing)) {
+                const prevImg = existing.querySelector('img');
+                if (prevImg && prevImg.getAttribute('src') === fullUrl) {
+                    frClampImagePreviewPosition(existing, clientX, clientY);
+                    return;
+                }
+            }
+            document.querySelectorAll('#fr-image-hover-preview').forEach(function(el) {
+                el.remove();
+            });
+            frImagePreviewEl = null;
+
+            const wrap = document.createElement('div');
+            wrap.id = 'fr-image-hover-preview';
+            wrap.style.zIndex = '10050';
+            wrap.style.pointerEvents = 'auto';
+            wrap.style.border = '1px solid #ccc';
+            wrap.style.background = '#fff';
+            wrap.style.padding = '4px';
+            wrap.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
+            wrap.style.borderRadius = '6px';
+            const big = document.createElement('img');
+            big.style.maxWidth = '350px';
+            big.style.maxHeight = '350px';
+            big.style.display = 'block';
+            big.alt = '';
+            big.src = fullUrl;
+            wrap.appendChild(big);
+            frEnsureImagePreviewListeners(wrap);
+            document.body.appendChild(wrap);
+            frImagePreviewEl = wrap;
+            frClampImagePreviewPosition(wrap, clientX, clientY);
+        }
+
         function money(value) {
             return '$' + (parseFloat(value) || 0).toFixed(2);
+        }
+
+        function frEscUrlAttr(url) {
+            if (url == null || url === '') return '';
+            return String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         }
 
         function saveFaireSpriceUpdates(updates) {
@@ -392,13 +510,13 @@
 
             $('#fr-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
             $('#fr-total-fqty-badge').text('Sold: ' + totalFqty.toLocaleString());
-            $('#fr-total-profit-badge').text('Profit: $' + Math.round(totalProfit).toLocaleString());
-            $('#fr-avg-gpft-badge').text('PFT %: ' + pftPct.toFixed(1) + '%');
+            $('#fr-total-profit-badge').text('Profit: ' + Math.round(totalProfit).toLocaleString());
+            $('#fr-avg-gpft-badge').text('PFt: ' + Math.round(pftPct) + '%');
+            $('#fr-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
             $('#fr-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
             $('#fr-map-badge').text('Map: ' + mapCount.toLocaleString());
             $('#fr-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#fr-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
-            $('#fr-avg-roi-badge').text('ROI: ' + roiPct.toFixed(1) + '%');
         }
 
         function applyFilters() {
@@ -406,6 +524,7 @@
             table.clearFilter();
 
             const skuSearch = ($('#fr-pricing-sku-search').val() || '').toLowerCase().trim();
+            const parentSearch = ($('#fr-pricing-parent-search').val() || '').toLowerCase().trim();
             const rowType = $('#fr-row-type-filter').val();
             const invFilter = $('#fr-inv-filter').val();
             const stockFilter = $('#fr-stock-filter').val();
@@ -417,6 +536,16 @@
 
             if (skuSearch) {
                 table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
+            }
+            if (parentSearch) {
+                table.addFilter(function(d) {
+                    const p = (d.parent || '').toLowerCase();
+                    const sku = (d.sku || '').toLowerCase();
+                    if (d.is_parent === true) {
+                        return p.includes(parentSearch) || sku.includes(parentSearch);
+                    }
+                    return p.includes(parentSearch);
+                });
             }
             if (rowType === 'parents') {
                 table.addFilter(d => d.is_parent === true);
@@ -504,6 +633,42 @@
                 },
                 columns: [
                     {
+                        title: 'Image', field: 'image', width: 60, headerSort: false, frozen: true,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const src = cell.getValue();
+                            if (d.is_parent || !src) return '';
+                            const esc = String(src).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            return '<img src="' + esc + '" data-full="' + esc + '" class="fr-hover-thumb" alt="" ' +
+                                'style="width:44px;height:44px;object-fit:cover;border-radius:4px;cursor:pointer;" ' +
+                                'onerror="this.onerror=null;this.style.display=\'none\'">';
+                        },
+                        cellMouseOver: function(e, cell) {
+                            if (cell.getRow().getData().is_parent) return;
+                            const img = cell.getElement().querySelector('.fr-hover-thumb');
+                            if (!img) return;
+                            frShowImagePreview(e.clientX, e.clientY, img.getAttribute('data-full'));
+                        },
+                        cellMouseMove: function(e, cell) {
+                            const preview = frImagePreviewEl;
+                            if (!preview || !document.body.contains(preview)) return;
+                            if (cell.getRow().getData().is_parent) return;
+                            const img = cell.getElement().querySelector('.fr-hover-thumb');
+                            const fullUrl = img ? img.getAttribute('data-full') : '';
+                            const big = preview.querySelector('img');
+                            if (!fullUrl || !big || big.getAttribute('src') !== fullUrl) return;
+                            frClampImagePreviewPosition(preview, e.clientX, e.clientY);
+                        },
+                        cellMouseOut: function(e, cell) {
+                            const related = e.relatedTarget;
+                            if (related && typeof related.closest === 'function' && related.closest('#fr-image-hover-preview')) {
+                                frCancelImagePreviewHide();
+                                return;
+                            }
+                            frScheduleImagePreviewHide();
+                        }
+                    },
+                    {
                         title: "<input type=\"checkbox\" id=\"fr-select-all\">",
                         field: '_fr_select',
                         hozAlign: 'center',
@@ -511,6 +676,7 @@
                         width: 38,
                         download: false,
                         visible: false,
+                        frozen: true,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -531,23 +697,20 @@
                         }
                     },
                     {
-                        title: 'Image', field: 'image', width: 60, headerSort: false,
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            const src = cell.getValue();
-                            if (d.is_parent || !src) return '';
-                            return '<img src="' + src + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'">';
-                        }
-                    },
-                    {
                         title: 'SKU', field: 'sku', minWidth: 200, frozen: true, headerFilter: 'input',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const val = cell.getValue() || '';
                             if (d.is_parent) {
-                                return '<span style="color:#0f5132;font-size:13px;font-weight:700;">' + val + '</span>';
+                                return '<span style="color:#0f5132;font-size:13px;font-weight:700;">' + String(val).replace(/</g, '&lt;') + '</span>';
                             }
-                            return '<span class="fw-bold">' + val.replace(/</g, '&lt;') + '</span>';
+                            const raw = String(val);
+                            const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                            return '<span class="d-inline-flex align-items-center gap-1">' +
+                                '<span class="fw-bold">' + esc + '</span>' +
+                                '<button type="button" class="btn btn-sm btn-link p-0 fr-copy-sku-btn" data-sku="' + esc + '" title="Copy SKU" ' +
+                                'style="min-width:auto;line-height:1;color:#6c757d;vertical-align:middle;"><i class="fas fa-copy" style="font-size:12px;"></i></button>' +
+                                '</span>';
                         }
                     },
                     {
@@ -596,11 +759,11 @@
                         }
                     },
                     {
-                        title: 'Analytics', field: 'price', sorter: 'number', hozAlign: 'right',
+                        title: 'Pricing', field: 'price', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return money(cell.getValue());
+                            return '<span style="font-weight:700;">' + money(cell.getValue()) + '</span>';
                         }
                     },
                     {
@@ -628,6 +791,30 @@
                         }
                     },
                     {
+                        title: 'B/S',
+                        field: 'buyer_link',
+                        headerSort: false,
+                        hozAlign: 'center',
+                        width: 64,
+                        download: false,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const b = d.buyer_link;
+                            const s = d.seller_link;
+                            const parts = [];
+                            if (b) {
+                                parts.push('<a href="' + frEscUrlAttr(b) + '" target="_blank" rel="noopener noreferrer" ' +
+                                    'class="fw-semibold" style="color:#0d6efd;" title="Buyer (Faire)">B</a>');
+                            }
+                            if (s) {
+                                parts.push('<a href="' + frEscUrlAttr(s) + '" target="_blank" rel="noopener noreferrer" ' +
+                                    'class="fw-semibold" style="color:#6f42c1;" title="Seller (portal)">S</a>');
+                            }
+                            return parts.length ? parts.join('<span class="text-muted" style="margin:0 3px;">|</span>') : '';
+                        }
+                    },
+                    {
                         title: 'GPFT', field: 'gpft', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -651,7 +838,7 @@
                             else if (v < 125) color = '#3591dc';
                             else if (v < 250) color = '#28a745';
                             else color = '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                            return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
                     {
@@ -713,21 +900,81 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());
-                            if (isNaN(v) || v === 0) return '0%';
+                            if (isNaN(v) || v === 0) return '<span style="font-weight:700;">0%</span>';
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
                             else if (v < 125) color = '#3591dc';
                             else if (v < 250) color = '#28a745';
                             else color = '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                            return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
                 ],
-                dataLoaded: function(data) { updateSummary(data); },
+                dataLoaded: function(data) {
+                    frResetSkuColHoverWidth();
+                    frRemoveImagePreview();
+                    updateSummary(data);
+                },
                 dataFiltered: function(filters, rows) { updateSummary(rows); },
                 dataProcessed: function() { updateSummary(); },
                 renderComplete: function() { updateSummary(); }
+            });
+
+            table.on('scrollVertical', frRemoveImagePreview);
+            table.on('scrollHorizontal', frRemoveImagePreview);
+
+            $('#faire-pricing-table').on('mouseover', function(e) {
+                if (!table || !e.target || typeof e.target.closest !== 'function') return;
+                if (!e.target.closest('[tabulator-field="sku"]')) return;
+                if (frSkuColHoverActive) return;
+                const col = table.getColumn('sku');
+                if (!col) return;
+                frSkuColHoverBase = col.getWidth();
+                if (frSkuColHoverBase <= 0) return;
+                col.setWidth(Math.round(frSkuColHoverBase * 1.2));
+                frSkuColHoverActive = true;
+            });
+
+            $('#faire-pricing-table').on('mouseout', function(e) {
+                if (!table || !frSkuColHoverActive) return;
+                const related = e.relatedTarget;
+                const root = this;
+                if (related && root.contains(related) && typeof related.closest === 'function' && related.closest('[tabulator-field="sku"]')) {
+                    return;
+                }
+                const col = table.getColumn('sku');
+                if (col && frSkuColHoverBase != null) col.setWidth(frSkuColHoverBase);
+                frSkuColHoverActive = false;
+                frSkuColHoverBase = null;
+            });
+
+            $(document).on('click', '.fr-copy-sku-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).attr('data-sku');
+                if (!sku) return;
+                const done = function() {
+                    if (window.toastr) toastr.success('SKU copied');
+                };
+                const fail = function() {
+                    if (window.toastr) toastr.error('Could not copy SKU');
+                    else alert('Could not copy SKU');
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(sku).then(done).catch(fail);
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = sku;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try {
+                        if (document.execCommand('copy')) done(); else fail();
+                    } catch (err) { fail(); }
+                    document.body.removeChild(ta);
+                }
             });
 
             frSyncPriceModeUi();
@@ -783,7 +1030,7 @@
                 saveFaireSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
 
-            $('#fr-pricing-sku-search').on('input', function() { applyFilters(); });
+            $('#fr-pricing-parent-search, #fr-pricing-sku-search').on('input', function() { applyFilters(); });
             $('#fr-row-type-filter, #fr-inv-filter, #fr-stock-filter, #fr-gpft-filter, #fr-roi-filter, #fr-fqty-filter, #fr-map-filter').on('change', function() { applyFilters(); });
 
             $(document).on('click', '.fr-dil-toggle', function(e) {

@@ -12,6 +12,7 @@ use App\Models\ProductMaster;
 use App\Models\WayfairDataView;
 use App\Models\WayfairDailyData;
 use App\Models\WayfairPricingPrice;
+use App\Models\WayfairListingStatus;
 use App\Models\AmazonChannelSummary;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -660,6 +661,14 @@ class WayfairController extends Controller
                     ->keyBy(fn ($row) => $normalizeSku($row->sku));
             }
 
+            $listingStatusBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $listingStatusBySku = WayfairListingStatus::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            }
+
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
             $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 100) : 100;
             $margin = $percentage / 100;
@@ -701,7 +710,8 @@ class WayfairController extends Controller
                 $displaySku = $productMaster
                     ? trim((string) $productMaster->sku)
                     : ($sale ? (string) $sale->sku : ($priceRow ? trim((string) $priceRow->sku) : $normalizedSku));
-                $isMissing = !$productMaster || $price <= 0;
+                // Same as AliExpress pricing: missing when no product master or no positive uploaded channel price.
+                $isMissing = ! $productMaster || $price <= 0;
 
                 if ($isMissing) {
                     $mapValue = '';
@@ -715,6 +725,13 @@ class WayfairController extends Controller
                 $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
                 $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
 
+                $listingRecord = $listingStatusBySku->get($normalizedSku);
+                $listingPayload = ($listingRecord && is_array($listingRecord->value)) ? $listingRecord->value : [];
+                $buyerLink = isset($listingPayload['buyer_link']) ? trim((string) $listingPayload['buyer_link']) : '';
+                $sellerLink = isset($listingPayload['seller_link']) ? trim((string) $listingPayload['seller_link']) : '';
+                $buyerLink = $buyerLink !== '' ? $buyerLink : null;
+                $sellerLink = $sellerLink !== '' ? $sellerLink : null;
+
                 $rows[] = [
                     'sku' => $displaySku,
                     'parent' => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
@@ -726,6 +743,8 @@ class WayfairController extends Controller
                     'lmp_entries' => [],
                     'missing' => $isMissing ? 'M' : '',
                     'map' => $mapValue,
+                    'buyer_link' => $buyerLink,
+                    'seller_link' => $sellerLink,
                     'gpft' => (int) round($gpft),
                     'groi' => (int) round($groi),
                     'profit' => round($profit, 2),
@@ -1085,6 +1104,8 @@ class WayfairController extends Controller
             'price' => '-',
             'missing' => '-',
             'map' => '-',
+            'buyer_link' => null,
+            'seller_link' => null,
             'gpft' => $gpftPct,
             'groi' => '-',
             'profit' => round($sumProfit, 2),
