@@ -170,7 +170,7 @@
                         <button type="button" id="wf-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
                             <i class="fa fa-eye"></i> Show all
                         </button>
-                        <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
+                        <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (all rows)">
                             <i class="fas fa-exchange-alt"></i> Pricing mode
                         </button>
                     </div>
@@ -178,10 +178,12 @@
                     <div id="wf-discount-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <span id="wf-selected-skus-count" class="fw-bold text-secondary"></span>
+                            <span id="wf-discount-type-wrap">
                             <select id="wf-discount-type" class="form-select form-select-sm" style="width:120px;">
                                 <option value="percentage">Percentage</option>
                                 <option value="value">Value ($)</option>
                             </select>
+                            </span>
                             <input type="number" id="wf-discount-input" class="form-control form-control-sm" placeholder="Enter %" step="0.01" style="width:110px;">
                             <button id="wf-apply-discount-btn" type="button" class="btn btn-primary btn-sm">Apply</button>
                             <button id="wf-clear-sprice-btn" type="button" class="btn btn-danger btn-sm">
@@ -244,6 +246,7 @@
 
         let wfDecreaseModeActive = false;
         let wfIncreaseModeActive = false;
+        let wfUniformPriceModeActive = false;
         let wfSelectedSkus = new Set();
 
         let wfSkuColHoverBase = null;
@@ -402,19 +405,32 @@
         function wfSyncPriceModeUi() {
             const $btn = $('#wf-price-mode-btn');
             const selectCol = table ? table.getColumn('_wf_select') : null;
+            $('#wf-discount-type-wrap').toggle(!wfUniformPriceModeActive);
+            if (wfUniformPriceModeActive) {
+                $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-warning')
+                    .html('<i class="fas fa-equals"></i> Same SPRICE');
+                if (selectCol) selectCol.hide();
+                wfSelectedSkus.clear();
+                $('#wf-discount-input').attr('placeholder', 'SPRICE $');
+                wfUpdateSelectedCount();
+                return;
+            }
+            $('#wf-discount-input').attr('placeholder', $('#wf-discount-type').val() === 'percentage' ? 'Enter %' : 'Enter $');
             if (wfDecreaseModeActive) {
-                $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                $btn.removeClass('btn-secondary btn-primary btn-warning').addClass('btn-danger')
                     .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                 if (selectCol) selectCol.show();
+                wfUpdateSelectedCount();
                 return;
             }
             if (wfIncreaseModeActive) {
-                $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                $btn.removeClass('btn-secondary btn-danger btn-warning').addClass('btn-primary')
                     .html('<i class="fas fa-arrow-up"></i> Increase ON');
                 if (selectCol) selectCol.show();
+                wfUpdateSelectedCount();
                 return;
             }
-            $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+            $btn.removeClass('btn-danger btn-primary btn-warning').addClass('btn-secondary')
                 .html('<i class="fas fa-exchange-alt"></i> Pricing mode');
             if (selectCol) selectCol.hide();
             wfSelectedSkus.clear();
@@ -422,14 +438,40 @@
         }
 
         function wfUpdateSelectedCount() {
-            const cnt = wfSelectedSkus.size;
-            $('#wf-selected-skus-count').text(cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected');
-            $('#wf-discount-container').toggle(cnt > 0 && (wfDecreaseModeActive || wfIncreaseModeActive));
+            if (wfUniformPriceModeActive) {
+                $('#wf-selected-skus-count').text('One SPRICE for every SKU row (not parent summaries).');
+            } else {
+                const cnt = wfSelectedSkus.size;
+                $('#wf-selected-skus-count').text(cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected');
+            }
+            const showPanel = wfUniformPriceModeActive
+                || (wfSelectedSkus.size > 0 && (wfDecreaseModeActive || wfIncreaseModeActive));
+            $('#wf-discount-container').toggle(showPanel);
         }
 
         function wfApplyDiscount() {
             const discountType = $('#wf-discount-type').val();
             const discountVal = parseFloat($('#wf-discount-input').val());
+
+            if (wfUniformPriceModeActive) {
+                if (isNaN(discountVal) || discountVal <= 0 || !table) return;
+                const newSprice = wfRoundToRetailPrice(Math.max(0.99, discountVal));
+                const updates = [];
+                table.getRows().forEach(function(row) {
+                    const d = row.getData();
+                    if (d.is_parent) return;
+                    const margin = wayfairMarginFromRow(d);
+                    const lp = parseFloat(d.lp) || 0;
+                    const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
+                    const sroi = lp > 0 ? Math.round(((newSprice * margin - lp) / lp) * 100) : 0;
+                    row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                    updates.push({ sku: d.sku, sprice: newSprice });
+                });
+                if (updates.length) saveWayfairSpriceUpdates(updates);
+                $('#wf-discount-input').val('');
+                return;
+            }
+
             if (isNaN(discountVal) || discountVal === 0 || wfSelectedSkus.size === 0) return;
 
             const updates = [];
@@ -467,6 +509,19 @@
         }
 
         function wfClearSpriceForSelected() {
+            if (wfUniformPriceModeActive) {
+                if (!confirm('Clear SPRICE for ALL SKU rows?')) return;
+                const updates = [];
+                table.getRows().forEach(function(row) {
+                    const d = row.getData();
+                    if (!d.is_parent) {
+                        row.update({ sprice: 0, sgpft: 0, sroi: 0 });
+                        updates.push({ sku: d.sku, sprice: 0 });
+                    }
+                });
+                if (updates.length) saveWayfairSpriceUpdates(updates);
+                return;
+            }
             if (!wfSelectedSkus.size) return;
             if (!confirm('Clear SPRICE for ' + wfSelectedSkus.size + ' SKU(s)?')) return;
             const updates = [];
@@ -1037,15 +1092,22 @@
             wfSyncPriceModeUi();
 
             $('#wf-price-mode-btn').on('click', function() {
-                if (!wfDecreaseModeActive && !wfIncreaseModeActive) {
+                if (!wfDecreaseModeActive && !wfIncreaseModeActive && !wfUniformPriceModeActive) {
                     wfDecreaseModeActive = true;
                     wfIncreaseModeActive = false;
+                    wfUniformPriceModeActive = false;
                 } else if (wfDecreaseModeActive) {
                     wfDecreaseModeActive = false;
                     wfIncreaseModeActive = true;
+                    wfUniformPriceModeActive = false;
+                } else if (wfIncreaseModeActive) {
+                    wfDecreaseModeActive = false;
+                    wfIncreaseModeActive = false;
+                    wfUniformPriceModeActive = true;
                 } else {
                     wfDecreaseModeActive = false;
                     wfIncreaseModeActive = false;
+                    wfUniformPriceModeActive = false;
                 }
                 wfSyncPriceModeUi();
             });
