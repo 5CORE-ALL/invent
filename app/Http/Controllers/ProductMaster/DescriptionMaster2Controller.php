@@ -5,6 +5,7 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
 use App\Models\ProductMaster;
+use App\Services\AmazonSpApiService;
 use App\Services\EbayApiService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\ProductDescriptionV2HtmlBuilder;
@@ -56,6 +57,44 @@ class DescriptionMaster2Controller extends Controller
             'description_v2_package' => (string) ($pm->description_v2_package ?? ''),
             'description_v2_brand' => (string) ($pm->description_v2_brand ?? ''),
         ]);
+    }
+
+    /**
+     * POST /product-description-2/fetch/amazon — A+ Content API → DM2 fields.
+     */
+    public function fetchAmazon(Request $request)
+    {
+        $validated = $request->validate(['sku' => 'required|string']);
+        $sku = $this->normalizeSku($validated['sku']);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $pm = ProductMaster::query()->where('sku', $sku)->first();
+        if (! $pm) {
+            return response()->json(['success' => false, 'message' => 'Product not found for this SKU.'], 404);
+        }
+
+        return response()->json(app(AmazonSpApiService::class)->fetchAplusContentForSku($sku));
+    }
+
+    /**
+     * POST /product-description-2/fetch/ebay — Trading API GetItem → parse Description HTML into DM2 fields.
+     */
+    public function fetchEbay(Request $request)
+    {
+        $validated = $request->validate(['sku' => 'required|string']);
+        $sku = $this->normalizeSku($validated['sku']);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $pm = ProductMaster::query()->where('sku', $sku)->first();
+        if (! $pm) {
+            return response()->json(['success' => false, 'message' => 'Product not found for this SKU.'], 404);
+        }
+
+        return response()->json(app(EbayApiService::class)->fetchDescriptionForSku($sku));
     }
 
     /**

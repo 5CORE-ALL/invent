@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use App\Models\AmazonListingRaw;
 use App\Models\ProductStockMapping;
+use App\Services\Support\AplusContentDocumentParser;
 use App\Services\Support\DescriptionWithImagesFormatter;
 
 class AmazonSpApiService
@@ -3904,5 +3905,301 @@ class AmazonSpApiService
     public function updateProductDescription(string $identifier, string $description, array $imageUrls = []): array
     {
         return $this->updateDescription($identifier, $description, $imageUrls);
+    }
+
+    /**
+     * Description Master 2.0: fetch Brand A+ Content via A+ Content API (searchContentPublishRecords + getContentDocument),
+     * map modules to DM2 fields, then optionally enrich from Listings Item / legacy fetchAplusContent for gaps.
+     *
+     * @return array{
+     *   success: bool,
+     *   message?: string,
+     *   partial?: bool,
+     *   source?: string,
+     *   data?: array<string, mixed>
+     * }
+     */
+    public function fetchAplusContentForSku(string $identifier): array
+    {
+        $sku = $this->resolveAmazonSellerSkuForBullets(trim($identifier));
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $marketplaceId = (string) config('services.amazon_sp.marketplace_id', 'ATVPDKIKX0DER');
+        $dm2 = AplusContentDocumentParser::parseToDm2([]);
+        $source = [];
+
+        $accessToken = $this->getAccessToken();
+        if (empty($accessToken)) {
+            return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+        }
+
+        $asin = $this->resolveAsinForSku($sku);
+        if ($asin !== null) {
+            $refKey = $this->searchContentPublishRecords($asin, $marketplaceId, $accessToken);
+            if ($refKey !== null && $refKey !== '') {
+                $docJson = $this->getContentDocument($refKey, $marketplaceId, $accessToken);
+                if (is_array($docJson) && $docJson !== []) {
+                    $dm2 = AplusContentDocumentParser::parseToDm2($docJson);
+                    $source[] = 'aplus_content_api';
+                }
+            }
+        }
+
+        $partialBeforeMerge = $this->dm2PayloadMostlyEmpty($dm2);
+        $legacy = $this->fetchAplusContent($sku);
+        $dm2 = $this->mergeDm2WithLegacyFetch($dm2, $legacy);
+
+        if ($this->dm2PayloadMostlyEmpty($dm2)) {
+            return [
+                'success' => false,
+                'message' => 'No A+ content could be loaded for this SKU. Ensure ASIN is in amazon_metrics and Brand Registry A+ is published.',
+                'partial' => true,
+                'source' => $source,
+                'data' => $this->normalizeDm2Payload($dm2),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Amazon content loaded.',
+            'partial' => $partialBeforeMerge,
+            'source' => array_values(array_unique(array_merge($source, ['listings_attributes_fallback']))),
+            'data' => $this->normalizeDm2Payload($dm2),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dm2
+     */
+    private function dm2PayloadMostlyEmpty(array $dm2): bool
+    {
+        $hasText = trim((string) ($dm2['description_v2_bullets'] ?? '')) !== ''
+            || trim((string) ($dm2['description_v2_description'] ?? '')) !== ''
+            || trim((string) ($dm2['description_v2_package'] ?? '')) !== ''
+            || trim((string) ($dm2['description_v2_brand'] ?? '')) !== '';
+        $imgs = $dm2['description_v2_images'] ?? [];
+        $hasImg = is_array($imgs) && array_filter($imgs, fn ($u) => is_string($u) && trim($u) !== '') !== [];
+        $feats = $dm2['description_v2_features'] ?? [];
+        $hasFeat = false;
+        if (is_array($feats)) {
+            foreach ($feats as $f) {
+                if (is_array($f) && (trim((string) ($f['title'] ?? '')) !== '' || trim((string) ($f['body'] ?? '')) !== '')) {
+                    $hasFeat = true;
+                    break;
+                }
+            }
+        }
+        $specs = $dm2['description_v2_specifications'] ?? [];
+
+        return ! $hasText && ! $hasImg && ! $hasFeat && (! is_array($specs) || $specs === []);
+    }
+
+    /**
+     * @param  array<string, mixed>  $dm2
+     * @param  array<string, mixed>  $legacy  Output shape from fetchAplusContent
+     * @return array<string, mixed>
+     */
+    private function mergeDm2WithLegacyFetch(array $dm2, array $legacy): array
+    {
+        $data = (array) ($legacy['data'] ?? []);
+        $plain = trim((string) ($data['description_plain'] ?? ''));
+        $html = trim((string) ($data['description_html'] ?? ''));
+        $images = isset($data['images']) && is_array($data['images']) ? array_values(array_filter($data['images'], fn ($u) => is_string($u) && trim($u) !== '')) : [];
+
+        if (trim((string) ($dm2['description_v2_description'] ?? '')) === '' && $plain !== '') {
+            $dm2['description_v2_description'] = $plain;
+        } elseif (trim((string) ($dm2['description_v2_description'] ?? '')) === '' && $html !== '') {
+            $dm2['description_v2_description'] = trim(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+
+        if ((! isset($dm2['description_v2_images']) || ! is_array($dm2['description_v2_images']) || $dm2['description_v2_images'] === []) && $images !== []) {
+            $dm2['description_v2_images'] = array_slice($images, 0, 12);
+        }
+
+        if (trim((string) ($dm2['description_v2_bullets'] ?? '')) === '' && $html !== '') {
+            $dm2['description_v2_bullets'] = $this->extractBulletLinesFromHtml($html);
+        }
+
+        return $dm2;
+    }
+
+    private function extractBulletLinesFromHtml(string $html): string
+    {
+        if (trim($html) === '') {
+            return '';
+        }
+        libxml_use_internal_errors(true);
+        $dom = new \DOMDocument();
+        @$dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+        libxml_clear_errors();
+        $lis = $dom->getElementsByTagName('li');
+        $lines = [];
+        foreach ($lis as $li) {
+            $t = trim(preg_replace('/\s+/u', ' ', $li->textContent ?? '') ?? '');
+            if ($t !== '' && count($lines) < 5) {
+                $lines[] = $t;
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param  array<string, mixed>  $dm2
+     * @return array<string, mixed>
+     */
+    private function normalizeDm2Payload(array $dm2): array
+    {
+        $images = $dm2['description_v2_images'] ?? [];
+        if (! is_array($images)) {
+            $images = [];
+        }
+        $images = array_values(array_pad(array_slice(array_values(array_filter(array_map('trim', $images), fn ($u) => $u !== '')), 0, 12), 12, ''));
+
+        $features = $dm2['description_v2_features'] ?? [];
+        if (! is_array($features)) {
+            $features = [];
+        }
+        while (count($features) < 4) {
+            $features[] = ['title' => '', 'body' => ''];
+        }
+        $features = array_slice($features, 0, 4);
+
+        $specs = $dm2['description_v2_specifications'] ?? [];
+        if (! is_array($specs)) {
+            $specs = [];
+        }
+
+        return [
+            'description_v2_bullets' => (string) ($dm2['description_v2_bullets'] ?? ''),
+            'description_v2_description' => (string) ($dm2['description_v2_description'] ?? ''),
+            'description_v2_images' => $images,
+            'description_v2_features' => $features,
+            'description_v2_specifications' => $specs,
+            'description_v2_package' => (string) ($dm2['description_v2_package'] ?? ''),
+            'description_v2_brand' => (string) ($dm2['description_v2_brand'] ?? ''),
+            'modules_seen' => isset($dm2['modules_seen']) && is_array($dm2['modules_seen']) ? $dm2['modules_seen'] : [],
+        ];
+    }
+
+    private function resolveAsinForSku(string $sku): ?string
+    {
+        if ($sku === '' || ! Schema::hasTable('amazon_metrics')) {
+            return null;
+        }
+
+        $row = DB::table('amazon_metrics')
+            ->where(function ($q) use ($sku) {
+                $q->where('sku', $sku)->orWhere('sku', strtoupper($sku))->orWhere('sku', strtolower($sku));
+            })
+            ->first();
+
+        if (! $row) {
+            return null;
+        }
+
+        $cols = Schema::hasColumn('amazon_metrics', 'asin') ? ['asin'] : [];
+        if (Schema::hasColumn('amazon_metrics', 'asin1')) {
+            $cols[] = 'asin1';
+        }
+        foreach ($cols as $c) {
+            $a = trim((string) ($row->{$c} ?? ''));
+            if ($a !== '' && preg_match('/^B[0-9A-Z]{9}$/i', $a)) {
+                return strtoupper($a);
+            }
+        }
+
+        return null;
+    }
+
+    private function searchContentPublishRecords(string $asin, string $marketplaceId, string $accessToken): ?string
+    {
+        $url = $this->endpoint.'/aplus/2020-11-01/contentPublishRecords'
+            .'?marketplaceId='.rawurlencode($marketplaceId)
+            .'&asin='.rawurlencode($asin);
+
+        $response = Http::withoutVerifying()->withHeaders([
+            'x-amz-access-token' => $accessToken,
+            'Accept' => 'application/json',
+        ])->timeout(60)->connectTimeout(25)->get($url);
+
+        if ($response->status() === 429) {
+            sleep(2);
+            $response = Http::withoutVerifying()->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Accept' => 'application/json',
+            ])->timeout(60)->connectTimeout(25)->get($url);
+        }
+
+        if (! $response->successful()) {
+            Log::info('Amazon searchContentPublishRecords non-success', [
+                'asin' => $asin,
+                'status' => $response->status(),
+                'body_preview' => mb_substr($response->body(), 0, 400),
+            ]);
+
+            return null;
+        }
+
+        $json = $response->json();
+        if (! is_array($json)) {
+            return null;
+        }
+
+        $records = $json['publishRecordList'] ?? $json['publishRecords'] ?? $json['records'] ?? [];
+        if (! is_array($records) || $records === []) {
+            return null;
+        }
+
+        foreach ($records as $rec) {
+            if (! is_array($rec)) {
+                continue;
+            }
+            $key = $rec['contentReferenceKey'] ?? null;
+            if (is_string($key) && trim($key) !== '') {
+                return trim($key);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function getContentDocument(string $contentReferenceKey, string $marketplaceId, string $accessToken): ?array
+    {
+        $path = rawurlencode($contentReferenceKey);
+        $url = $this->endpoint.'/aplus/2020-11-01/contentDocuments/'.$path
+            .'?marketplaceId='.rawurlencode($marketplaceId)
+            .'&includedDataSet=CONTENTS';
+
+        $response = Http::withoutVerifying()->withHeaders([
+            'x-amz-access-token' => $accessToken,
+            'Accept' => 'application/json',
+        ])->timeout(60)->connectTimeout(25)->get($url);
+
+        if ($response->status() === 429) {
+            sleep(4);
+            $response = Http::withoutVerifying()->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Accept' => 'application/json',
+            ])->timeout(60)->connectTimeout(25)->get($url);
+        }
+
+        if (! $response->successful()) {
+            Log::warning('Amazon getContentDocument failed', [
+                'status' => $response->status(),
+                'body_preview' => mb_substr($response->body(), 0, 500),
+            ]);
+
+            return null;
+        }
+
+        $json = $response->json();
+
+        return is_array($json) ? $json : null;
     }
 }
