@@ -67,6 +67,8 @@
         #dmHtmlPanel .font-monospace { font-size: 11px; line-height: 1.4; }
         #dmHtmlPreviewFrame { width: 100%; min-height: 360px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
         #dmModeTabs .nav-link { cursor: pointer; font-size: 12px; padding: .35rem .75rem; }
+        #dmHtmlPanel .tox-tinymce { border-radius: 8px !important; border-color: #e2e8f0 !important; }
+        #dmHtmlTemplateSelect { min-width: 0; }
     </style>
 @endsection
 
@@ -111,8 +113,8 @@
         </div>
 
                     <div id="dmHtmlPanel" class="mb-3 dm-modal-section" style="display: none;">
-                        <div class="dm-modal-section-title">Shopify — custom HTML (Advanced)</div>
-                        <p class="small text-muted mb-2">Paste full HTML for the product page body. <strong>Push</strong> replaces <code>body_html</code> on Shopify. Saved templates are stored per SKU and store.</p>
+                        <div class="dm-modal-section-title">Shopify — visual editor &amp; HTML</div>
+                        <p class="small text-muted mb-2">Use the rich editor below (no HTML required). <strong>Save template</strong> stores HTML for this SKU in metrics; <strong>Save as template</strong> saves a reusable layout to <em>My templates</em>. <strong>Push</strong> updates <code>body_html</code> on Shopify.</p>
                         <div class="row g-3">
                             <div class="col-lg-6">
                                 <label class="form-label small mb-0">SKU</label>
@@ -122,12 +124,38 @@
                                     <option value="shopify_main">Shopify Main</option>
                                     <option value="shopify_pls">Shopify PLS</option>
                                 </select>
-                                <label class="form-label small mb-0">HTML</label>
-                                <textarea id="dmHtmlTextarea" class="form-control font-monospace" rows="16" placeholder="&lt;div class=&quot;product-description&quot;&gt;...&lt;/div&gt;"></textarea>
+                                <input type="hidden" id="dmHtmlUserTemplateEditId" value="">
+                                <div class="row g-2 mb-2">
+                                    <div class="col-12">
+                                        <label class="form-label small mb-0">Templates library</label>
+                                        <div class="input-group input-group-sm">
+                                            <select id="dmHtmlTemplateSelect" class="form-select form-select-sm" title="Built-in layouts and your saved templates">
+                                                <option value="">— Select a template to load —</option>
+                                            </select>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" id="dmHtmlLoadLibraryTemplateBtn" title="Load selected template into editor"><i class="fas fa-file-import"></i></button>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 d-flex flex-wrap gap-1 align-items-center">
+                                        <button type="button" class="btn btn-outline-info btn-sm" id="dmHtmlLoadExampleBtn"><i class="fas fa-magic"></i> Load example</button>
+                                        <span class="small text-muted">Starts from the Standard Product layout.</span>
+                                    </div>
+                                </div>
+                                <div class="row g-2 mb-2 align-items-end">
+                                    <div class="col">
+                                        <label class="form-label small mb-0">Name for saved template (optional)</label>
+                                        <input type="text" id="dmHtmlNewTemplateName" class="form-control form-control-sm" placeholder="e.g. My speaker listing" autocomplete="off">
+                                    </div>
+                                    <div class="col-auto pb-1">
+                                        <button type="button" class="btn btn-primary btn-sm" id="dmHtmlSaveAsLibraryBtn" title="Save current editor HTML as a reusable template"><i class="fas fa-layer-group"></i> Save as template</button>
+                                        <button type="button" class="btn btn-outline-danger btn-sm" id="dmHtmlDeleteLibraryTemplateBtn" title="Delete selected custom template"><i class="fas fa-trash"></i></button>
+                                    </div>
+                                </div>
+                                <label class="form-label small mb-0">Editor <span class="text-muted fw-normal">(toolbar: bold, lists, headings, colors, table, image by URL, code)</span></label>
+                                <textarea id="dmHtmlTextarea" class="form-control font-monospace" rows="14" placeholder="Loading editor…"></textarea>
                                 <div class="d-flex flex-wrap gap-2 mt-2">
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="dmHtmlLoadBtn"><i class="fas fa-download"></i> Load saved template</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="dmHtmlLoadBtn"><i class="fas fa-download"></i> Load saved (SKU)</button>
                                     <button type="button" class="btn btn-outline-primary btn-sm" id="dmHtmlPreviewBtn"><i class="fas fa-eye"></i> Preview</button>
-                                    <button type="button" class="btn btn-info btn-sm" id="dmHtmlSaveBtn"><i class="fas fa-save"></i> Save template</button>
+                                    <button type="button" class="btn btn-info btn-sm" id="dmHtmlSaveBtn"><i class="fas fa-save"></i> Save to SKU</button>
                                     <button type="button" class="btn btn-success btn-sm" id="dmHtmlPushBtn"><i class="fas fa-cloud-upload-alt"></i> Push to Shopify</button>
                                 </div>
                             </div>
@@ -360,6 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let listMeta = { total: 0, last_page: 1, per_page: 75 };
     let searchDebounce = null;
     let descriptionMasterLoadSeq = 0;
+    let dmHtmlTinyInitPromise = null;
 
     const esc = (s) => {
         if (s == null) return '';
@@ -1306,6 +1335,127 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsArrayBuffer(file);
     });
 
+    function loadScriptOnce(src) {
+        return new Promise((resolve, reject) => {
+            const existing = document.querySelector('script[src="' + src + '"]');
+            if (existing) { resolve(); return; }
+            const s = document.createElement('script');
+            s.src = src;
+            s.referrerPolicy = 'origin';
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error('Failed to load script'));
+            document.head.appendChild(s);
+        });
+    }
+
+    function dmHtmlGetTiny() {
+        if (typeof tinymce === 'undefined') return null;
+        return tinymce.get('dmHtmlTextarea');
+    }
+
+    function dmHtmlGetContent() {
+        const ed = dmHtmlGetTiny();
+        if (ed) {
+            ed.save();
+            return ed.getContent() || '';
+        }
+        const ta = document.getElementById('dmHtmlTextarea');
+        return ta ? (ta.value || '') : '';
+    }
+
+    function dmHtmlSetContent(html) {
+        const ed = dmHtmlGetTiny();
+        if (ed) ed.setContent(html || '');
+        else {
+            const ta = document.getElementById('dmHtmlTextarea');
+            if (ta) ta.value = html || '';
+        }
+    }
+
+    function destroyDmHtmlTiny() {
+        const ed = dmHtmlGetTiny();
+        if (ed) ed.remove();
+        dmHtmlTinyInitPromise = null;
+    }
+
+    function ensureDmHtmlTinyMce() {
+        if (dmHtmlGetTiny()) return Promise.resolve();
+        if (dmHtmlTinyInitPromise) return dmHtmlTinyInitPromise;
+        dmHtmlTinyInitPromise = (async () => {
+            await loadScriptOnce('https://cdn.jsdelivr.net/npm/tinymce@7/tinymce.min.js');
+            if (dmHtmlGetTiny()) return;
+            const ta = document.getElementById('dmHtmlTextarea');
+            if (!ta) return;
+            await window.tinymce.init({
+                selector: '#dmHtmlTextarea',
+                height: 420,
+                menubar: false,
+                branding: false,
+                promotion: false,
+                plugins: 'lists link image table code autoresize fullscreen',
+                toolbar: 'undo redo | blocks fontsize | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | link image table | removeformat | code fullscreen',
+                block_formats: 'Paragraph=p; Heading 1=h1; Heading 2=h2; Heading 3=h3; Preformatted=pre',
+                fontsize_formats: '12px 14px 16px 18px',
+                content_style: 'body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; max-width: 100%; } img { max-width: 100%; height: auto; }',
+                convert_urls: false,
+                image_caption: false,
+                setup(editor) {
+                    editor.on('change keyup', () => { editor.save(); });
+                },
+            });
+        })();
+        return dmHtmlTinyInitPromise;
+    }
+
+    async function refreshShopifyTemplateDropdown() {
+        const mp = document.getElementById('dmHtmlMarketplace')?.value || 'shopify_main';
+        const sel = document.getElementById('dmHtmlTemplateSelect');
+        if (!sel) return;
+        try {
+            const r = await fetch('/product-description/shopify-templates?marketplace=' + encodeURIComponent(mp), {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            const j = await r.json();
+            const list = (j.success && Array.isArray(j.templates)) ? j.templates : [];
+            const prev = sel.value;
+            sel.innerHTML = '<option value="">— Select a template to load —</option>';
+            function addGroup(label, items) {
+                if (!items.length) return;
+                const og = document.createElement('optgroup');
+                og.label = label;
+                items.forEach((t) => {
+                    const o = document.createElement('option');
+                    o.value = String(t.id);
+                    o.textContent = t.template_name;
+                    o.dataset.system = t.is_system ? '1' : '0';
+                    og.appendChild(o);
+                });
+                sel.appendChild(og);
+            }
+            addGroup('Built-in layouts', list.filter((t) => t.is_system));
+            addGroup('My templates', list.filter((t) => !t.is_system));
+            if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+        } catch (e) {
+            console.warn(e);
+        }
+    }
+
+    async function loadShopifyLibraryTemplateById(id) {
+        const r = await fetch('/product-description/shopify-templates/' + encodeURIComponent(id), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        const j = await r.json();
+        if (!j.success || !j.template) throw new Error(j.message || 'Load failed');
+        await ensureDmHtmlTinyMce();
+        dmHtmlSetContent(j.template.html_content || '');
+        const hid = document.getElementById('dmHtmlUserTemplateEditId');
+        if (hid) hid.value = (!j.template.is_system && j.template.id) ? String(j.template.id) : '';
+        const nameIn = document.getElementById('dmHtmlNewTemplateName');
+        if (nameIn && j.template.template_name) nameIn.value = j.template.template_name;
+    }
+
     function setDmMode(mode) {
         const simple = document.getElementById('dmSimplePanel');
         const htmlPanel = document.getElementById('dmHtmlPanel');
@@ -1319,7 +1469,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (simple) simple.style.display = 'none';
             if (htmlPanel) htmlPanel.style.display = 'block';
             if (toolbar) toolbar.style.display = 'none';
+            refreshShopifyTemplateDropdown();
+            ensureDmHtmlTinyMce().then(() => { dmHtmlSyncFromRow(); });
         } else {
+            destroyDmHtmlTiny();
             if (simple) simple.style.display = 'block';
             if (htmlPanel) htmlPanel.style.display = 'none';
             if (toolbar) toolbar.style.display = '';
@@ -1337,31 +1490,116 @@ document.addEventListener('DOMContentLoaded', () => {
         const row = bySku.get(String(sku));
         if (!row) return;
         const key = mp === 'shopify_pls' ? 'shopify_pls_custom_html' : 'shopify_main_custom_html';
-        const ta = document.getElementById('dmHtmlTextarea');
-        if (ta && row[key]) ta.value = row[key];
+        const html = row[key] || '';
+        dmHtmlSetContent(html);
     }
 
-    document.getElementById('dmHtmlSku')?.addEventListener('blur', dmHtmlSyncFromRow);
-    document.getElementById('dmHtmlMarketplace')?.addEventListener('change', dmHtmlSyncFromRow);
+    document.getElementById('dmHtmlSku')?.addEventListener('blur', () => { ensureDmHtmlTinyMce().then(() => { dmHtmlSyncFromRow(); }); });
+    document.getElementById('dmHtmlMarketplace')?.addEventListener('change', () => {
+        refreshShopifyTemplateDropdown();
+        ensureDmHtmlTinyMce().then(() => { dmHtmlSyncFromRow(); });
+    });
+
+    document.getElementById('dmHtmlLoadLibraryTemplateBtn')?.addEventListener('click', async () => {
+        const sel = document.getElementById('dmHtmlTemplateSelect');
+        const id = sel?.value;
+        if (!id) { toast('Choose a template from the list', false); return; }
+        try {
+            await loadShopifyLibraryTemplateById(id);
+            toast('Template loaded into editor');
+        } catch (e) { toast(e.message || 'Load failed', false); }
+    });
+
+    document.getElementById('dmHtmlLoadExampleBtn')?.addEventListener('click', async () => {
+        const mp = document.getElementById('dmHtmlMarketplace')?.value || 'shopify_main';
+        try {
+            const r = await fetch('/product-description/shopify-templates?marketplace=' + encodeURIComponent(mp), {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            const j = await r.json();
+            const list = (j.success && Array.isArray(j.templates)) ? j.templates : [];
+            const std = list.find((t) => t.is_system && t.template_name === 'Standard Product Layout')
+                || list.find((t) => t.is_system);
+            if (!std) { toast('Example templates are not available yet. Run database migrations.', false); return; }
+            await loadShopifyLibraryTemplateById(std.id);
+            document.getElementById('dmHtmlUserTemplateEditId').value = '';
+            toast('Example layout loaded — edit freely, then Save to SKU or Save as template');
+        } catch (e) { toast(e.message || 'Failed', false); }
+    });
+
+    document.getElementById('dmHtmlSaveAsLibraryBtn')?.addEventListener('click', async () => {
+        const name = (document.getElementById('dmHtmlNewTemplateName')?.value || '').trim();
+        const mp = document.getElementById('dmHtmlMarketplace')?.value || 'shopify_main';
+        const sku = (document.getElementById('dmHtmlSku')?.value || '').trim();
+        const html = dmHtmlGetContent();
+        if (!name) { toast('Enter a name for your template', false); return; }
+        if (!html.trim()) { toast('Editor is empty', false); return; }
+        const editId = (document.getElementById('dmHtmlUserTemplateEditId')?.value || '').trim();
+        const payload = {
+            template_name: name,
+            html_content: html,
+            marketplace: mp,
+            sku: sku || null,
+        };
+        if (editId) payload.id = parseInt(editId, 10);
+        try {
+            const r = await fetch('/product-description/shopify-templates/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const j = await r.json();
+            toast(j.message || (j.success ? 'Saved' : 'Failed'), !!j.success);
+            if (j.success && j.id) {
+                document.getElementById('dmHtmlUserTemplateEditId').value = String(j.id);
+                await refreshShopifyTemplateDropdown();
+                const sel = document.getElementById('dmHtmlTemplateSelect');
+                if (sel) sel.value = String(j.id);
+            }
+        } catch (e) { toast(e.message, false); }
+    });
+
+    document.getElementById('dmHtmlDeleteLibraryTemplateBtn')?.addEventListener('click', async () => {
+        const sel = document.getElementById('dmHtmlTemplateSelect');
+        const opt = sel?.selectedOptions?.[0];
+        if (!opt || !opt.value) { toast('Select one of your templates in the list', false); return; }
+        if (opt.dataset.system === '1') { toast('Built-in templates cannot be deleted', false); return; }
+        if (!window.confirm('Delete this saved template?')) return;
+        try {
+            const r = await fetch('/product-description/shopify-templates/' + encodeURIComponent(opt.value), {
+                method: 'DELETE',
+                headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            const j = await r.json();
+            toast(j.message || (j.success ? 'Deleted' : 'Failed'), !!j.success);
+            if (j.success) {
+                document.getElementById('dmHtmlUserTemplateEditId').value = '';
+                await refreshShopifyTemplateDropdown();
+            }
+        } catch (e) { toast(e.message, false); }
+    });
 
     document.getElementById('dmHtmlLoadBtn')?.addEventListener('click', async () => {
         const sku = document.getElementById('dmHtmlSku')?.value.trim();
         const mp = document.getElementById('dmHtmlMarketplace')?.value;
         if (!sku) { toast('Enter a SKU', false); return; }
         try {
+            await ensureDmHtmlTinyMce();
             const u = new URLSearchParams({ sku, marketplace: mp });
-            const r = await fetch('/product-description/shopify-html?' + u.toString(), { headers: { Accept: 'application/json' } });
+            const r = await fetch('/product-description/shopify-html?' + u.toString(), { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
             const j = await r.json();
             if (j.success) {
-                const ta = document.getElementById('dmHtmlTextarea');
-                if (ta) ta.value = j.html || '';
-                toast(j.html ? 'Template loaded' : 'No saved template for this SKU');
+                dmHtmlSetContent(j.html || '');
+                document.getElementById('dmHtmlUserTemplateEditId').value = '';
+                toast(j.html ? 'Loaded HTML saved for this SKU' : 'No saved HTML for this SKU yet');
             } else toast(j.message || 'Load failed', false);
         } catch (e) { toast(e.message, false); }
     });
 
     document.getElementById('dmHtmlPreviewBtn')?.addEventListener('click', () => {
-        const raw = document.getElementById('dmHtmlTextarea')?.value || '';
+        const raw = dmHtmlGetContent();
         const iframe = document.getElementById('dmHtmlPreviewFrame');
         if (iframe) iframe.srcdoc = raw || '<p style="font-family:sans-serif;color:#64748b;padding:12px;">(empty)</p>';
     });
@@ -1369,7 +1607,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('dmHtmlSaveBtn')?.addEventListener('click', async () => {
         const sku = document.getElementById('dmHtmlSku')?.value.trim();
         const mp = document.getElementById('dmHtmlMarketplace')?.value;
-        const html = document.getElementById('dmHtmlTextarea')?.value || '';
+        const html = dmHtmlGetContent();
         if (!sku) { toast('Enter a SKU', false); return; }
         try {
             const r = await fetch('/product-description/shopify-html/save', {
@@ -1392,7 +1630,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('dmHtmlPushBtn')?.addEventListener('click', async () => {
         const sku = document.getElementById('dmHtmlSku')?.value.trim();
         const mp = document.getElementById('dmHtmlMarketplace')?.value;
-        const html = document.getElementById('dmHtmlTextarea')?.value || '';
+        const html = dmHtmlGetContent();
         if (!sku) { toast('Enter a SKU', false); return; }
         const btn = document.getElementById('dmHtmlPushBtn');
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...'; }

@@ -224,6 +224,7 @@ use App\Http\Controllers\ProductMaster\BulletPointMasterController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
 use App\Http\Controllers\ProductMaster\CostpriceAnalysisController;
 use App\Http\Controllers\ProductMaster\DescriptionMasterController;
+use App\Http\Controllers\ProductMaster\ShopifyHtmlTemplateController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\ProductMaster\MovementAnalysisController;
 use App\Http\Controllers\ProductMaster\PrAnalysisController;
@@ -2491,6 +2492,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-description/shopify-html', [DescriptionMasterController::class, 'getShopifyCustomHtml'])->name('product.description.shopify.html');
     Route::post('/product-description/shopify-html/save', [DescriptionMasterController::class, 'saveShopifyCustomHtml'])->name('product.description.shopify.html.save');
     Route::post('/product-description/shopify-html/push', [DescriptionMasterController::class, 'pushShopifyCustomHtml'])->name('product.description.shopify.html.push');
+    Route::post('/product-description/shopify-templates/save', [ShopifyHtmlTemplateController::class, 'save'])->name('product.description.shopify.templates.save');
+    Route::get('/product-description/shopify-templates', [ShopifyHtmlTemplateController::class, 'index'])->name('product.description.shopify.templates');
+    Route::get('/product-description/shopify-templates/{id}', [ShopifyHtmlTemplateController::class, 'show'])->whereNumber('id')->name('product.description.shopify.templates.show');
+    Route::delete('/product-description/shopify-templates/{id}', [ShopifyHtmlTemplateController::class, 'destroy'])->whereNumber('id')->name('product.description.shopify.templates.destroy');
     Route::get('/features', fn () => view('features'))->name('features');
     Route::post('/features/save', [ProductMasterController::class, 'saveFeaturesData'])->name('features.save');
     Route::get('/product-images', fn () => view('images'))->name('images');
