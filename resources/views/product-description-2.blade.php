@@ -46,7 +46,7 @@
                     <div class="dm2-section-title">📄 Product Description</div>
                     <textarea id="dm2Description" class="form-control mb-3" rows="5" placeholder="Main product description"></textarea>
 
-                    <div class="dm2-section-title">⭐ Features (4 boxes — 2×2)</div>
+                    <div class="dm2-section-title">⭐ Features (up to 4 — shown as a list on Shopify/eBay)</div>
                     <div class="dm2-features-grid mb-3" id="dm2FeaturesGrid"></div>
 
                     <div class="dm2-section-title">📊 Specification (key–value)</div>
