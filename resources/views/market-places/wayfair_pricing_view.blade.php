@@ -151,7 +151,7 @@
                             <i class="fas fa-file-csv"></i> Export CSV
                         </button>
                         <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
-                            <i class="fas fa-exchange-alt"></i> Analytics mode
+                            <i class="fas fa-exchange-alt"></i> Pricing mode
                         </button>
                     </div>
 
@@ -286,7 +286,7 @@
                 return;
             }
             $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
-                .html('<i class="fas fa-exchange-alt"></i> Analytics mode');
+                .html('<i class="fas fa-exchange-alt"></i> Pricing mode');
             if (selectCol) selectCol.hide();
             wfSelectedSkus.clear();
             wfUpdateSelectedCount();
