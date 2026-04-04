@@ -1761,6 +1761,9 @@
                                 </a>
                                 <div class="collapse" id="sidebarwayfair">
                                     <ul class="side-nav-third-level">
+                                        <li>
+                                            <a href="{{ route('wayfair.pricing.view') }}">Wayfair Analytics</a>
+                                        </li>
                                         @if (
                                             (isset($permissions['wayfair']) && in_array('view', $permissions['wayfair'])) ||
                                                 (isset($permissions['wayfair_zero_view']) && in_array('view', $permissions['wayfair_zero_view'])) ||
@@ -1773,12 +1776,6 @@
                                                 </a>
                                                 <div class="collapse" id="wayfairSubmenu">
                                                     <ul class="side-nav-fourth-level">
-                                                        @if (isset($permissions['wayfair']) && in_array('view', $permissions['wayfair']))
-                                                            <li>
-                                                                <a href="{{ route('Wayfair') }}">Wayfair
-                                                                    Analytics</a>
-                                                            </li>
-                                                        @endif
                                                         @if (isset($permissions['wayfair_zero_view']) && in_array('view', $permissions['wayfair_zero_view']))
                                                             <li>
                                                                 <a href="{{ route('wayfair.zero.view') }}">Wayfair 0

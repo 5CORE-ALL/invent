@@ -96,6 +96,9 @@
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
+                    <a href="{{ route('wayfair.pricing.view') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fa fa-tags"></i> Wayfair Analytics
+                    </a>
                 </div>
 
                 <!-- Summary Stats -->

@@ -5,10 +5,8 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
-use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\WalmartDataView;
-use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\SheinDataView;
 use App\Models\SheinDailyData;
@@ -19,6 +17,8 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection as SupportCollection;
 use Carbon\Carbon;
 class SheinController extends Controller
 {
@@ -29,21 +29,95 @@ class SheinController extends Controller
         $this->apiController = $apiController;
     }
 
+    /**
+     * Shein margin (0–100) from marketplace_percentages; default 100 when missing.
+     */
+    private function sheinMarketplaceMarginPercent(): float
+    {
+        $row = MarketplacePercentage::query()
+            ->where('marketplace', 'Shein')
+            ->first();
+
+        if (! $row || $row->percentage === null || $row->percentage === '') {
+            return 100.0;
+        }
+
+        return (float) $row->percentage;
+    }
+
+    /**
+     * LP and ship from product_master.Values (keys lp, ship); optional model attributes as fallback.
+     *
+     * @return array{lp: float, ship: float}
+     */
+    private function lpAndShipFromProductMaster(?ProductMaster $pm): array
+    {
+        if (! $pm) {
+            return ['lp' => 0.0, 'ship' => 0.0];
+        }
+
+        $values = is_array($pm->Values)
+            ? $pm->Values
+            : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+
+        $lp = 0.0;
+        if (isset($values['lp'])) {
+            $lp = (float) $values['lp'];
+        } else {
+            foreach ($values as $k => $v) {
+                if (strtolower((string) $k) === 'lp') {
+                    $lp = (float) $v;
+                    break;
+                }
+            }
+        }
+        if ($lp === 0.0 && isset($pm->lp)) {
+            $lp = (float) $pm->lp;
+        }
+
+        $ship = 0.0;
+        if (isset($values['ship'])) {
+            $ship = (float) $values['ship'];
+        } else {
+            foreach ($values as $k => $v) {
+                if (strtolower((string) $k) === 'ship') {
+                    $ship = (float) $v;
+                    break;
+                }
+            }
+        }
+        if ($ship === 0.0 && isset($pm->ship)) {
+            $ship = (float) $pm->ship;
+        }
+
+        return ['lp' => $lp, 'ship' => $ship];
+    }
+
+    /**
+     * Key product_master rows by normalized SKU using a base Collection (not Eloquent\Collection) for safe key lookups.
+     */
+    private function productMasterByNormalizedSku(): SupportCollection
+    {
+        $pm = new ProductMaster;
+        if (! Schema::hasTable($pm->getTable())) {
+            return new SupportCollection;
+        }
+
+        return SupportCollection::make(
+            ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get()
+                ->all()
+        )->keyBy(static fn(ProductMaster $r) => strtoupper(trim((string) $r->sku)));
+    }
+
     public function overallShein(Request $request)
     {
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        // Get percentage from cache or database
-        // $percentage = Cache::remember('amazon_marketplace_percentage', now()->addDays(30), function () {
-        //     $marketplaceData = MarketplacePercentage::where('marketplace', 'Amazon')->first();
-        //     return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
-        // });
-
-        $marketplaceData = ChannelMaster::where('channel', 'Shein')->first();
-
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
-        $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
+        $percentage = $this->sheinMarketplaceMarginPercent();
 
         return view('market-places.sheinAnalysis', [
             'mode' => $mode,
@@ -52,30 +126,9 @@ class SheinController extends Controller
         ]);
     }
 
-    public function sheinPricingCVR(Request $request)
-    {
-        $mode = $request->query('mode');
-        $demo = $request->query('demo');
-
-        $percentage = Cache::remember('Walmart', now()->addDays(30), function () {
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
-            return $marketplaceData ? $marketplaceData->percentage : 100;
-        });
-
-        return view('market-places.walmartPricingCvr', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'percentage' => $percentage
-        ]);
-    }
-
     public function getViewSheinData(Request $request)
     {
-        // Get percentage from cache or database
-        $percentage = Cache::remember('Shein', now()->addDays(30), function () {
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Shein')->first();
-            return $marketplaceData ? $marketplaceData->percentage : 100;
-        });
+        $percentage = $this->sheinMarketplaceMarginPercent();
         $percentageValue = $percentage / 100;
 
         // Fetch all product master records
@@ -181,14 +234,11 @@ class SheinController extends Controller
                 ['percentage' => $percent]
             );
 
-            // Store in cache
-            Cache::put('Shein', $percent, now()->addDays(30));
-
             return response()->json([
                 'status' => 200,
                 'message' => 'Percentage updated successfully',
                 'data' => [
-                    'marketplace' => 'Wayfair',
+                    'marketplace' => 'Shein',
                     'percentage' => $percent
                 ]
             ]);
@@ -628,58 +678,31 @@ class SheinController extends Controller
     public function getDailyData(Request $request)
     {
         try {
+            $marketplaceMarginDecimal = $this->sheinMarketplaceMarginPercent() / 100;
+
             // Get all Shein daily data
             $data = SheinDailyData::orderBy('order_processed_on', 'desc')->get();
-            
-            // Get unique SKUs
-            $skus = $data->pluck('seller_sku')->unique()->filter()->values()->toArray();
-            
-            // Fetch ProductMaster data for all SKUs
-            $productMasters = ProductMaster::whereIn('sku', $skus)
-                ->get()
-                ->keyBy('sku');
-            
-            // Enhance data with LP and Ship from ProductMaster
-            $data = $data->map(function($item) use ($productMasters) {
-                $sku = $item->seller_sku;
-                
-                // Fetch from ProductMaster
-                if ($sku && isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) 
-                        ? $pm->Values 
-                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    // Get LP
-                    $lp = 0;
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    $item->lp = $lp;
-                    
-                    // Get Ship
-                    $ship = isset($values["ship"]) 
-                        ? floatval($values["ship"]) 
-                        : (isset($pm->ship) ? floatval($pm->ship) : 0);
-                    $item->ship = $ship;
-                } else {
-                    $item->lp = 0;
-                    $item->ship = 0;
+
+            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
+            $productMasters = $this->productMasterByNormalizedSku();
+
+            $data = $data->map(function ($item) use ($productMasters, $normalizeSku) {
+                $key = $item->seller_sku ? $normalizeSku($item->seller_sku) : '';
+                $pm = $key !== '' ? $productMasters->get($key) : null;
+                if (! $pm instanceof ProductMaster) {
+                    $pm = null;
                 }
-                
-                // Commission from CSV is already stored in item->commission (for display only)
-                // PFT calculation uses 0.89 multiplier in frontend
-                
+                $resolved = $this->lpAndShipFromProductMaster($pm);
+                $item->lp = $resolved['lp'];
+                $item->ship = $resolved['ship'];
+
                 return $item;
             });
-            
-            return response()->json($data);
+
+            return response()->json([
+                'data' => $data->values()->all(),
+                'marketplace_margin_decimal' => $marketplaceMarginDecimal,
+            ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Shein daily data: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
@@ -981,12 +1004,18 @@ class SheinController extends Controller
             $pricingRows  = \App\Models\SheinPricingPrice::all();
             $pricingBySku = $pricingRows->keyBy(fn($r) => $normalizeSku($r->sku));
 
-            // ── 2. Product master → LP / Ship
-            $productMasterBySku = ProductMaster::query()
-                ->whereNotNull('sku')->where('sku', '!=', '')
-                ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
-                ->get()
-                ->keyBy(fn($r) => $normalizeSku($r->sku));
+            // ── 2. Product master → LP / Ship (Support Collection keyed by normalized SKU)
+            $pmTable = (new ProductMaster)->getTable();
+            $productMasterBySku = new SupportCollection();
+            if (Schema::hasTable($pmTable)) {
+                $productMasterBySku = SupportCollection::make(
+                    ProductMaster::query()
+                        ->whereNotNull('sku')->where('sku', '!=', '')
+                        ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
+                        ->get()
+                        ->all()
+                )->keyBy(fn($r) => $normalizeSku($r->sku));
+            }
 
             // ── 3. Shein sales → al30 / sales  (from shein_daily_data.seller_sku)
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
@@ -1026,12 +1055,8 @@ class SheinController extends Controller
             }
 
             // ── 6. Margin from marketplace_percentages
-            $marketplaceData = MarketplacePercentage::query()
-                ->where('marketplace', 'Shein')
-                ->orWhere('marketplace', 'shein')
-                ->first();
-            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 100)) : 100;
-            $margin     = $percentage / 100;
+            $percentage = $this->sheinMarketplaceMarginPercent();
+            $margin = $percentage / 100;
 
             // ── 7. Build rows
             $rows = [];
@@ -1043,15 +1068,12 @@ class SheinController extends Controller
                 $sheinStock = $priceRow ? (int)   ($priceRow->shein_stock          ?? 0) : 0;
 
                 $productMaster = $productMasterBySku->get($normalizedSku);
-                $values = [];
-                if ($productMaster) {
-                    $values = is_array($productMaster->Values)
-                        ? $productMaster->Values
-                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                if (! $productMaster instanceof ProductMaster) {
+                    $productMaster = null;
                 }
-                $lp   = isset($values['lp'])   ? (float) $values['lp']   : 0;
-                $ship = isset($values['shein_ship']) ? (float) $values['shein_ship']
-                      : (isset($values['ship']) ? (float) $values['ship'] : 0);
+                $resolved = $this->lpAndShipFromProductMaster($productMaster);
+                $lp   = $resolved['lp'];
+                $ship = $resolved['ship'];
 
                 $sale  = $salesAgg->get($normalizedSku);
                 $al30  = $sale ? (float) $sale->al30 : 0;
@@ -1076,7 +1098,7 @@ class SheinController extends Controller
                 $sgpft  = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
                 $sroi   = ($sprice > 0 && $lp > 0) ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
 
-                $displaySku = $productMaster->sku ?? ($priceRow->sku ?? $normalizedSku);
+                $displaySku = $productMaster?->sku ?? ($priceRow->sku ?? $normalizedSku);
                 // Missing only when special_offer_price is 0 or no row exists
                 $isMissing  = !$priceRow || $spOffer <= 0;
 
@@ -1198,9 +1220,7 @@ class SheinController extends Controller
             if (empty($updates) && $request->has('sku')) {
                 $updates = [['sku' => $request->input('sku'), 'sprice' => $request->input('sprice')]];
             }
-            $marketplaceData = MarketplacePercentage::query()
-                ->where('marketplace', 'Shein')->orWhere('marketplace', 'shein')->first();
-            $margin = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 100)) / 100 : 1;
+            $margin = $this->sheinMarketplaceMarginPercent() / 100;
 
             $updatedCount = 0;
             foreach ($updates as $update) {
@@ -1209,14 +1229,13 @@ class SheinController extends Controller
                 if (!$sku || $sprice === null) continue;
                 $sprice = (float) $sprice;
 
-                $pm     = ProductMaster::where('sku', $sku)->first();
-                $lp = $ship = 0;
-                if ($pm) {
-                    $v    = is_array($pm->Values) ? $pm->Values : (json_decode($pm->Values, true) ?: []);
-                    $lp   = isset($v['lp'])         ? (float) $v['lp']         : 0;
-                    $ship = isset($v['shein_ship'])  ? (float) $v['shein_ship']
-                          : (isset($v['ship'])       ? (float) $v['ship']       : 0);
-                }
+                $n  = strtoupper(trim((string) $sku));
+                $pm = Schema::hasTable((new ProductMaster)->getTable())
+                    ? ProductMaster::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$n])->first()
+                    : null;
+                $resolved = $this->lpAndShipFromProductMaster($pm instanceof ProductMaster ? $pm : null);
+                $lp   = $resolved['lp'];
+                $ship = $resolved['ship'];
 
                 $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
                 $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp - $ship) / $lp)     * 100, 2) : 0;

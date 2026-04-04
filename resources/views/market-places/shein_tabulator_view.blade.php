@@ -146,6 +146,8 @@
 <script>
     const COLUMN_VIS_KEY = "shein_tabulator_column_visibility";
     let table = null;
+    /** Shein keep-rate from marketplace_percentages (percentage / 100), set from /shein/daily-data */
+    let sheinMarketplaceMarginDecimal = 1;
     
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -189,6 +191,15 @@
             paginationCounter: "rows",
             ajaxResponse: function(url, params, response) {
                 console.log("AJAX Response received:", response);
+                if (response && Array.isArray(response.data)) {
+                    const m = parseFloat(response.marketplace_margin_decimal);
+                    sheinMarketplaceMarginDecimal = Number.isFinite(m) ? m : 1;
+                    return response.data;
+                }
+                if (Array.isArray(response)) {
+                    sheinMarketplaceMarginDecimal = 1;
+                    return response;
+                }
                 return response;
             },
             ajaxError: function(error) {
@@ -306,8 +317,8 @@
                         const lp = parseFloat(data.lp) || 0;
                         const ship = parseFloat(data.ship) || 0;
                         
-                        // PFT = (Product Price * 0.89 - LP - Ship) * Quantity
-                        const pft = (productPrice * 0.89 - lp - ship) * quantity;
+                        const m = sheinMarketplaceMarginDecimal;
+                        const pft = (productPrice * m - lp - ship) * quantity;
                         return pft.toFixed(2);
                     }
                 },
@@ -587,8 +598,8 @@
                     totalQuantityForPrice += quantity;
                 }
                 
-                // Calculate PFT Total: (Product Price * 0.89 - LP - Ship) * Quantity
-                const pft = (productPrice * 0.89 - lp - ship) * quantity;
+                const m = sheinMarketplaceMarginDecimal;
+                const pft = (productPrice * m - lp - ship) * quantity;
                 totalPft += pft;
                 
                 // Calculate COGS: Quantity * LP

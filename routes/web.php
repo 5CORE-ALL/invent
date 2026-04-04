@@ -2228,6 +2228,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/wayfair/sku-sales-data', [WayfairSalesController::class, 'getSkuSalesData'])->name('wayfair.sku.sales.data');
     Route::get('/wayfair/test-calculation', [WayfairSalesController::class, 'testCalculation'])->name('wayfair.test.calculation');
 
+    Route::get('/wayfair-pricing', [WayfairController::class, 'wayfairPricingView'])->name('wayfair.pricing.view');
+    Route::get('/wayfair/pricing-data', [WayfairController::class, 'getWayfairPricingData'])->name('wayfair.pricing.data');
+    Route::get('/wayfair/pricing-price-sample', [WayfairController::class, 'downloadWayfairPricingPriceSample'])->name('wayfair.pricing.price.sample');
+    Route::post('/wayfair/pricing-upload-price', [WayfairController::class, 'uploadWayfairPricingPriceSheet'])->name('wayfair.pricing.upload.price');
+    Route::post('/wayfair/pricing-save-sprice', [WayfairController::class, 'saveWayfairSpriceUpdates'])->name('wayfair.pricing.save.sprice');
+    Route::get('/wayfair/badge-chart-data', [WayfairController::class, 'wayfairBadgeChartData'])->name('wayfair.pricing.badge.chart');
+
     // Best Buy Sales Routes
     Route::get('/bestbuy/daily-sales-data', [BestBuySalesController::class, 'getData'])->name('bestbuy.daily.sales.data');
     Route::get('/bestbuy/daily-sales', [BestBuySalesController::class, 'index'])->name('bestbuy.daily.sales');
@@ -3462,7 +3469,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('sheinAnalysis', action: [SheinController::class, 'overallShein']);
     Route::get('/shein/view-data', [SheinController::class, 'getViewSheinData']);
-    Route::get('sheinPricingCVR', [SheinController::class, 'sheinPricingCVR'])->name('shein.pricing.cvr');
     Route::post('/update-all-shein-skus', [SheinController::class, 'updateAllSheinSkus']);
     Route::post('/shein/save-nr', [SheinController::class, 'saveNrToDatabase']);
     Route::post('/shein/update-listed-live', [SheinController::class, 'updateListedLive']);
@@ -3500,6 +3506,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/faire/upload-daily-data', [FaireController::class, 'uploadDailyDataChunk'])->name('faire.upload.daily.data');
     Route::get('/faire/daily-data', [FaireController::class, 'getDailyData'])->name('faire.get.daily.data');
     Route::get('/faire-tabulator', [FaireController::class, 'faireTabulatorView'])->name('faire.tabulator.view');
+    Route::get('/faire-pricing', [FaireController::class, 'fairePricingView'])->name('faire.pricing.view');
+    Route::get('/faire/pricing-data', [FaireController::class, 'getFairePricingData'])->name('faire.pricing.data');
+    Route::get('/faire/pricing-price-sample', [FaireController::class, 'downloadFairePricingPriceSample'])->name('faire.pricing.price.sample');
+    Route::post('/faire/pricing-upload-price', [FaireController::class, 'uploadFairePricingPriceSheet'])->name('faire.pricing.upload.price');
+    Route::post('/faire/pricing-save-sprice', [FaireController::class, 'saveFaireSpriceUpdates'])->name('faire.pricing.save.sprice');
+    Route::get('/faire/badge-chart-data', [FaireController::class, 'faireBadgeChartData'])->name('faire.pricing.badge.chart');
 
 
     //pls
