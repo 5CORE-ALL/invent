@@ -16,48 +16,12 @@ class MFRGInProgressController extends Controller
 {
     public function index()
     {
-        // Improved normalization to handle multiple spaces and hidden whitespace
-        $normalizeSku = function ($sku) {
-            if (empty($sku)) return '';
-            $sku = strtoupper(trim($sku));
-            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
-            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
-            return trim($sku);
-        };
+        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
 
         $mfrgData = MfrgProgress::query()->get();
 
-        // Shopify images: one query + in-memory keys (normalized + no-spaces) — avoids per-row DB lookups
-        $shopifyImageByKey = [];
-        foreach (DB::table('shopify_skus')
-            ->select('sku', 'image_src')
-            ->whereNotNull('image_src')
-            ->where('image_src', '!=', '')
-            ->get() as $item) {
-            $norm = $normalizeSku($item->sku);
-            if ($norm === '') {
-                continue;
-            }
-            $src = $item->image_src;
-            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
-                if ($k !== '' && ! isset($shopifyImageByKey[$k])) {
-                    $shopifyImageByKey[$k] = $src;
-                }
-            }
-        }
-
-        $productMasterByKey = [];
-        foreach (DB::table('product_master')->select('sku', 'parent', 'Values')->get() as $item) {
-            $norm = $normalizeSku($item->sku);
-            if ($norm === '') {
-                continue;
-            }
-            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
-                if ($k !== '' && ! isset($productMasterByKey[$k])) {
-                    $productMasterByKey[$k] = $item;
-                }
-            }
-        }
+        $shopifyImageByKey = self::buildShopifyImageByKeyForMipRows($mfrgData, $normalizeSku);
+        $productMasterByKey = self::buildProductMasterByKeyForMipRows($mfrgData, $normalizeSku);
 
         // Get stage data from forecast_analysis table - match by SKU only, prefer record with stage value
         $forecastData = DB::table('forecast_analysis')
@@ -88,28 +52,7 @@ class MFRGInProgressController extends Controller
             }
         }
 
-        // Fetch purchase orders and create SKU to price mapping (minimal columns)
-        $purchaseOrders = PurchaseOrder::whereNotNull('items')->select(['items', 'created_at'])->get();
-        $skuToPriceMap = [];
-        
-        foreach ($purchaseOrders as $po) {
-            $items = json_decode($po->items, true);
-            if (is_array($items)) {
-                foreach ($items as $item) {
-                    if (isset($item['sku']) && isset($item['price'])) {
-                        $normalizedSku = $normalizeSku($item['sku']);
-                        // Use latest price if multiple POs have same SKU
-                        if (!isset($skuToPriceMap[$normalizedSku]) || $po->created_at > ($skuToPriceMap[$normalizedSku]['date'] ?? '')) {
-                            $skuToPriceMap[$normalizedSku] = [
-                                'price' => $item['price'],
-                                'currency' => $item['currency'] ?? 'USD',
-                                'date' => $po->created_at
-                            ];
-                        }
-                    }
-                }
-            }
-        }
+        $skuToPriceMap = self::buildSkuToPriceMapForMipRows($mfrgData, $normalizeSku);
 
         foreach ($mfrgData as $row) {
             $sku = $normalizeSku($row->sku);
@@ -121,18 +64,7 @@ class MFRGInProgressController extends Controller
             $priceFromPO = null;
             $currencyFromPO = null;
 
-            // Generate SKU variations for better matching
-            $skuVariations = [
-                $sku, // Original normalized
-                str_replace(' ', '', $sku), // No spaces
-                preg_replace('/\s+/', ' ', $sku), // Single space
-            ];
-            
-            // Also try original SKU from database
-            if (!empty($row->sku)) {
-                $skuVariations[] = strtoupper(trim($row->sku));
-                $skuVariations[] = strtoupper(preg_replace('/\s+/', ' ', trim($row->sku)));
-            }
+            $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
 
             foreach ($skuVariations as $skuVar) {
                 if ($skuVar !== '' && isset($shopifyImageByKey[$skuVar])) {
@@ -233,49 +165,15 @@ class MFRGInProgressController extends Controller
 
     public function getMfrgProgressData()
     {
-        $normalizeSku = fn($sku) => strtoupper(
-            preg_replace('/\s+/', ' ',
-                trim(
-                    str_replace(["\xC2\xA0","\xE2\x80\x8B","\r","\n","\t"], ' ', $sku)
-                )
-            )
-        );
+        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
 
         $archived = request()->boolean('archived');
         $mfrgData = $archived
             ? MfrgProgress::onlyTrashed()->get()
             : MfrgProgress::query()->get();
 
-        $shopifyImageByKey = [];
-        foreach (DB::table('shopify_skus')
-            ->select('sku', 'image_src')
-            ->whereNotNull('image_src')
-            ->where('image_src', '!=', '')
-            ->get() as $item) {
-            $norm = $normalizeSku($item->sku);
-            if ($norm === '') {
-                continue;
-            }
-            $src = $item->image_src;
-            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
-                if ($k !== '' && ! isset($shopifyImageByKey[$k])) {
-                    $shopifyImageByKey[$k] = $src;
-                }
-            }
-        }
-
-        $productMasterByKey = [];
-        foreach (DB::table('product_master')->select('sku', 'parent', 'Values')->get() as $item) {
-            $norm = $normalizeSku($item->sku);
-            if ($norm === '') {
-                continue;
-            }
-            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
-                if ($k !== '' && ! isset($productMasterByKey[$k])) {
-                    $productMasterByKey[$k] = $item;
-                }
-            }
-        }
+        $shopifyImageByKey = self::buildShopifyImageByKeyForMipRows($mfrgData, $normalizeSku);
+        $productMasterByKey = self::buildProductMasterByKeyForMipRows($mfrgData, $normalizeSku);
 
         $forecastData = DB::table('forecast_analysis')
             ->select('sku', 'stage', 'nr')
@@ -295,7 +193,7 @@ class MFRGInProgressController extends Controller
         $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
         $supplierMapByParent = [];
         foreach ($supplierRows as $row) {
-            $parents = array_map('trim', explode(',', $normalizeSku($row->parent ?? '')));
+            $parents = array_map('trim', explode(',', strtoupper($row->parent ?? '')));
             foreach ($parents as $parent) {
                 if (! empty($parent)) {
                     $supplierMapByParent[$parent][] = $row->name;
@@ -303,27 +201,7 @@ class MFRGInProgressController extends Controller
             }
         }
 
-        $purchaseOrders = PurchaseOrder::whereNotNull('items')->select(['items', 'created_at'])->get();
-        $skuToPriceMap = [];
-        
-        foreach ($purchaseOrders as $po) {
-            $items = json_decode($po->items, true);
-            if (is_array($items)) {
-                foreach ($items as $item) {
-                    if (isset($item['sku']) && isset($item['price'])) {
-                        $normalizedSku = $normalizeSku($item['sku']);
-                        // Use latest price if multiple POs have same SKU
-                        if (!isset($skuToPriceMap[$normalizedSku]) || $po->created_at > ($skuToPriceMap[$normalizedSku]['date'] ?? '')) {
-                            $skuToPriceMap[$normalizedSku] = [
-                                'price' => $item['price'],
-                                'currency' => $item['currency'] ?? 'USD',
-                                'date' => $po->created_at
-                            ];
-                        }
-                    }
-                }
-            }
-        }
+        $skuToPriceMap = self::buildSkuToPriceMapForMipRows($mfrgData, $normalizeSku);
 
         $processedData = [];
 
@@ -336,13 +214,7 @@ class MFRGInProgressController extends Controller
             $priceFromPO = null;
             $currencyFromPO = null;
 
-            $skuVariations = array_unique(array_filter([
-                $sku,
-                str_replace(' ', '', $sku),
-                preg_replace('/\s+/', ' ', $sku),
-                ! empty($row->sku) ? strtoupper(trim($row->sku)) : '',
-                ! empty($row->sku) ? strtoupper(preg_replace('/\s+/', ' ', trim($row->sku))) : '',
-            ]));
+            $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
 
             foreach ($skuVariations as $skuVar) {
                 if ($skuVar !== '' && isset($shopifyImageByKey[$skuVar])) {
@@ -371,7 +243,7 @@ class MFRGInProgressController extends Controller
                     }
                 }
 
-                $parent = $normalizeSku($productRow->parent ?? '');
+                $parent = strtoupper(trim($productRow->parent ?? ''));
             }
 
             if (!empty($parent) && isset($supplierMapByParent[$parent])) {
@@ -624,4 +496,231 @@ class MFRGInProgressController extends Controller
         }
     }
 
+    private static function normalizeMipSku(?string $sku): string
+    {
+        if ($sku === null || $sku === '') {
+            return '';
+        }
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\x8B", "\r", "\n", "\t"], ' ', $sku);
+        $sku = strtoupper(trim($sku));
+        $sku = preg_replace('/\s+/u', ' ', $sku);
+        $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+
+        return trim($sku);
+    }
+
+    /**
+     * @param  iterable<int, object>  $mfrgRows
+     */
+    private static function collectMipSkuCandidates(iterable $mfrgRows, callable $normalizeSku): array
+    {
+        $candidates = [];
+        foreach ($mfrgRows as $row) {
+            $rawSku = $row->sku ?? '';
+            $raw = trim((string) $rawSku);
+            if ($raw !== '') {
+                $candidates[$raw] = true;
+            }
+            $n = $normalizeSku($rawSku);
+            if ($n !== '') {
+                $candidates[$n] = true;
+                $candidates[str_replace(' ', '', $n)] = true;
+                $candidates[preg_replace('/\s+/', ' ', $n)] = true;
+            }
+            if ($raw !== '') {
+                $candidates[strtoupper($raw)] = true;
+                $candidates[strtoupper(preg_replace('/\s+/', ' ', $raw))] = true;
+            }
+        }
+
+        return array_keys($candidates);
+    }
+
+    private static function mipRowSkuVariations(?string $rawSku, callable $normalizeSku): array
+    {
+        $sku = $normalizeSku($rawSku ?? '');
+        $var = [
+            $sku,
+            str_replace(' ', '', $sku),
+            preg_replace('/\s+/', ' ', $sku),
+        ];
+        $t = trim((string) $rawSku);
+        if ($t !== '') {
+            $var[] = strtoupper($t);
+            $var[] = strtoupper(preg_replace('/\s+/', ' ', $t));
+        }
+
+        return array_values(array_unique(array_filter($var)));
+    }
+
+    /**
+     * @param  iterable<int, object>  $mfrgRows
+     */
+    private static function anyMipRowMissingProductMaster(iterable $mfrgRows, array $productMasterByKey, callable $normalizeSku): bool
+    {
+        foreach ($mfrgRows as $row) {
+            $vars = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
+            $found = false;
+            foreach ($vars as $skuVar) {
+                if ($skuVar !== '' && isset($productMasterByKey[$skuVar])) {
+                    $found = true;
+                    break;
+                }
+            }
+            if (! $found) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  iterable<int, object>  $mfrgRows
+     */
+    private static function buildProductMasterByKeyForMipRows(iterable $mfrgRows, callable $normalizeSku): array
+    {
+        $candidates = self::collectMipSkuCandidates($mfrgRows, $normalizeSku);
+        $productMasterByKey = [];
+
+        foreach (array_chunk($candidates, 450) as $chunk) {
+            $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
+            if ($chunk === []) {
+                continue;
+            }
+            foreach (DB::table('product_master')->whereIn('sku', $chunk)->select('sku', 'parent', 'Values')->get() as $item) {
+                $norm = $normalizeSku($item->sku);
+                if ($norm === '') {
+                    continue;
+                }
+                foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                    if ($k !== '' && ! isset($productMasterByKey[$k])) {
+                        $productMasterByKey[$k] = $item;
+                    }
+                }
+            }
+        }
+
+        if (! self::anyMipRowMissingProductMaster($mfrgRows, $productMasterByKey, $normalizeSku)) {
+            return $productMasterByKey;
+        }
+
+        $mipKeySet = array_fill_keys($candidates, true);
+        foreach (DB::table('product_master')->select('sku', 'parent', 'Values')->cursor() as $item) {
+            $norm = $normalizeSku($item->sku);
+            if ($norm === '') {
+                continue;
+            }
+            $keys = array_unique(array_filter([$norm, str_replace(' ', '', $norm)]));
+            $hit = false;
+            foreach ($keys as $k) {
+                if (isset($mipKeySet[$k])) {
+                    $hit = true;
+                    break;
+                }
+            }
+            if (! $hit) {
+                continue;
+            }
+            foreach ($keys as $k) {
+                if ($k !== '' && ! isset($productMasterByKey[$k])) {
+                    $productMasterByKey[$k] = $item;
+                }
+            }
+        }
+
+        return $productMasterByKey;
+    }
+
+    /**
+     * @param  iterable<int, object>  $mfrgRows
+     */
+    private static function buildShopifyImageByKeyForMipRows(iterable $mfrgRows, callable $normalizeSku): array
+    {
+        $candidates = self::collectMipSkuCandidates($mfrgRows, $normalizeSku);
+        $mipKeySet = array_fill_keys($candidates, true);
+        $shopifyImageByKey = [];
+
+        foreach (DB::table('shopify_skus')
+            ->select('sku', 'image_src')
+            ->whereNotNull('image_src')
+            ->where('image_src', '!=', '')
+            ->cursor() as $item) {
+            $norm = $normalizeSku($item->sku);
+            if ($norm === '') {
+                continue;
+            }
+            $keys = array_unique(array_filter([$norm, str_replace(' ', '', $norm)]));
+            $hit = false;
+            foreach ($keys as $k) {
+                if (isset($mipKeySet[$k])) {
+                    $hit = true;
+                    break;
+                }
+            }
+            if (! $hit) {
+                continue;
+            }
+            $src = $item->image_src;
+            foreach ($keys as $k) {
+                if ($k !== '' && ! isset($shopifyImageByKey[$k])) {
+                    $shopifyImageByKey[$k] = $src;
+                }
+            }
+        }
+
+        return $shopifyImageByKey;
+    }
+
+    /**
+     * @param  iterable<int, object>  $mfrgRows
+     */
+    private static function buildSkuToPriceMapForMipRows(iterable $mfrgRows, callable $normalizeSku): array
+    {
+        $mipSkuSet = [];
+        foreach ($mfrgRows as $row) {
+            $n = $normalizeSku($row->sku ?? '');
+            if ($n !== '') {
+                $mipSkuSet[$n] = true;
+            }
+        }
+        if ($mipSkuSet === []) {
+            return [];
+        }
+        $needed = count($mipSkuSet);
+        $skuToPriceMap = [];
+
+        foreach (PurchaseOrder::query()
+            ->whereNotNull('items')
+            ->select(['items', 'created_at'])
+            ->orderBy('created_at', 'desc')
+            ->cursor() as $po) {
+            $items = json_decode($po->items, true);
+            if (! is_array($items)) {
+                continue;
+            }
+            foreach ($items as $item) {
+                if (! isset($item['sku'], $item['price'])) {
+                    continue;
+                }
+                $normalizedSku = $normalizeSku($item['sku']);
+                if ($normalizedSku === '' || ! isset($mipSkuSet[$normalizedSku])) {
+                    continue;
+                }
+                if (isset($skuToPriceMap[$normalizedSku])) {
+                    continue;
+                }
+                $skuToPriceMap[$normalizedSku] = [
+                    'price' => $item['price'],
+                    'currency' => $item['currency'] ?? 'USD',
+                    'date' => $po->created_at,
+                ];
+            }
+            if (count($skuToPriceMap) >= $needed) {
+                break;
+            }
+        }
+
+        return $skuToPriceMap;
+    }
 }

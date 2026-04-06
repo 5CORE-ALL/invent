@@ -118,6 +118,170 @@
             vertical-align: middle;
         }
 
+        /* Product master — STATUS column (header + cells + filter menu) */
+        .table-responsive thead th.pm-status-col {
+            background: #284a9e !important;
+            color: #fff !important;
+            vertical-align: top;
+            padding: 10px 8px 8px;
+            border-color: rgba(255, 255, 255, 0.12) !important;
+            text-transform: none;
+        }
+
+        .table-responsive thead th.pm-status-col:hover {
+            background: #3257b0 !important;
+        }
+
+        .pm-status-header-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-align: center;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+
+        .pm-status-filter-wrap {
+            position: relative;
+            width: 100%;
+        }
+
+        .pm-status-filter-trigger {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+
+        .pm-status-filter-trigger:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .pm-status-filter-trigger.pm-status-filter-trigger--alert {
+            background: rgba(254, 202, 202, 0.95);
+            color: #b91c1c;
+            border-color: #ef4444;
+        }
+
+        .pm-status-filter-menu {
+            display: none;
+            list-style: none;
+            margin: 0;
+            padding: 8px;
+            background: rgba(30, 34, 42, 0.88);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            border-radius: 14px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+            z-index: 4000;
+        }
+
+        .pm-status-filter-wrap.is-open .pm-status-filter-menu {
+            display: block;
+        }
+
+        .pm-status-filter-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 10px 12px;
+            margin: 0;
+            border: none;
+            border-radius: 10px;
+            background: transparent;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 500;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.12s ease;
+        }
+
+        .pm-status-filter-item:hover,
+        .pm-status-filter-item.is-selected {
+            background: #2563eb;
+        }
+
+        .pm-status-filter-check {
+            display: inline-flex;
+            width: 18px;
+            height: 18px;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .pm-status-filter-item-spacer {
+            width: 18px;
+            flex-shrink: 0;
+        }
+
+        .pm-status-marble {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow:
+                inset 2px 2px 4px rgba(255, 255, 255, 0.55),
+                inset -2px -3px 5px rgba(0, 0, 0, 0.35);
+            vertical-align: middle;
+        }
+
+        .pm-status-marble--active {
+            background: radial-gradient(circle at 32% 28%, #bbf7d0, #22c55e 42%, #14532d);
+        }
+
+        .pm-status-marble--inactive,
+        .pm-status-marble--dc {
+            background: radial-gradient(circle at 32% 28%, #fecaca, #ef4444 42%, #7f1d1d);
+        }
+
+        .pm-status-marble--upcoming {
+            background: radial-gradient(circle at 32% 28%, #fef9c3, #eab308 45%, #713f12);
+        }
+
+        .pm-status-marble--2bdc {
+            background: radial-gradient(circle at 32% 28%, #bfdbfe, #2563eb 45%, #1e3a8a);
+        }
+
+        .pm-status-marble--muted {
+            background: radial-gradient(circle at 32% 28%, #e5e7eb, #9ca3af 45%, #374151);
+        }
+
+        .table-responsive tbody td.pm-status-cell {
+            color: #4a5568;
+            font-weight: 500;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .pm-status-cell-inner {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .pm-status-cell-text {
+            line-height: 1.2;
+        }
+
         .table-responsive tbody td {
             padding: 12px 18px;
             vertical-align: middle;
@@ -1755,8 +1919,9 @@
                                     }
                                     break;
                                 }
-                                case "STATUS":
-                                    cell.innerHTML = getStatusDot(item.status);
+                                case "Status":
+                                    cell.className = 'pm-status-cell';
+                                    cell.innerHTML = getStatusCellDisplayHtml(item.status) || '-';
                                     break;
                                 case "Unit":
                                     cell.textContent = item.unit || '-';
@@ -1916,8 +2081,9 @@
                         
                         switch (col) {
                             case "Status":
+                                cell.className = 'pm-status-cell';
                                 isMissing = isDataMissing(item.status);
-                                cellContent = getStatusDot(item.status);
+                                cellContent = getStatusCellDisplayHtml(item.status);
                                 cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'status', 'Status');
                                 break;
                             case "Image":
@@ -1999,8 +2165,9 @@
                                 break;
                             }
                             case "STATUS":
+                                cell.className = 'pm-status-cell';
                                 isMissing = isDataMissing(item.status);
-                                cellContent = getStatusDot(item.status);
+                                cellContent = getStatusCellDisplayHtml(item.status);
                                 cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'status', 'Status');
                                 break;
                             case "Unit":
@@ -2868,20 +3035,48 @@
                         } else if (colName === "Action" || colName === "Verified" || colName === "DIL") {
                             th.textContent = colName;
                         } else if (colName === "STATUS") {
-                            // Special handling for STATUS column with all status options
                             const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
                             const savedFilterValue = existingFilterValues && existingFilterValues[colName] ? existingFilterValues[colName] : 'all';
+                            th.className = 'pm-status-col';
                             th.innerHTML = `
-                    <div style="font-size: 9px;">${colName}</div>
-                    <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
-                        <option value="all" ${savedFilterValue === 'all' ? 'selected' : ''}>All</option>
-                        <option value="missing" ${savedFilterValue === 'missing' ? 'selected' : ''}>Missing</option>
-                        <option value="active" ${savedFilterValue === 'active' ? 'selected' : ''}>🟢 Active</option>
-                        <option value="inactive" ${savedFilterValue === 'inactive' ? 'selected' : ''}>🔴 Inactive</option>
-                        <option value="DC" ${savedFilterValue === 'DC' ? 'selected' : ''}>🔴 DC</option>
-                        <option value="upcoming" ${savedFilterValue === 'upcoming' ? 'selected' : ''}>🟡 Upcoming</option>
-                        <option value="2BDC" ${savedFilterValue === '2BDC' ? 'selected' : ''}>🔵 2BDC</option>
-                    </select>
+                    <div class="pm-status-header-label">STATUS</div>
+                    <div class="pm-status-filter-wrap">
+                        <button type="button" class="pm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox">
+                            <span class="pm-status-filter-trigger-label">${savedFilterValue === 'all' ? 'All' : (pmStatusFilterLabels()[savedFilterValue] || savedFilterValue)}</span>
+                            <span class="pm-status-filter-caret" aria-hidden="true" style="font-size:9px;opacity:0.85;">▼</span>
+                        </button>
+                        <input type="hidden" id="${filterId}" class="missing-data-filter pm-status-filter-hidden" data-column="${colName}" value="${escapeHtml(savedFilterValue)}">
+                        <div class="pm-status-filter-menu" role="listbox">
+                            <button type="button" class="pm-status-filter-item" data-value="all" role="option">
+                                <span class="pm-status-filter-check" aria-hidden="true">✓</span>
+                                <span>All</span>
+                            </button>
+                            <button type="button" class="pm-status-filter-item" data-value="missing" role="option">
+                                <span class="pm-status-filter-item-spacer"></span>
+                                <span>Missing</span>
+                            </button>
+                            <button type="button" class="pm-status-filter-item" data-value="active" role="option">
+                                <span class="pm-status-marble pm-status-marble--active"></span>
+                                <span>Active</span>
+                            </button>
+                            <button type="button" class="pm-status-filter-item" data-value="inactive" role="option">
+                                <span class="pm-status-marble pm-status-marble--inactive"></span>
+                                <span>Inactive</span>
+                            </button>
+                            <button type="button" class="pm-status-filter-item" data-value="DC" role="option">
+                                <span class="pm-status-marble pm-status-marble--dc"></span>
+                                <span>DC</span>
+                            </button>
+                            <button type="button" class="pm-status-filter-item" data-value="upcoming" role="option">
+                                <span class="pm-status-marble pm-status-marble--upcoming"></span>
+                                <span>Upcoming</span>
+                            </button>
+                            <button type="button" class="pm-status-filter-item" data-value="2BDC" role="option">
+                                <span class="pm-status-marble pm-status-marble--2bdc"></span>
+                                <span>2BDC</span>
+                            </button>
+                        </div>
+                    </div>
                 `;
                         } else if (colName === "Inventory") {
                             const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
@@ -3013,9 +3208,88 @@
                 `;
             }
 
+            function pmStatusFilterLabels() {
+                return {
+                    all: 'All',
+                    missing: 'Missing',
+                    active: 'Active',
+                    inactive: 'Inactive',
+                    DC: 'DC',
+                    upcoming: 'Upcoming',
+                    '2BDC': '2BDC'
+                };
+            }
+
+            function getStatusDisplayLabel(raw) {
+                const s = String(raw || '').trim();
+                if (!s) return '';
+                const lower = s.toLowerCase();
+                const upper = s.toUpperCase();
+                if (lower === 'active') return 'Active';
+                if (lower === 'inactive') return 'Inactive';
+                if (lower === 'upcoming') return 'Upcoming';
+                if (upper === 'DC') return 'DC';
+                if (upper === '2BDC') return '2BDC';
+                return s;
+            }
+
+            function getStatusMarbleModifier(raw) {
+                const s = String(raw || '').trim();
+                if (!s) return 'muted';
+                const lower = s.toLowerCase();
+                const upper = s.toUpperCase();
+                if (lower === 'active') return 'active';
+                if (lower === 'inactive') return 'inactive';
+                if (upper === 'DC') return 'dc';
+                if (lower === 'upcoming') return 'upcoming';
+                if (upper === '2BDC') return '2bdc';
+                return 'muted';
+            }
+
+            function getStatusCellDisplayHtml(status) {
+                const raw = String(status || '').trim();
+                if (!raw) return '';
+                const mod = getStatusMarbleModifier(raw);
+                const label = escapeHtml(getStatusDisplayLabel(raw));
+                return `<span class="pm-status-cell-inner"><span class="pm-status-marble pm-status-marble--${mod}" title="${escapeHtml(raw)}"></span><span class="pm-status-cell-text">${label}</span></span>`;
+            }
+
+            function positionPmStatusFilterMenu(wrap) {
+                const menu = wrap.querySelector('.pm-status-filter-menu');
+                const trigger = wrap.querySelector('.pm-status-filter-trigger');
+                if (!menu || !trigger) return;
+                const r = trigger.getBoundingClientRect();
+                const w = Math.max(r.width, 200);
+                menu.style.position = 'fixed';
+                menu.style.top = (r.bottom + 4) + 'px';
+                menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+                menu.style.minWidth = w + 'px';
+                menu.style.zIndex = '4000';
+            }
+
+            function refreshPmStatusFilterUI() {
+                const wrap = document.querySelector('.pm-status-filter-wrap');
+                if (!wrap) return;
+                const hidden = wrap.querySelector('.pm-status-filter-hidden');
+                const trigger = wrap.querySelector('.pm-status-filter-trigger');
+                const labelEl = trigger && trigger.querySelector('.pm-status-filter-trigger-label');
+                if (!hidden || !trigger || !labelEl) return;
+                const v = hidden.value || 'all';
+                const map = pmStatusFilterLabels();
+                labelEl.textContent = Object.prototype.hasOwnProperty.call(map, v) ? map[v] : v;
+                trigger.classList.toggle('pm-status-filter-trigger--alert', v === 'missing');
+                wrap.querySelectorAll('.pm-status-filter-item').forEach(btn => {
+                    btn.classList.toggle('is-selected', btn.getAttribute('data-value') === v);
+                });
+            }
+
             // Update filter styling based on selected value
             function updateFilterStyling(filter) {
                 const col = filter.getAttribute('data-column');
+                if (filter.classList && filter.classList.contains('pm-status-filter-hidden')) {
+                    refreshPmStatusFilterUI();
+                    return;
+                }
                 if (filter.value === 'missing' || (filter.value === '0' && col === 'Inventory')) {
                     filter.style.backgroundColor = '#fecaca';
                     filter.style.color = '#dc2626';
@@ -3435,6 +3709,52 @@
                         }
                         updateFilterStyling(e.target);
                         applyFilters();
+                    }
+                });
+
+                document.addEventListener('click', function (e) {
+                    const wrap = e.target.closest('.pm-status-filter-wrap');
+                    const item = e.target.closest('.pm-status-filter-item');
+                    const trigger = e.target.closest('.pm-status-filter-trigger');
+
+                    if (item && wrap) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const val = item.getAttribute('data-value');
+                        const hidden = wrap.querySelector('.pm-status-filter-hidden');
+                        if (!hidden) return;
+                        hidden.value = val;
+                        hidden.dispatchEvent(new Event('change', { bubbles: true }));
+                        wrap.classList.remove('is-open');
+                        const trg = wrap.querySelector('.pm-status-filter-trigger');
+                        if (trg) trg.setAttribute('aria-expanded', 'false');
+                        refreshPmStatusFilterUI();
+                        return;
+                    }
+
+                    if (trigger && wrap) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const wasOpen = wrap.classList.contains('is-open');
+                        document.querySelectorAll('.pm-status-filter-wrap.is-open').forEach(w => {
+                            w.classList.remove('is-open');
+                            const t = w.querySelector('.pm-status-filter-trigger');
+                            if (t) t.setAttribute('aria-expanded', 'false');
+                        });
+                        if (!wasOpen) {
+                            wrap.classList.add('is-open');
+                            trigger.setAttribute('aria-expanded', 'true');
+                            positionPmStatusFilterMenu(wrap);
+                        }
+                        return;
+                    }
+
+                    if (!wrap) {
+                        document.querySelectorAll('.pm-status-filter-wrap.is-open').forEach(w => {
+                            w.classList.remove('is-open');
+                            const t = w.querySelector('.pm-status-filter-trigger');
+                            if (t) t.setAttribute('aria-expanded', 'false');
+                        });
                     }
                 });
 
@@ -4950,6 +5270,36 @@
                         return;
                     }
 
+                    if (columnName === 'STATUS' && filterValue !== 'missing') {
+                        const fieldName = getFieldNameFromColumn(columnName);
+                        filteredData = filteredData.filter(item => {
+                            let value = null;
+                            if (item[fieldName] !== undefined && item[fieldName] !== null) {
+                                value = item[fieldName];
+                            } else {
+                                let values = {};
+                                if (item.Values) {
+                                    if (Array.isArray(item.Values)) {
+                                        values = item.Values;
+                                    } else if (typeof item.Values === 'string') {
+                                        try {
+                                            values = JSON.parse(item.Values);
+                                        } catch (err) {
+                                            values = {};
+                                        }
+                                    } else {
+                                        values = item.Values;
+                                    }
+                                }
+                                if (values[fieldName] !== undefined && values[fieldName] !== null) {
+                                    value = values[fieldName];
+                                }
+                            }
+                            return value && String(value).toLowerCase() === String(filterValue).toLowerCase();
+                        });
+                        return;
+                    }
+
                     if (filterValue === 'missing') {
                         if (columnName === 'DIL') {
                             filteredData = filteredData.filter(item => {
@@ -5963,17 +6313,10 @@
             }
 
             function getStatusDot(status) {
-                const raw = String(status || '').trim();
-                const s = raw.toLowerCase();
-                const upper = raw.toUpperCase();
-                let color = '#9ca3af';
-                if (s === 'active') color = '#22c55e';
-                else if (s === 'inactive') color = '#dc2626';
-                else if (upper === 'DC') color = '#dc2626';
-                else if (s === 'upcoming') color = '#eab308';
-                else if (upper === '2BDC') color = '#2563eb';
-                const title = raw || '-';
-                return `<span class="status-dot" style="background-color:${color}" title="${escapeHtml(title)}"></span>`;
+                const inner = getStatusCellDisplayHtml(status);
+                if (inner) return inner;
+                const title = String(status || '').trim() || '-';
+                return `<span class="pm-status-marble pm-status-marble--muted" title="${escapeHtml(title)}"></span>`;
             }
 
             // Helper function to add missing data indicator

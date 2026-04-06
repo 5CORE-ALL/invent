@@ -74,6 +74,43 @@
         background: #e0e6ed;
         border-radius: 6px;
     }
+    .preview-popup {
+        position: fixed;
+        display: none;
+        z-index: 9999;
+        pointer-events: none;
+        width: 350px;
+        height: 350px;
+        object-fit: cover;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        transition: all 0.2s ease;
+    }
+    #readyToShipTable td {
+        overflow: visible !important;
+    }
+    .r2s-cell-with-copy {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        flex-wrap: nowrap;
+        max-width: 100%;
+    }
+    .r2s-cell-with-copy .r2s-cell-copy-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .r2s-copy-cell {
+        flex-shrink: 0;
+        color: #6c757d !important;
+        line-height: 1;
+        vertical-align: middle;
+    }
+    .r2s-copy-cell:hover {
+        color: #0d6efd !important;
+    }
 </style>
 @endsection
 @section('content')
@@ -106,6 +143,9 @@
                                 </button>
                                 <button type="button" id="r2s-supplier-summary-btn" class="btn btn-info shadow-sm text-white" style="border-radius: 6px; margin-left: 8px;" title="Supplier-wise summary of visible table rows">
                                     <i class="fas fa-table-list"></i> Supplier Summary
+                                </button>
+                                <button type="button" id="r2s-bulk-edit-btn" class="btn btn-outline-primary shadow-sm fw-bold" style="border-radius: 6px; margin-left: 8px;" title="Apply the same field value to all selected rows (uses same save APIs as the grid)">
+                                    <i class="fas fa-pen-to-square me-1"></i> Bulk edit
                                 </button>
                             </div>
                         </div>
@@ -636,19 +676,58 @@
                     </div>
                 </div>
 
+                <div class="modal fade" id="r2sBulkEditModal" tabindex="-1" aria-labelledby="r2sBulkEditModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="r2sBulkEditModalLabel"><i class="fas fa-pen-to-square me-2"></i>Bulk edit selected rows</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="text-muted small mb-3" id="r2sBulkEditCountText">No rows selected.</p>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold" for="r2sBulkEditField">Field</label>
+                                    <select class="form-select" id="r2sBulkEditField">
+                                        <option value="">Choose field…</option>
+                                        <option value="zone_x" data-source="r2s">Zone</option>
+                                        <option value="pay_term" data-source="r2s">Terms (pay_term)</option>
+                                        <option value="payment_confirmation" data-source="r2s">ADV confirm</option>
+                                        <option value="rec_qty" data-source="r2s">Rec. QTY</option>
+                                        <option value="packing_list" data-source="r2s">Packing list (Yes/No)</option>
+                                        <option value="photo_mail_send" data-source="r2s">New photo (Yes/No)</option>
+                                        <option value="supplier" data-source="r2s">Supplier (ready_to_ship)</option>
+                                        <option value="packing_list_link" data-source="r2s">Packing list URL</option>
+                                        <option value="Stage" data-source="forecast">Stage (forecast)</option>
+                                        <option value="NR" data-source="forecast">NRP (forecast)</option>
+                                    </select>
+                                </div>
+                                <div id="r2sBulkEditValueWrap" class="mb-2"></div>
+                                <p class="text-danger small mb-0 d-none" id="r2sBulkEditError" style="white-space: pre-wrap;"></p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="r2sBulkEditApplyBtn" disabled>
+                                    <i class="fas fa-check me-1"></i> Apply to selected
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="wide-table-wrapper table-container">
                     <table class="wide-table" id="readyToShipTable">
                         <thead>
                             <tr>
-                                <th data-column="0" style="width: 50px;">
-                                    <input type="checkbox" id="selectAllCheckbox" title="Select All">
-                                    <div class="resizer"></div>
-                                </th>
+                                <th data-column="27" class="text-center">Img<div class="resizer"></div></th>
                                 <th data-column="26" data-column-name="zone_x">Zone<div class="resizer"></div>
                                 </th>
                                 <th data-column="1">Supplier<div class="resizer"></div></th>
                                 <th data-column="2" hidden>
                                     Parent
+                                    <div class="resizer"></div>
+                                </th>
+                                <th data-column="0" style="width: 44px;" class="text-center" title="Select rows for Move / Bulk edit">
+                                    <input type="checkbox" id="selectAllCheckbox" title="Select All">
                                     <div class="resizer"></div>
                                 </th>
                                 <th data-column="3">
@@ -732,8 +811,21 @@
                                     }
                                 @endphp
                             <tr data-stage="{{ $item->stage ?? '' }}" class="stage-row" data-r2s-supplier="{{ e($item->supplier ?? '') }}" data-mfrg-supplier="{{ e($mfrgSup) }}">
-                                <td data-column="0">
-                                    <input type="checkbox" class="r2s-row-checkbox" data-id="{{ $item->id }}" data-sku="{{ e($item->sku) }}" aria-label="Select row">
+                                <td data-column="27" class="text-center align-middle">
+                                    @if(!empty($item->Image))
+                                        @php
+                                            $imageUrl = $item->Image;
+                                            if (strpos($imageUrl, 'storage/') === 0 || strpos($imageUrl, '/storage/') === 0) {
+                                                $imageUrl = asset($imageUrl);
+                                            } elseif (strpos($imageUrl, 'http') !== 0 && strpos($imageUrl, '//') !== 0) {
+                                                $imageUrl = asset($imageUrl);
+                                            }
+                                        @endphp
+                                        <img src="{{ $imageUrl }}" class="hover-img" data-src="{{ $imageUrl }}" alt="" loading="lazy" decoding="async" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                                        <span class="text-muted" style="display: none;">No</span>
+                                    @else
+                                        <span class="text-muted">No</span>
+                                    @endif
                                 </td>
                                 <td data-column="26" class="text-center align-middle">
                                     <select data-sku="{{ $item->sku }}" data-column="zone_x" class="form-select form-select-sm auto-save r2s-zone-x-select" style="width: 96px; font-size: 13px;" title="Zones from supplier master (supplier list)">
@@ -747,8 +839,30 @@
                                     <span class="forecast-supplier-name" title="{{ e($mfrgSup) }}">{{ e($mfrgDisplay) }}</span>
                                 </td>
                                 
-                                <td data-column="2" class="text-center" hidden>{{ $item->parent }}</td>
-                                <td data-column="3" class="text-center">{{ $item->sku }}</td>
+                                @php
+                                    $r2sParentVal = trim((string) ($item->parent ?? ''));
+                                @endphp
+                                <td data-column="2" class="text-center" hidden>
+                                    <span class="r2s-cell-with-copy">
+                                        <span class="r2s-cell-copy-text">{{ $r2sParentVal !== '' ? $r2sParentVal : '—' }}</span>
+                                        @if($r2sParentVal !== '')
+                                            <button type="button" class="btn btn-link btn-sm p-0 r2s-copy-cell" data-copy="{{ e($r2sParentVal) }}" title="Copy Parent" aria-label="Copy Parent">
+                                                <i class="far fa-copy" aria-hidden="true"></i>
+                                            </button>
+                                        @endif
+                                    </span>
+                                </td>
+                                <td data-column="0" class="text-center align-middle">
+                                    <input type="checkbox" class="r2s-row-checkbox" data-id="{{ $item->id }}" data-sku="{{ e($item->sku) }}" aria-label="Select row">
+                                </td>
+                                <td data-column="3" class="text-center">
+                                    <span class="r2s-cell-with-copy">
+                                        <span class="r2s-cell-copy-text">{{ $item->sku }}</span>
+                                        <button type="button" class="btn btn-link btn-sm p-0 r2s-copy-cell" data-copy="{{ e($item->sku) }}" title="Copy SKU" aria-label="Copy SKU">
+                                            <i class="far fa-copy" aria-hidden="true"></i>
+                                        </button>
+                                    </span>
+                                </td>
                                 <td data-column="21" class="text-center">
                                     @php
                                         $stageValue = $item->stage ?? '';
@@ -927,17 +1041,93 @@
 <script>
     document.body.style.zoom = '85%';
 
+    const r2sImagePreviewPopup = document.createElement('img');
+    r2sImagePreviewPopup.className = 'preview-popup';
+    document.body.appendChild(r2sImagePreviewPopup);
+
     /** R2S assigned supplier (ready_to_ship.supplier) after Supplier column removed from grid */
     window.r2sRowAssignedSupplier = function (row) {
         if (!row || !row.getAttribute) return '';
         return String(row.getAttribute('data-r2s-supplier') || '').trim();
     };
 
+    window.R2S_ZONE_OPTIONS = @json(array_values(array_unique($supplierZoneListOptions ?? ['GHZ', 'Ningbo', 'Tianjin'])));
+
     document.addEventListener('DOMContentLoaded', function() {
         /** null = all R2S; 'unassigned' = no supplier; string = that supplier (dropdown or play mode) */
         window.r2sSupplierNavLock = null;
 
         document.documentElement.setAttribute("data-sidenav-size", "condensed");
+
+        const r2sTbody = document.querySelector('#readyToShipTable tbody');
+        if (r2sTbody) {
+            let r2sHoverMoveRaf = false;
+            let r2sHoverClientX = 0;
+            let r2sHoverClientY = 0;
+            r2sTbody.addEventListener('mouseover', function (e) {
+                const img = e.target.closest('.hover-img');
+                if (!img || !r2sTbody.contains(img)) return;
+                const src = img.dataset.src || img.getAttribute('src');
+                if (src) r2sImagePreviewPopup.src = src;
+                r2sImagePreviewPopup.style.display = 'block';
+            });
+            r2sTbody.addEventListener('mousemove', function (e) {
+                if (r2sImagePreviewPopup.style.display !== 'block') return;
+                r2sHoverClientX = e.clientX;
+                r2sHoverClientY = e.clientY;
+                if (r2sHoverMoveRaf) return;
+                r2sHoverMoveRaf = true;
+                requestAnimationFrame(function () {
+                    r2sHoverMoveRaf = false;
+                    r2sImagePreviewPopup.style.top = (r2sHoverClientY + 20) + 'px';
+                    r2sImagePreviewPopup.style.left = (r2sHoverClientX + 20) + 'px';
+                });
+            });
+            r2sTbody.addEventListener('mouseout', function (e) {
+                const img = e.target.closest('.hover-img');
+                if (!img || !r2sTbody.contains(img)) return;
+                const rel = e.relatedTarget;
+                if (rel && img.contains(rel)) return;
+                r2sImagePreviewPopup.style.display = 'none';
+            });
+        }
+
+        const r2sTable = document.getElementById('readyToShipTable');
+        if (r2sTable) {
+            r2sTable.addEventListener('click', function (e) {
+                const btn = e.target.closest('.r2s-copy-cell');
+                if (!btn || !r2sTable.contains(btn)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const text = (btn.getAttribute('data-copy') || '').trim();
+                if (!text) return;
+                function fallbackCopy(str) {
+                    const ta = document.createElement('textarea');
+                    ta.value = str;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); } catch (err) { /* ignore */ }
+                    document.body.removeChild(ta);
+                }
+                const done = function () {
+                    const orig = btn.getAttribute('title') || 'Copy';
+                    btn.setAttribute('title', 'Copied!');
+                    setTimeout(function () { btn.setAttribute('title', orig); }, 1500);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done).catch(function () {
+                        fallbackCopy(text);
+                        done();
+                    });
+                } else {
+                    fallbackCopy(text);
+                    done();
+                }
+            });
+        }
 
         // Column resizing functionality
         const resizers = document.querySelectorAll('.resizer');
@@ -993,8 +1183,9 @@
                     rows.sort((a, b) => {
                         const aCell = a.querySelector(`td[data-column="${col}"]`);
                         const bCell = b.querySelector(`td[data-column="${col}"]`);
-                        const aText = aCell ? aCell.textContent.trim() : '';
-                        const bText = bCell ? bCell.textContent.trim() : '';
+                        const copyTextEl = (cell) => (cell && (col === '2' || col === '3')) ? cell.querySelector('.r2s-cell-copy-text') : null;
+                        const aText = aCell ? (copyTextEl(aCell) ? copyTextEl(aCell).textContent.trim() : aCell.textContent.trim()) : '';
+                        const bText = bCell ? (copyTextEl(bCell) ? copyTextEl(bCell).textContent.trim() : bCell.textContent.trim()) : '';
 
                         let cmp = 0;
                         if (numericColumns.has(col)) {
@@ -1371,7 +1562,10 @@
                     const cb = row.querySelector('.r2s-row-checkbox');
                     const skuFromCb = cb ? String(cb.getAttribute('data-sku') || '').trim().toLowerCase() : '';
                     const skuTd = row.querySelector('td[data-column="3"]');
-                    const skuFromTd = skuTd ? skuTd.textContent.trim().toLowerCase() : '';
+                    const skuSpanEl = skuTd ? skuTd.querySelector('.r2s-cell-copy-text') : null;
+                    const skuFromTd = skuSpanEl
+                        ? skuSpanEl.textContent.trim().toLowerCase()
+                        : (skuTd ? skuTd.textContent.trim().toLowerCase() : '');
                     const skuHaystack = skuFromCb || skuFromTd;
                     skuMatch = skuHaystack.includes(skuNeedle);
                 }
@@ -1738,6 +1932,277 @@
 
         // Initialize select all state
         updateSelectAllState();
+
+        // --- Bulk edit (same APIs as single-cell edits: inline-update-by-sku + update-forecast-data) ---
+        (function setupR2sBulkEdit() {
+            const bulkModalEl = document.getElementById('r2sBulkEditModal');
+            const bulkBtn = document.getElementById('r2s-bulk-edit-btn');
+            const bulkField = document.getElementById('r2sBulkEditField');
+            const bulkValueWrap = document.getElementById('r2sBulkEditValueWrap');
+            const bulkCountText = document.getElementById('r2sBulkEditCountText');
+            const bulkApplyBtn = document.getElementById('r2sBulkEditApplyBtn');
+            const bulkErrorEl = document.getElementById('r2sBulkEditError');
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
+            const zones = Array.isArray(window.R2S_ZONE_OPTIONS) ? window.R2S_ZONE_OPTIONS : ['GHZ', 'Ningbo', 'Tianjin'];
+
+            function r2sRowForCheckbox(cb) {
+                return cb && cb.closest ? cb.closest('tr.stage-row') : null;
+            }
+
+            function getCheckedSkusAndRows() {
+                const out = [];
+                r2sRowCheckboxEls().forEach(function (cb) {
+                    if (!cb.checked) return;
+                    const sku = (cb.getAttribute('data-sku') || '').trim();
+                    if (!sku) return;
+                    out.push({ sku: sku, row: r2sRowForCheckbox(cb) });
+                });
+                return out;
+            }
+
+            function updateForecastFieldAsync(payload) {
+                return fetch('/update-forecast-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                }).then(function (r) { return r.json(); });
+            }
+
+            function inlineUpdateAsync(sku, column, value) {
+                return fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf
+                    },
+                    body: JSON.stringify({ sku: sku, column: column, value: value })
+                }).then(function (r) { return r.json(); });
+            }
+
+            function renderBulkValueControl(field) {
+                bulkValueWrap.innerHTML = '';
+                bulkErrorEl.classList.add('d-none');
+                bulkErrorEl.textContent = '';
+                if (!field) {
+                    bulkApplyBtn.disabled = true;
+                    return;
+                }
+                let html = '';
+                if (field === 'zone_x') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Zone</label><select class="form-select" id="r2sBulkEditValue"><option value="">— (clear)</option>';
+                    zones.forEach(function (z) {
+                        html += '<option value="' + String(z).replace(/"/g, '&quot;') + '">' + String(z).replace(/</g, '&lt;') + '</option>';
+                    });
+                    html += '</select>';
+                } else if (field === 'pay_term') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Terms</label><select class="form-select" id="r2sBulkEditValue"><option value="EXW">EXW</option><option value="FOB">FOB</option></select>';
+                } else if (field === 'payment_confirmation') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">ADV confirm</label><select class="form-select" id="r2sBulkEditValue"><option value="Yes">Yes</option><option value="No">No</option></select>';
+                } else if (field === 'rec_qty') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Rec. QTY</label><input type="number" class="form-control" id="r2sBulkEditValue" min="0" max="10000" step="1" placeholder="e.g. 0">';
+                } else if (field === 'packing_list' || field === 'photo_mail_send') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Value</label><select class="form-select" id="r2sBulkEditValue"><option value="Yes">Yes</option><option value="No">No</option></select>';
+                } else if (field === 'supplier') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Supplier</label><input type="text" class="form-control" id="r2sBulkEditValue" placeholder="Supplier name">';
+                } else if (field === 'packing_list_link') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">URL (https://…)</label><input type="url" class="form-control" id="r2sBulkEditValue" placeholder="https://...">';
+                } else if (field === 'Stage') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Stage</label><select class="form-select" id="r2sBulkEditValue">';
+                    html += '<option value="appr_req">Appr. Req</option><option value="mip">MIP</option><option value="r2s">R2S</option><option value="transit">Transit</option><option value="all_good">😊 All Good</option><option value="to_order_analysis">2 Order</option>';
+                    html += '</select><p class="small text-muted mt-1 mb-0">Rows with Order Qty 0 are skipped (same rule as single-row Stage).</p>';
+                } else if (field === 'NR') {
+                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">NRP</label><select class="form-select" id="r2sBulkEditValue">';
+                    html += '<option value="REQ">REQ</option><option value="NR">2BDC</option><option value="LATER">LATER</option></select>';
+                }
+                bulkValueWrap.innerHTML = html;
+                bulkApplyBtn.disabled = false;
+            }
+
+            function readBulkValue(field) {
+                const el = document.getElementById('r2sBulkEditValue');
+                if (!el) return '';
+                if (el.tagName === 'SELECT' || el.tagName === 'INPUT') return String(el.value != null ? el.value : '').trim();
+                return '';
+            }
+
+            function syncDomAfterR2sField(row, column, value) {
+                if (!row) return;
+                if (column === 'zone_x') {
+                    const sel = row.querySelector('select.r2s-zone-x-select');
+                    if (sel) {
+                        const opt = Array.prototype.slice.call(sel.options).find(function (o) { return o.value === value; });
+                        if (opt || value === '') sel.value = value;
+                    }
+                    return;
+                }
+                if (column === 'pay_term' || column === 'payment_confirmation') {
+                    const sel = row.querySelector('select.auto-save[data-column="' + column + '"]');
+                    if (sel) sel.value = value;
+                    return;
+                }
+                if (column === 'rec_qty') {
+                    const inp = row.querySelector('input.auto-save[data-column="rec_qty"]');
+                    if (inp) inp.value = value;
+                    return;
+                }
+                if (column === 'packing_list') {
+                    const dot = row.querySelector('.packing-toggle');
+                    if (dot) {
+                        dot.dataset.value = value;
+                        dot.style.backgroundColor = (String(value).toLowerCase() === 'yes') ? '#28a745' : '#dc3545';
+                    }
+                    return;
+                }
+                if (column === 'photo_mail_send') {
+                    const dot = row.querySelector('.new-photo-toggle');
+                    if (dot) {
+                        dot.dataset.value = value;
+                        dot.style.backgroundColor = (String(value).toLowerCase() === 'yes') ? '#28a745' : '#dc3545';
+                    }
+                    return;
+                }
+                if (column === 'supplier') {
+                    row.setAttribute('data-r2s-supplier', value);
+                }
+            }
+
+            function syncDomAfterForecastStage(row, value) {
+                const sel = row.querySelector('.editable-select-stage');
+                if (!sel) return;
+                sel.value = value;
+                let bg = '#fff';
+                if (value === 'to_order_analysis') bg = '#ffc107';
+                else if (value === 'mip') bg = '#0d6efd';
+                else if (value === 'r2s') bg = '#198754';
+                sel.style.backgroundColor = bg;
+                sel.style.color = '#000';
+                row.setAttribute('data-stage', value);
+            }
+
+            function syncDomAfterForecastNr(row, value) {
+                const sel = row.querySelector('.editable-select-nrp');
+                if (!sel) return;
+                sel.value = value;
+                let bg = '#ffffff';
+                let tc = '#000000';
+                if (value === 'NR') { bg = '#dc3545'; tc = '#ffffff'; }
+                else if (value === 'REQ') { bg = '#28a745'; tc = '#000000'; }
+                else if (value === 'LATER') { bg = '#ffc107'; tc = '#000000'; }
+                sel.style.backgroundColor = bg;
+                sel.style.color = tc;
+                if (value === 'NR') row.style.display = 'none';
+                else row.style.display = '';
+            }
+
+            if (bulkBtn && bulkModalEl && bulkField) {
+                bulkBtn.addEventListener('click', function () {
+                    const sel = getCheckedSkusAndRows();
+                    if (!sel.length) {
+                        alert('Select one or more rows using the checkboxes (column before SKU), then click Bulk edit.');
+                        return;
+                    }
+                    bulkCountText.textContent = sel.length + ' row(s) selected. Choose a field and value, then Apply.';
+                    bulkField.value = '';
+                    renderBulkValueControl('');
+                    bulkErrorEl.classList.add('d-none');
+                    bootstrap.Modal.getOrCreateInstance(bulkModalEl).show();
+                });
+
+                bulkField.addEventListener('change', function () {
+                    renderBulkValueControl(this.value);
+                });
+
+                bulkApplyBtn.addEventListener('click', async function () {
+                    const field = bulkField.value;
+                    const opt = bulkField.options[bulkField.selectedIndex];
+                    const source = opt ? opt.getAttribute('data-source') : '';
+                    const rawVal = readBulkValue(field);
+                    bulkErrorEl.classList.add('d-none');
+                    if (!field) {
+                        bulkErrorEl.textContent = 'Choose a field.';
+                        bulkErrorEl.classList.remove('d-none');
+                        return;
+                    }
+                    const pairs = getCheckedSkusAndRows();
+                    if (!pairs.length) {
+                        bulkErrorEl.textContent = 'No rows selected.';
+                        bulkErrorEl.classList.remove('d-none');
+                        return;
+                    }
+
+                    bulkApplyBtn.disabled = true;
+                    const origHtml = bulkApplyBtn.innerHTML;
+                    bulkApplyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Working…';
+
+                    const errors = [];
+                    let ok = 0;
+
+                    for (let i = 0; i < pairs.length; i++) {
+                        const sku = pairs[i].sku;
+                        const row = pairs[i].row;
+                        try {
+                            if (source === 'r2s') {
+                                let sendVal = rawVal;
+                                if (field === 'rec_qty' && sendVal !== '' && !isNaN(Number(sendVal))) {
+                                    sendVal = parseInt(sendVal, 10);
+                                }
+                                const res = await inlineUpdateAsync(sku, field, sendVal);
+                                if (!res.success) {
+                                    errors.push(sku + ': ' + (res.message || 'failed'));
+                                } else {
+                                    ok++;
+                                    syncDomAfterR2sField(row, field, field === 'rec_qty' ? String(sendVal) : rawVal);
+                                }
+                            } else if (source === 'forecast') {
+                                const stageSel = row ? row.querySelector('.editable-select-stage') : null;
+                                const parent = stageSel ? (stageSel.getAttribute('data-parent') || '') : '';
+                                if (field === 'Stage') {
+                                    const qtyInput = row ? row.querySelector('td[data-column="4"] input') : null;
+                                    const orderQty = qtyInput ? parseFloat(qtyInput.value) : 0;
+                                    if (!orderQty || orderQty === 0) {
+                                        errors.push(sku + ': Order Qty cannot be empty or zero for Stage.');
+                                        continue;
+                                    }
+                                }
+                                const res = await updateForecastFieldAsync({
+                                    sku: sku,
+                                    parent: parent,
+                                    column: field,
+                                    value: rawVal
+                                });
+                                if (!res.success) {
+                                    errors.push(sku + ': ' + (res.message || 'forecast update failed'));
+                                } else {
+                                    ok++;
+                                    if (field === 'Stage') syncDomAfterForecastStage(row, rawVal);
+                                    if (field === 'NR') syncDomAfterForecastNr(row, rawVal);
+                                }
+                            }
+                        } catch (err) {
+                            errors.push(sku + ': network error');
+                        }
+                    }
+
+                    bulkApplyBtn.innerHTML = origHtml;
+                    bulkApplyBtn.disabled = false;
+
+                    if (errors.length) {
+                        const lines = ['Updated ' + ok + ' row(s). Errors:'].concat(errors.slice(0, 12).map(function (e) { return '• ' + e; }));
+                        if (errors.length > 12) lines.push('…');
+                        bulkErrorEl.textContent = lines.join('\n');
+                        bulkErrorEl.classList.remove('d-none');
+                    } else {
+                        bootstrap.Modal.getInstance(bulkModalEl)?.hide();
+                        alert('Updated ' + ok + ' row(s) successfully.');
+                    }
+                    if (typeof filterByR2SStage === 'function') filterByR2SStage();
+                });
+            }
+        })();
 
         // Delete selected rows
         if (deleteBtn) {

@@ -3023,6 +3023,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/compliance-master', [CategoryController::class, 'complianceMaster'])->name('compliance.master');
     Route::get('/compliance-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('compliance.master.data');
     Route::post('/compliance-master/store', [CategoryController::class, 'storeComplianceMaster'])->name('compliance.master.store');
+    Route::post('/compliance-master/update', [CategoryController::class, 'updateComplianceMaster'])->name('compliance.master.update');
+    Route::post('/compliance-master/field-image', [CategoryController::class, 'uploadComplianceFieldImage'])->name('compliance.master.field.image');
+    Route::post('/compliance-master/field-pdf', [CategoryController::class, 'uploadComplianceFieldPdf'])->name('compliance.master.field.pdf');
     Route::post('/compliance-master/import', [CategoryController::class, 'importComplianceMaster'])->name('compliance.master.import');
     Route::get('/extra-features-master', [CategoryController::class, 'extraFeaturesMaster'])->name('extra.features.master');
     Route::get('/extra-features-master-data-view', [CategoryController::class, 'getExtraFeaturesMasterData'])->name('extra.features.master.data');

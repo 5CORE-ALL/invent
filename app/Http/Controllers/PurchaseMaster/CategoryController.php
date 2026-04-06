@@ -1786,7 +1786,13 @@ class CategoryController extends Controller
                 ->orderBy('sku', 'asc')
                 ->get()
                 ->unique('sku')
-                ->values();
+                ->values()
+                ->map(function ($item) {
+                    return [
+                        'sku' => $this->normalizeSkuDisplayValue($item->sku),
+                        'parent' => $this->normalizeSkuDisplayValue($item->parent),
+                    ];
+                });
 
             return response()->json([
                 'success' => true,
@@ -1806,6 +1812,58 @@ class CategoryController extends Controller
         return view('compliance-master');
     }
 
+    /**
+     * Decode HTML entities (e.g. &nbsp;), replace Unicode spaces with ASCII space, collapse whitespace.
+     * Used for compliance master display and for matching SKUs that were stored with entity/nbsp text.
+     */
+    private function normalizeSkuDisplayValue(?string $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        $s = trim((string) $value);
+        if ($s === '') {
+            return '';
+        }
+        $s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $s = str_replace("\u{00A0}", ' ', $s);
+        $s = preg_replace('/[\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}]/u', ' ', $s);
+        $s = preg_replace('/\s+/u', ' ', $s);
+
+        return trim($s);
+    }
+
+    /**
+     * Resolve a product row by SKU when the request may use normalized spacing but DB still holds &nbsp; / NBSP.
+     */
+    private function findProductMasterBySkuForCompliance(string $sku): ?ProductMaster
+    {
+        $needle = $this->normalizeSkuDisplayValue($sku);
+        if ($needle === '') {
+            return null;
+        }
+
+        $nonParent = fn () => ProductMaster::query()->where('sku', 'NOT LIKE', 'PARENT %');
+
+        $direct = $nonParent()->where('sku', $sku)->first();
+        if ($direct) {
+            return $direct;
+        }
+
+        $directNorm = $nonParent()->where('sku', $needle)->first();
+        if ($directNorm) {
+            return $directNorm;
+        }
+
+        foreach ($nonParent()->whereNotNull('sku')->where('sku', '!=', '')->cursor() as $product) {
+            if ($this->normalizeSkuDisplayValue($product->sku) === $needle) {
+                return $product;
+            }
+        }
+
+        return null;
+    }
+
     public function getComplianceMasterData(Request $request)
     {
         // Fetch all products from the database ordered by parent and SKU
@@ -1814,10 +1872,9 @@ class CategoryController extends Controller
             ->orderBy('sku', 'asc')
             ->get();
 
-        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
-            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
-            return str_replace("\u{00a0}", ' ', $item->sku);
+        // Fetch all shopify SKUs and normalize keys (entities, NBSP, etc.)
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
+            return $this->normalizeSkuDisplayValue($item->sku);
         });
 
         // Prepare data in the same format as your sheet (flatten Values)
@@ -1825,8 +1882,8 @@ class CategoryController extends Controller
         foreach ($products as $product) {
             $row = [
                 'id' => $product->id,
-                'Parent' => $product->parent,
-                'SKU' => $product->sku,
+                'Parent' => $this->normalizeSkuDisplayValue($product->parent),
+                'SKU' => $this->normalizeSkuDisplayValue($product->sku),
                 'title150' => $product->title150,
                 'title100' => $product->title100,
                 'title80' => $product->title80,
@@ -1868,9 +1925,8 @@ class CategoryController extends Controller
             }
 
             // Add Shopify inv and quantity if available
-            // Normalize the product SKU for lookup
-            $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+            $normalizedSku = $this->normalizeSkuDisplayValue($product->sku);
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
                 $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
@@ -1882,7 +1938,6 @@ class CategoryController extends Controller
                 $shopifyImage = null;
             }
 
-            $shopifyImage = $shopifySkus[$normalizedSku]->image_src ?? null;
             // image_path is inside $row (from Values JSON)
             $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
             if ($shopifyImage) {
@@ -1892,6 +1947,15 @@ class CategoryController extends Controller
             } else {
                 $row['image_path'] = null;
             }
+
+            // Status: same source as CP / product master (product_master.Values JSON)
+            $statusVal = $row['status'] ?? $row['Status'] ?? null;
+            if ($statusVal !== null && $statusVal !== '') {
+                $row['status'] = is_string($statusVal) ? trim($statusVal) : $statusVal;
+            } else {
+                $row['status'] = null;
+            }
+            unset($row['Status']);
 
             $result[] = $row;
         }
@@ -1903,6 +1967,118 @@ class CategoryController extends Controller
         ]);
     }
 
+    /**
+     * Upload image for a compliance field (Battery, Wireless, …). Returns storage path for Values JSON.
+     */
+    public function uploadComplianceFieldImage(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'field' => 'required|string|in:battery,wireless,electric,gcc,blanket,bluetooth,logo,graph',
+                'image' => 'required|file|image|max:5120',
+            ]);
+
+            $path = $request->file('image')->store('compliance_field_images', 'public');
+            $storagePath = 'storage/'.$path;
+
+            return response()->json([
+                'success' => true,
+                'path' => $storagePath,
+                'url' => '/'.ltrim($storagePath, '/'),
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Compliance field image upload: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Upload failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Upload PDF for a compliance REQ field. Returns storage path for Values JSON (same pattern as *_img).
+     */
+    public function uploadComplianceFieldPdf(Request $request)
+    {
+        try {
+            $request->validate([
+                'field' => 'required|string|in:battery,wireless,electric,gcc,blanket,bluetooth,logo,graph',
+                'pdf' => 'required|file|mimes:pdf|max:15360',
+            ]);
+
+            $path = $request->file('pdf')->store('compliance_field_pdfs', 'public');
+            $storagePath = 'storage/'.$path;
+
+            return response()->json([
+                'success' => true,
+                'path' => $storagePath,
+                'url' => '/'.ltrim($storagePath, '/'),
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Compliance field PDF upload: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Upload failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * True when any compliance field key is already stored (including N/A), so Add should use Edit instead.
+     */
+    private function complianceMasterRowHasFieldKeys(array $values): bool
+    {
+        $fields = ['battery', 'wireless', 'electric', 'gcc', 'blanket', 'bluetooth', 'logo', 'graph'];
+        foreach ($fields as $f) {
+            if (! array_key_exists($f, $values)) {
+                continue;
+            }
+            if (trim((string) ($values[$f] ?? '')) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, string>
+     */
+    private function mergeComplianceFieldsFromRequest(array $validated): array
+    {
+        $out = [];
+        foreach (['battery', 'wireless', 'electric', 'gcc', 'blanket', 'bluetooth', 'logo', 'graph'] as $field) {
+            $v = $validated[$field] ?? '';
+            $out[$field] = $v !== null ? trim((string) $v) : '';
+            if ($out[$field] === '') {
+                $out[$field] = 'N/A';
+            }
+            $imgKey = $field.'_img';
+            $iv = $validated[$imgKey] ?? '';
+            $out[$imgKey] = $iv !== null ? trim((string) $iv) : '';
+            $pdfKey = $field.'_pdf';
+            $pv = $validated[$pdfKey] ?? '';
+            $out[$pdfKey] = $pv !== null ? trim((string) $pv) : '';
+        }
+
+        return $out;
+    }
+
     public function storeComplianceMaster(Request $request)
     {
         try {
@@ -1911,13 +2087,31 @@ class CategoryController extends Controller
                 'battery' => 'nullable|string',
                 'wireless' => 'nullable|string',
                 'electric' => 'nullable|string',
+                'gcc' => 'nullable|string',
+                'blanket' => 'nullable|string',
+                'bluetooth' => 'nullable|string',
+                'logo' => 'nullable|string',
                 'graph' => 'nullable|string',
+                'battery_img' => 'nullable|string|max:500',
+                'wireless_img' => 'nullable|string|max:500',
+                'electric_img' => 'nullable|string|max:500',
+                'gcc_img' => 'nullable|string|max:500',
+                'blanket_img' => 'nullable|string|max:500',
+                'bluetooth_img' => 'nullable|string|max:500',
+                'logo_img' => 'nullable|string|max:500',
+                'graph_img' => 'nullable|string|max:500',
+                'battery_pdf' => 'nullable|string|max:500',
+                'wireless_pdf' => 'nullable|string|max:500',
+                'electric_pdf' => 'nullable|string|max:500',
+                'gcc_pdf' => 'nullable|string|max:500',
+                'blanket_pdf' => 'nullable|string|max:500',
+                'bluetooth_pdf' => 'nullable|string|max:500',
+                'logo_pdf' => 'nullable|string|max:500',
+                'graph_pdf' => 'nullable|string|max:500',
             ]);
 
-            // Get the product by SKU to retrieve parent
-            $existingProduct = ProductMaster::where('sku', $validated['sku'])
-                ->where('sku', 'NOT LIKE', 'PARENT %')
-                ->first();
+            // Get the product by SKU to retrieve parent (match normalized spacing vs DB)
+            $existingProduct = $this->findProductMasterBySkuForCompliance($validated['sku']);
 
             $parent = null;
             if ($existingProduct) {
@@ -1926,70 +2120,49 @@ class CategoryController extends Controller
 
             // Check if product with same SKU already has compliance data
             if ($existingProduct) {
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
-                                 (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                // Check if any compliance fields already exist
-                $hasComplianceData = !empty($existingValues['battery']) || 
-                                    !empty($existingValues['wireless']) || 
-                                    !empty($existingValues['electric']) || 
-                                    !empty($existingValues['graph']);
-                
-                if ($hasComplianceData) {
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
+                    (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
+
+                if ($this->complianceMasterRowHasFieldKeys(is_array($existingValues) ? $existingValues : [])) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This SKU already has compliance data. Please use edit instead.'
+                        'message' => 'This SKU already has compliance data. Please use edit instead.',
                     ], 409);
                 }
             }
 
-            // Prepare Values array with compliance fields
-            $values = [];
-            
-            if (!empty($validated['battery'])) {
-                $values['battery'] = $validated['battery'];
-            }
-            if (!empty($validated['wireless'])) {
-                $values['wireless'] = $validated['wireless'];
-            }
-            if (!empty($validated['electric'])) {
-                $values['electric'] = $validated['electric'];
-            }
-            if (!empty($validated['graph'])) {
-                $values['graph'] = $validated['graph'];
-            }
+            $values = $this->mergeComplianceFieldsFromRequest($validated);
 
             // Update existing product or create new one
             if ($existingProduct) {
-                // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
-                                 (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                if (!is_array($existingValues)) {
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
+                    (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
+
+                if (! is_array($existingValues)) {
                     $existingValues = [];
                 }
-                
+
                 $mergedValues = array_merge($existingValues, $values);
                 $existingProduct->Values = $mergedValues;
                 $existingProduct->save();
                 $product = $existingProduct;
             } else {
-                // Create new product (shouldn't happen if SKU dropdown is working correctly)
+                $canonicalSku = $this->normalizeSkuDisplayValue($validated['sku']);
                 $product = ProductMaster::create([
-                    'sku' => $validated['sku'],
+                    'sku' => $canonicalSku !== '' ? $canonicalSku : $validated['sku'],
                     'parent' => $parent,
-                    'Values' => !empty($values) ? $values : null,
+                    'Values' => $values,
                 ]);
             }
 
             // If parent exists, also create/update the parent row
             if ($parent) {
-                $parentSku = 'PARENT ' . $parent;
+                $parentSku = 'PARENT '.$parent;
                 $parentRow = ProductMaster::where('sku', $parentSku)
                     ->where('parent', $parent)
                     ->first();
 
-                if (!$parentRow) {
+                if (! $parentRow) {
                     ProductMaster::create([
                         'sku' => $parentSku,
                         'parent' => $parent,
@@ -2001,19 +2174,98 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Compliance Data added successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation error: ' . $e->getMessage(),
-                'errors' => $e->errors()
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Error storing Compliance Master: ' . $e->getMessage());
+            Log::error('Error storing Compliance Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Update compliance fields (N/A / REQ + optional per-field images) on an existing product row.
+     */
+    public function updateComplianceMaster(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'battery' => 'nullable|string',
+                'wireless' => 'nullable|string',
+                'electric' => 'nullable|string',
+                'gcc' => 'nullable|string',
+                'blanket' => 'nullable|string',
+                'bluetooth' => 'nullable|string',
+                'logo' => 'nullable|string',
+                'graph' => 'nullable|string',
+                'battery_img' => 'nullable|string|max:500',
+                'wireless_img' => 'nullable|string|max:500',
+                'electric_img' => 'nullable|string|max:500',
+                'gcc_img' => 'nullable|string|max:500',
+                'blanket_img' => 'nullable|string|max:500',
+                'bluetooth_img' => 'nullable|string|max:500',
+                'logo_img' => 'nullable|string|max:500',
+                'graph_img' => 'nullable|string|max:500',
+                'battery_pdf' => 'nullable|string|max:500',
+                'wireless_pdf' => 'nullable|string|max:500',
+                'electric_pdf' => 'nullable|string|max:500',
+                'gcc_pdf' => 'nullable|string|max:500',
+                'blanket_pdf' => 'nullable|string|max:500',
+                'bluetooth_pdf' => 'nullable|string|max:500',
+                'logo_pdf' => 'nullable|string|max:500',
+                'graph_pdf' => 'nullable|string|max:500',
+            ]);
+
+            $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+
+            if (! $product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found for this SKU.',
+                ], 404);
+            }
+
+            $existingValues = is_array($product->Values) ? $product->Values
+                : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (! is_array($existingValues)) {
+                $existingValues = [];
+            }
+
+            $patch = $this->mergeComplianceFieldsFromRequest($validated);
+            foreach ($patch as $k => $v) {
+                $existingValues[$k] = $v;
+            }
+
+            $product->Values = $existingValues;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Compliance data updated successfully.',
+                'data' => $product,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error updating Compliance Master: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -2054,6 +2306,10 @@ class CategoryController extends Controller
                 'battery' => 'battery',
                 'wireless' => 'wireless',
                 'electric' => 'electric',
+                'gcc' => 'gcc',
+                'blanket' => 'blanket',
+                'bluetooth' => 'bluetooth',
+                'logo' => 'logo',
                 'graph' => 'graph'
             ];
 
@@ -2085,14 +2341,12 @@ class CategoryController extends Controller
                     continue;
                 }
 
-                $sku = trim($row[$columnIndices['sku']]);
-                
-                // Find product by SKU
-                $product = ProductMaster::where('sku', $sku)
-                    ->where('sku', 'NOT LIKE', 'PARENT %')
-                    ->first();
-                
-                if (!$product) {
+                $sku = $this->normalizeSkuDisplayValue(trim((string) $row[$columnIndices['sku']]));
+
+                // Find product by SKU (normalized match)
+                $product = $this->findProductMasterBySkuForCompliance($sku);
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
                     continue;
                 }
@@ -2129,6 +2383,16 @@ class CategoryController extends Controller
                     if ($electricValue !== '') {
                         $values['electric'] = $electricValue;
                         $hasChanges = true;
+                    }
+                }
+
+                foreach (['gcc', 'blanket', 'bluetooth', 'logo'] as $field) {
+                    if (isset($columnIndices[$field]) && isset($row[$columnIndices[$field]])) {
+                        $v = trim((string) $row[$columnIndices[$field]]);
+                        if ($v !== '') {
+                            $values[$field] = $v;
+                            $hasChanges = true;
+                        }
                     }
                 }
 
