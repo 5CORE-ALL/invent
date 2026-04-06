@@ -135,6 +135,15 @@
                             </select>
                         </div>
 
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">SKU</label>
+                            <input type="search" id="r2sToolbarSkuFilter" class="form-control border-2 rounded-2 fw-bold" style="min-width: 132px; height: 42px;" placeholder="Filter SKU…" autocomplete="off" title="Contains match on SKU" aria-label="Filter rows by SKU">
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Supplier</label>
+                            <input type="search" id="r2sToolbarSupplierFilter" class="form-control border-2 rounded-2 fw-bold" style="min-width: 148px; height: 42px;" placeholder="Filter Supplier…" autocomplete="off" title="Contains match on Supplier column" aria-label="Filter rows by supplier">
+                        </div>
+
                         <!-- Move to transit: container + Move (always visible) -->
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">To container</label>
@@ -441,7 +450,7 @@
                                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
                             <div class="modal-body">
-                                <p class="text-muted small mb-2">Totals are from <strong>currently visible</strong> rows in the table (after stage / zone filters).</p>
+                                <p class="text-muted small mb-2">Totals are from <strong>currently visible</strong> rows in the table (after stage, zone, SKU, and supplier filters).</p>
                                 <div class="table-responsive">
                                     <table class="table table-sm table-striped table-bordered align-middle mb-0" id="r2s-supplier-summary-table">
                                         <thead class="table-light">
@@ -1311,6 +1320,10 @@
             const zoneFilter = document.getElementById('zoneFilter');
             const rawZone = zoneFilter ? zoneFilter.value.trim() : '';
             const selectedZone = rawZone.toLowerCase();
+            const skuFilterInput = document.getElementById('r2sToolbarSkuFilter');
+            const supFilterInput = document.getElementById('r2sToolbarSupplierFilter');
+            const skuNeedle = skuFilterInput ? skuFilterInput.value.trim().toLowerCase() : '';
+            const supNeedle = supFilterInput ? supFilterInput.value.trim().toLowerCase() : '';
             const rows = table
                 ? table.querySelectorAll('tbody tr.stage-row')
                 : document.querySelectorAll('.wide-table tbody tr.stage-row');
@@ -1349,6 +1362,26 @@
                     }
                 }
                 if (!zoneMatch) {
+                    row.style.display = 'none';
+                    return;
+                }
+
+                let skuMatch = true;
+                if (skuNeedle) {
+                    const cb = row.querySelector('.r2s-row-checkbox');
+                    const skuFromCb = cb ? String(cb.getAttribute('data-sku') || '').trim().toLowerCase() : '';
+                    const skuTd = row.querySelector('td[data-column="3"]');
+                    const skuFromTd = skuTd ? skuTd.textContent.trim().toLowerCase() : '';
+                    const skuHaystack = skuFromCb || skuFromTd;
+                    skuMatch = skuHaystack.includes(skuNeedle);
+                }
+                let supMatch = true;
+                if (supNeedle) {
+                    const supSpan = row.querySelector('td[data-column="1"] .forecast-supplier-name');
+                    const supText = supSpan ? supSpan.textContent.trim().toLowerCase() : '';
+                    supMatch = supText.includes(supNeedle);
+                }
+                if (!skuMatch || !supMatch) {
                     row.style.display = 'none';
                     return;
                 }
@@ -1984,6 +2017,23 @@
             zoneFilterElement.addEventListener('change', function () {
                 filterByR2SStage();
             });
+        }
+
+        let r2sToolbarTextFilterTimer = null;
+        function scheduleFilterByR2SStageFromToolbar() {
+            clearTimeout(r2sToolbarTextFilterTimer);
+            r2sToolbarTextFilterTimer = setTimeout(function () {
+                r2sToolbarTextFilterTimer = null;
+                filterByR2SStage();
+            }, 200);
+        }
+        const r2sSkuFilterEl = document.getElementById('r2sToolbarSkuFilter');
+        const r2sSupFilterEl = document.getElementById('r2sToolbarSupplierFilter');
+        if (r2sSkuFilterEl) {
+            r2sSkuFilterEl.addEventListener('input', scheduleFilterByR2SStageFromToolbar);
+        }
+        if (r2sSupFilterEl) {
+            r2sSupFilterEl.addEventListener('input', scheduleFilterByR2SStageFromToolbar);
         }
 
         function calculateSupplierTotals(visibleRows) {
