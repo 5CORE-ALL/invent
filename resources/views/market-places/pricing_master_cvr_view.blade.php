@@ -287,6 +287,22 @@
             cursor: default;
         }
 
+        /* SKU column — larger on hover for readability */
+        .pricing-master-sku-text {
+            display: inline-block;
+            transform-origin: left center;
+            transition: transform 0.18s ease;
+            cursor: default;
+        }
+        .pricing-master-sku-text:hover {
+            transform: scale(1.35);
+            position: relative;
+            z-index: 5;
+        }
+        .tabulator .tabulator-cell.pricing-master-sku-col {
+            overflow: visible;
+        }
+
         /* Row selection checkboxes */
         .row-select-cb, .select-all-cb {
             cursor: pointer;
@@ -1771,13 +1787,13 @@
                     sorter: "string",
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
-                    cssClass: "text-primary fw-bold",
+                    cssClass: "text-primary fw-bold pricing-master-sku-col",
                     tooltip: true,
                     frozen: true,
                     minWidth: 120,
                     formatter: function(cell) {
                         const sku = cell.getValue();
-                        let html = `<span>${sku}</span>`;
+                        let html = `<span class="pricing-master-sku-text">${sku}</span>`;
                         html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
                                    style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
                                    data-sku="${sku}" title="Copy SKU"></i>`;
@@ -1822,6 +1838,22 @@
                         }
                         return `<span style="font-weight: 600;">${value}</span>
                             <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="ov_l30" data-sku="${skuEsc}" style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;" title="View OV L30 graph (Rolling L30)"></i>`;
+                    }
+                },
+                {
+                    title: "SW L30",
+                    field: "m_l30",
+                    hozAlign: "center",
+                    minWidth: 80,
+                    sorter: "number",
+                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Walmart, Temu, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sw = parseFloat(cell.getValue() || 0);
+                        const ov = parseFloat(rowData.overall_l30 ?? 0);
+                        const match = Math.abs(sw - ov) < 0.01;
+                        const color = match ? '#28a745' : '#dc3545';
+                        return `<span style="font-weight: 600; color: ${color};">${sw}</span>`;
                     }
                 },
                 {

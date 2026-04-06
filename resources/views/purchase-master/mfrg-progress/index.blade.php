@@ -3,17 +3,34 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
+    /* Product image column (data-column="1") — wide-table uses overflow:hidden + fixed layout */
+    .table-container .wide-table th[data-column="1"],
+    .table-container .wide-table td[data-column="1"] {
+        min-width: 112px !important;
+        overflow: visible !important;
+        white-space: normal !important;
+    }
+    .mip-product-thumb {
+        width: 96px !important;
+        height: 96px !important;
+        max-width: none !important;
+        object-fit: cover;
+        border-radius: 8px;
+        vertical-align: middle;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
     .preview-popup {
         position: fixed;
         display: none;
         z-index: 9999;
         pointer-events: none;
-        width: 350px;
-        height: 350px;
-        object-fit: cover;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        transition: all 0.2s ease;
+        width: min(480px, 92vw);
+        height: min(480px, 85vh);
+        object-fit: contain;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+        transition: opacity 0.15s ease;
     }
     td {
         overflow: visible !important;
@@ -305,7 +322,7 @@
                                                     $imageUrl = asset($imageUrl);
                                                 }
                                             @endphp
-                                            <img src="{{ $imageUrl }}" class="hover-img" data-src="{{ $imageUrl }}" alt="" loading="lazy" decoding="async" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                                            <img src="{{ $imageUrl }}" class="hover-img mip-product-thumb" data-src="{{ $imageUrl }}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
                                             <span class="text-muted" style="display: none;">No</span>
                                         @else
                                             <span class="text-muted">No</span>
