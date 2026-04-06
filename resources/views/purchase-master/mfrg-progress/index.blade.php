@@ -123,6 +123,19 @@
                                 <i class="fas fa-history"></i> History
                                 <span class="badge rounded-pill bg-secondary" id="mipArchivedCountBadge">0</span>
                             </button>
+                            <div class="d-flex align-items-center flex-nowrap gap-2 mip-toolbar-bulk-stage border-start ps-3 ms-1" title="Apply stage to rows checked in the first column">
+                                <label for="mip-bulk-stage-select" class="mb-0 small fw-semibold text-nowrap text-secondary">Bulk Stage</label>
+                                <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 128px; min-width: 110px;">
+                                    <option value="">— Choose —</option>
+                                    <option value="appr_req">Appr. Req</option>
+                                    <option value="mip">MIP</option>
+                                    <option value="r2s">R2S</option>
+                                    <option value="transit">Transit</option>
+                                    <option value="all_good">😊 All Good</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                </select>
+                                <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
+                            </div>
                             <div class="d-flex align-items-center flex-nowrap gap-2 mip-toolbar-column-filters" role="search" aria-label="Filter table">
                                 <input type="text" class="form-control form-control-sm column-search mip-toolbar-search-input" data-search-column="3" placeholder="Search SKU..." autocomplete="off" aria-label="Filter by SKU">
                                 <input type="text" class="form-control form-control-sm column-search mip-toolbar-search-input" data-search-column="6" placeholder="Search Supplier..." autocomplete="off" aria-label="Filter by supplier">
@@ -756,6 +769,7 @@
 
         // Stage Update Handler
         setupStageUpdate();
+        setupMipBulkStage();
         setupNRPUpdate();
 
         // Filter to show only MIP stage on page load
@@ -1104,31 +1118,6 @@
             });
         }
 
-        // Reusable AJAX call for forecast data updates
-        function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
-            fetch('/update-forecast-data', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify(data)
-            })
-            .then(res => res.json())
-            .then(res => {
-                if (res.success) {
-                    onSuccess();
-                } else {
-                    onFail();
-                }
-            })
-            .catch(err => {
-                console.error('AJAX failed:', err);
-                alert('Error saving data.');
-                onFail();
-            });
-        }
-
         // Reusable AJAX call for updating forecast_analysis table
         function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
             fetch('/update-forecast-data', {
@@ -1157,6 +1146,105 @@
             });
         }
 
+        function mipApplyStageSelectVisual(selectEl, value) {
+            if (!selectEl) return;
+            let bgColor = '#fff';
+            if (value === 'to_order_analysis') {
+                bgColor = '#ffc107';
+            } else if (value === 'mip') {
+                bgColor = '#ADD8E6';
+            } else if (value === 'r2s') {
+                bgColor = '#90EE90';
+            }
+            selectEl.style.backgroundColor = bgColor;
+            selectEl.style.color = '#000';
+        }
+
+        function updateForecastFieldAsync(data) {
+            return new Promise(function (resolve) {
+                updateForecastField(
+                    data,
+                    function () { resolve(true); },
+                    function () { resolve(false); }
+                );
+            });
+        }
+
+        function setupMipBulkStage() {
+            const applyBtn = document.getElementById('mip-bulk-stage-apply');
+            const bulkSel = document.getElementById('mip-bulk-stage-select');
+            if (!applyBtn || !bulkSel) return;
+
+            applyBtn.addEventListener('click', async function () {
+                const stageVal = String(bulkSel.value || '').trim();
+                if (!stageVal) {
+                    alert('Choose a stage to apply.');
+                    return;
+                }
+                const checked = document.querySelectorAll('.row-checkbox:checked');
+                if (!checked.length) {
+                    alert('Select at least one row (checkbox in the first column).');
+                    return;
+                }
+
+                let ok = 0;
+                let skippedQty = 0;
+                let failed = 0;
+
+                applyBtn.disabled = true;
+                const prevLabel = applyBtn.textContent;
+                applyBtn.textContent = '…';
+
+                for (const cb of checked) {
+                    const row = cb.closest('tr');
+                    if (!row) continue;
+                    const sel = row.querySelector('.editable-select-stage');
+                    const sku = sel ? sel.dataset.sku : row.getAttribute('data-sku');
+                    const parent = sel ? (sel.dataset.parent || '') : (row.getAttribute('data-parent') || '');
+                    if (!sku) {
+                        failed++;
+                        continue;
+                    }
+                    const qtyCell = row.querySelector('td[data-column="4"] input');
+                    const orderQty = qtyCell ? parseFloat(qtyCell.value) : 0;
+                    if (!orderQty || orderQty === 0) {
+                        skippedQty++;
+                        continue;
+                    }
+
+                    const saved = await updateForecastFieldAsync({
+                        sku: sku,
+                        parent: parent,
+                        column: 'Stage',
+                        value: stageVal,
+                    });
+
+                    if (saved) {
+                        ok++;
+                        if (sel) {
+                            sel.value = stageVal;
+                            mipApplyStageSelectVisual(sel, stageVal);
+                        }
+                        row.setAttribute('data-stage', stageVal);
+                    } else {
+                        failed++;
+                    }
+                }
+
+                applyBtn.disabled = false;
+                applyBtn.textContent = prevLabel;
+
+                let msg = 'Updated ' + ok + ' row(s).';
+                if (skippedQty) msg += ' Skipped ' + skippedQty + ' with empty or zero order qty.';
+                if (failed) msg += ' ' + failed + ' failed.';
+                alert(msg);
+
+                if (typeof filterByMIPStage === 'function') {
+                    filterByMIPStage();
+                }
+            });
+        }
+
         function setupStageUpdate() {
             document.querySelectorAll('.editable-select-stage').forEach(function(select) {
                 select.addEventListener('change', function() {
@@ -1164,17 +1252,7 @@
                     const parent = this.dataset.parent;
                     const value = this.value.trim();
 
-                    // Update background color immediately
-                    let bgColor = '#fff';
-                    if (value === 'to_order_analysis') {
-                        bgColor = '#ffc107'; // Yellow
-                    } else if (value === 'mip') {
-                        bgColor = '#ADD8E6'; // Light Blue
-                    } else if (value === 'r2s') {
-                        bgColor = '#90EE90'; // Light Green
-                    }
-                    this.style.backgroundColor = bgColor;
-                    this.style.color = '#000';
+                    mipApplyStageSelectVisual(this, value);
 
                     // Get order_qty for validation
                     const row = this.closest('tr');
