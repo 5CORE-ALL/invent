@@ -383,8 +383,14 @@
 
         #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col .tabulator-col-content {
             text-align: center;
-            vertical-align: top;
+            vertical-align: middle;
             text-transform: none;
+        }
+
+        #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col .tabulator-col-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
         }
 
         .cm-status-header-label {
@@ -1491,17 +1497,6 @@
                 const par = String(item.Parent || '').toUpperCase();
                 return sku.includes('PARENT') || par.includes('PARENT');
             }
-
-            const CM_FIELD_FILTER_IDS = {
-                battery: 'filterBattery',
-                wireless: 'filterWireless',
-                electric: 'filterElectric',
-                gcc: 'filterGcc',
-                blanket: 'filterBlanket',
-                bluetooth: 'filterBluetooth',
-                logo: 'filterLogo',
-                graph: 'filterGraph'
-            };
 
             const CM_FIELD_LABELS = {
                 battery: 'Battery',
