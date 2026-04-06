@@ -71,14 +71,17 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data (Last 35 Days, California)',
+        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 29) . ' Days, California)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <h4>Amazon Daily Sales Data </h4>
-                <p class="text-muted small mb-2" id="date-range-info">Date Range: Loading...</p>
+                <p class="text-muted small mb-2" id="date-range-info">
+                    Date range (Pacific): {{ $amazonSalesWindowStart ?? '—' }} – {{ $amazonSalesWindowEnd ?? '—' }}
+                    — {{ (int) ($amazonSalesWindowDays ?? 29) }} days through yesterday (today excluded). Use the same dates in Seller Central; this app uses one SP-API marketplace and local DB sync.
+                </p>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -105,7 +108,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
-                        <span class="badge fs-6 p-2" id="sales-35-days-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"> Total Sales: ${{ number_format($sales35Days ?? 0, 2) }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-sales-total-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"> Total Sales: ${{ number_format($amazonSalesTotal ?? 0, 2) }}</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
@@ -145,8 +148,8 @@
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PT_SPENT = {{ $ptSpent ?? 0 }};
     const HL_SPENT = {{ $hlSpent ?? 0 }};
-    // Server-computed 35-day total from amazon_orders (includes orders without items)
-    const SERVER_SALES_35 = {{ $sales35Days ?? 0 }};
+    // Server-computed rolling total (amazon_orders effective total; orders without items included)
+    const SERVER_AMAZON_SALES_TOTAL = {{ $amazonSalesTotal ?? 0 }};
     
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -612,8 +615,8 @@
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             // Unfiltered: use server-side total (amazon_orders direct sum, includes orders without items)
             // Filtered: use JS order-total sum so filtered result is accurate
-            const displaySales = isFiltered ? totalSalesByOrders : SERVER_SALES_35;
-            $('#sales-35-days-badge').text('Total Sales: $' + displaySales.toFixed(2));
+            const displaySales = isFiltered ? totalSalesByOrders : SERVER_AMAZON_SALES_TOTAL;
+            $('#amazon-sales-total-badge').text('Total Sales: $' + displaySales.toFixed(2));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
             $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
             $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');

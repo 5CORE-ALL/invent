@@ -156,7 +156,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Master',
-        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 35-day Pacific rolling window (same as Amazon Daily Sales)',
+        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 29-day Pacific rolling window (same as Amazon Daily Sales)',
     ])
 
     <div class="toast-container"></div>
@@ -273,7 +273,7 @@
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last 29 days Pacific order totals, non-canceled. Other channels vary.">
                             Sales: <span id="total-l30-sales">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column (L30 Orders). Amazon uses 35-day Pacific; other channels vary.">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column (L30 Orders). Amazon uses 29-day Pacific; other channels vary.">
                             Orders: <span id="total-l30-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
@@ -1263,7 +1263,7 @@
                     {
                         title: "Orders",
                         field: "L30 Orders",
-                        headerTooltip: "Rolling order count per channel. Amazon = 35 days Pacific, non-canceled — same as Amazon Daily Sales.",
+                        headerTooltip: "Rolling order count per channel. Amazon = 29 days Pacific, non-canceled — same as Amazon Daily Sales.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,

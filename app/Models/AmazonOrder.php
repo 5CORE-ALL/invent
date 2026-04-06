@@ -28,4 +28,15 @@ class AmazonOrder extends Model
     {
         return $this->hasMany(AmazonOrderItem::class, 'amazon_order_id');
     }
+
+    /**
+     * SQL expression: use order total when Amazon provided it; otherwise sum line items.
+     * SP-API often omits OrderTotal for Pending orders (we persist 0), which undercounts vs Seller Central.
+     *
+     * @param  string  $alias  Table alias for amazon_orders in the outer query (e.g. "o")
+     */
+    public static function effectiveOrderTotalSql(string $alias = 'o'): string
+    {
+        return "CASE WHEN COALESCE({$alias}.total_amount, 0) > 0 THEN {$alias}.total_amount ELSE COALESCE((SELECT SUM(li.price) FROM amazon_order_items li WHERE li.amazon_order_id = {$alias}.id), 0) END";
+    }
 }

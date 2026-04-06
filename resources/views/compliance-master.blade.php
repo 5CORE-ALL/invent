@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Compliance Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Compliance Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed'])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -7,8 +7,124 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 
     <style>
+        /* Aliexpress-tabulator style: full-height table area */
+        #compliance-table-wrapper {
+            height: calc(100vh - 220px);
+            min-height: 320px;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+        }
+
+        #compliance-tabulator.cm-tabulator-host {
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+            border-top: 1px solid #dee2e6;
+        }
+
+        #compliance-tabulator .tabulator {
+            font-size: 13px;
+            width: 100% !important;
+            max-width: 100%;
+        }
+
+        #compliance-tabulator .tabulator-tableholder {
+            overflow-x: auto;
+        }
+
+        #compliance-tabulator .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
+        #compliance-tabulator .tabulator-cell.cm-compliance-field-col {
+            min-width: 0;
+            padding-left: 4px;
+            padding-right: 4px;
+        }
+
+        #compliance-tabulator .compliance-thumb-wrap img,
+        #compliance-tabulator .compliance-thumb-img {
+            max-width: 36px;
+            max-height: 36px;
+            width: auto;
+            height: auto;
+            object-fit: cover;
+        }
+
+        #compliance-tabulator .tabulator-header {
+            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col {
+            border-right: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col-content {
+            padding: 10px 8px;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            white-space: normal;
+        }
+
+        #compliance-tabulator .tabulator-header input.form-control-sm,
+        #compliance-tabulator .tabulator-header select.form-select {
+            background-color: rgba(255, 255, 255, 0.95);
+            border-color: rgba(255, 255, 255, 0.5);
+            color: #1a1a1a;
+        }
+
+        #compliance-tabulator .tabulator-row .tabulator-cell {
+            padding: 10px 12px;
+            vertical-align: middle;
+            border-bottom: 1px solid #edf2f9;
+        }
+
+        #compliance-tabulator .tabulator-row.tabulator-row-even .tabulator-cell {
+            background-color: #f8fafc;
+        }
+
+        #compliance-tabulator .tabulator-row:hover .tabulator-cell {
+            background-color: #e8f0fe;
+        }
+
+        .cm-toolbar-search-strip {
+            flex-shrink: 0;
+        }
+
+        .cm-compliance-filters-toolbar {
+            flex-shrink: 0;
+        }
+
+        .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger {
+            color: #1e3a5f;
+            background: #fff;
+            border: 1px solid #94a3b8;
+        }
+
+        .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger:hover {
+            background: #f1f5f9;
+            border-color: #64748b;
+        }
+
+        .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger-label {
+            color: #1e3a5f;
+        }
+
+        #compliance-table-wrapper .rainbow-loader {
+            flex-shrink: 0;
+            padding: 16px;
+            background: #fafbfc;
+            border-top: 1px solid #dee2e6;
+        }
+
         .table-responsive {
             position: relative;
             border: 1px solid #e9ecef;
@@ -86,31 +202,31 @@
         }
 
         /* Parent summary rows (SKU or Parent contains PARENT) */
-        #compliance-master-datatable tbody tr.compliance-row-parent-keyword > td {
+        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword .tabulator-cell {
             background-color: #fff9c4 !important;
         }
 
-        #compliance-master-datatable tbody tr.compliance-row-parent-keyword:hover > td {
+        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover .tabulator-cell {
             background-color: #fff59d !important;
         }
 
-        #compliance-master-datatable tbody tr.compliance-row-parent-keyword:hover {
+        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover {
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
         }
 
-        #compliance-master-datatable tbody tr.compliance-row-parent-keyword > td.compliance-status-col {
+        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword .tabulator-cell.compliance-status-col {
             background-color: #fff9c4 !important;
         }
 
-        #compliance-master-datatable tbody tr.compliance-row-parent-keyword:hover > td.compliance-status-col {
+        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover .tabulator-cell.compliance-status-col {
             background-color: #fff59d !important;
         }
 
-        #compliance-master-datatable tbody tr.compliance-row-parent-keyword td.compliance-parent-col:hover {
+        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword .tabulator-cell.compliance-parent-col:hover {
             background-color: #fffde7 !important;
         }
 
-        #compliance-master-datatable tbody tr.compliance-row-parent-keyword:hover td.compliance-parent-col:hover {
+        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover .tabulator-cell.compliance-parent-col:hover {
             background-color: #fff9c4 !important;
         }
 
@@ -224,55 +340,51 @@
             border-radius: 4px;
         }
 
-        /* Parent column: ~30% narrower than a typical ~14rem column (14 × 0.7 ≈ 9.8rem) */
-        #compliance-master-datatable th.compliance-parent-col,
-        #compliance-master-datatable td.compliance-parent-col {
-            max-width: 9.8rem;
-            width: 9.8rem;
+        /* Parent: shrink with fitColumns; ellipsis until hover expand */
+        #compliance-tabulator .tabulator-cell.compliance-parent-col {
+            min-width: 0;
             box-sizing: border-box;
-        }
-
-        #compliance-master-datatable td.compliance-parent-col {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap !important;
             text-align: left;
         }
 
-        #compliance-master-datatable td.compliance-parent-col:hover {
+        #compliance-tabulator .tabulator-cell.compliance-parent-col:hover {
             white-space: normal !important;
             word-break: break-word;
             overflow: visible;
             max-width: min(28rem, 78vw);
             width: max-content;
-            min-width: 9.8rem;
+            min-width: 3.5rem;
             position: relative;
             z-index: 25;
             box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
             background-color: #fff;
         }
 
-        #compliance-master-datatable tbody tr:nth-child(even) td.compliance-parent-col:hover {
+        #compliance-tabulator .tabulator-row.tabulator-row-even .tabulator-cell.compliance-parent-col:hover {
             background-color: #f8fafc;
         }
 
-        #compliance-master-datatable tbody tr:hover td.compliance-parent-col:hover {
+        #compliance-tabulator .tabulator-row:hover .tabulator-cell.compliance-parent-col:hover {
             background-color: #e8f0fe;
         }
 
         /* Status column: CP / product-master style — #284a9e header, pill filter, marble + label cells */
-        #compliance-master-datatable thead th.compliance-status-col {
+        #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col {
             background: #284a9e !important;
             color: #fff !important;
-            text-align: center;
-            vertical-align: top;
-            padding: 10px 8px 8px;
-            text-transform: none;
-            border-color: rgba(255, 255, 255, 0.12) !important;
         }
 
-        #compliance-master-datatable thead th.compliance-status-col:hover {
+        #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col:hover {
             background: #3257b0 !important;
+        }
+
+        #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col .tabulator-col-content {
+            text-align: center;
+            vertical-align: top;
+            text-transform: none;
         }
 
         .cm-status-header-label {
@@ -401,7 +513,7 @@
             background: radial-gradient(circle at 32% 28%, #e5e7eb, #9ca3af 45%, #374151);
         }
 
-        #compliance-master-datatable tbody td.compliance-status-col {
+        #compliance-tabulator .tabulator-cell.compliance-status-col {
             background-color: #f8f9fa !important;
             color: #4a5568;
             font-weight: 500;
@@ -410,32 +522,31 @@
             border-bottom: 1px solid #e2e8f0;
         }
 
-        #compliance-master-datatable tbody td.compliance-status-col .cm-status-cell-inner {
+        #compliance-tabulator .tabulator-cell.compliance-status-col .cm-status-cell-inner {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
         }
 
-        #compliance-master-datatable tbody td.compliance-status-col .cm-status-cell-text {
+        #compliance-tabulator .tabulator-cell.compliance-status-col .cm-status-cell-text {
             line-height: 1.2;
         }
 
-        #compliance-master-datatable tbody tr:hover td.compliance-status-col {
+        #compliance-tabulator .tabulator-row:hover .tabulator-cell.compliance-status-col {
             background-color: #eef1f5 !important;
             color: #2d3748;
         }
 
-        #compliance-master-datatable tbody tr:nth-child(even) td.compliance-status-col {
+        #compliance-tabulator .tabulator-row.tabulator-row-even .tabulator-cell.compliance-status-col {
             background-color: #f8f9fa !important;
         }
 
-        #compliance-master-datatable tbody tr:nth-child(even):hover td.compliance-status-col {
+        #compliance-tabulator .tabulator-row.tabulator-row-even:hover .tabulator-cell.compliance-status-col {
             background-color: #eef1f5 !important;
         }
 
-        #compliance-master-datatable th.compliance-checkbox-col,
-        #compliance-master-datatable td.compliance-checkbox-cell {
+        #compliance-tabulator .tabulator-cell.compliance-checkbox-cell {
             width: 44px;
             max-width: 44px;
             text-align: center;
@@ -522,6 +633,16 @@
             'logo' => 'Logo',
             'graph' => 'Graph',
         ];
+        $__cmFilterIds = [
+            'battery' => 'filterBattery',
+            'wireless' => 'filterWireless',
+            'electric' => 'filterElectric',
+            'gcc' => 'filterGcc',
+            'blanket' => 'filterBlanket',
+            'bluetooth' => 'filterBluetooth',
+            'logo' => 'filterLogo',
+            'graph' => 'filterGraph',
+        ];
     @endphp
 
     @include('layouts.shared.page-title', [
@@ -529,215 +650,69 @@
         'sub_title' => 'Compliance Masters Analysis',
     ])
 
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11000;"></div>
+
     <div class="row">
         <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <div class="input-group">
-                                <span class="input-group-text"><i class="fas fa-search"></i></span>
-                                <input type="text" id="customSearch" class="form-control"
-                                    placeholder="Search compliance...">
-                                <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear</button>
+            <div class="card shadow-sm">
+                <div class="card-body py-3">
+                    <h4 class="mb-1">Compliance Masters</h4>
+                    <p class="text-muted small mb-3">Compliance Masters Analysis</p>
+                    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="complianceBulkEditBtn" title="Edit compliance fields for all selected rows">
+                            <i class="fas fa-pen-to-square me-1"></i> Bulk edit
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" id="addComplianceBtn">
+                            <i class="fas fa-plus me-1"></i> Add Compliance Data
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+                            <i class="fas fa-upload me-1"></i> Import Excel
+                        </button>
+                        <button type="button" class="btn btn-sm btn-success" id="downloadExcel">
+                            <i class="fas fa-file-excel me-1"></i> Download Excel
+                        </button>
+                    </div>
+                    <div id="cm-summary-stats" class="mt-2 p-3 bg-light rounded">
+                        <h6 class="mb-3">Summary statistics</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">Parents <span id="cm-summary-parent">(0)</span></span>
+                            <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">SKUs <span id="cm-summary-sku">(0)</span></span>
+                            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">Battery <span id="cm-summary-battery">(0)</span></span>
+                            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">Wireless <span id="cm-summary-wireless">(0)</span></span>
+                            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">Electric <span id="cm-summary-electric">(0)</span></span>
+                            <span class="badge bg-info fs-6 p-2" style="color: white; font-weight: bold;">GCC <span id="cm-summary-gcc">(0)</span></span>
+                            <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;">Blanket <span id="cm-summary-blanket">(0)</span></span>
+                            <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">Bluetooth <span id="cm-summary-bluetooth">(0)</span></span>
+                            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">Logo <span id="cm-summary-logo">(0)</span></span>
+                            <span class="badge fs-6 p-2" style="background-color: purple; color: white; font-weight: bold;">Graph <span id="cm-summary-graph">(0)</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="compliance-table-wrapper">
+                        <div class="cm-toolbar-search-strip p-2 bg-light border-bottom">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-white"><i class="fas fa-search"></i></span>
+                                <input type="text" id="customSearch" class="form-control form-control-sm" placeholder="Search Parent, SKU, or Status...">
+                                <button class="btn btn-outline-secondary btn-sm" type="button" id="clearSearch">Clear</button>
                             </div>
                         </div>
-                        <div class="col-md-6 text-end">
-                            <button type="button" class="btn btn-outline-primary me-2" id="complianceBulkEditBtn" title="Edit compliance fields for all selected rows">
-                                <i class="fas fa-pen-to-square me-1"></i> Bulk edit
-                            </button>
-                            <button type="button" class="btn btn-primary me-2" id="addComplianceBtn">
-                                <i class="fas fa-plus me-1"></i> Add Compliance Data
-                            </button>
-                            <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#importModal">
-                                <i class="fas fa-upload me-1"></i> Import Excel
-                            </button>
-                            <button type="button" class="btn btn-success" id="downloadExcel">
-                                <i class="fas fa-file-excel me-1"></i> Download Excel
-                            </button>
+                        <div id="compliance-tabulator" class="cm-tabulator-host" aria-label="Compliance data grid"></div>
+
+                        <div id="rainbow-loader" class="rainbow-loader">
+                        <div class="wave"></div>
+                        <div class="wave"></div>
+                        <div class="wave"></div>
+                        <div class="wave"></div>
+                        <div class="wave"></div>
+                        <div class="loading-text">Loading Compliance Masters Data...</div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <!-- Import Modal -->
-                    <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-dialog-centered">
-                            <div class="modal-content">
-                                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
-                                    <h5 class="modal-title" id="importModalLabel">
-                                        <i class="fas fa-upload me-2"></i>Import Compliance Data
-                                    </h5>
-                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <div class="alert alert-info">
-                                        <i class="fas fa-info-circle me-2"></i>
-                                        <strong>Instructions:</strong>
-                                        <ol class="mb-0 mt-2">
-                                            <li>Download the sample file below</li>
-                                            <li>Use <strong>N/A</strong> or <strong>REQ</strong> per column. After import, open each SKU to attach the <strong>image</strong> and <strong>PDF</strong> required for REQ fields.</li>
-                                            <li>Upload the completed file</li>
-                                        </ol>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleBtn">
-                                            <i class="fas fa-download me-2"></i>Download Sample File
-                                        </button>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="importFile" class="form-label fw-bold">Select Excel File</label>
-                                        <input type="file" class="form-control" id="importFile" accept=".xlsx,.xls,.csv">
-                                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
-                                        <div id="fileError" class="text-danger mt-2" style="display: none;"></div>
-                                    </div>
-
-                                    <div id="importProgress" class="progress mb-3" style="display: none;">
-                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                                    </div>
-
-                                    <div id="importResult" class="alert" style="display: none;"></div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" id="importBtn" disabled>
-                                        <i class="fas fa-upload me-2"></i>Import
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="table-responsive">
-                        <table id="compliance-master-datatable" class="table dt-responsive nowrap w-100">
-                            <thead>
-                                <tr>
-                                    <th>Image</th>
-                                    <th class="compliance-parent-col">
-                                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                            <span>Parent</span>
-                                            <span id="parentCount">(0)</span>
-                                        </div>
-                                        <input type="text" id="parentSearch" class="form-control-sm"
-                                            placeholder="Search Parent">
-                                    </th>
-                                    <th>
-                                        <div style="display: flex; align-items: center; gap: 10px;">
-                                            <span>SKU</span>
-                                            <span id="skuCount">(0)</span>
-                                        </div>
-                                        <input type="text" id="skuSearch" class="form-control-sm"
-                                            placeholder="Search SKU">
-                                    </th>
-                                    <th class="compliance-checkbox-col text-center">
-                                        <input type="checkbox" id="complianceSelectAllCheckbox" title="Select all visible rows" aria-label="Select all visible rows">
-                                    </th>
-                                    <th class="compliance-status-col">
-                                        <div class="cm-status-header-label">STATUS</div>
-                                        <div class="cm-status-filter-wrap">
-                                            <button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">
-                                                <span class="cm-status-filter-trigger-label">All</span>
-                                                <span style="font-size:9px;opacity:0.85;" aria-hidden="true">▼</span>
-                                            </button>
-                                            <input type="hidden" id="filterComplianceStatus" value="all" autocomplete="off">
-                                            <div class="cm-status-filter-menu" role="listbox" id="cmStatusFilterMenu">
-                                                <button type="button" class="cm-status-filter-item" data-value="all" role="option">
-                                                    <span class="cm-status-filter-check" aria-hidden="true">✓</span>
-                                                    <span>All</span>
-                                                </button>
-                                                <button type="button" class="cm-status-filter-item" data-value="missing" role="option">
-                                                    <span class="cm-status-filter-item-spacer"></span>
-                                                    <span>Missing</span>
-                                                </button>
-                                                <button type="button" class="cm-status-filter-item" data-value="active" role="option">
-                                                    <span class="cm-status-marble cm-status-marble--active"></span>
-                                                    <span>Active</span>
-                                                </button>
-                                                <button type="button" class="cm-status-filter-item" data-value="inactive" role="option">
-                                                    <span class="cm-status-marble cm-status-marble--inactive"></span>
-                                                    <span>Inactive</span>
-                                                </button>
-                                                <button type="button" class="cm-status-filter-item" data-value="DC" role="option">
-                                                    <span class="cm-status-marble cm-status-marble--dc"></span>
-                                                    <span>DC</span>
-                                                </button>
-                                                <button type="button" class="cm-status-filter-item" data-value="upcoming" role="option">
-                                                    <span class="cm-status-marble cm-status-marble--upcoming"></span>
-                                                    <span>Upcoming</span>
-                                                </button>
-                                                <button type="button" class="cm-status-filter-item" data-value="2BDC" role="option">
-                                                    <span class="cm-status-marble cm-status-marble--2bdc"></span>
-                                                    <span>2BDC</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th>INV</th>
-                                    <th>
-                                        <div>Battery <span id="batteryMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterBattery" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>
-                                        <div>Wireless <span id="wirelessMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterWireless" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>
-                                        <div>Electric <span id="electricMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterElectric" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>
-                                        <div>GCC <span id="gccMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterGcc" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>
-                                        <div>Blanket <span id="blanketMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterBlanket" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>
-                                        <div>Bluetooth <span id="bluetoothMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterBluetooth" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>
-                                        <div>Logo <span id="logoMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterLogo" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>
-                                        <div>Graph <span id="graphMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterGraph" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-body"></tbody>
-                        </table>
-                    </div>
-
-                    <!-- Bulk edit modal -->
-                    <div class="modal fade" id="complianceBulkEditModal" tabindex="-1" aria-labelledby="complianceBulkEditModalLabel" aria-hidden="true">
+            <!-- Bulk edit modal -->
+            <div class="modal fade" id="complianceBulkEditModal" tabindex="-1" aria-labelledby="complianceBulkEditModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-lg modal-dialog-scrollable">
                             <div class="modal-content">
                                 <div class="modal-header">
@@ -788,13 +763,52 @@
                         </div>
                     </div>
 
-                    <div id="rainbow-loader" class="rainbow-loader">
-                        <div class="wave"></div>
-                        <div class="wave"></div>
-                        <div class="wave"></div>
-                        <div class="wave"></div>
-                        <div class="wave"></div>
-                        <div class="loading-text">Loading Compliance Masters Data...</div>
+            <!-- Import Modal -->
+            <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                            <h5 class="modal-title" id="importModalLabel">
+                                <i class="fas fa-upload me-2"></i>Import Compliance Data
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>Instructions:</strong>
+                                <ol class="mb-0 mt-2">
+                                    <li>Download the sample file below</li>
+                                    <li>Use <strong>N/A</strong> or <strong>REQ</strong> per column. After import, open each SKU to attach the <strong>image</strong> and <strong>PDF</strong> required for REQ fields.</li>
+                                    <li>Upload the completed file</li>
+                                </ol>
+                            </div>
+
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleBtn">
+                                    <i class="fas fa-download me-2"></i>Download Sample File
+                                </button>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="importFile" class="form-label fw-bold">Select Excel File</label>
+                                <input type="file" class="form-control" id="importFile" accept=".xlsx,.xls,.csv">
+                                <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
+                                <div id="fileError" class="text-danger mt-2" style="display: none;"></div>
+                            </div>
+
+                            <div id="importProgress" class="progress mb-3" style="display: none;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                            </div>
+
+                            <div id="importResult" class="alert" style="display: none;"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-primary" id="importBtn" disabled>
+                                <i class="fas fa-upload me-2"></i>Import
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -863,11 +877,14 @@
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Store the loaded data globally
             let tableData = [];
             let filteredData = [];
+            let complianceTable = null;
+            let complianceSearchSetupDone = false;
             let complianceFormMode = 'add';
             let complianceEditSku = '';
 
@@ -906,6 +923,11 @@
                 if (v === '' || v.toUpperCase() === 'N/A') return true;
                 if (v.toUpperCase() === 'REQ') return img === '' || pdf === '';
                 return false;
+            }
+
+            /** REQ column filter: only rows where that field is REQ (excludes N/A, empty, and other values). */
+            function isReqFilterMatchForItem(item, key) {
+                return complianceFieldStoredValue(item, key).toUpperCase() === 'REQ';
             }
 
             function complianceFieldCellHtml(item, key) {
@@ -1150,8 +1172,8 @@
             }
 
             function setupComplianceImageHoverPreview() {
-                const tbody = document.getElementById('table-body');
-                const tableScroll = document.querySelector('.table-responsive');
+                const host = document.getElementById('compliance-tabulator');
+                const tableScroll = host && host.querySelector('.tabulator-tableholder');
                 let previewEl = null;
                 let activeWrap = null;
 
@@ -1190,9 +1212,11 @@
                     });
                 }
 
-                tbody.addEventListener('mouseover', function(e) {
+                if (!host) return;
+
+                host.addEventListener('mouseover', function(e) {
                     const wrap = e.target.closest('.compliance-thumb-wrap');
-                    if (wrap && tbody.contains(wrap)) {
+                    if (wrap && host.contains(wrap)) {
                         const srcImg = wrap.querySelector('img');
                         if (!srcImg || !srcImg.getAttribute('src')) return;
                         activeWrap = wrap;
@@ -1206,13 +1230,13 @@
                     }
                 });
 
-                tbody.addEventListener('mousemove', function(e) {
+                host.addEventListener('mousemove', function(e) {
                     if (!activeWrap) return;
                     if (!activeWrap.contains(e.target)) return;
                     positionPreview(e.clientX, e.clientY);
                 });
 
-                tbody.addEventListener('mouseleave', hidePreview);
+                host.addEventListener('mouseleave', hidePreview);
 
                 if (tableScroll) {
                     tableScroll.addEventListener('scroll', hidePreview, { passive: true });
@@ -1269,11 +1293,12 @@
                 const raw = resolveProductMasterStatus(item);
                 const trimmed = String(raw || '').trim();
                 if (!trimmed) {
-                    return '<span class="cm-status-cell-inner"><span class="cm-status-marble cm-status-marble--muted"></span><span class="cm-status-cell-text">—</span></span>';
+                    return '<span class="cm-status-cell-inner"><span class="cm-status-marble cm-status-marble--muted" title="No status"></span></span>';
                 }
                 const mod = getComplianceStatusMarbleModifier(trimmed);
-                const label = escapeHtml(formatProductMasterStatusLabel(trimmed));
-                return `<span class="cm-status-cell-inner"><span class="cm-status-marble cm-status-marble--${mod}" title="${escapeHtml(trimmed)}"></span><span class="cm-status-cell-text">${label}</span></span>`;
+                const label = formatProductMasterStatusLabel(trimmed);
+                const titleAttr = escapeHtml(label === '—' ? trimmed : label);
+                return '<span class="cm-status-cell-inner"><span class="cm-status-marble cm-status-marble--' + mod + '" title="' + titleAttr + '"></span></span>';
             }
 
             function cmStatusFilterOptionLabels() {
@@ -1303,7 +1328,7 @@
 
             function refreshCmStatusFilterUI() {
                 const hidden = document.getElementById('filterComplianceStatus');
-                const wrap = document.querySelector('#compliance-master-datatable .cm-status-filter-wrap');
+                const wrap = document.querySelector('#compliance-tabulator .cm-status-filter-wrap');
                 if (!hidden || !wrap) return;
                 const trigger = wrap.querySelector('.cm-status-filter-trigger');
                 const labelEl = trigger && trigger.querySelector('.cm-status-filter-trigger-label');
@@ -1326,7 +1351,7 @@
 
                 document.addEventListener('click', function(e) {
                     const wrap = e.target.closest('.cm-status-filter-wrap');
-                    const table = document.getElementById('compliance-master-datatable');
+                    const table = document.getElementById('compliance-tabulator');
                     if (!table) return;
 
                     const item = e.target.closest('.cm-status-filter-item');
@@ -1390,7 +1415,6 @@
                             filteredData = [...tableData];
                             renderTable(filteredData);
                             updateCounts();
-                            setupSearch();
                         } else {
                             console.error('Invalid data format received from server');
                         }
@@ -1408,116 +1432,256 @@
                 return sku.includes('PARENT') || par.includes('PARENT');
             }
 
-            // Render table
-            function renderTable(data) {
-                const tbody = document.getElementById('table-body');
-                tbody.innerHTML = '';
+            const CM_FIELD_FILTER_IDS = {
+                battery: 'filterBattery',
+                wireless: 'filterWireless',
+                electric: 'filterElectric',
+                gcc: 'filterGcc',
+                blanket: 'filterBlanket',
+                bluetooth: 'filterBluetooth',
+                logo: 'filterLogo',
+                graph: 'filterGraph'
+            };
 
-                if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="15" class="text-center">No compliance data found</td></tr>';
-                    return;
-                }
+            const CM_FIELD_LABELS = {
+                battery: 'Battery',
+                wireless: 'Wireless',
+                electric: 'Electric',
+                gcc: 'GCC',
+                blanket: 'Blanket',
+                bluetooth: 'Bluetooth',
+                logo: 'Logo',
+                graph: 'Graph'
+            };
 
-                data.forEach(item => {
-                    const row = document.createElement('tr');
-                    if (complianceRowHasParentKeyword(item)) {
-                        row.classList.add('compliance-row-parent-keyword');
-                    }
-
-                    // Image column
-                    const imageCell = document.createElement('td');
-                    if (item.image_path) {
-                        const wrap = document.createElement('span');
-                        wrap.className = 'compliance-thumb-wrap';
-                        const img = document.createElement('img');
-                        img.src = item.image_path;
-                        img.alt = '';
-                        img.className = 'compliance-thumb-img';
-                        wrap.appendChild(img);
-                        imageCell.appendChild(wrap);
-                    } else {
-                        imageCell.textContent = '-';
-                    }
-                    row.appendChild(imageCell);
-
-                    // Parent column
-                    const parentCell = document.createElement('td');
-                    parentCell.className = 'compliance-parent-col';
-                    const rawParent = item.Parent != null && item.Parent !== '' ? String(item.Parent) : '';
-                    parentCell.textContent = rawParent || '-';
-                    if (rawParent) parentCell.title = rawParent;
-                    row.appendChild(parentCell);
-
-                    // SKU column (server sends normalized spacing; textContent is plain text, no HTML entities)
-                    const skuCell = document.createElement('td');
-                    skuCell.textContent = item.SKU != null && String(item.SKU) !== '' ? String(item.SKU) : '-';
-                    row.appendChild(skuCell);
-
-                    const checkboxCell = document.createElement('td');
-                    checkboxCell.className = 'compliance-checkbox-cell';
-                    if (complianceRowHasParentKeyword(item)) {
-                        checkboxCell.innerHTML = '<span class="text-muted user-select-none" title="Parent summary rows cannot be bulk-edited">—</span>';
-                    } else {
-                        const cb = document.createElement('input');
-                        cb.type = 'checkbox';
-                        cb.className = 'compliance-row-checkbox';
-                        cb.dataset.sku = String(item.SKU || '');
-                        cb.setAttribute('aria-label', 'Select row for bulk edit');
-                        checkboxCell.appendChild(cb);
-                    }
-                    row.appendChild(checkboxCell);
-
-                    // Status column (product-master style: marble + label)
-                    const statusCell = document.createElement('td');
-                    statusCell.className = 'compliance-status-col';
-                    statusCell.innerHTML = getComplianceStatusCellHtml(item);
-                    row.appendChild(statusCell);
-
-                    // INV column
-                    const invCell = document.createElement('td');
-                    if (item.shopify_inv === 0 || item.shopify_inv === "0") {
-                        invCell.textContent = "0";
-                    } else if (item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === "") {
-                        invCell.textContent = "-";
-                    } else {
-                        invCell.textContent = escapeHtml(item.shopify_inv);
-                    }
-                    row.appendChild(invCell);
-
-                    COMPLIANCE_BULK_FIELD_KEYS.forEach(fk => {
-                        const c = document.createElement('td');
-                        c.className = 'text-center';
-                        if (complianceRowHasParentKeyword(item)) {
-                            c.innerHTML = '<span class="text-muted user-select-none">—</span>';
-                        } else {
-                            c.innerHTML = complianceFieldCellHtml(item, fk);
+            function getComplianceTabulatorColumnDefinitions() {
+                const cols = [
+                    {
+                        title: 'Image',
+                        field: 'image_path',
+                        headerSort: false,
+                        width: 52,
+                        widthShrink: 1,
+                        hozAlign: 'center',
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (!v) return '-';
+                            return '<span class="compliance-thumb-wrap"><img class="compliance-thumb-img" src="' + escapeHtml(String(v)) + '" alt=""></span>';
                         }
-                        row.appendChild(c);
+                    },
+                    {
+                        title: '',
+                        field: 'Parent',
+                        headerSort: false,
+                        cssClass: 'compliance-parent-col',
+                        minWidth: 56,
+                        widthGrow: 2,
+                        titleFormatter: function() {
+                            const w = document.createElement('div');
+                            w.innerHTML = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>Parent</span><span id="parentCount">(0)</span></div>' +
+                                '<input type="text" id="parentSearch" class="form-control form-control-sm mt-1" placeholder="Search Parent" style="width:100%">';
+                            return w;
+                        },
+                        formatter: function(cell) {
+                            const item = cell.getRow().getData();
+                            const raw = item.Parent != null && item.Parent !== '' ? String(item.Parent) : '';
+                            if (!raw) return '-';
+                            return '<span title="' + escapeHtml(raw) + '">' + escapeHtml(raw) + '</span>';
+                        }
+                    },
+                    {
+                        title: '',
+                        field: 'SKU',
+                        headerSort: false,
+                        minWidth: 56,
+                        widthGrow: 2,
+                        titleFormatter: function() {
+                            const w = document.createElement('div');
+                            w.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span>SKU</span><span id="skuCount">(0)</span></div>' +
+                                '<input type="text" id="skuSearch" class="form-control form-control-sm mt-1" placeholder="Search SKU" style="width:100%">';
+                            return w;
+                        },
+                        formatter: function(cell) {
+                            const item = cell.getRow().getData();
+                            const v = item.SKU != null && String(item.SKU) !== '' ? String(item.SKU) : '';
+                            return v ? escapeHtml(v) : '-';
+                        }
+                    },
+                    {
+                        title: '',
+                        field: '_cb',
+                        headerSort: false,
+                        width: 40,
+                        widthShrink: 1,
+                        hozAlign: 'center',
+                        cssClass: 'compliance-checkbox-cell',
+                        titleFormatter: function() {
+                            const w = document.createElement('div');
+                            w.className = 'text-center';
+                            w.innerHTML = '<input type="checkbox" id="complianceSelectAllCheckbox" title="Select all visible rows" aria-label="Select all visible rows">';
+                            return w;
+                        },
+                        formatter: function(cell) {
+                            const item = cell.getRow().getData();
+                            if (complianceRowHasParentKeyword(item)) {
+                                return '<span class="text-muted user-select-none" title="Parent summary rows cannot be bulk-edited">—</span>';
+                            }
+                            const sku = String(item.SKU || '');
+                            return '<input type="checkbox" class="compliance-row-checkbox" data-sku="' + escapeHtml(sku) + '" aria-label="Select row for bulk edit">';
+                        }
+                    },
+                    {
+                        title: '',
+                        field: 'status',
+                        headerSort: false,
+                        cssClass: 'compliance-status-col',
+                        hozAlign: 'center',
+                        minWidth: 92,
+                        widthGrow: 1,
+                        titleFormatter: function() {
+                            const w = document.createElement('div');
+                            w.innerHTML = '<div class="cm-status-header-label">STATUS</div>' +
+                                '<div class="cm-status-filter-wrap">' +
+                                '<button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">' +
+                                '<span class="cm-status-filter-trigger-label">All</span>' +
+                                '<span style="font-size:9px;opacity:0.85;" aria-hidden="true">▼</span></button>' +
+                                '<input type="hidden" id="filterComplianceStatus" value="all" autocomplete="off">' +
+                                '<div class="cm-status-filter-menu" role="listbox" id="cmStatusFilterMenu">' +
+                                '<button type="button" class="cm-status-filter-item" data-value="all" role="option">' +
+                                '<span class="cm-status-filter-check" aria-hidden="true">✓</span><span>All</span></button>' +
+                                '<button type="button" class="cm-status-filter-item" data-value="missing" role="option">' +
+                                '<span class="cm-status-filter-item-spacer"></span><span>Missing</span></button>' +
+                                '<button type="button" class="cm-status-filter-item" data-value="active" role="option">' +
+                                '<span class="cm-status-marble cm-status-marble--active"></span><span>Active</span></button>' +
+                                '<button type="button" class="cm-status-filter-item" data-value="inactive" role="option">' +
+                                '<span class="cm-status-marble cm-status-marble--inactive"></span><span>Inactive</span></button>' +
+                                '<button type="button" class="cm-status-filter-item" data-value="DC" role="option">' +
+                                '<span class="cm-status-marble cm-status-marble--dc"></span><span>DC</span></button>' +
+                                '<button type="button" class="cm-status-filter-item" data-value="upcoming" role="option">' +
+                                '<span class="cm-status-marble cm-status-marble--upcoming"></span><span>Upcoming</span></button>' +
+                                '<button type="button" class="cm-status-filter-item" data-value="2BDC" role="option">' +
+                                '<span class="cm-status-marble cm-status-marble--2bdc"></span><span>2BDC</span></button>' +
+                                '</div></div>';
+                            return w;
+                        },
+                        formatter: function(cell) {
+                            return getComplianceStatusCellHtml(cell.getRow().getData());
+                        }
+                    },
+                    {
+                        title: 'INV',
+                        field: 'shopify_inv',
+                        headerSort: false,
+                        hozAlign: 'center',
+                        width: 48,
+                        widthShrink: 1,
+                        formatter: function(cell) {
+                            const item = cell.getRow().getData();
+                            const v = item.shopify_inv;
+                            if (v === 0 || v === '0') return '0';
+                            if (v === null || v === undefined || v === '') return '-';
+                            return escapeHtml(String(v));
+                        }
+                    }
+                ];
+
+                COMPLIANCE_BULK_FIELD_KEYS.forEach(function(fk) {
+                    const label = CM_FIELD_LABELS[fk] || fk;
+                    const missingId = fk + 'MissingCount';
+                    const filterId = CM_FIELD_FILTER_IDS[fk];
+                    cols.push({
+                        title: '',
+                        field: fk,
+                        headerSort: false,
+                        hozAlign: 'center',
+                        minWidth: 52,
+                        widthGrow: 1,
+                        cssClass: 'cm-compliance-field-col',
+                        titleFormatter: function() {
+                            const w = document.createElement('div');
+                            w.innerHTML = '<div>' + label + ' <span id="' + missingId + '" class="text-danger fw-bold">(0)</span></div>' +
+                                '<select id="' + filterId + '" class="form-select form-select-sm mt-1">' +
+                                '<option value="all">All Data</option><option value="req">REQ</option></select>';
+                            return w;
+                        },
+                        formatter: function(cell) {
+                            const item = cell.getRow().getData();
+                            if (complianceRowHasParentKeyword(item)) {
+                                return '<span class="text-muted user-select-none">—</span>';
+                            }
+                            return complianceFieldCellHtml(item, fk);
+                        }
                     });
-
-                    // Action column
-                    const actionCell = document.createElement('td');
-                    actionCell.className = 'text-center';
-                    actionCell.innerHTML = `
-                        <div class="d-inline-flex">
-                            <button type="button" class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
-                                <i class="bi bi-pencil-square"></i>
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
-                                <i class="bi bi-archive"></i>
-                            </button>
-                        </div>
-                    `;
-                    row.appendChild(actionCell);
-
-                    tbody.appendChild(row);
                 });
 
-                syncComplianceSelectAllCheckbox();
+                cols.push({
+                    title: 'Action',
+                    field: '_actions',
+                    headerSort: false,
+                    hozAlign: 'center',
+                    width: 78,
+                    widthShrink: 1,
+                    formatter: function(cell) {
+                        const item = cell.getRow().getData();
+                        return '<div class="d-inline-flex">' +
+                            '<button type="button" class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="' + escapeHtml(String(item.SKU ?? '')) + '">' +
+                            '<i class="bi bi-pencil-square"></i></button>' +
+                            '<button type="button" class="btn btn-sm btn-outline-danger delete-btn" data-id="' + escapeHtml(String(item.id ?? '')) + '" data-sku="' + escapeHtml(String(item.SKU ?? '')) + '">' +
+                            '<i class="bi bi-archive"></i></button></div>';
+                    }
+                });
+
+                return cols;
+            }
+
+            function renderTable(data) {
+                const d = Array.isArray(data) ? data : [];
+                if (typeof Tabulator === 'undefined') {
+                    console.error('Tabulator is not loaded');
+                    return;
+                }
+                if (!complianceTable) {
+                    complianceTable = new Tabulator('#compliance-tabulator', {
+                        data: d,
+                        layout: 'fitColumns',
+                        layoutColumnsOnNewData: true,
+                        height: '100%',
+                        placeholder: 'No compliance data found',
+                        movableColumns: false,
+                        columnDefaults: {
+                            headerSort: false
+                        },
+                        columns: getComplianceTabulatorColumnDefinitions(),
+                        rowFormatter: function(row) {
+                            const el = row.getElement();
+                            if (complianceRowHasParentKeyword(row.getData())) {
+                                el.classList.add('tabulator-com-parent-keyword');
+                            } else {
+                                el.classList.remove('tabulator-com-parent-keyword');
+                            }
+                        },
+                        tableBuilt: function() {
+                            const cols = complianceTable.getColumns();
+                            cols.forEach(function(col) {
+                                if (col.getField() === 'status') {
+                                    const hel = col.getElement();
+                                    if (hel) hel.classList.add('cm-tabulator-status-header-col');
+                                }
+                            });
+                            refreshCmStatusFilterUI();
+                            setupSearch();
+                        }
+                    });
+                    syncComplianceSelectAllCheckbox();
+                } else {
+                    complianceTable.replaceData(d).then(function() {
+                        syncComplianceSelectAllCheckbox();
+                    });
+                }
             }
 
             function getComplianceRowCheckboxes() {
-                return [...document.querySelectorAll('#table-body .compliance-row-checkbox')];
+                return [...document.querySelectorAll('#compliance-tabulator .compliance-row-checkbox')];
             }
 
             function syncComplianceSelectAllCheckbox() {
@@ -1545,16 +1709,16 @@
             }
 
             function setupComplianceBulkEdit() {
-                const tbody = document.getElementById('table-body');
-                const master = document.getElementById('complianceSelectAllCheckbox');
                 const bulkBtn = document.getElementById('complianceBulkEditBtn');
                 const applyBtn = document.getElementById('complianceBulkEditApplyBtn');
                 const modalEl = document.getElementById('complianceBulkEditModal');
 
-                if (!tbody || !master || !bulkBtn || !applyBtn || !modalEl) return;
+                if (!bulkBtn || !applyBtn || !modalEl) return;
 
-                master.addEventListener('change', function() {
-                    getComplianceRowCheckboxes().forEach(cb => {
+                document.addEventListener('change', function complianceSelectAllChange(e) {
+                    if (e.target.id !== 'complianceSelectAllCheckbox') return;
+                    const master = e.target;
+                    getComplianceRowCheckboxes().forEach(function(cb) {
                         cb.checked = master.checked;
                     });
                     syncComplianceSelectAllCheckbox();
@@ -1563,12 +1727,13 @@
                     }
                 });
 
-                tbody.addEventListener('change', function(e) {
-                    if (e.target.classList.contains('compliance-row-checkbox')) {
-                        syncComplianceSelectAllCheckbox();
-                        if (modalEl.classList.contains('show')) {
-                            updateComplianceBulkEditModalState();
-                        }
+                document.addEventListener('change', function complianceRowCheckboxChange(e) {
+                    if (!e.target.classList.contains('compliance-row-checkbox')) return;
+                    const host = document.getElementById('compliance-tabulator');
+                    if (!host || !host.contains(e.target)) return;
+                    syncComplianceSelectAllCheckbox();
+                    if (modalEl.classList.contains('show')) {
+                        updateComplianceBulkEditModalState();
                     }
                 });
 
@@ -1739,6 +1904,21 @@
                 document.getElementById('bluetoothMissingCount').textContent = `(${bluetoothMissingCount})`;
                 document.getElementById('logoMissingCount').textContent = `(${logoMissingCount})`;
                 document.getElementById('graphMissingCount').textContent = `(${graphMissingCount})`;
+
+                const sp = (id, val) => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = `(${val})`;
+                };
+                sp('cm-summary-parent', parentSet.size);
+                sp('cm-summary-sku', skuCount);
+                sp('cm-summary-battery', batteryMissingCount);
+                sp('cm-summary-wireless', wirelessMissingCount);
+                sp('cm-summary-electric', electricMissingCount);
+                sp('cm-summary-gcc', gccMissingCount);
+                sp('cm-summary-blanket', blanketMissingCount);
+                sp('cm-summary-bluetooth', bluetoothMissingCount);
+                sp('cm-summary-logo', logoMissingCount);
+                sp('cm-summary-graph', graphMissingCount);
             }
 
             // Apply all filters
@@ -1784,38 +1964,38 @@
 
                     // Battery filter
                     const filterBattery = document.getElementById('filterBattery').value;
-                    if (filterBattery === 'missing' && !isMissingComplianceFieldForItem(item, 'battery')) {
+                    if (filterBattery === 'req' && !isReqFilterMatchForItem(item, 'battery')) {
                         return false;
                     }
 
                     // Wireless filter
                     const filterWireless = document.getElementById('filterWireless').value;
-                    if (filterWireless === 'missing' && !isMissingComplianceFieldForItem(item, 'wireless')) {
+                    if (filterWireless === 'req' && !isReqFilterMatchForItem(item, 'wireless')) {
                         return false;
                     }
 
                     // Electric filter
                     const filterElectric = document.getElementById('filterElectric').value;
-                    if (filterElectric === 'missing' && !isMissingComplianceFieldForItem(item, 'electric')) {
+                    if (filterElectric === 'req' && !isReqFilterMatchForItem(item, 'electric')) {
                         return false;
                     }
 
-                    if (document.getElementById('filterGcc').value === 'missing' && !isMissingComplianceFieldForItem(item, 'gcc')) {
+                    if (document.getElementById('filterGcc').value === 'req' && !isReqFilterMatchForItem(item, 'gcc')) {
                         return false;
                     }
-                    if (document.getElementById('filterBlanket').value === 'missing' && !isMissingComplianceFieldForItem(item, 'blanket')) {
+                    if (document.getElementById('filterBlanket').value === 'req' && !isReqFilterMatchForItem(item, 'blanket')) {
                         return false;
                     }
-                    if (document.getElementById('filterBluetooth').value === 'missing' && !isMissingComplianceFieldForItem(item, 'bluetooth')) {
+                    if (document.getElementById('filterBluetooth').value === 'req' && !isReqFilterMatchForItem(item, 'bluetooth')) {
                         return false;
                     }
-                    if (document.getElementById('filterLogo').value === 'missing' && !isMissingComplianceFieldForItem(item, 'logo')) {
+                    if (document.getElementById('filterLogo').value === 'req' && !isReqFilterMatchForItem(item, 'logo')) {
                         return false;
                     }
 
                     // Graph filter
                     const filterGraph = document.getElementById('filterGraph').value;
-                    if (filterGraph === 'missing' && !isMissingComplianceFieldForItem(item, 'graph')) {
+                    if (filterGraph === 'req' && !isReqFilterMatchForItem(item, 'graph')) {
                         return false;
                     }
 
@@ -1826,26 +2006,34 @@
 
             // Setup search functionality
             function setupSearch() {
-                // Parent search
+                if (complianceSearchSetupDone) return;
+
                 const parentSearch = document.getElementById('parentSearch');
+                const skuSearch = document.getElementById('skuSearch');
+                const customSearch = document.getElementById('customSearch');
+                const clearSearchBtn = document.getElementById('clearSearch');
+                if (!parentSearch || !skuSearch || !customSearch || !clearSearchBtn) return;
+
+                const filterIds = ['filterBattery', 'filterWireless', 'filterElectric', 'filterGcc', 'filterBlanket', 'filterBluetooth', 'filterLogo', 'filterGraph'];
+                for (let i = 0; i < filterIds.length; i++) {
+                    if (!document.getElementById(filterIds[i])) return;
+                }
+
+                complianceSearchSetupDone = true;
+
                 parentSearch.addEventListener('input', function() {
                     applyFilters();
                 });
 
-                // SKU search
-                const skuSearch = document.getElementById('skuSearch');
                 skuSearch.addEventListener('input', function() {
                     applyFilters();
                 });
 
-                // Custom search
-                const customSearch = document.getElementById('customSearch');
                 customSearch.addEventListener('input', function() {
                     applyFilters();
                 });
 
-                // Clear search
-                document.getElementById('clearSearch').addEventListener('click', function() {
+                clearSearchBtn.addEventListener('click', function() {
                     customSearch.value = '';
                     parentSearch.value = '';
                     skuSearch.value = '';
@@ -1860,7 +2048,7 @@
                     document.getElementById('filterGraph').value = 'all';
                     const fcs = document.getElementById('filterComplianceStatus');
                     if (fcs) fcs.value = 'all';
-                    document.querySelectorAll('#compliance-master-datatable .cm-status-filter-wrap.is-open').forEach(x => {
+                    document.querySelectorAll('#compliance-tabulator .cm-status-filter-wrap.is-open').forEach(x => {
                         x.classList.remove('is-open');
                         const t = x.querySelector('.cm-status-filter-trigger');
                         if (t) t.setAttribute('aria-expanded', 'false');
@@ -1869,45 +2057,24 @@
                     applyFilters();
                 });
 
-                // Column filters
-                document.getElementById('filterBattery').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterWireless').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterElectric').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterGcc').addEventListener('change', function() {
-                    applyFilters();
-                });
-                document.getElementById('filterBlanket').addEventListener('change', function() {
-                    applyFilters();
-                });
-                document.getElementById('filterBluetooth').addEventListener('change', function() {
-                    applyFilters();
-                });
-                document.getElementById('filterLogo').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterGraph').addEventListener('change', function() {
-                    applyFilters();
+                filterIds.forEach(function(fid) {
+                    document.getElementById(fid).addEventListener('change', function() {
+                        applyFilters();
+                    });
                 });
             }
 
             // Toast notification function
             function showToast(type, message) {
-                // Remove existing toasts
                 document.querySelectorAll('.custom-toast').forEach(t => t.remove());
-                
+
                 const toast = document.createElement('div');
-                toast.className = `custom-toast toast align-items-center text-bg-${type} border-0 show position-fixed top-0 end-0 m-4`;
-                toast.style.zIndex = 2000;
+                const toastContainer = document.querySelector('.toast-container');
+                const useContainer = !!toastContainer;
+                toast.className = useContainer
+                    ? `custom-toast toast align-items-center text-bg-${type} border-0 show mb-2`
+                    : `custom-toast toast align-items-center text-bg-${type} border-0 show position-fixed top-0 end-0 m-4`;
+                if (!useContainer) toast.style.zIndex = '2000';
                 toast.setAttribute('role', 'alert');
                 toast.setAttribute('aria-live', 'assertive');
                 toast.setAttribute('aria-atomic', 'true');
@@ -1917,7 +2084,7 @@
                         <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                     </div>
                 `;
-                document.body.appendChild(toast);
+                (toastContainer || document.body).appendChild(toast);
 
                 setTimeout(() => {
                     toast.classList.remove('show');
@@ -2104,7 +2271,9 @@
             }
 
             function setupActionButtons() {
-                document.getElementById('table-body').addEventListener('click', function(e) {
+                const gridHost = document.getElementById('compliance-tabulator');
+                if (!gridHost) return;
+                gridHost.addEventListener('click', function(e) {
                     const editBtn = e.target.closest('.edit-btn');
                     if (editBtn && this.contains(editBtn)) {
                         e.preventDefault();

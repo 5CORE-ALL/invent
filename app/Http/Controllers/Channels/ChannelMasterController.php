@@ -46,6 +46,7 @@ use App\Models\AliExpressSheetData;
 use App\Models\AliexpressListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\AmazonSpCampaignReport;
@@ -1243,10 +1244,11 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // 28 days ending yesterday (Pacific) — matches AmazonSalesController / Daily Sales page
+        // Same rolling window as Amazon daily sales (Pacific, through yesterday)
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endToday = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(27)->startOfDay(); // 28 calendar days
+        $amazonWindowDays = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
+        $startAmazonWindow = $yesterdayPacific->copy()->subDays($amazonWindowDays - 1)->startOfDay();
 
         $activeAmazonOrders = function ($q) {
             $q->where(function ($w) {
@@ -1254,18 +1256,20 @@ class ChannelMasterController extends Controller
             });
         };
 
-        // Sales + order count from order totals (matches Amazon Daily Sales badge)
+        $effectiveTotal = AmazonOrder::effectiveOrderTotalSql('o');
+
+        // Sales + order count (matches Amazon Daily Sales badge: OrderTotal or line-item fallback)
         $orderHead = DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $start35)
+            ->where('o.order_date', '>=', $startAmazonWindow)
             ->where('o.order_date', '<=', $endToday)
             ->where($activeAmazonOrders)
-            ->selectRaw('COUNT(DISTINCT o.amazon_order_id) as order_count, COALESCE(SUM(o.total_amount), 0) as total_sales')
+            ->selectRaw("COUNT(DISTINCT o.amazon_order_id) as order_count, COALESCE(SUM({$effectiveTotal}), 0) as total_sales")
             ->first();
 
         // Line quantities only (item join)
         $qtyAgg = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $start35)
+            ->where('o.order_date', '>=', $startAmazonWindow)
             ->where('o.order_date', '<=', $endToday)
             ->where($activeAmazonOrders)
             ->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
@@ -1282,7 +1286,7 @@ class ChannelMasterController extends Controller
         $l60Orders = 0;
         $l60Sales = 0;
         
-        // DISABLED: L60 data from ShipHub - Amazon limited to 30 days only
+        // DISABLED: L60 data from ShipHub - Amazon rolling window matches daily sales page
         /*
         $latestDate = null;
         try {
