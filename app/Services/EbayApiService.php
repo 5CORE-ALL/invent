@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ProductStockMapping;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\EbayDescriptionToDm2Parser;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\Cache;
@@ -1876,5 +1877,146 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             (string) $itemId,
             $html
         );
+    }
+
+    /**
+     * Description Master 2.0: fetch live listing Description via Trading API GetItem, parse HTML into DM2 fields.
+     *
+     * @return array{
+     *   success: bool,
+     *   message?: string,
+     *   partial?: bool,
+     *   data?: array<string, mixed>
+     * }
+     */
+    public function fetchDescriptionForSku(string $identifier): array
+    {
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_metrics', $identifier, ['item_id']);
+        $itemId = $row && isset($row->item_id) ? trim((string) $row->item_id) : '';
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'Product not found in ebay_metrics (eBay item_id required).'];
+        }
+
+        $resp = null;
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $resp = $this->getItem($itemId);
+            if ($resp !== null) {
+                break;
+            }
+            if ($attempt < 3) {
+                sleep([1, 2][$attempt - 1] ?? 2);
+            }
+        }
+
+        if ($resp === null) {
+            return ['success' => false, 'message' => 'GetItem failed for item '.$itemId.'.'];
+        }
+
+        $item = $resp['Item'] ?? null;
+        if (! is_array($item)) {
+            return ['success' => false, 'message' => 'Unexpected GetItem response (no Item).'];
+        }
+
+        $desc = $item['Description'] ?? '';
+        if (is_array($desc)) {
+            $desc = '';
+        }
+        $desc = html_entity_decode((string) $desc, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        if (trim(strip_tags($desc)) === '' && trim($desc) === '') {
+            return [
+                'success' => false,
+                'message' => 'This listing has no description body.',
+                'partial' => false,
+                'data' => $this->normalizeDm2PayloadForFetch(EbayDescriptionToDm2Parser::parse('')),
+            ];
+        }
+
+        $dm2 = EbayDescriptionToDm2Parser::parse($desc);
+        $norm = $this->normalizeDm2PayloadForFetch($dm2);
+        $empty = $this->ebayDm2PayloadMostlyEmpty($norm);
+
+        if ($empty) {
+            return [
+                'success' => false,
+                'message' => 'Could not extract structured content from the listing description (HTML may be non-standard).',
+                'partial' => true,
+                'data' => $norm,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'eBay listing description loaded.',
+            'partial' => false,
+            'data' => $norm,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dm2
+     * @return array<string, mixed>
+     */
+    private function normalizeDm2PayloadForFetch(array $dm2): array
+    {
+        $images = $dm2['description_v2_images'] ?? [];
+        if (! is_array($images)) {
+            $images = [];
+        }
+        $images = array_values(array_pad(array_slice(array_values(array_filter(array_map('trim', $images), fn ($u) => $u !== '')), 0, 12), 12, ''));
+
+        $features = $dm2['description_v2_features'] ?? [];
+        if (! is_array($features)) {
+            $features = [];
+        }
+        while (count($features) < 4) {
+            $features[] = ['title' => '', 'body' => ''];
+        }
+        $features = array_slice($features, 0, 4);
+
+        $specs = $dm2['description_v2_specifications'] ?? [];
+        if (! is_array($specs)) {
+            $specs = [];
+        }
+
+        return [
+            'description_v2_bullets' => (string) ($dm2['description_v2_bullets'] ?? ''),
+            'description_v2_description' => (string) ($dm2['description_v2_description'] ?? ''),
+            'description_v2_images' => $images,
+            'description_v2_features' => $features,
+            'description_v2_specifications' => $specs,
+            'description_v2_package' => (string) ($dm2['description_v2_package'] ?? ''),
+            'description_v2_brand' => (string) ($dm2['description_v2_brand'] ?? ''),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dm2
+     */
+    private function ebayDm2PayloadMostlyEmpty(array $dm2): bool
+    {
+        $hasText = trim((string) ($dm2['description_v2_bullets'] ?? '')) !== ''
+            || trim((string) ($dm2['description_v2_description'] ?? '')) !== ''
+            || trim((string) ($dm2['description_v2_package'] ?? '')) !== ''
+            || trim((string) ($dm2['description_v2_brand'] ?? '')) !== '';
+        $imgs = $dm2['description_v2_images'] ?? [];
+        $hasImg = is_array($imgs) && array_filter($imgs, fn ($u) => is_string($u) && trim($u) !== '') !== [];
+        $feats = $dm2['description_v2_features'] ?? [];
+        $hasFeat = false;
+        if (is_array($feats)) {
+            foreach ($feats as $f) {
+                if (is_array($f) && (trim((string) ($f['title'] ?? '')) !== '' || trim((string) ($f['body'] ?? '')) !== '')) {
+                    $hasFeat = true;
+                    break;
+                }
+            }
+        }
+        $specs = $dm2['description_v2_specifications'] ?? [];
+
+        return ! $hasText && ! $hasImg && ! $hasFeat && (! is_array($specs) || $specs === []);
     }
 }

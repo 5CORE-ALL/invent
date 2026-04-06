@@ -34,8 +34,11 @@
                         <label class="small text-muted mb-0">SKU</label>
                         <input type="text" id="dm2Sku" class="form-control form-control-sm" style="max-width:220px;" placeholder="e.g. 138 RU" autocomplete="off">
                         <button type="button" class="btn btn-primary btn-sm" id="dm2LoadBtn"><i class="fas fa-download"></i> Load</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="dm2FetchAmazonBtn" title="A+ Content API + listings fallback"><i class="fab fa-amazon"></i> Fetch from Amazon</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="dm2FetchEbayBtn" title="Trading API GetItem"><i class="fab fa-ebay"></i> Fetch from eBay</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="dm2SaveDraftBtn"><i class="fas fa-save"></i> Save draft</button>
                     </div>
+                    <div id="dm2FetchStatus" class="small text-muted mb-2" style="display:none;"><i class="fas fa-spinner fa-spin"></i> <span id="dm2FetchStatusText">Fetching…</span></div>
 
                     <div class="dm2-section-title">📝 Bullet Points (5 lines)</div>
                     <textarea id="dm2Bullets" class="form-control font-monospace mb-3" rows="6" placeholder="One bullet per line. Optional format: TITLE - detail text"></textarea>
@@ -189,6 +192,52 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    const dm2FetchStatus = document.getElementById('dm2FetchStatus');
+    const dm2FetchStatusText = document.getElementById('dm2FetchStatusText');
+
+    function setFetchLoading(on, text) {
+        if (on) {
+            dm2FetchStatus.style.display = 'block';
+            dm2FetchStatusText.textContent = text || 'Fetching…';
+            document.getElementById('dm2FetchAmazonBtn').disabled = true;
+            document.getElementById('dm2FetchEbayBtn').disabled = true;
+        } else {
+            dm2FetchStatus.style.display = 'none';
+            document.getElementById('dm2FetchAmazonBtn').disabled = false;
+            document.getElementById('dm2FetchEbayBtn').disabled = false;
+        }
+    }
+
+    async function postFetch(url, label) {
+        const sku = (document.getElementById('dm2Sku').value || '').trim();
+        if (!sku) { toast('Enter a SKU', false); return; }
+        setFetchLoading(true, label + '…');
+        try {
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                body: JSON.stringify({ sku }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                toast(j.message || ('HTTP ' + r.status), false);
+                return;
+            }
+            if (j.data) {
+                fillForm(j.data);
+            }
+            if (j.success) {
+                toast(j.message || 'Fetched');
+            } else {
+                toast(j.message || 'Fetch returned no usable content', false);
+            }
+        } catch (e) {
+            toast(e.message, false);
+        } finally {
+            setFetchLoading(false);
+        }
+    }
+
     document.getElementById('dm2LoadBtn').addEventListener('click', async () => {
         const sku = (document.getElementById('dm2Sku').value || '').trim();
         if (!sku) { toast('Enter a SKU', false); return; }
@@ -200,6 +249,9 @@ document.addEventListener('DOMContentLoaded', () => {
             toast('Loaded data for ' + sku);
         } catch (e) { toast(e.message, false); }
     });
+
+    document.getElementById('dm2FetchAmazonBtn').addEventListener('click', () => postFetch('/product-description-2/fetch/amazon', 'Loading A+ content from Amazon'));
+    document.getElementById('dm2FetchEbayBtn').addEventListener('click', () => postFetch('/product-description-2/fetch/ebay', 'Loading description from eBay'));
 
     document.getElementById('dm2SaveDraftBtn').addEventListener('click', async () => {
         const p = collectPayload();

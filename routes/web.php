@@ -2495,6 +2495,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-description-2/data', [DescriptionMaster2Controller::class, 'getData'])->name('product.description2.data');
     Route::post('/product-description-2/save', [DescriptionMaster2Controller::class, 'save'])->name('product.description2.save');
     Route::post('/product-description-2/push', [DescriptionMaster2Controller::class, 'push'])->name('product.description2.push');
+    Route::post('/product-description-2/fetch/amazon', [DescriptionMaster2Controller::class, 'fetchAmazon'])->name('product.description2.fetch.amazon');
+    Route::post('/product-description-2/fetch/ebay', [DescriptionMaster2Controller::class, 'fetchEbay'])->name('product.description2.fetch.ebay');
     Route::get('/features', fn () => view('features'))->name('features');
     Route::post('/features/save', [ProductMasterController::class, 'saveFeaturesData'])->name('features.save');
     Route::get('/product-images', fn () => view('images'))->name('images');
