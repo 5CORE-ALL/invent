@@ -155,6 +155,30 @@ class EbayTwoController extends Controller
             }
         }
 
+        // Forecast Analysis NRP (forecast_analysis.nr) — same as Faire / TikTok pricing.
+        $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+        $forecastNrpBySku = [];
+        $pmKeysForFa = $productMasters->keys()->map(fn ($s) => $normalizeSkuFa($s))->unique()->filter(fn ($s) => $s !== '')->values();
+        if ($pmKeysForFa->isNotEmpty()) {
+            $faRows = DB::table('forecast_analysis')
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $pmKeysForFa->all())
+                ->get(['sku', 'parent', 'nr', 'stage']);
+            foreach ($faRows->groupBy(fn ($r) => $normalizeSkuFa($r->sku)) as $k => $group) {
+                $withStage = $group->first(function ($r) {
+                    return $r->stage !== null && trim((string) $r->stage) !== '';
+                });
+                if ($withStage) {
+                    $forecastNrpBySku[$k] = $withStage;
+
+                    continue;
+                }
+                $withNr = $group->first(function ($r) {
+                    return $r->nr !== null && trim((string) $r->nr) !== '';
+                });
+                $forecastNrpBySku[$k] = $withNr ?? $group->first();
+            }
+        }
+
         $nrValues = EbayTwoDataView::whereIn("sku", $skus)->pluck("value", "sku");
         
         // Fetch listing status data for nr_req field
@@ -587,6 +611,16 @@ class EbayTwoController extends Controller
             // Image
             $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
 
+            $faRecNrp = $forecastNrpBySku[$normalizeSkuFa($pm->sku)] ?? null;
+            $nrpOut = '';
+            if ($faRecNrp && $faRecNrp->nr !== null && trim((string) $faRecNrp->nr) !== '') {
+                $nrpOut = strtoupper(trim((string) $faRecNrp->nr));
+                if (! in_array($nrpOut, ['REQ', 'NR', 'LATER'], true)) {
+                    $nrpOut = 'REQ';
+                }
+            }
+            $row['nrp'] = $nrpOut;
+
             $result[] = (object) $row;
         }
 
@@ -686,6 +720,16 @@ class EbayTwoController extends Controller
                 $row['Live'] = null;
                 $row['APlus'] = null;
                 $row["image_path"] = null;
+
+                $faRecNrpOb = $forecastNrpBySku[$normalizeSkuFa($metricSku)] ?? null;
+                $nrpOutOb = '';
+                if ($faRecNrpOb && $faRecNrpOb->nr !== null && trim((string) $faRecNrpOb->nr) !== '') {
+                    $nrpOutOb = strtoupper(trim((string) $faRecNrpOb->nr));
+                    if (! in_array($nrpOutOb, ['REQ', 'NR', 'LATER'], true)) {
+                        $nrpOutOb = 'REQ';
+                    }
+                }
+                $row['nrp'] = $nrpOutOb;
                 
                 $result[] = (object) $row;
             }

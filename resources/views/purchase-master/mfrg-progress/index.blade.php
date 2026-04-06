@@ -211,6 +211,7 @@
                                 <th data-column="18" class="text-center" hidden>NRP<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">QTY<div class="resizer"></div></th>
                                 <th data-column="10" class="text-center">Order<br/>Date<div class="resizer"></div></th>
+                                <th data-column="11" class="text-center">Delivery<br/>Date<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div>
                                     <input type="text" class="form-control column-search" data-search-column="6" placeholder="Search Supplier..." style="margin-top:4px; font-size:12px; height:28px; min-width: 120px;">
@@ -353,6 +354,14 @@
                                                 <span class="text-muted" style="font-size: 11px;">-</span>
                                             @endif
                                         </div>
+                                    </td>
+                                    <td data-column="11" class="text-center">
+                                        <input type="date"
+                                            value="{{ !empty($item->delivery_date) ? \Carbon\Carbon::parse($item->delivery_date)->format('Y-m-d') : '' }}"
+                                            data-sku="{{ $item->sku }}"
+                                            data-column="delivery_date"
+                                            class="form-control form-control-sm auto-save"
+                                            style="width: 80px; font-size: 13px;">
                                     </td>
                                     <td data-column="5" hidden>
                                         <div class="input-group input-group-sm" style="width:105px;">

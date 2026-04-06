@@ -154,6 +154,17 @@
         .red-bg {
             color: #ff2727 !important;
         }
+
+        /* Forecast NRP (REQ / 2BDC / LATER) — shared with Forecast Analysis */
+        .nrp-dot-cell { min-height: 32px; min-width: 44px; }
+        .nrp-dot-cell .nrp-status-dot {
+            display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+            border: 1px solid rgba(0,0,0,.12); flex-shrink: 0;
+        }
+        .nrp-dot-cell .nrp-nr-select {
+            opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
+        }
+        .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
     </style>
 @endsection
 
@@ -2241,6 +2252,34 @@
 
             // Event delegation for eye button clicks (add to SKU column formatter)
             let allTableData = []; // Store all unfiltered data
+
+            function ebay2EscHtmlAttr(val) {
+                if (val == null || val === '') return '';
+                return String(val).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            }
+
+            function ebay2UpdateForecastNrp(data, onSuccess, onFail) {
+                onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
+                onFail = typeof onFail === 'function' ? onFail : function() {};
+                $.post('{{ route("update.forecast.data") }}', {
+                    sku: data.sku,
+                    parent: data.parent != null ? String(data.parent) : '',
+                    column: 'NR',
+                    value: data.value,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                }).done(function(res) {
+                    if (res.success) {
+                        onSuccess();
+                    } else {
+                        console.warn('NRP not saved:', res.message);
+                        onFail();
+                    }
+                }).fail(function(err) {
+                    console.error('NRP save failed:', err);
+                    if (typeof showToast === 'function') showToast('Error saving NRP.', 'error');
+                    onFail();
+                });
+            }
             
             table = new Tabulator("#ebay2-table", {
                 ajaxURL: "/ebay2-data",
@@ -3991,6 +4030,63 @@
                         cellClick: function(e, cell) { e.stopPropagation(); },
                         width: 80
                     },
+                    {
+                        title: "NRP",
+                        field: "nrp",
+                        hozAlign: "center",
+                        sorter: "string",
+                        headerSort: true,
+                        width: 56,
+                        minWidth: 52,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT');
+                            if (isParent) {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            let value = cell.getValue();
+                            if (value === null || value === undefined || value === '') {
+                                value = rowData.nrp;
+                            }
+                            if (value === null || value === undefined) {
+                                value = '';
+                            } else {
+                                value = String(value).trim().toUpperCase();
+                            }
+                            if (!value || value === '') {
+                                value = 'REQ';
+                            }
+                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                                value = 'REQ';
+                            }
+                            const sku = String(rowData['(Child) sku'] || '');
+                            const parent = rowData.Parent != null ? String(rowData.Parent) : '';
+                            let dotColor = '#22c55e';
+                            let tip = 'REQ';
+                            if (value === 'NR') {
+                                dotColor = '#dc3545';
+                                tip = '2BDC';
+                            } else if (value === 'LATER') {
+                                dotColor = '#facc15';
+                                tip = 'LATER';
+                            }
+                            const skuAttr = ebay2EscHtmlAttr(sku);
+                            const parentAttr = ebay2EscHtmlAttr(parent);
+                            return (
+                                '<div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' +
+                                ebay2EscHtmlAttr(tip + ' (click to change)') + '">' +
+                                '<span class="nrp-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>' +
+                                '<select class="form-select form-select-sm nrp-nr-select position-absolute top-0 start-0 w-100 h-100" ' +
+                                'data-sku="' + skuAttr + '" data-parent="' + parentAttr + '" ' +
+                                'aria-label="NRP: ' + ebay2EscHtmlAttr(tip) + '">' +
+                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>REQ</option>' +
+                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>2BDC</option>' +
+                                '<option value="LATER"' + (value === 'LATER' ? ' selected' : '') + '>LATER</option>' +
+                                '</select></div>'
+                            );
+                        },
+                        cellClick: function(e, cell) { e.stopPropagation(); }
+                    },
                   
                     // {
                     //     title: "Listed",
@@ -4017,6 +4113,32 @@
                     //     width: 100
                     // }
                 ]
+            });
+
+            $(document).on('change', '#ebay2-table .nrp-nr-select', function() {
+                const $el = $(this);
+                const newValue = String($el.val() || '').trim();
+                const sku = $el.data('sku');
+                const parent = $el.data('parent');
+                if (!sku || !table) return;
+                const rows = table.searchRows('(Child) sku', '=', sku);
+                const row = rows && rows.length ? rows[0] : null;
+                const prevRaw = row ? String(row.getData().nrp ?? '').trim().toUpperCase() : '';
+                const prevSelect = (prevRaw === 'NR' || prevRaw === 'LATER') ? prevRaw : 'REQ';
+                ebay2UpdateForecastNrp(
+                    { sku: sku, parent: parent, value: newValue },
+                    function() {
+                        if (row) {
+                            row.update({ nrp: newValue }, true);
+                            const nrCell = row.getCells().find(function(c) { return c.getField() === 'nrp'; });
+                            if (nrCell) nrCell.reformat();
+                        }
+                        if (typeof showToast === 'function') showToast('NRP saved', 'success');
+                    },
+                    function() {
+                        $el.val(prevSelect);
+                    }
+                );
             });
 
             // SKU Search functionality

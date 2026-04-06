@@ -93,6 +93,9 @@
                                 <button id="supplier-remarks-btn" class="btn btn-success shadow-sm" style="border-radius: 6px; margin-left: 8px;" title="Follow-up History">
                                     <i class="fas fa-comment-alt"></i> Follow-up History
                                 </button>
+                                <button type="button" id="r2s-supplier-summary-btn" class="btn btn-info shadow-sm text-white" style="border-radius: 6px; margin-left: 8px;" title="Supplier-wise summary of visible table rows">
+                                    <i class="fas fa-table-list"></i> Supplier Summary
+                                </button>
                             </div>
                         </div>
 
@@ -426,6 +429,43 @@
                     </div>
                 </div>
 
+                <!-- Supplier Summary (visible rows only, DOM — no API) -->
+                <div class="modal fade" id="r2sSupplierSummaryModal" tabindex="-1" aria-labelledby="r2sSupplierSummaryModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header bg-info text-white">
+                                <h5 class="modal-title" id="r2sSupplierSummaryModalLabel">
+                                    <i class="fas fa-table-list me-2"></i>Supplier Summary
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="text-muted small mb-2">Totals are from <strong>currently visible</strong> rows in the table (after stage / zone filters).</p>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped table-bordered align-middle mb-0" id="r2s-supplier-summary-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Supplier</th>
+                                                <th class="text-end">Total QTY</th>
+                                                <th class="text-end">Total CBM</th>
+                                                <th class="text-end">Total TOTAL CBM</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="r2s-supplier-summary-tbody"></tbody>
+                                        <tfoot class="table-secondary fw-bold" id="r2s-supplier-summary-tfoot"></tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" id="r2s-supplier-summary-csv-btn" title="Download summary as CSV">
+                                    <i class="fas fa-file-csv me-1"></i> Export CSV
+                                </button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {{-- Same Add Notes form as transit-container-details --}}
                 <div class="modal fade" id="r2sTransitAddItemModal" tabindex="-1" aria-labelledby="r2sTransitAddItemModalLabel" aria-hidden="true">
                     <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
@@ -625,8 +665,11 @@
                                 <th data-column="8" data-column-name="shipped_cbm_in_container" hidden>Balance<div
                                         class="resizer"></div>
                                 </th>
-                                <th data-column="15" data-column-name="packing_list">Packing<br/>List<div class="resizer">
-                                    </div>
+                                <th data-column="15" data-column-name="packing_list">Packing<br/>List
+                                    @if(!empty($packingListSheetEditUrl ?? ''))
+                                        <a href="{{ $packingListSheetEditUrl }}" target="_blank" rel="noopener" class="small ms-1 align-top" title="Open packing list Google Sheet (edit links)" aria-label="Open packing list Google Sheet">↗</a>
+                                    @endif
+                                    <div class="resizer"></div>
                                 </th>
                                 <th data-column="9" data-column-name="payment">PMT<br/>Confirm<div class="resizer"></div>
                                 </th>
@@ -658,6 +701,10 @@
                                     $nrValue = strtoupper(trim($item->nr ?? ''));
                                 @endphp
                                 @continue($nrValue === 'NR')
+                                @php
+                                    $r2sPackingNorm = \App\Services\ReadyToShipPackingListSheetService::normalizeSku($item->sku ?? '');
+                                    $r2sPackingLink = ($packingListLinks ?? [])[$r2sPackingNorm] ?? null;
+                                @endphp
                             <tr data-stage="{{ $item->stage ?? '' }}" class="stage-row">
                                 <td data-column="0">
                                     <input type="checkbox" class="r2s-row-checkbox" data-id="{{ $item->id }}" data-sku="{{ e($item->sku) }}" aria-label="Select row">
@@ -806,6 +853,25 @@
                                     {{ is_numeric($item->qty ?? null) && is_numeric($cpValue) ? number_format($item->qty * $cpValue, 0, '.', '') : '' }}
                                 </td>
                                 <td data-column="8" hidden>{{ $item->shipped_cbm_in_container }}</td>
+                                <td data-column="15" class="text-center r2s-packing-list-cell" data-r2s-sku-norm="{{ $r2sPackingNorm }}">
+                                    @php
+                                        $packing = $item->packing_list ?? 'No';
+                                        $packingYes = strtoupper(trim($packing)) === 'YES';
+                                    @endphp
+                                    <div class="r2s-packing-list-inner d-inline-flex align-items-center justify-content-center gap-1 flex-wrap">
+                                        @if($r2sPackingLink)
+                                            <a href="{{ $r2sPackingLink }}" class="r2s-packing-list-link text-nowrap" target="_blank" rel="noopener" style="color:#0d9488;font-weight:600;">ready-to-ship</a>
+                                        @endif
+                                        <span
+                                            class="packing-toggle {{ $r2sPackingLink ? 'd-none' : '' }}"
+                                            data-sku="{{ $item->sku }}"
+                                            data-column="packing_list"
+                                            data-value="{{ $packingYes ? 'Yes' : 'No' }}"
+                                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $packingYes ? '#28a745' : '#dc3545' }};">
+                                        </span>
+                                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline r2s-packing-link-edit text-secondary" style="font-size:0.7rem;line-height:1;text-decoration:underline;" title="Set or edit URL (saves to database and Google Sheet)" data-sku="{{ e($item->sku) }}" data-current-url="{{ e($r2sPackingLink ?? '') }}">link</button>
+                                    </div>
+                                </td>
                                 <td data-column="9" class="text-center">
                                     @php
                                         $pmt = $item->payment ?? 'No';
@@ -854,19 +920,6 @@
                                     </span>
                                 </td>
                                 <td data-column="14" hidden>{{ $item->followup_delivery }}</td>
-                                <td data-column="15" class="text-center">
-                                    @php
-                                        $packing = $item->packing_list ?? 'No';
-                                        $packingYes = strtoupper(trim($packing)) === 'YES';
-                                    @endphp
-                                    <span
-                                        class="packing-toggle"
-                                        data-sku="{{ $item->sku }}"
-                                        data-column="packing_list"
-                                        data-value="{{ $packingYes ? 'Yes' : 'No' }}"
-                                        style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $packingYes ? '#28a745' : '#dc3545' }};">
-                                    </span>
-                                </td>
                                 <td data-column="16" hidden>{{ $item->container_rfq }}</td>
                                 <td data-column="17" hidden>{{ $item->quote_result }}</td>
                                  <td class="total-value d-none">
@@ -995,12 +1048,11 @@
                 saveColumnWidths();
             };
 
-        // Initialize header sorting
-        setupHeaderSorting();
-
             document.addEventListener('mousemove', resize);
             document.addEventListener('mouseup', stopResize);
         }
+
+        setupHeaderSorting();
 
         // Column visibility functionality
         const showAllBtn = document.getElementById('showAllColumns');
@@ -1009,6 +1061,9 @@
         const ths = document.querySelectorAll('.wide-table thead th');
 
         // Capitalize column names and create checkboxes
+        if (!dropdownContent || !dropdownBtn) {
+            console.warn('[ReadyToShip] Column dropdown elements missing; skipping column visibility UI.');
+        } else {
         dropdownContent.innerHTML = '';
         ths.forEach((th, i) => {
             const colIndex = i + 1;
@@ -1085,8 +1140,12 @@
             });
         });
 
-        // Show all columns functionality
-        showAllBtn.addEventListener('click', showAllColumns);
+        } // end column dropdown else
+
+        // Show all columns functionality (button optional — was missing and broke all later script)
+        if (showAllBtn) {
+            showAllBtn.addEventListener('click', showAllColumns);
+        }
 
         function showAllColumns() {
             document.querySelectorAll('.column-checkbox').forEach(checkbox => {
@@ -1509,6 +1568,143 @@
                     alert('AJAX error occurred.');
                 });
             });
+        });
+
+        // Refresh packing-list links from Google Sheet CSV (cached server-side; poll picks up sheet edits)
+        (function () {
+            var pollUrl = @json(route('ready.to.ship.packing.list.links'));
+            var intervalMs = 120000;
+
+            function applyPackingListLinks(links) {
+                if (!links || typeof links !== 'object') {
+                    return;
+                }
+                document.querySelectorAll('td.r2s-packing-list-cell[data-r2s-sku-norm]').forEach(function (td) {
+                    var key = td.getAttribute('data-r2s-sku-norm');
+                    if (!key) {
+                        return;
+                    }
+                    var href = links[key] || '';
+                    var inner = td.querySelector('.r2s-packing-list-inner');
+                    if (!inner) {
+                        return;
+                    }
+                    var a = inner.querySelector('a.r2s-packing-list-link');
+                    var dot = inner.querySelector('.packing-toggle');
+                    var editBtn = inner.querySelector('.r2s-packing-link-edit');
+                    if (href) {
+                        if (!a) {
+                            a = document.createElement('a');
+                            a.className = 'r2s-packing-list-link text-nowrap';
+                            a.target = '_blank';
+                            a.rel = 'noopener';
+                            a.textContent = 'ready-to-ship';
+                            a.style.color = '#0d9488';
+                            a.style.fontWeight = '600';
+                            inner.insertBefore(a, inner.firstChild);
+                        }
+                        a.setAttribute('href', href);
+                        a.classList.remove('d-none');
+                        if (dot) {
+                            dot.classList.add('d-none');
+                        }
+                    } else {
+                        if (a) {
+                            a.classList.add('d-none');
+                            a.removeAttribute('href');
+                        }
+                        if (dot) {
+                            dot.classList.remove('d-none');
+                        }
+                    }
+                    if (editBtn) {
+                        editBtn.setAttribute('data-current-url', href || '');
+                    }
+                });
+            }
+
+            function poll() {
+                fetch(pollUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data && data.success && data.links) {
+                            applyPackingListLinks(data.links);
+                        }
+                    })
+                    .catch(function () { /* ignore */ });
+            }
+
+            if (pollUrl) {
+                setInterval(poll, intervalMs);
+            }
+        })();
+
+        // Add / edit packing list URL (DB + Google Sheet)
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.r2s-packing-link-edit');
+            var tbl = document.getElementById('readyToShipTable');
+            if (!btn || !tbl || !tbl.contains(btn)) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            var sku = btn.getAttribute('data-sku');
+            var cur = btn.getAttribute('data-current-url') || '';
+            var msg = window.prompt('Packing list URL (https://...). Leave empty to remove link.', cur);
+            if (msg === null) {
+                return;
+            }
+            var v = String(msg).trim();
+            fetch('/ready-to-ship/inline-update-by-sku', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ sku: sku, column: 'packing_list_link', value: v })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.success) {
+                        alert('Error: ' + (res.message || 'Save failed'));
+                        return;
+                    }
+                    var td = btn.closest('td.r2s-packing-list-cell');
+                    var inner = td ? td.querySelector('.r2s-packing-list-inner') : null;
+                    if (!inner) {
+                        return;
+                    }
+                    var a = inner.querySelector('a.r2s-packing-list-link');
+                    var dot = inner.querySelector('.packing-toggle');
+                    btn.setAttribute('data-current-url', v);
+                    if (v) {
+                        if (!a) {
+                            a = document.createElement('a');
+                            a.className = 'r2s-packing-list-link text-nowrap';
+                            a.target = '_blank';
+                            a.rel = 'noopener';
+                            a.textContent = 'ready-to-ship';
+                            a.style.color = '#0d9488';
+                            a.style.fontWeight = '600';
+                            inner.insertBefore(a, inner.firstChild);
+                        }
+                        a.setAttribute('href', v);
+                        a.classList.remove('d-none');
+                        if (dot) {
+                            dot.classList.add('d-none');
+                        }
+                    } else {
+                        if (a) {
+                            a.remove();
+                        }
+                        if (dot) {
+                            dot.classList.remove('d-none');
+                        }
+                    }
+                })
+                .catch(function () {
+                    alert('AJAX error occurred.');
+                });
         });
 
         // Debug: set true for checkbox/Move alerts + extra console logs
@@ -2475,6 +2671,152 @@
         row.find('input[name="cbm[]"]').val(values.cbm ?? '');
         row.find('input[name="rate[]"]').val(values.cp ?? '');
         row.find('input[name="unit[]"]').val(values.unit ? String(values.unit).toLowerCase().trim() : '');
+    });
+
+    // Supplier Summary: visible #readyToShipTable rows only (DOM), grouped by supplier
+    $(function () {
+        var $tbody = $('#r2s-supplier-summary-tbody');
+        var $tfoot = $('#r2s-supplier-summary-tfoot');
+        var $modalEl = document.getElementById('r2sSupplierSummaryModal');
+        var lastCsvLines = [];
+
+        function r2sEffectiveQty($tr) {
+            var recRaw = String($tr.find('td[data-column="20"] input').val() || '').trim();
+            var orRaw = String($tr.find('td[data-column="4"] input').val() || '').trim();
+            var q;
+            if (recRaw !== '') {
+                q = parseFloat(recRaw.replace(/,/g, ''));
+                if (isFinite(q)) return q;
+            }
+            if (orRaw !== '') {
+                q = parseFloat(orRaw.replace(/,/g, ''));
+                if (isFinite(q)) return q;
+            }
+            return NaN;
+        }
+
+        function r2sParseCbmCell($tr) {
+            var t = $tr.find('td[data-column="6"]').text().replace(/\s/g, '').trim();
+            if (!t || /^n\/a$/i.test(t)) return 0;
+            var n = parseFloat(String(t).replace(/,/g, ''));
+            return isFinite(n) ? n : 0;
+        }
+
+        function r2sParseTotalCbmCell($tr) {
+            var t = $tr.find('td[data-column="19"]').text().trim();
+            var n = parseFloat(String(t).replace(/,/g, ''));
+            return isFinite(n) ? n : 0;
+        }
+
+        function r2sSupplierFromRow($tr) {
+            var $sel = $tr.find('td[data-column="5"] select[data-column="supplier"]');
+            var v = ($sel.length ? String($sel.val() || '') : '').trim();
+            return v || 'Unknown';
+        }
+
+        function csvEscape(cell) {
+            var s = String(cell != null ? cell : '');
+            if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+            return s;
+        }
+
+        function fmtQty(n) {
+            if (!isFinite(n)) return '0';
+            if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+            return n.toFixed(2);
+        }
+
+        function buildSupplierSummary() {
+            var groups = {};
+            var $visible = $('#readyToShipTable tbody tr.stage-row').filter(function () {
+                var $r = $(this);
+                if ($r.css('display') === 'none') return false;
+                return $r.is(':visible');
+            });
+
+            $visible.each(function () {
+                var $tr = $(this);
+                var qty = r2sEffectiveQty($tr);
+                if (!isFinite(qty) || qty === 0) return;
+
+                var supplier = r2sSupplierFromRow($tr);
+                var cbm = r2sParseCbmCell($tr);
+                var totalCbm = r2sParseTotalCbmCell($tr);
+
+                if (!groups[supplier]) {
+                    groups[supplier] = { totalQty: 0, totalCbm: 0, totalTotalCbm: 0 };
+                }
+                groups[supplier].totalQty += qty;
+                groups[supplier].totalCbm += cbm;
+                groups[supplier].totalTotalCbm += totalCbm;
+            });
+
+            var names = Object.keys(groups).sort(function (a, b) {
+                return a.toLowerCase().localeCompare(b.toLowerCase());
+            });
+
+            $tbody.empty();
+            $tfoot.empty();
+
+            var gQty = 0;
+            var gCbm = 0;
+            var gTot = 0;
+            lastCsvLines = [['Supplier', 'Total QTY', 'Total CBM', 'Total TOTAL CBM']];
+
+            if (names.length === 0) {
+                $tbody.append('<tr><td colspan="4" class="text-muted text-center py-3">No rows with quantity in the current view.</td></tr>');
+                return;
+            }
+
+            names.forEach(function (name) {
+                var g = groups[name];
+                gQty += g.totalQty;
+                gCbm += g.totalCbm;
+                gTot += g.totalTotalCbm;
+                var $tr = $('<tr></tr>');
+                $tr.append($('<td></td>').text(name));
+                $tr.append($('<td class="text-end"></td>').text(fmtQty(g.totalQty)));
+                $tr.append($('<td class="text-end"></td>').text(g.totalCbm.toFixed(4)));
+                $tr.append($('<td class="text-end"></td>').text(g.totalTotalCbm.toFixed(2)));
+                $tbody.append($tr);
+                lastCsvLines.push([name, fmtQty(g.totalQty), g.totalCbm.toFixed(4), g.totalTotalCbm.toFixed(2)]);
+            });
+
+            lastCsvLines.push(['Grand Total', fmtQty(gQty), gCbm.toFixed(4), gTot.toFixed(2)]);
+
+            var $ftr = $('<tr></tr>');
+            $ftr.append($('<td></td>').text('Grand Total'));
+            $ftr.append($('<td class="text-end"></td>').text(fmtQty(gQty)));
+            $ftr.append($('<td class="text-end"></td>').text(gCbm.toFixed(4)));
+            $ftr.append($('<td class="text-end"></td>').text(gTot.toFixed(2)));
+            $tfoot.append($ftr);
+        }
+
+        $('#r2s-supplier-summary-btn').on('click', function () {
+            buildSupplierSummary();
+            if ($modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance($modalEl).show();
+            } else if ($modalEl && $.fn.modal) {
+                $($modalEl).modal('show');
+            }
+        });
+
+        $('#r2s-supplier-summary-csv-btn').on('click', function () {
+            if (!lastCsvLines.length || lastCsvLines.length <= 1) buildSupplierSummary();
+            if (lastCsvLines.length <= 1) return;
+            var csv = lastCsvLines.map(function (row) {
+                return row.map(csvEscape).join(',');
+            }).join('\r\n');
+            var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'supplier-summary-' + new Date().toISOString().slice(0, 10) + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        });
     });
 })();
 </script>

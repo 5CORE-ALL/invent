@@ -1825,6 +1825,11 @@
                 
                 <h6 class="text-primary mb-3">Description:</h6>
                 <p id="task-info-description" style="font-size: 14px; line-height: 1.6; white-space: pre-wrap;"></p>
+
+                <div id="task-info-reason-wrap" class="mt-4" style="display: none;">
+                    <h6 class="text-primary mb-3">Note / reason:</h6>
+                    <p id="task-info-reason" style="font-size: 14px; line-height: 1.6; white-space: pre-wrap;"></p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -2288,8 +2293,30 @@
             var isAdmin = {{ $isAdmin ? 'true' : 'false' }};
             var canDeleteAnyTask = {{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
-            var currentUserEmail = '{{ Auth::user()->email }}';
+            var currentUserEmail = {!! json_encode(Auth::user()->email) !!};
             var suppressAssignFilterApply = false;
+
+            function currentUserIsAssigneeOnTask(rowData) {
+                if (!rowData) return false;
+                if (rowData.assignee_ids && rowData.assignee_ids.length) {
+                    for (var i = 0; i < rowData.assignee_ids.length; i++) {
+                        if (parseInt(rowData.assignee_ids[i], 10) === currentUserId) {
+                            return true;
+                        }
+                    }
+                }
+                if (rowData.assignee_id && parseInt(rowData.assignee_id, 10) === currentUserId) {
+                    return true;
+                }
+                if (currentUserEmail && rowData.assignee_email) {
+                    var parts = String(rowData.assignee_email).split(',').map(function (e) {
+                        return e.trim().toLowerCase();
+                    });
+                    var me = String(currentUserEmail).trim().toLowerCase();
+                    return parts.indexOf(me) !== -1;
+                }
+                return false;
+            }
             var TASK_INDEX_FILTERS_KEY = 'taskManager.indexFilters.v1';
 
             function persistTaskIndexFilters() {
@@ -3052,13 +3079,12 @@
                             var value = cell.getValue();
                             var taskId = rowData.id;
                             var assignorId = rowData.assignor_id;
-                            var assigneeId = rowData.assignee_id;
                             
                             // Status badge always uses status color (not red for overdue)
                             var displayText = value;
                             
                             // Check if user can update status
-                            var canUpdateStatus = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
+                            var canUpdateStatus = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
                             
                             var statuses = {
                                 'Todo': {bg: '#0dcaf0', text: '#000'},
@@ -3171,12 +3197,11 @@
                             var rowData = cell.getRow().getData();
                             var id = rowData.id;
                             var assignorId = rowData.assignor_id;
-                            var assigneeId = rowData.assignee_id;
                             
                             // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
                             var canEdit = isAdmin || canDeleteAnyTask || assignorId === currentUserId;
                             var canDelete = canDeleteAnyTask || assignorId === currentUserId;
-                            var canView = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
+                            var canView = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
                             
                             var buttons = '';
                             
@@ -4656,6 +4681,14 @@
                         console.log('Task data loaded:', response);
                         $('#task-info-title').text(response.title || 'No title');
                         $('#task-info-description').text(response.description || 'No description available.');
+                        var infoReason = response.rework_reason != null ? String(response.rework_reason).trim() : '';
+                        if (infoReason) {
+                            $('#task-info-reason').text(infoReason);
+                            $('#task-info-reason-wrap').show();
+                        } else {
+                            $('#task-info-reason').text('');
+                            $('#task-info-reason-wrap').hide();
+                        }
                         $('#taskInfoModal').modal('show');
                     },
                     error: function(xhr) {
@@ -4733,8 +4766,14 @@
                         var t = text || u;
                         return '<a href="' + escapeHtml(u) + '" target="_blank" style="color: #0d6efd;">' + escapeHtml(t) + '</a>';
                     };
+                    var reasonRow = '';
+                    var rr = data.rework_reason != null ? String(data.rework_reason).trim() : '';
+                    if (rr) {
+                        reasonRow = '<tr><th width="200" style="color: #6c757d; font-weight: 600; vertical-align: top;">Note / reason:</th><td style="white-space: pre-wrap;">' + escapeHtml(rr) + '</td></tr>';
+                    }
                     var html = '<div style="padding: 10px;">' +
                         '<table class="table table-borderless">' +
+                        reasonRow +
                         '<tr><th width="200" style="color: #6c757d; font-weight: 600;">L1:</th><td>' + (l1Val ? linkCell(l1Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">L2:</th><td>' + (l2Val ? linkCell(l2Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
@@ -4766,8 +4805,14 @@
                                 var u = String(url).trim();
                                 return '<a href="' + escapeHtml(u) + '" target="_blank" style="color: #0d6efd;">' + escapeHtml(u) + '</a>';
                             };
+                            var reasonRowAjax = '';
+                            var rrAjax = response.rework_reason != null ? String(response.rework_reason).trim() : '';
+                            if (rrAjax) {
+                                reasonRowAjax = '<tr><th width="200" style="color: #6c757d; font-weight: 600; vertical-align: top;">Note / reason:</th><td style="white-space: pre-wrap;">' + escapeHtml(rrAjax) + '</td></tr>';
+                            }
                             var html = '<div style="padding: 10px;">' +
                                 '<table class="table table-borderless">' +
+                                reasonRowAjax +
                                 '<tr><th width="200" style="color: #6c757d; font-weight: 600;">L1:</th><td>' + (l1Val ? linkCell(l1Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">L2:</th><td>' + (l2Val ? linkCell(l2Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
@@ -4922,7 +4967,7 @@
                             table.replaceData();
                             
                             // Show success message
-                            var message = reworkReason ? 'Task marked for rework' : 'Status updated successfully!';
+                            var message = (status === 'Rework' && reworkReason) ? 'Task marked for rework' : 'Status updated successfully!';
                             var alertHtml = `
                                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                                     <i class="mdi mdi-check-circle me-2"></i>${message}

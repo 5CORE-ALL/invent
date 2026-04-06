@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\MfrgProgress;
 use App\Models\ProductMaster;
 use App\Models\ReadyToShip;
+use App\Services\ReadyToShipPackingListSheetService;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ReadyToShipController extends Controller
 {
@@ -290,6 +292,10 @@ class ReadyToShipController extends Controller
             }
         }
 
+        $packingListSheetService = app(ReadyToShipPackingListSheetService::class);
+        $packingListCsvMap = $packingListSheetService->getSkuToLinkMap();
+        $packingListLinks = $packingListSheetService->mergeDbLinksOverCsv($packingListCsvMap);
+
         return view('purchase-master.ready-to-ship.index', [
             'readyToShipList' => $readyToShipData,
             'suppliers' => Supplier::pluck('name'),
@@ -298,7 +304,22 @@ class ReadyToShipController extends Controller
             'transitSuppliers' => $transitSuppliers,
             'transitSkus' => $transitSkus,
             'transitProductValuesMap' => json_encode($transitProductValuesMap, JSON_UNESCAPED_UNICODE),
+            'packingListLinks' => $packingListLinks,
+            'packingListSheetEditUrl' => trim((string) config('googlesheets.ready_to_ship_packing_list.sheet_edit_url', '')),
         ]);
+    }
+
+    /**
+     * JSON map of normalized SKU → packing list URL (from public Google Sheet CSV).
+     * Optional ?refresh=1 bypasses cache for a few seconds after edits.
+     */
+    public function packingListLinksJson(Request $request)
+    {
+        $service = app(ReadyToShipPackingListSheetService::class);
+        $csv = $service->getSkuToLinkMap($request->boolean('refresh'));
+        $links = $service->mergeDbLinksOverCsv($csv);
+
+        return response()->json(['success' => true, 'links' => $links]);
     }
 
     /**
@@ -402,6 +423,24 @@ class ReadyToShipController extends Controller
                 $item->qty = $qty - $value;
                 $item->save();
             }
+        }
+
+        if ($column === 'packing_list_link') {
+            $value = trim((string) $value);
+            if ($value !== '' && ! ReadyToShipPackingListSheetService::isAllowedHttpUrl($value)) {
+                return response()->json(['success' => false, 'message' => 'Enter a valid http(s) URL or leave empty to clear.']);
+            }
+            $item->packing_list_link = $value !== '' ? $value : null;
+            $item->save();
+
+            $sheetService = app(ReadyToShipPackingListSheetService::class);
+            $sheetService->pushLinkToSheet((string) ($item->sku ?? ''), $value);
+            Cache::forget('r2s_packing_list_links_v1');
+
+            return response()->json([
+                'success' => true,
+                'packing_list_link' => $item->packing_list_link,
+            ]);
         }
 
         if (!in_array($column, [

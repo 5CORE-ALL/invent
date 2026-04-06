@@ -20,6 +20,7 @@ class MfrgProgress extends Model
         'adv_date',
         'pay_conf_date',
         'del_date',
+        'delivery_date',
         'o_links',
         'value',
         'payment_pending',
@@ -39,6 +40,7 @@ class MfrgProgress extends Model
         'adv_date' => 'date',
         'pay_conf_date' => 'date',
         'del_date' => 'date',
+        'delivery_date' => 'date',
     ];
 
     public $timestamps = true;

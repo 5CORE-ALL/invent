@@ -7,14 +7,10 @@
 
 <tr>
     <td>
-        <span class="badge bg-primary fw-bold">{{ $supplier->type ?? '-' }}</span>
-    </td>
-
-    <td>
         <div class="dropdown d-inline-block">
             @if(!empty(array_filter($categoryIds)))
             <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                Categories ({{ count(array_filter($categoryIds)) }})
+                cat. ({{ count(array_filter($categoryIds)) }})
             </button>
             <ul class="dropdown-menu">
                 @foreach ($categories as $category)
@@ -33,6 +29,40 @@
 
 
     <td>{{ $supplier->name ?? '-' }}</td>
+    @php
+        $approvalRaw = $supplier->approval_status ?? '';
+        $approvalEffective = in_array($approvalRaw, ['green', 'yellow'], true) ? $approvalRaw : 'red';
+        $approvalHoverLabels = ['red' => 'disqualified', 'yellow' => 'Explore', 'green' => 'Qualified'];
+    @endphp
+    <td class="text-center align-middle">
+        <div class="dropdown supplier-approval-dropdown d-inline-block text-center" data-supplier-id="{{ $supplier->id }}">
+            <button class="btn btn-link p-1 text-decoration-none supplier-approval-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                data-current-status="{{ $approvalEffective }}"
+                title="{{ $approvalHoverLabels[$approvalEffective] }}">
+                <span class="supplier-approval-dot supplier-approval-dot--{{ $approvalEffective }}"></span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end supplier-approval-menu py-1">
+                <li>
+                    <button type="button" class="dropdown-item supplier-approval-pick d-flex align-items-center gap-2 py-2" data-status="red">
+                        <span class="supplier-approval-dot supplier-approval-dot--red flex-shrink-0" title="disqualified"></span>
+                        <span>disqualified</span>
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dropdown-item supplier-approval-pick d-flex align-items-center gap-2 py-2" data-status="yellow">
+                        <span class="supplier-approval-dot supplier-approval-dot--yellow flex-shrink-0" title="Explore"></span>
+                        <span>Explore</span>
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dropdown-item supplier-approval-pick d-flex align-items-center gap-2 py-2" data-status="green">
+                        <span class="supplier-approval-dot supplier-approval-dot--green flex-shrink-0" title="Qualified"></span>
+                        <span>Qualified</span>
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </td>
     <td>
         @if(!empty($supplier->company))
             <div class="d-flex align-items-center">
@@ -51,14 +81,14 @@
             <span class="text-muted">-</span>
         @endif
     </td>
-    <td style="position: relative;">
+    <td class="parents-col" style="position: relative;">
         @php
             $parents = !empty($supplier->parent) ? array_filter(explode(',', $supplier->parent)) : [];
         @endphp
 
-        <div class="dropdown d-inline-block">
+        <div class="dropdown d-block w-100">
             @if(count($parents) > 0)
-                <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <button class="btn btn-sm btn-light dropdown-toggle w-75" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                     Parent ({{ count($parents) }})
                 </button>
                 <ul class="dropdown-menu show-on-top" style="max-height: 200px; overflow-y: auto;">
@@ -118,7 +148,7 @@
                 data-supplier-name="{{ $supplier->name }}"
                 data-bs-toggle="modal"
                 data-bs-target="#ratingModal">
-                <i class="mdi mdi-star-outline me-1"></i> Rate Supplier
+                <i class="mdi mdi-star-outline me-1"></i> Rate
             </button>
         @else
             <div class="d-flex align-items-center">
@@ -308,6 +338,27 @@
                                 </div>
 
                                 <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Approved</label>
+                                    <div class="d-flex align-items-center gap-2 approval-form-dots flex-wrap">
+                                        <label class="mb-0 cursor-pointer small text-muted border rounded px-2 py-1" title="Not set">
+                                            <input type="radio" name="approval_status" value="" class="d-none" {{ empty($supplier->approval_status) ? 'checked' : '' }}> None
+                                        </label>
+                                        <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="disqualified">
+                                            <input type="radio" name="approval_status" value="red" class="d-none" {{ ($supplier->approval_status ?? '') === 'red' ? 'checked' : '' }}>
+                                            <span class="d-inline-block supplier-approval-dot supplier-approval-dot--red border-0" title="disqualified"></span>
+                                        </label>
+                                        <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="Qualified">
+                                            <input type="radio" name="approval_status" value="green" class="d-none" {{ ($supplier->approval_status ?? '') === 'green' ? 'checked' : '' }}>
+                                            <span class="d-inline-block supplier-approval-dot supplier-approval-dot--green border-0" title="Qualified"></span>
+                                        </label>
+                                        <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="Explore">
+                                            <input type="radio" name="approval_status" value="yellow" class="d-none" {{ ($supplier->approval_status ?? '') === 'yellow' ? 'checked' : '' }}>
+                                            <span class="d-inline-block supplier-approval-dot supplier-approval-dot--yellow border-0" title="Explore"></span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
                                     <label class="form-label fw-semibold">Email Address</label>
                                     <input type="email" name="email" class="form-control" placeholder="Email Address" value="{{ $supplier->email }}">
                                 </div>
@@ -393,7 +444,7 @@
                                             
                                             @if($count > 0)
                                                 <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                                    Categories ({{ $count }})
+                                                    cat. ({{ $count }})
                                                 </button>
                                                 <ul class="dropdown-menu">
                                                     @foreach($categories as $category)
@@ -415,7 +466,7 @@
 
                                     <div class="col-sm-6">
                                         <span class="fw-semibold text-muted">Parent:</span>
-                                        <div class="dropdown">
+                                        <div class="dropdown d-block w-100">
                                             @php
                                                 $parentList = explode(',', $supplier->parent ?? '');
                                                 $parentList = array_filter($parentList);
@@ -423,7 +474,7 @@
                                             @endphp
 
                                             @if($parentCount > 0)
-                                                <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                <button class="btn btn-sm btn-light dropdown-toggle w-75" type="button" data-bs-toggle="dropdown">
                                                     Parents ({{ $parentCount }})
                                                 </button>
                                                 <ul class="dropdown-menu">

@@ -665,6 +665,28 @@ class WayfairController extends Controller
                     ->keyBy(fn ($row) => $normalizeSku($row->sku));
             }
 
+            // Same as Faire / Forecast Analysis: forecast_analysis.nr (NRP).
+            $forecastNrBySku = [];
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $faRows = DB::table('forecast_analysis')
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus->values()->all())
+                    ->get(['sku', 'parent', 'nr', 'stage']);
+                foreach ($faRows->groupBy(fn ($r) => $normalizeSku($r->sku)) as $k => $group) {
+                    $withStage = $group->first(function ($r) {
+                        return $r->stage !== null && trim((string) $r->stage) !== '';
+                    });
+                    if ($withStage) {
+                        $forecastNrBySku[$k] = $withStage;
+
+                        continue;
+                    }
+                    $withNr = $group->first(function ($r) {
+                        return $r->nr !== null && trim((string) $r->nr) !== '';
+                    });
+                    $forecastNrBySku[$k] = $withNr ?? $group->first();
+                }
+            }
+
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
             $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 100) : 100;
             $margin = $percentage / 100;
@@ -728,6 +750,15 @@ class WayfairController extends Controller
                 $buyerLink = $buyerLink !== '' ? $buyerLink : null;
                 $sellerLink = $sellerLink !== '' ? $sellerLink : null;
 
+                $faRec = $forecastNrBySku[$normalizedSku] ?? null;
+                $nrOut = '';
+                if ($faRec && $faRec->nr !== null && trim((string) $faRec->nr) !== '') {
+                    $nrOut = strtoupper(trim((string) $faRec->nr));
+                    if (! in_array($nrOut, ['REQ', 'NR', 'LATER'], true)) {
+                        $nrOut = 'REQ';
+                    }
+                }
+
                 $rows[] = [
                     'sku' => $displaySku,
                     'parent' => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
@@ -756,6 +787,7 @@ class WayfairController extends Controller
                     'ov_l30' => $ovL30,
                     'ae_stock' => $wfStock,
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
+                    'nr' => $nrOut,
                 ];
             }
 
@@ -1119,6 +1151,7 @@ class WayfairController extends Controller
             'lmp' => null,
             'lmp_link' => null,
             'lmp_entries' => [],
+            'nr' => '',
         ];
     }
 

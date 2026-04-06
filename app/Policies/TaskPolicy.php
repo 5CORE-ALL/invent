@@ -30,6 +30,28 @@ class TaskPolicy
     }
 
     /**
+     * assign_to may be a single email or comma-separated emails (shared task).
+     */
+    private function userIsAssignee(User $user, Task $task): bool
+    {
+        $assignTo = trim((string) ($task->assign_to ?? ''));
+        if ($assignTo === '') {
+            return false;
+        }
+        $needle = strtolower(trim((string) ($user->email ?? '')));
+        if ($needle === '') {
+            return false;
+        }
+        foreach (array_map('trim', explode(',', $assignTo)) as $part) {
+            if ($part !== '' && strtolower($part) === $needle) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Check if user has special permission to delete/modify any task (by email).
      */
     public static function userHasSpecialTaskPermission(User $user): bool
@@ -57,8 +79,8 @@ class TaskPolicy
             return true;
         }
 
-        // User can view if they are the assignor OR assignee (old table uses emails)
-        return $task->assignor === $user->email || $task->assign_to === $user->email;
+        // User can view if they are the assignor OR assignee (old table uses emails; assign_to can list several)
+        return $task->assignor === $user->email || $this->userIsAssignee($user, $task);
     }
 
     /**
@@ -99,8 +121,8 @@ class TaskPolicy
             return true;
         }
 
-        // User can update status if they are assignor OR assignee - old table uses emails
-        return $task->assignor === $user->email || $task->assign_to === $user->email;
+        // User can update status if they are assignor OR assignee (assign_to can be comma-separated)
+        return $task->assignor === $user->email || $this->userIsAssignee($user, $task);
     }
 
     /**

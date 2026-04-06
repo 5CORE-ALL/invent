@@ -235,6 +235,17 @@
             let hideTimeout;
             let uniqueSuppliers = [];
 
+            function postMfrgInlineUpdate(sku, column, value) {
+                return fetch('/mfrg-progresses/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ sku, column, value })
+                }).then(res => res.json());
+            }
+
             const table = new Tabulator("#mfrg-table", {
                 ajaxURL: "/mfrg-in-progress/data",
                 ajaxConfig: "GET",
@@ -402,6 +413,39 @@
                             //         });
                             //     }
                             // }, 10);
+
+                            return html;
+                        }
+                    },
+                    {
+                        title: "Delivery Date",
+                        field: "delivery_date",
+                        hozAlign: "center",
+                        formatter: function (cell) {
+                            const rawValue = cell.getValue() || "";
+                            const formattedDate = rawValue ? new Date(rawValue).toISOString().split('T')[0] : "";
+                            const sku = cell.getRow().getData().sku || "";
+
+                            const html = `
+                                <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                                    <input type="date" class="form-control form-control-sm delivery_date_input" value="${formattedDate}" style="width:85px;">
+                                </div>
+                            `;
+
+                            setTimeout(() => {
+                                const input = cell.getElement().querySelector(".delivery_date_input");
+                                if (input) {
+                                    input.addEventListener("change", function () {
+                                        postMfrgInlineUpdate(sku, "delivery_date", this.value)
+                                            .then((res) => {
+                                                if (!res.success) {
+                                                    alert(res.message || "Failed to save delivery date.");
+                                                }
+                                            })
+                                            .catch(() => alert("Network error while saving."));
+                                    });
+                                }
+                            }, 10);
 
                             return html;
                         }

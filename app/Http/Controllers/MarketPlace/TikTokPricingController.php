@@ -188,6 +188,30 @@ class TikTokPricingController extends Controller
         // Fetch TikTok shop view data for NR (and INV=0 auto-save)
         $tiktokShopDataView = TiktokShopDataView::whereIn("sku", $skus)->get()->keyBy("sku");
 
+        // Forecast Analysis NRP (forecast_analysis.nr) — same source as Faire/Wayfair pricing.
+        $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+        $forecastNrpBySku = [];
+        $pmNormSkus = $productMasterRows->keys()->map(fn ($s) => $normalizeSkuFa($s))->unique()->filter(fn ($s) => $s !== '')->values();
+        if ($pmNormSkus->isNotEmpty()) {
+            $faRows = DB::table('forecast_analysis')
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $pmNormSkus->all())
+                ->get(['sku', 'parent', 'nr', 'stage']);
+            foreach ($faRows->groupBy(fn ($r) => $normalizeSkuFa($r->sku)) as $k => $group) {
+                $withStage = $group->first(function ($r) {
+                    return $r->stage !== null && trim((string) $r->stage) !== '';
+                });
+                if ($withStage) {
+                    $forecastNrpBySku[$k] = $withStage;
+
+                    continue;
+                }
+                $withNr = $group->first(function ($r) {
+                    return $r->nr !== null && trim((string) $r->nr) !== '';
+                });
+                $forecastNrpBySku[$k] = $withNr ?? $group->first();
+            }
+        }
+
         // Get L30 sold data from ShipHub (last 30 days)
         $latestDate = DB::connection('shiphub')
             ->table('orders')
@@ -458,6 +482,16 @@ class TikTokPricingController extends Controller
             if (!isset($processedItem["video_req"])) $processedItem["video_req"] = 'Not Req';
             if (!isset($processedItem["video_uploaded"])) $processedItem["video_uploaded"] = 0;
 
+            $faRecNrp = $forecastNrpBySku[$normalizeSkuFa($sku)] ?? null;
+            $nrpOut = '';
+            if ($faRecNrp && $faRecNrp->nr !== null && trim((string) $faRecNrp->nr) !== '') {
+                $nrpOut = strtoupper(trim((string) $faRecNrp->nr));
+                if (! in_array($nrpOut, ['REQ', 'NR', 'LATER'], true)) {
+                    $nrpOut = 'REQ';
+                }
+            }
+            $processedItem['nrp'] = $nrpOut;
+
             if (!isset($tiktokShopDataView[$sku]) && isset($reverbViewData[$sku])) {
                 $viewData = $reverbViewData[$sku];
                 $valuesArr = $viewData->values ?: [];
@@ -713,6 +747,7 @@ class TikTokPricingController extends Controller
             'hasCampaign' => $dash,
             'has_custom_sprice' => false,
             'SPRICE_STATUS' => $dash,
+            'nrp' => $dash,
         ];
     }
 

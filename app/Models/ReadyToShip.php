@@ -29,6 +29,7 @@ class ReadyToShip extends Model
         'photo_mail_send',
         'followup_delivery',
         'packing_list',
+        'packing_list_link',
         'container_rfq',
         'quote_result',
         'pay_term',

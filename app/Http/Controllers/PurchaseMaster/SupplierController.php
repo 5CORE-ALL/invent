@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Supplier;
 use App\Models\SupplierRating;
+use App\Models\SupplierRemarkHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
@@ -48,7 +49,7 @@ class SupplierController extends Controller
         // Get total count of all suppliers (unfiltered)
         $totalCount = Supplier::count();
         
-        $suppliers = $query->paginate(20)->appends($request->query());
+        $suppliers = $query->with(['ratings', 'latestRemark'])->paginate(20)->appends($request->query());
         $categories = Category::orderBy('name')->get();
         
         // If AJAX request, return JSON
@@ -140,6 +141,13 @@ class SupplierController extends Controller
             $supplier->address      = !empty($inputs['address']) ? trim($inputs['address']) : null;
             $supplier->bank_details = !empty($inputs['bank_details']) ? trim($inputs['bank_details']) : null;
 
+            if ($request->has('approval_status')) {
+                $ap = $request->input('approval_status');
+                $supplier->approval_status = ($ap === '' || $ap === null)
+                    ? null
+                    : (in_array($ap, ['red', 'green', 'yellow'], true) ? $ap : null);
+            }
+
             if ($supplier->save()) {
                 $msg = !empty($inputs['supplier_id'])
                     ? 'Supplier successfully updated.'
@@ -168,6 +176,21 @@ class SupplierController extends Controller
         return redirect()->back();
     }
 
+    public function updateApprovalStatus(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'approval_status' => 'nullable|in:red,green,yellow',
+        ]);
+
+        $supplier = Supplier::findOrFail($id);
+        $supplier->approval_status = $validated['approval_status'] ?? null;
+        $supplier->save();
+
+        return response()->json([
+            'success' => true,
+            'approval_status' => $supplier->approval_status,
+        ]);
+    }
 
     function deleteSupplier($id)
     {
@@ -233,26 +256,48 @@ class SupplierController extends Controller
     //rating 
     public function storeRating(Request $request)
     {
-       $validated = $request->validate([
+        $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
             'evaluation_date' => 'required|date',
-            'criteria' => 'required|array',
         ]);
 
-        $total = 0;
-        foreach ($validated['criteria'] as $c) {
-            $score = (float) $c['score'];
-            $weight = (float) $c['weight'];
-            $total += $score * ($weight / 10);
+        $criteriaRows = $request->input('criteria', []);
+        if (! is_array($criteriaRows)) {
+            $criteriaRows = [];
         }
 
-        SupplierRating::create([
-            'supplier_id'    => $validated['supplier_id'],
-            'evaluation_date'=> $validated['evaluation_date'],
-            'criteria'       => $validated['criteria'],
-            'final_score'    => round($total, 2),
-        ]);
+        $criteria = [];
+        $total = 0;
+        foreach ($criteriaRows as $c) {
+            if (! is_array($c)) {
+                continue;
+            }
+            $label = isset($c['label']) ? (string) $c['label'] : '';
+            $weight = isset($c['weight']) ? (float) $c['weight'] : 0;
+            $raw = $c['score'] ?? null;
+            if ($raw === '' || $raw === null) {
+                $criteria[] = ['label' => $label, 'weight' => $weight, 'score' => null];
+                continue;
+            }
+            if (! is_numeric($raw)) {
+                return redirect()->back()->withErrors(['criteria' => 'Each score must be a number between 1 and 10, or left blank.'])->withInput();
+            }
+            $score = (float) $raw;
+            if ($score < 1 || $score > 10) {
+                return redirect()->back()->withErrors(['criteria' => 'Scores must be between 1 and 10.'])->withInput();
+            }
+            $total += $score * ($weight / 10);
+            $criteria[] = ['label' => $label, 'weight' => $weight, 'score' => $score];
+        }
 
+        $hasAnyScore = collect($criteria)->contains(fn ($row) => ($row['score'] ?? null) !== null);
+
+        SupplierRating::create([
+            'supplier_id' => $validated['supplier_id'],
+            'evaluation_date' => $validated['evaluation_date'],
+            'criteria' => $criteria,
+            'final_score' => $hasAnyScore ? round($total, 2) : null,
+        ]);
 
         return redirect()->back()->with('flash_message', 'Supplier rating saved successfully!');
     }

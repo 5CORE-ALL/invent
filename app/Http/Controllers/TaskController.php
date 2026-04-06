@@ -1901,7 +1901,7 @@ class TaskController extends Controller
             // Non-admin users can only see deleted tasks they created or were assigned to
             $deletedQuery->where(function($query) use ($user) {
                 $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', $user->email);
+                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
             });
         }
 
@@ -2009,7 +2009,7 @@ class TaskController extends Controller
         if (!$isAdmin) {
             $query->where(function($q) use ($user) {
                 $q->where('assignor', $user->email)
-                  ->orWhere('assign_to', $user->email);
+                  ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
             });
         }
 

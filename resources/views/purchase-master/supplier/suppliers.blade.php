@@ -64,6 +64,47 @@
         html {
             scroll-behavior: smooth;
         }
+
+        .supplier-approval-toggle {
+            cursor: pointer;
+        }
+        .supplier-approval-dropdown .supplier-approval-toggle .supplier-approval-dot {
+            cursor: pointer;
+        }
+        .supplier-approval-dropdown .supplier-approval-toggle:hover .supplier-approval-dot {
+            transform: scale(1.15);
+        }
+        .supplier-approval-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            padding: 0;
+            border: 2px solid rgba(0, 0, 0, 0.12);
+            flex-shrink: 0;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .supplier-approval-menu .supplier-approval-pick {
+            cursor: pointer;
+        }
+        .supplier-approval-menu .supplier-approval-pick:hover .supplier-approval-dot {
+            transform: scale(1.1);
+        }
+        .supplier-approval-pick:disabled {
+            opacity: 0.55;
+            pointer-events: none;
+        }
+        .supplier-approval-dot--red { background-color: #dc3545; }
+        .supplier-approval-dot--green { background-color: #198754; }
+        .supplier-approval-dot--yellow { background-color: #ffc107; }
+        .approval-form-dots input[type="radio"]:checked + span {
+            box-shadow: 0 0 0 2px #495057;
+            border-radius: 50%;
+        }
+        .approval-form-dots label:has(input[type="radio"]:checked) {
+            font-weight: 600;
+        }
     </style>
 @endsection
 
@@ -188,11 +229,11 @@
                     <table class="table table-centered table-hover mb-0" id="suppliers-table">
                         <thead class="table-light">
                             <tr>
-                                <th>Type</th>
                                 <th>Category</th>
                                 <th>Name</th>
+                                <th class="text-center">Approved</th>
                                 <th>Company</th>
-                                <th>Parents</th>
+                                <th class="parents-col">Parents</th>
                                 <th>Zone</th>
                                 <th>Phone</th>
                                 <th>Rating</th>
@@ -351,6 +392,26 @@
                             </select>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label fw-semibold">Approved</label>
+                            <div class="d-flex align-items-center gap-2 approval-form-dots flex-wrap">
+                                <label class="mb-0 cursor-pointer small text-muted border rounded px-2 py-1" title="Not set">
+                                    <input type="radio" name="approval_status" value="" class="d-none" checked> None
+                                </label>
+                                <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="disqualified">
+                                    <input type="radio" name="approval_status" value="red" class="d-none">
+                                    <span class="d-inline-block supplier-approval-dot supplier-approval-dot--red border-0" title="disqualified"></span>
+                                </label>
+                                <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="Qualified">
+                                    <input type="radio" name="approval_status" value="green" class="d-none">
+                                    <span class="d-inline-block supplier-approval-dot supplier-approval-dot--green border-0" title="Qualified"></span>
+                                </label>
+                                <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="Explore">
+                                    <input type="radio" name="approval_status" value="yellow" class="d-none">
+                                    <span class="d-inline-block supplier-approval-dot supplier-approval-dot--yellow border-0" title="Explore"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">Email</label>
                             <input type="email" name="email" class="form-control" placeholder="Email Address">
                         </div>
@@ -457,7 +518,7 @@
                                     <small class="text-muted">Weight: {{ $item['weight'] }}%</small>
                                 </div>
                                 <div class="flex-shrink-0" style="width: 90px;">
-                                    <input type="number" id="score_{{ $i }}" name="criteria[{{ $i }}][score]" class="form-control form-control-sm text-center" min="1" max="10" required placeholder="1-10">
+                                    <input type="number" id="score_{{ $i }}" name="criteria[{{ $i }}][score]" class="form-control form-control-sm text-center" min="1" max="10" placeholder="1-10">
                                     <input type="hidden" name="criteria[{{ $i }}][label]" value="{{ $item['label'] }}">
                                     <input type="hidden" name="criteria[{{ $i }}][weight]" value="{{ $item['weight'] }}">
                                 </div>
@@ -574,6 +635,47 @@
         }
 
         $(document).ready(function () {
+            var supplierApprovalBaseUrl = @json(rtrim(url('/supplier'), '/'));
+
+            var approvalTitles = { red: 'disqualified', yellow: 'Explore', green: 'Qualified' };
+
+            $(document).on('click', '.supplier-approval-pick', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var $item = $(this);
+                var $dropdown = $item.closest('.supplier-approval-dropdown');
+                var supplierId = $dropdown.data('supplier-id');
+                var status = $item.data('status');
+                if (!supplierId || !status) {
+                    return;
+                }
+                var url = supplierApprovalBaseUrl + '/' + supplierId + '/approval-status';
+                $dropdown.find('.supplier-approval-pick').prop('disabled', true);
+                $.ajax({
+                    url: url,
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        approval_status: status
+                    },
+                    success: function () {
+                        var $toggle = $dropdown.find('.supplier-approval-toggle');
+                        var $dot = $toggle.find('.supplier-approval-dot');
+                        $dot.removeClass('supplier-approval-dot--red supplier-approval-dot--green supplier-approval-dot--yellow');
+                        $dot.addClass('supplier-approval-dot--' + status);
+                        $toggle.attr('data-current-status', status);
+                        $toggle.attr('title', approvalTitles[status] || '');
+                    },
+                    error: function (xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Could not save approval status.';
+                        alert(msg);
+                    },
+                    complete: function () {
+                        $dropdown.find('.supplier-approval-pick').prop('disabled', false);
+                    }
+                });
+            });
+
             // Initialize Select2 on page load
             initSelect2();
             

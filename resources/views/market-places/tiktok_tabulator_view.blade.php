@@ -115,6 +115,17 @@
             color: #1e2125;
             background-color: #e9ecef;
         }
+
+        /* Forecast NRP (REQ / 2BDC / LATER) — same as Faire/Wayfair pricing */
+        .nrp-dot-cell { min-height: 32px; min-width: 44px; }
+        .nrp-dot-cell .nrp-status-dot {
+            display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+            border: 1px solid rgba(0,0,0,.12); flex-shrink: 0;
+        }
+        .nrp-dot-cell .nrp-nr-select {
+            opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
+        }
+        .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
     </style>
 @endsection
 
@@ -724,7 +735,7 @@
             let utilizedColumnsVisible = false;
             let originalColumnVisibilityUtilized = {};
             const utilizedColumnFields = ['(Child) sku', 'hasCampaign', 'INV', 'L30', 'TT Dil%', 'TT L30', 'NR',
-                'variation_req', 'video_req', 'video_uploaded', 'ad_cvr_pct', 'ads_price', 'budget', 'spend',
+                'variation_req', 'video_req', 'video_uploaded', 'nrp', 'ad_cvr_pct', 'ads_price', 'budget', 'spend',
                 'ad_sold', 'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'
             ];
 
@@ -1080,6 +1091,34 @@
             }
 
             // Save SPRICE updates to backend
+            function ttEscHtmlAttr(val) {
+                if (val == null || val === '') return '';
+                return String(val).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            }
+
+            function ttUpdateForecastNrp(data, onSuccess, onFail) {
+                onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
+                onFail = typeof onFail === 'function' ? onFail : function() {};
+                $.post('{{ route("update.forecast.data") }}', {
+                    sku: data.sku,
+                    parent: data.parent != null ? String(data.parent) : '',
+                    column: 'NR',
+                    value: data.value,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                }).done(function(res) {
+                    if (res.success) {
+                        onSuccess();
+                    } else {
+                        console.warn('NRP not saved:', res.message);
+                        onFail();
+                    }
+                }).fail(function(err) {
+                    console.error('NRP save failed:', err);
+                    showToast('Error saving NRP.', 'error');
+                    onFail();
+                });
+            }
+
             function saveSpriceUpdates(updates) {
                 $.ajax({
                     url: '/tiktok-save-sprice',
@@ -2022,8 +2061,93 @@
                                 (sku || '').replace(/"/g, '&quot;') +
                                 '" data-field="video_uploaded" ' + (checked ? 'checked' : '') + '>';
                         }
+                    },
+                    {
+                        title: "NRP",
+                        field: "nrp",
+                        hozAlign: "center",
+                        width: 56,
+                        minWidth: 52,
+                        headerSort: true,
+                        accessor: function(value, data) {
+                            const val = data && data.nrp != null ? data.nrp : value;
+                            if (val === null || val === undefined) return '';
+                            return String(val).trim().toUpperCase();
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent || (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            let value = cell.getValue();
+                            if (value === null || value === undefined || value === '') {
+                                value = rowData.nrp;
+                            }
+                            if (value === null || value === undefined) {
+                                value = '';
+                            } else {
+                                value = String(value).trim().toUpperCase();
+                            }
+                            if (!value || value === '') {
+                                value = 'REQ';
+                            }
+                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                                value = 'REQ';
+                            }
+                            const sku = String(rowData['(Child) sku'] || '');
+                            const parent = rowData.Parent != null ? String(rowData.Parent) : '';
+                            let dotColor = '#22c55e';
+                            let tip = 'REQ';
+                            if (value === 'NR') {
+                                dotColor = '#dc3545';
+                                tip = '2BDC';
+                            } else if (value === 'LATER') {
+                                dotColor = '#facc15';
+                                tip = 'LATER';
+                            }
+                            const skuAttr = ttEscHtmlAttr(sku);
+                            const parentAttr = ttEscHtmlAttr(parent);
+                            return (
+                                '<div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' +
+                                ttEscHtmlAttr(tip + ' (click to change)') + '">' +
+                                '<span class="nrp-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>' +
+                                '<select class="form-select form-select-sm nrp-nr-select position-absolute top-0 start-0 w-100 h-100" ' +
+                                'data-sku="' + skuAttr + '" data-parent="' + parentAttr + '" ' +
+                                'aria-label="NRP: ' + ttEscHtmlAttr(tip) + '">' +
+                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>REQ</option>' +
+                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>2BDC</option>' +
+                                '<option value="LATER"' + (value === 'LATER' ? ' selected' : '') + '>LATER</option>' +
+                                '</select></div>'
+                            );
+                        }
                     }
                 ]
+            });
+
+            $(document).on('change', '#tiktok-table .nrp-nr-select', function() {
+                const $el = $(this);
+                const newValue = String($el.val() || '').trim();
+                const sku = $el.data('sku');
+                const parent = $el.data('parent');
+                if (!sku || !table) return;
+                const rows = table.searchRows('(Child) sku', '=', sku);
+                const row = rows && rows.length ? rows[0] : null;
+                const prevRaw = row ? String(row.getData().nrp ?? '').trim().toUpperCase() : '';
+                const prevSelect = (prevRaw === 'NR' || prevRaw === 'LATER') ? prevRaw : 'REQ';
+                ttUpdateForecastNrp(
+                    { sku: sku, parent: parent, value: newValue },
+                    function() {
+                        if (row) {
+                            row.update({ nrp: newValue }, true);
+                            const nrCell = row.getCells().find(function(c) { return c.getField() === 'nrp'; });
+                            if (nrCell) nrCell.reformat();
+                        }
+                        showToast('NRP saved', 'success');
+                    },
+                    function() {
+                        $el.val(prevSelect);
+                    }
+                );
             });
 
             // SKU Search: run applyFilters() so Ad Click and other filters stay applied (missing campaign stays hidden when Ad Click filter is on)

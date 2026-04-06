@@ -56,6 +56,15 @@
             pointer-events: auto;
             z-index: 10050;
         }
+        .nrp-dot-cell { min-height: 32px; min-width: 44px; }
+        .nrp-dot-cell .nrp-status-dot {
+            display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+            border: 1px solid rgba(0,0,0,.12); flex-shrink: 0;
+        }
+        .nrp-dot-cell .nrp-nr-select {
+            opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
+        }
+        .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
     </style>
 @endsection
 
@@ -360,6 +369,34 @@
         function wfEscUrlAttr(url) {
             if (url == null || url === '') return '';
             return String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        function wfEscHtmlAttr(val) {
+            if (val == null || val === '') return '';
+            return String(val).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        function wfUpdateForecastNrp(data, onSuccess, onFail) {
+            onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
+            onFail = typeof onFail === 'function' ? onFail : function() {};
+            $.post('{{ route("update.forecast.data") }}', {
+                sku: data.sku,
+                parent: data.parent != null ? String(data.parent) : '',
+                column: 'NR',
+                value: data.value,
+                _token: $('meta[name="csrf-token"]').attr('content')
+            }).done(function(res) {
+                if (res.success) {
+                    onSuccess();
+                } else {
+                    console.warn('NRP not saved:', res.message);
+                    onFail();
+                }
+            }).fail(function(err) {
+                console.error('NRP save failed:', err);
+                alert('Error saving NRP.');
+                onFail();
+            });
         }
 
         function saveWayfairSpriceUpdates(updates) {
@@ -1045,6 +1082,63 @@
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
+                    {
+                        title: 'NRP',
+                        field: 'nr',
+                        minWidth: 52,
+                        width: 56,
+                        hozAlign: 'center',
+                        headerSort: true,
+                        accessor: function(value, data) {
+                            const val = data && data.nr != null ? data.nr : value;
+                            if (val === null || val === undefined) return '';
+                            return String(val).trim().toUpperCase();
+                        },
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            let value = cell.getValue();
+                            if (value === null || value === undefined || value === '') {
+                                value = d.nr;
+                            }
+                            if (value === null || value === undefined) {
+                                value = '';
+                            } else {
+                                value = String(value).trim().toUpperCase();
+                            }
+                            if (!value || value === '') {
+                                value = 'REQ';
+                            }
+                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                                value = 'REQ';
+                            }
+                            const sku = String(d.sku || '');
+                            const parent = d.parent != null ? String(d.parent) : '';
+                            let dotColor = '#22c55e';
+                            let tip = 'REQ';
+                            if (value === 'NR') {
+                                dotColor = '#dc3545';
+                                tip = '2BDC';
+                            } else if (value === 'LATER') {
+                                dotColor = '#facc15';
+                                tip = 'LATER';
+                            }
+                            const skuAttr = wfEscHtmlAttr(sku);
+                            const parentAttr = wfEscHtmlAttr(parent);
+                            return (
+                                '<div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' +
+                                wfEscHtmlAttr(tip + ' (click to change)') + '">' +
+                                '<span class="nrp-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>' +
+                                '<select class="form-select form-select-sm nrp-nr-select position-absolute top-0 start-0 w-100 h-100" ' +
+                                'data-type="NR" data-sku="' + skuAttr + '" data-parent="' + parentAttr + '" ' +
+                                'aria-label="NRP: ' + wfEscHtmlAttr(tip) + '">' +
+                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>REQ</option>' +
+                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>2BDC</option>' +
+                                '<option value="LATER"' + (value === 'LATER' ? ' selected' : '') + '>LATER</option>' +
+                                '</select></div>'
+                            );
+                        }
+                    },
                 ],
                 dataLoaded: function(data) {
                     wfResetSkuColHoverWidth();
@@ -1215,6 +1309,34 @@
                 wfMoreSoldActive = !wfMoreSoldActive;
                 wfZeroSoldActive = wfMissingActive = wfNMapActive = false;
                 applyFilters();
+            });
+
+            $(document).on('change', '#wayfair-pricing-table .nrp-nr-select', function() {
+                const $el = $(this);
+                const newValue = String($el.val() || '').trim();
+                const sku = $el.data('sku');
+                const parent = $el.data('parent');
+                if (!sku || !table) return;
+                const rows = table.getRows().filter(function(r) {
+                    const d = r.getData();
+                    return !d.is_parent && String(d.sku) === String(sku);
+                });
+                const row = rows.length ? rows[0] : null;
+                const prevRaw = row ? String(row.getData().nr ?? '').trim().toUpperCase() : '';
+                const prevSelect = (prevRaw === 'NR' || prevRaw === 'LATER') ? prevRaw : 'REQ';
+                wfUpdateForecastNrp(
+                    { sku: sku, parent: parent, value: newValue },
+                    function() {
+                        if (row) {
+                            row.update({ nr: newValue }, true);
+                            const nrCell = row.getCells().find(function(c) { return c.getField() === 'nr'; });
+                            if (nrCell) nrCell.reformat();
+                        }
+                    },
+                    function() {
+                        $el.val(prevSelect);
+                    }
+                );
             });
 
             $('#wf-refresh-pricing').on('click', function() {

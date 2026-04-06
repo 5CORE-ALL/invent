@@ -131,17 +131,24 @@
                 <input type="text" class="form-control" id="quick_title" name="title" placeholder="Enter Task" required style="font-size: 10px; padding: 3px 6px; height: 26px;">
             </div>
             
+            @php
+                $quickTaskUsers = \App\Models\User::where('is_active', true)->select('id', 'name')->orderBy('name')->get();
+            @endphp
+            <script type="application/json" id="quick-assignee-users-data">{!! json_encode($quickTaskUsers->map(fn ($u) => ['id' => (int) $u->id, 'name' => $u->name])->values()) !!}</script>
             <div style="margin-bottom: 6px;">
-                <label for="quick_assignee_id" class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Assignee</label>
-                <select class="form-select" id="quick_assignee_id" name="assignee_id" style="font-size: 10px; padding: 3px 6px; height: 26px;">
-                    <option value="">Select</option>
-                    @php
-                        $users = \App\Models\User::select('id', 'name')->orderBy('name')->get();
-                    @endphp
-                    @foreach($users as $user)
-                        <option value="{{ $user->id }}">{{ $user->name }}</option>
-                    @endforeach
-                </select>
+                <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Assignee(s)</label>
+                <div class="quick-assignee-ms position-relative" id="quick_assignee_ms" title="Select one or more people; one shared task is created with all assignees">
+                    <button type="button" class="quick-assignee-ms-trigger" id="quick_assignee_ms_trigger" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="quick-assignee-ms-label text-truncate">Select assignees</span>
+                        <i class="mdi mdi-menu-down quick-assignee-ms-chevron"></i>
+                    </button>
+                    <div class="quick-assignee-ms-panel" id="quick_assignee_ms_panel" role="listbox" aria-multiselectable="true">
+                        <input type="text" class="form-control form-control-sm quick-assignee-ms-search" id="quick_assignee_ms_search" placeholder="Search…" autocomplete="off" aria-label="Search assignees">
+                        <ul class="quick-assignee-ms-list list-unstyled mb-0" id="quick_assignee_ms_list"></ul>
+                    </div>
+                    <div id="quick_assignee_hidden_wrap" class="quick-assignee-hidden-wrap"></div>
+                </div>
+                <small class="text-muted" style="font-size: 8px; display: block; margin-top: 2px;">One task; all selected users are assignees.</small>
             </div>
             
             <div style="margin-bottom: 6px;">
@@ -277,6 +284,120 @@
             background: #888;
             border-radius: 3px;
         }
+
+        .quick-assignee-hidden-wrap {
+            display: contents;
+        }
+
+        .quick-assignee-ms-trigger {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            width: 100%;
+            height: 26px;
+            padding: 3px 8px 3px 6px;
+            font-size: 10px;
+            line-height: 1.2;
+            text-align: left;
+            color: #212529;
+            background-color: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            cursor: pointer;
+        }
+        .quick-assignee-ms-trigger:hover {
+            border-color: #adb5bd;
+        }
+        .quick-assignee-ms-trigger:focus {
+            border-color: #86b7fe;
+            outline: 0;
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+        }
+        .quick-assignee-ms-trigger.is-open .quick-assignee-ms-chevron {
+            transform: rotate(180deg);
+        }
+        .quick-assignee-ms-label {
+            flex: 1;
+            min-width: 0;
+        }
+        .quick-assignee-ms-label.has-value {
+            color: #212529;
+        }
+        .quick-assignee-ms-chevron {
+            flex-shrink: 0;
+            font-size: 16px;
+            line-height: 1;
+            opacity: 0.65;
+            transition: transform 0.15s ease;
+        }
+        .quick-assignee-ms-panel {
+            position: fixed;
+            z-index: 1080;
+            max-height: 220px;
+            display: none;
+            flex-direction: column;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.12);
+            overflow: hidden;
+        }
+        .quick-assignee-ms-panel.is-open {
+            display: flex;
+        }
+        .quick-assignee-ms-search {
+            font-size: 10px !important;
+            padding: 4px 8px !important;
+            border-radius: 0 !important;
+            border-left: none !important;
+            border-right: none !important;
+            border-top: none !important;
+        }
+        .quick-assignee-ms-list {
+            overflow-y: auto;
+            max-height: 176px;
+            padding: 4px 0;
+        }
+        .quick-assignee-ms-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 10px;
+            font-size: 10px;
+            line-height: 1.3;
+            cursor: pointer;
+            user-select: none;
+        }
+        .quick-assignee-ms-item:hover,
+        .quick-assignee-ms-item:focus {
+            background: #f8f9fa;
+            outline: none;
+        }
+        .quick-assignee-ms-item.is-selected {
+            background: #e7f1ff;
+        }
+        .quick-assignee-ms-item.is-hidden {
+            display: none;
+        }
+        .quick-assignee-ms-box {
+            width: 14px;
+            height: 14px;
+            border: 1px solid #adb5bd;
+            border-radius: 2px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            line-height: 1;
+            color: transparent;
+        }
+        .quick-assignee-ms-item.is-selected .quick-assignee-ms-box {
+            background: #0d6efd;
+            border-color: #0d6efd;
+            color: #fff;
+        }
         
         @media (max-width: 991.98px) {
             .floating-task-btn {
@@ -306,6 +427,26 @@
                 font-size: 14px !important;
                 padding: 8px 10px !important;
                 height: 40px !important;
+            }
+
+            .quick-assignee-ms-trigger {
+                height: 40px !important;
+                font-size: 14px !important;
+                padding: 8px 10px !important;
+            }
+            .quick-assignee-ms-search {
+                font-size: 14px !important;
+                padding: 8px 10px !important;
+            }
+            .quick-assignee-ms-item {
+                font-size: 14px !important;
+                padding: 8px 12px !important;
+            }
+            .quick-assignee-ms-panel {
+                max-height: 280px;
+            }
+            .quick-assignee-ms-list {
+                max-height: 220px;
             }
 
             #quick-task-form input[type="file"] {
@@ -361,8 +502,150 @@
                 $('body').css('overflow', 'hidden');
             });
 
+            function closeQuickAssigneePanel() {
+                var $panel = $('#quick_assignee_ms_panel');
+                if (!$panel.length || !$panel.hasClass('is-open')) return;
+                $panel.removeClass('is-open');
+                $('#quick_assignee_ms_trigger').removeClass('is-open').attr('aria-expanded', 'false');
+                $('#quick_assignee_ms_search').val('');
+                $('#quick_assignee_ms_list .quick-assignee-ms-item').removeClass('is-hidden');
+            }
+
+            function positionQuickAssigneePanel() {
+                var $btn = $('#quick_assignee_ms_trigger');
+                var $panel = $('#quick_assignee_ms_panel');
+                if (!$btn.length || !$panel.length || !$panel.hasClass('is-open')) return;
+                var r = $btn[0].getBoundingClientRect();
+                var spaceBelow = window.innerHeight - r.bottom - 8;
+                var maxH = Math.min(220, Math.max(120, spaceBelow));
+                $panel.css({
+                    top: (r.bottom + 2) + 'px',
+                    left: r.left + 'px',
+                    width: r.width + 'px',
+                    maxHeight: maxH + 'px'
+                });
+                $panel.find('.quick-assignee-ms-list').css('max-height', Math.max(80, maxH - 44) + 'px');
+            }
+
+            function openQuickAssigneePanel() {
+                var $panel = $('#quick_assignee_ms_panel');
+                if (!$panel.length) return;
+                $panel.addClass('is-open');
+                $('#quick_assignee_ms_trigger').addClass('is-open').attr('aria-expanded', 'true');
+                positionQuickAssigneePanel();
+                setTimeout(function () {
+                    $('#quick_assignee_ms_search').trigger('focus');
+                }, 0);
+            }
+
+            (function initQuickAssigneeMultiselect() {
+                var $dataEl = $('#quick-assignee-users-data');
+                var $list = $('#quick_assignee_ms_list');
+                var $wrap = $('#quick_assignee_hidden_wrap');
+                if (!$dataEl.length || !$list.length) return;
+
+                var users = [];
+                try {
+                    users = JSON.parse($dataEl.text());
+                } catch (e) {
+                    return;
+                }
+                if (!Array.isArray(users)) return;
+
+                var selected = new Map();
+
+                users.forEach(function (u) {
+                    var id = u.id;
+                    var $li = $('<li/>', {
+                        'class': 'quick-assignee-ms-item',
+                        'role': 'option',
+                        'tabindex': -1,
+                        'data-id': id,
+                        'aria-selected': 'false'
+                    });
+                    $li.append(
+                        $('<span/>', { 'class': 'quick-assignee-ms-box', 'aria-hidden': 'true' }).text('✓'),
+                        $('<span/>').text(u.name)
+                    );
+                    $list.append($li);
+                });
+
+                function syncHidden() {
+                    $wrap.empty();
+                    selected.forEach(function (_name, id) {
+                        $wrap.append($('<input/>', { type: 'hidden', name: 'assignee_ids[]', value: id }));
+                    });
+                }
+
+                function updateLabel() {
+                    var $lab = $('#quick_assignee_ms .quick-assignee-ms-label');
+                    var $btn = $('#quick_assignee_ms_trigger');
+                    if (selected.size === 0) {
+                        $lab.text('Select assignees').removeClass('has-value').addClass('text-muted');
+                        $btn.attr('title', 'Select one or more people; one shared task is created with all assignees');
+                        return;
+                    }
+                    var text = Array.from(selected.values()).join(', ');
+                    $lab.text(text).addClass('has-value').removeClass('text-muted');
+                    $btn.attr('title', text);
+                }
+
+                $list.on('click', '.quick-assignee-ms-item', function () {
+                    var id = parseInt($(this).data('id'), 10);
+                    var u = users.find(function (x) { return x.id === id; });
+                    if (!u) return;
+                    if (selected.has(id)) {
+                        selected.delete(id);
+                        $(this).removeClass('is-selected').attr('aria-selected', 'false');
+                    } else {
+                        selected.set(id, u.name);
+                        $(this).addClass('is-selected').attr('aria-selected', 'true');
+                    }
+                    syncHidden();
+                    updateLabel();
+                });
+
+                $('#quick_assignee_ms_search').on('input', function () {
+                    var q = $(this).val().toLowerCase().trim();
+                    $list.find('.quick-assignee-ms-item').each(function () {
+                        var text = $(this).text().toLowerCase();
+                        $(this).toggleClass('is-hidden', q.length > 0 && text.indexOf(q) === -1);
+                    });
+                });
+
+                $('#quick_assignee_ms_trigger').on('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var $panel = $('#quick_assignee_ms_panel');
+                    if ($panel.hasClass('is-open')) {
+                        closeQuickAssigneePanel();
+                    } else {
+                        openQuickAssigneePanel();
+                    }
+                });
+
+                $(document).on('mousedown.quickAssigneeMs', function (e) {
+                    if (!$('#quick_assignee_ms_panel').hasClass('is-open')) return;
+                    if ($(e.target).closest('#quick_assignee_ms').length) return;
+                    closeQuickAssigneePanel();
+                });
+
+                $(window).on('resize.quickAssigneeMs scroll.quickAssigneeMs', function () {
+                    if ($('#quick_assignee_ms_panel').hasClass('is-open')) {
+                        positionQuickAssigneePanel();
+                    }
+                });
+
+                $('#floating-task-form').on('scroll.quickAssigneeMs', function () {
+                    if ($('#quick_assignee_ms_panel').hasClass('is-open')) {
+                        positionQuickAssigneePanel();
+                    }
+                });
+            })();
+
             // Close floating task form
             function closeTaskForm() {
+                closeQuickAssigneePanel();
                 $('#floating-task-form').css('right', getTaskFormClosedOffset());
                 $('#task-form-backdrop').fadeOut(300);
                 $('body').removeClass('task-form-open');
@@ -383,11 +666,14 @@
                 }
             });
             
-            // Close on Escape key
+            // Close on Escape key (assignee panel first, then whole form)
             $(document).on('keydown', function(e) {
-                if (e.key === 'Escape' && $('body').hasClass('task-form-open')) {
-                    closeTaskForm();
+                if (e.key !== 'Escape' || !$('body').hasClass('task-form-open')) return;
+                if ($('#quick_assignee_ms_panel').hasClass('is-open')) {
+                    closeQuickAssigneePanel();
+                    return;
                 }
+                closeTaskForm();
             });
 
             // Keep modal closed on first load and browser page restore.

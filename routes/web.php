@@ -2986,6 +2986,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/supplier.list.json', [SupplierController::class, 'getSuppliersJson'])->name('supplier.list.json');
     Route::get('/supplier/categories.json', [SupplierController::class, 'getCategoriesJson'])->name('supplier.categories.json');
     Route::post('/supplier.create', [SupplierController::class, 'postSupplier'])->name('supplier.create');
+    Route::post('/supplier/{id}/approval-status', [SupplierController::class, 'updateApprovalStatus'])->name('supplier.approval-status');
     Route::delete('/supplier/delete/{id}', [SupplierController::class, 'deleteSupplier'])->name('supplier.delete');
     Route::post('/forecast-analysis/link-supplier-parent', [\App\Http\Controllers\ProductMaster\ForecastAnalysisController::class, 'linkSupplierToParent'])->name('forecast.link-supplier-parent');
     Route::post('/supplier/import', [SupplierController::class, 'bulkImport'])->name('supplier.import');
@@ -3098,6 +3099,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Ready To Ship
     Route::get('/ready-to-ship', [ReadyToShipController::class, 'index'])->name('ready.to.ship');
+    Route::get('/ready-to-ship/packing-list-links', [ReadyToShipController::class, 'packingListLinksJson'])->name('ready.to.ship.packing.list.links');
     Route::get('/ready-to-ship/r2s-total', [ReadyToShipController::class, 'r2sTotal'])->name('ready.to.ship.r2s.total');
     Route::post('/ready-to-ship/inline-update-by-sku', [ReadyToShipController::class, 'inlineUpdateBySku']);
     Route::post('/ready-to-ship/revert-back-mfrg', [ReadyToShipController::class, 'revertBackMfrg']);
