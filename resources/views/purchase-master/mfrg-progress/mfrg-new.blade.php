@@ -183,7 +183,7 @@
 
                         {{-- 📦 CBM --}}
                         <div class="col-auto">
-                            image.png                            <label class="form-label fw-semibold mb-1 d-block">📦 CBM</label>
+                            <label class="form-label fw-semibold mb-1 d-block">📦 CBM</label>
                             <div id="totalCBM" class="fw-bold text-success" style="font-size: 1.1rem;">
                                 00
                             </div>
@@ -195,13 +195,28 @@
                             <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search anything...">
                         </div>
 
-                        {{-- 🗑️ Delete Selected --}}
-                        <div class="col-auto">
-                            <button class="btn btn-sm btn-danger d-none" id="delete-selected-btn">
-                                <i class="fas fa-trash-alt me-1"></i> Delete
+                        {{-- Archived rows --}}
+                        <div class="col-auto d-flex align-items-end">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="show-archived-toggle">
+                                <label class="form-check-label fw-semibold" for="show-archived-toggle">Show archived</label>
+                            </div>
+                        </div>
+
+                        {{-- Archive / Restore selected --}}
+                        <div class="col-auto d-flex align-items-end gap-1">
+                            <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn" title="Soft-delete; restore from Show archived">
+                                <i class="fas fa-archive me-1"></i> Archive
+                            </button>
+                            <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn"
+                                title="Select archived row(s), then click to move them back to the active list">
+                                <i class="fas fa-undo me-1"></i> Restore
                             </button>
                         </div>
                     </div>
+                    <p class="text-muted small mb-2 mb-md-3" id="mfrg-archive-hint">
+                        <strong>Restore:</strong> turn on <em>Show archived</em>, tick row(s), then click the green <strong>Restore</strong> button.
+                    </p>
                     <div id="mfrg-table"></div>
                 </div>
             </div>
@@ -234,6 +249,8 @@
 
             let hideTimeout;
             let uniqueSuppliers = [];
+            let showArchived = false;
+            let table;
 
             function postMfrgInlineUpdate(sku, column, value) {
                 return fetch('/mfrg-progresses/inline-update-by-sku', {
@@ -246,9 +263,23 @@
                 }).then(res => res.json());
             }
 
-            const table = new Tabulator("#mfrg-table", {
+            table = new Tabulator("#mfrg-table", {
                 ajaxURL: "/mfrg-in-progress/data",
+                ajaxParams: function () {
+                    return { archived: showArchived ? 1 : 0 };
+                },
                 ajaxConfig: "GET",
+                selectableRows: true,
+                rowHeader: {
+                    formatter: "rowSelection",
+                    titleFormatter: "rowSelection",
+                    headerSort: false,
+                    resizable: false,
+                    frozen: true,
+                    headerHozAlign: "center",
+                    hozAlign: "center",
+                    width: 50,
+                },
                 layout: "fitData",
                 height: "700px",
                 pagination: true,
@@ -257,13 +288,6 @@
                 movableColumns: false,
                 resizableColumns: true,
                 columns: [
-                    {
-                        formatter: "rowSelection",
-                        titleFormatter: "rowSelection",
-                        hozAlign: "center",
-                        width: 50,
-                        headerSort: false
-                    },
                     {
                         title: "#",
                         field: "Image",
@@ -496,12 +520,104 @@
                 },
             });
 
-            table.on("rowSelectionChanged", function(data, rows) {
-                if (data.length > 0) {
-                    $('#delete-selected-btn').removeClass('d-none');
+            function updateMfrgArchiveButtons() {
+                const selected = typeof table.getSelectedRows === 'function' ? table.getSelectedRows() : [];
+                const n = selected.length;
+                if (showArchived) {
+                    $('#archive-selected-btn').addClass('d-none');
+                    $('#restore-selected-btn').removeClass('d-none');
+                    $('#restore-selected-btn').prop('disabled', n === 0);
                 } else {
-                    $('#delete-selected-btn').addClass('d-none');
+                    $('#restore-selected-btn').addClass('d-none').prop('disabled', false);
+                    $('#archive-selected-btn').toggleClass('d-none', n === 0);
                 }
+            }
+
+            table.on("rowSelectionChanged", function () {
+                updateMfrgArchiveButtons();
+            });
+
+            table.on("dataLoaded", function () {
+                updateMfrgArchiveButtons();
+            });
+
+            $('#show-archived-toggle').on('change', function () {
+                showArchived = this.checked;
+                table.deselectRow();
+                table.replaceData();
+                updateMfrgArchiveButtons();
+            });
+
+            $('#archive-selected-btn').on('click', function () {
+                const rows = table.getSelectedData();
+                const skus = rows.map(function (r) { return (r.sku || '').trim(); }).filter(Boolean);
+                if (!skus.length) {
+                    return;
+                }
+                if (!confirm('Archive ' + skus.length + ' row(s)? You can restore them with “Show archived”.')) {
+                    return;
+                }
+                fetch('/mfrg-progresses/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ skus: skus }),
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (res) {
+                        if (res.success) {
+                            table.deselectRow();
+                            table.replaceData();
+                            updateMfrgArchiveButtons();
+                            if (res.message) {
+                                alert(res.message);
+                            }
+                        } else {
+                            alert(res.message || 'Archive failed.');
+                        }
+                    })
+                    .catch(function () {
+                        alert('Network error while archiving.');
+                    });
+            });
+
+            $('#restore-selected-btn').on('click', function () {
+                const rows = table.getSelectedData();
+                const skus = rows.map(function (r) { return (r.sku || '').trim(); }).filter(Boolean);
+                if (!skus.length) {
+                    return;
+                }
+                if (!confirm('Restore ' + skus.length + ' row(s) to the active list?')) {
+                    return;
+                }
+                fetch('/mfrg-progresses/restore', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ skus: skus }),
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (res) {
+                        if (res.success) {
+                            table.deselectRow();
+                            table.replaceData();
+                            updateMfrgArchiveButtons();
+                            if (res.message) {
+                                alert(res.message);
+                            }
+                        } else {
+                            alert(res.message || 'Restore failed.');
+                        }
+                    })
+                    .catch(function () {
+                        alert('Network error while restoring.');
+                    });
             });
         });
     </script>

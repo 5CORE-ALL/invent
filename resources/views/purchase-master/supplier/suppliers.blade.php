@@ -105,6 +105,37 @@
         .approval-form-dots label:has(input[type="radio"]:checked) {
             font-weight: 600;
         }
+
+        .supplier-contact-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            padding: 2px;
+        }
+        .supplier-contact-wrap--missing {
+            border: 2px solid #dc3545;
+            box-shadow: 0 0 0 1px rgba(220, 53, 69, 0.2);
+        }
+        .supplier-contact-wrap--missing .supplier-contact-icon-inner {
+            opacity: 0.5;
+        }
+
+        .rating-edit-dot {
+            line-height: 1;
+            min-width: 0;
+            vertical-align: middle;
+        }
+        .rating-edit-dot-inner {
+            width: 8px;
+            height: 8px;
+            background-color: #6c757d !important;
+            transition: background-color 0.15s ease, transform 0.15s ease;
+        }
+        .rating-edit-dot:hover .rating-edit-dot-inner {
+            background-color: #495057 !important;
+            transform: scale(1.15);
+        }
     </style>
 @endsection
 
@@ -233,7 +264,7 @@
                                 <th>Name</th>
                                 <th class="text-center">Approved</th>
                                 <th>Company</th>
-                                <th class="parents-col">Parents</th>
+                                <th class="parents-col">P</th>
                                 <th>Zone</th>
                                 <th>Phone</th>
                                 <th>Rating</th>
@@ -463,8 +494,9 @@
 <div class="modal fade" id="ratingModal" tabindex="-1" aria-labelledby="ratingModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
         <div class="modal-content border-0 shadow-lg">
-            <form method="POST" action="{{ route('supplier.rating.save') }}" class="needs-validation" novalidate>
+            <form method="POST" action="{{ route('supplier.rating.save') }}" class="needs-validation" novalidate id="rating-modal-form">
                 @csrf
+                <input type="hidden" id="modal-rating-id" name="rating_id" value="">
                 <input type="hidden" id="modal-supplier-id" name="supplier_id">
                 <input type="hidden" id="modal-parent" name="parent">
 
@@ -518,7 +550,7 @@
                                     <small class="text-muted">Weight: {{ $item['weight'] }}%</small>
                                 </div>
                                 <div class="flex-shrink-0" style="width: 90px;">
-                                    <input type="number" id="score_{{ $i }}" name="criteria[{{ $i }}][score]" class="form-control form-control-sm text-center" min="1" max="10" placeholder="1-10">
+                                    <input type="number" id="score_{{ $i }}" name="criteria[{{ $i }}][score]" class="form-control form-control-sm text-center" min="0" max="10" step="1" placeholder="0-10">
                                     <input type="hidden" name="criteria[{{ $i }}][label]" value="{{ $item['label'] }}">
                                     <input type="hidden" name="criteria[{{ $i }}][weight]" value="{{ $item['weight'] }}">
                                 </div>
@@ -529,7 +561,7 @@
 
                     <!-- Submit Button -->
                     <div class="d-flex justify-content-end mt-4">
-                        <button class="btn btn-primary" type="submit">
+                        <button class="btn btn-primary" type="submit" id="rating-submit-btn">
                             <i class="mdi mdi-content-save me-1"></i> Submit Rating
                         </button>
                     </div>
@@ -1341,26 +1373,77 @@
             window.open(baseURL + number, '_blank');
         }
 
+        var RATING_CRITERIA_LABELS = [
+            'Product Quality', 'Timely Delivery', 'Document Accuracy', 'Pricing',
+            'Packaging & Labeling', 'Item Match (PO)', 'Commercial Terms', 'Responsiveness',
+            'Issue Resolution', 'Reliability'
+        ];
+
+        function clearRatingModalForm() {
+            $('#modal-rating-id').val('');
+            RATING_CRITERIA_LABELS.forEach(function (_, i) {
+                $('#score_' + i).val('');
+            });
+            $('#evaluation_date').val(new Date().toISOString().slice(0, 10));
+            $('#ratingModalLabel').text('🌟 Rate Supplier Performance');
+            $('#rating-submit-btn').html('<i class="mdi mdi-content-save me-1"></i> Submit Rating');
+        }
+
+        function fillRatingModalForm(payload) {
+            payload = payload || {};
+            $('#modal-rating-id').val(payload.id ? String(payload.id) : '');
+            $('#evaluation_date').val(payload.evaluation_date || new Date().toISOString().slice(0, 10));
+            var criteria = payload.criteria || [];
+            RATING_CRITERIA_LABELS.forEach(function (label, i) {
+                var row = criteria.find(function (c) { return c && c.label === label; });
+                var v = row && row.score !== null && row.score !== undefined && row.score !== '' ? row.score : '';
+                $('#score_' + i).val(v);
+            });
+            if (payload.id) {
+                $('#ratingModalLabel').text('✏️ Edit supplier rating');
+                $('#rating-submit-btn').html('<i class="mdi mdi-content-save me-1"></i> Update rating');
+            } else {
+                $('#ratingModalLabel').text('🌟 Rate Supplier Performance');
+                $('#rating-submit-btn').html('<i class="mdi mdi-content-save me-1"></i> Submit Rating');
+            }
+        }
+
         // Function to bind rating modal buttons (needed after AJAX updates) - Global scope
         function bindRatingButtons() {
-            $('.rate-btn').off('click').on('click', function () {
-                const supplierId = $(this).data('supplier-id');
-                const supplierName = $(this).data('supplier-name');
-                const parent = $(this).data('parent');
-                const skus = $(this).data('skus'); 
+            $('.rate-btn').off('click.rating').on('click.rating', function () {
+                clearRatingModalForm();
+                var supplierId = $(this).data('supplier-id');
+                var supplierName = $(this).data('supplier-name');
+                var parent = $(this).data('parent');
+                var skus = $(this).data('skus');
 
                 $('#modal-supplier-id').val(supplierId);
-                $('#modal-parent').val(parent);
+                $('#modal-parent').val(parent || '');
                 $('#modal-supplier-name').val(supplierName);
 
-                const skuSelect = $('#modal-skus');
-                skuSelect.empty();
-                if (Array.isArray(skus)) {
-                    skus.forEach(sku => {
-                        skuSelect.append(new Option(`${parent} → ${sku}`, sku, true, true));
-                    });
+                var skuSelect = $('#modal-skus');
+                if (skuSelect.length) {
+                    skuSelect.empty();
+                    if (Array.isArray(skus)) {
+                        skus.forEach(function (sku) {
+                            skuSelect.append(new Option((parent || '') + ' → ' + sku, sku, true, true));
+                        });
+                    }
+                    skuSelect.trigger('change');
                 }
-                skuSelect.trigger('change');
+            });
+
+            $('.rate-edit-btn').off('click.rating').on('click.rating', function () {
+                var supplierId = $(this).data('supplier-id');
+                var supplierName = $(this).data('supplier-name');
+                var payload = $(this).data('rating-payload');
+                if (typeof payload === 'string') {
+                    try { payload = JSON.parse(payload); } catch (e) { payload = {}; }
+                }
+                $('#modal-supplier-id').val(supplierId);
+                $('#modal-parent').val('');
+                $('#modal-supplier-name').val(supplierName);
+                fillRatingModalForm(payload);
             });
         }
 

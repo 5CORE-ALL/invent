@@ -3092,6 +3092,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/mfrg-in-progress', 'index')->name('mfrg.in.progress');
         Route::post('/mfrg-progresses/inline-update-by-sku', 'inlineUpdateBySku');
         Route::post('/mfrg-progresses/delete', 'deleteBySkus')->name('mfrg.progresses.delete');
+        Route::post('/mfrg-progresses/restore', 'restoreBySkus')->name('mfrg.progresses.restore');
+        Route::get('/mfrg-progresses/archived-count', 'archivedMfrgCount')->name('mfrg.progresses.archived-count');
         Route::get('/convert-currency', 'convert');
         Route::post('/ready-to-ship/insert', 'storeDataReadyToShip')->name('ready.to.ship.insert');
 

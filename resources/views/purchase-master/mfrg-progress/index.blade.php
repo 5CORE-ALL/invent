@@ -67,6 +67,12 @@
         align-items: center;
         justify-content: center;
     }
+    #columnControls .mip-toolbar-search-input {
+        width: 150px;
+        min-width: 120px;
+        height: 38px;
+        font-size: 13px;
+    }
     #columnControls #play-auto i.fa-play {
         margin-left: -1px; /* Center the play triangle - FA icon has slight right bias */
     }
@@ -110,9 +116,17 @@
                                     <i class="fas fa-comment-alt"></i> Follow-Up History
                                 </button>
                             </div>
-                            <button class="btn btn-danger d-flex align-items-center gap-1" id="deleteSelectedBtn" style="border-radius: 6px; display: none;">
-                                <i class="mdi mdi-delete"></i> Delete
+                            <button type="button" class="btn btn-warning d-flex align-items-center gap-1 text-dark" id="archiveSelectedBtn" style="border-radius: 6px; display: none;" title="Archive selected rows — restore from History">
+                                <i class="fas fa-archive"></i> Archive
                             </button>
+                            <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-1 shadow-sm" id="mipArchivedHistoryBtn" style="border-radius: 6px;" title="View archived MIP rows">
+                                <i class="fas fa-history"></i> History
+                                <span class="badge rounded-pill bg-secondary" id="mipArchivedCountBadge">0</span>
+                            </button>
+                            <div class="d-flex align-items-center flex-nowrap gap-2 mip-toolbar-column-filters" role="search" aria-label="Filter table">
+                                <input type="text" class="form-control form-control-sm column-search mip-toolbar-search-input" data-search-column="3" placeholder="Search SKU..." autocomplete="off" aria-label="Filter by SKU">
+                                <input type="text" class="form-control form-control-sm column-search mip-toolbar-search-input" data-search-column="6" placeholder="Search Supplier..." autocomplete="off" aria-label="Filter by supplier">
+                            </div>
                         </div>
 
                         <!-- Stats Section - Equal width, spread from left to right -->
@@ -132,10 +146,6 @@
                             <div class="stat-panel">
                                 <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">🔢 Items</div>
                                 <div id="total-order-items" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">0</div>
-                            </div>
-                            <div class="stat-panel">
-                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">📦 CTN CBM</div>
-                                <div id="total-ctn-cbm" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">0</div>
                             </div>
                             <div class="flex-shrink-0" style="display: none; width: 1px; height: 32px; background: #dee2e6; margin: 0 8px;" id="supplier-badge-vr"></div>
                             <div class="stat-panel" style="display: none;" id="supplier-badge-container">
@@ -186,6 +196,30 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Archived MIP history (separate datatable) -->
+                <div class="modal fade" id="mipArchivedHistoryModal" tabindex="-1" aria-labelledby="mipArchivedHistoryModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header bg-secondary text-white">
+                                <h5 class="modal-title" id="mipArchivedHistoryModalLabel">
+                                    <i class="fas fa-archive me-2"></i>Archived MIP — History
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="text-muted small mb-2">Select rows and click <strong>Restore</strong> to return them to the main MIP list.</p>
+                                <div id="mip-archived-history-table" class="mb-3"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn btn-success" id="mipHistoryRestoreBtn" disabled>
+                                    <i class="fas fa-undo me-1"></i> Restore selected
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                             
                 <div class="wide-table-wrapper table-container">
                     <table class="wide-table">
@@ -205,17 +239,13 @@
                                 <th data-column="3">
                                     SKU
                                     <div class="resizer"></div>
-                                    <input type="text" class="form-control column-search" data-search-column="3" placeholder="Search SKU..." style="margin-top:4px; font-size:12px; height:28px; width: 150px;">
-                                    <div class="search-results" data-results-column="3" style="position:relative; z-index:10;"></div>
                                 </th>
                                 <th data-column="18" class="text-center" hidden>NRP<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">QTY<div class="resizer"></div></th>
                                 <th data-column="10" class="text-center">Order<br/>Date<div class="resizer"></div></th>
                                 <th data-column="11" class="text-center">Delivery<br/>Date<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
-                                <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div>
-                                    <input type="text" class="form-control column-search" data-search-column="6" placeholder="Search Supplier..." style="margin-top:4px; font-size:12px; height:28px; min-width: 120px;">
-                                </th>
+                                <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -246,7 +276,7 @@
                                 @endphp
                                 @continue($readyToShip === 'Yes')
                                 @continue($nrValue === 'NR')
-                                <tr data-stage="{{ $stageValue ?? '' }}" class="stage-row" data-sku="{{ $item->sku }}">
+                                <tr data-stage="{{ $stageValue ?? '' }}" class="stage-row" data-sku="{{ $item->sku }}" data-parent="{{ e($item->parent ?? '') }}">
                                     <td data-column="0" class="text-center">
                                         <input type="checkbox" class="row-checkbox" data-sku="{{ $item->sku }}">
                                     </td>
@@ -262,7 +292,7 @@
                                                     $imageUrl = asset($imageUrl);
                                                 }
                                             @endphp
-                                            <img src="{{ $imageUrl }}" class="hover-img" data-src="{{ $imageUrl }}" alt="Image" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                                            <img src="{{ $imageUrl }}" class="hover-img" data-src="{{ $imageUrl }}" alt="" loading="lazy" decoding="async" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
                                             <span class="text-muted" style="display: none;">No</span>
                                         @else
                                             <span class="text-muted">No</span>
@@ -620,25 +650,37 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
+    /** Lazy-load Tabulator when opening Archived History (saves initial parse on main MIP page). */
+    var mipTabulatorLoadPromise = null;
+    function mipEnsureTabulator() {
+        if (typeof Tabulator !== 'undefined') {
+            return Promise.resolve();
+        }
+        if (!mipTabulatorLoadPromise) {
+            mipTabulatorLoadPromise = new Promise(function (resolve, reject) {
+                if (!document.querySelector('link[data-mip-tabulator-css]')) {
+                    var link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = 'https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css';
+                    link.setAttribute('data-mip-tabulator-css', '1');
+                    document.head.appendChild(link);
+                }
+                var s = document.createElement('script');
+                s.src = 'https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js';
+                s.async = true;
+                s.onload = function () { resolve(); };
+                s.onerror = function () { reject(new Error('Tabulator failed to load')); };
+                document.body.appendChild(s);
+            });
+        }
+        return mipTabulatorLoadPromise;
+    }
+
     document.body.style.zoom = '85%';
 
     const popup = document.createElement('img');
     popup.className = 'preview-popup';
     document.body.appendChild(popup);
-
-    document.querySelectorAll('.hover-img').forEach(img => {
-        img.addEventListener('mouseenter', e => {
-            popup.src = img.dataset.src;
-            popup.style.display = 'block';
-        });
-        img.addEventListener('mousemove', e => {
-            popup.style.top = (e.clientY + 20) + 'px';
-            popup.style.left = (e.clientX + 20) + 'px';
-        });
-        img.addEventListener('mouseleave', e => {
-            popup.style.display = 'none';
-        });
-    });
 
     function calculateTotalCBM() {
         let totalCBM = 0;
@@ -657,7 +699,7 @@
             }
         });
         const el = document.getElementById('total-cbm');
-        if (el) el.textContent = totalCBM.toFixed(2);
+        if (el) el.textContent = String(Math.round(totalCBM));
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -665,10 +707,42 @@
 
         const table = document.querySelector('.wide-table');
         const rows = table.querySelectorAll('tbody tr');
+        const mipTbody = table.querySelector('tbody');
 
-        // Column Resizing
+        // Image preview: one delegated listener (was 3 listeners × every row image)
+        if (mipTbody) {
+            let hoverMoveRaf = false;
+            let hoverClientX = 0;
+            let hoverClientY = 0;
+            mipTbody.addEventListener('mouseover', function (e) {
+                const img = e.target.closest('.hover-img');
+                if (!img || !mipTbody.contains(img)) return;
+                const src = img.dataset.src || img.getAttribute('src');
+                if (src) popup.src = src;
+                popup.style.display = 'block';
+            });
+            mipTbody.addEventListener('mousemove', function (e) {
+                if (popup.style.display !== 'block') return;
+                hoverClientX = e.clientX;
+                hoverClientY = e.clientY;
+                if (hoverMoveRaf) return;
+                hoverMoveRaf = true;
+                requestAnimationFrame(function () {
+                    hoverMoveRaf = false;
+                    popup.style.top = (hoverClientY + 20) + 'px';
+                    popup.style.left = (hoverClientX + 20) + 'px';
+                });
+            });
+            mipTbody.addEventListener('mouseout', function (e) {
+                const img = e.target.closest('.hover-img');
+                if (!img || !mipTbody.contains(img)) return;
+                const rel = e.relatedTarget;
+                if (rel && img.contains(rel)) return;
+                popup.style.display = 'none';
+            });
+        }
+
         initColumnResizing();
-        // restoreColumnWidths();
 
         // Column Visibility
         setupColumnVisibility();
@@ -703,26 +777,25 @@
         // Open/Edit O Links
         setupOlinkEditor();
 
-        // Total CBM calculation
         calculateTotalCBM();
-
-        //total order qty
-
-        //total amount
         calculateTotalAmount();
-
-        //total order items count
         calculateTotalOrderItems();
 
-        //total CTN CBM
-        calculateTotalCTNCBM();
-
-        // Package Instruction toggle (red/green dot) using mfrg_progresses.pkg_inst (Yes/No)
-        document.querySelectorAll('.pkg-inst-toggle').forEach(dot => {
-            dot.addEventListener('click', function () {
-                const sku = this.dataset.sku;
-                const column = this.dataset.column || 'pkg_inst';
-                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
+        // Pkg Inst / U-Manual / Compliance dots: one delegated handler (was 3 listeners × rows)
+        if (mipTbody) {
+            mipTbody.addEventListener('click', function (e) {
+                const dot = e.target.closest('.pkg-inst-toggle, .u-manual-toggle, .compliance-toggle');
+                if (!dot || !mipTbody.contains(dot)) return;
+                const sku = dot.dataset.sku;
+                if (!sku) return;
+                let column = dot.dataset.column;
+                if (!column) {
+                    if (dot.classList.contains('pkg-inst-toggle')) column = 'pkg_inst';
+                    else if (dot.classList.contains('u-manual-toggle')) column = 'u_manual';
+                    else column = 'compliance';
+                }
+                const label = column === 'pkg_inst' ? 'Pkg Inst.' : column === 'u_manual' ? 'U-Manual.' : 'Compliance.';
+                const current = (dot.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
                 const next = current === 'Yes' ? 'No' : 'Yes';
 
                 fetch('/mfrg-progresses/inline-update-by-sku', {
@@ -733,103 +806,27 @@
                     },
                     body: JSON.stringify({ sku, column, value: next })
                 })
-                .then(res => res.json())
-                .then(res => {
-                    if (!res.success) {
-                        alert('Error: ' + (res.message || 'Failed to update Pkg Inst.'));
-                        return;
-                    }
-                    this.dataset.value = next;
-                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
-                })
-                .catch(() => {
-                    alert('AJAX error occurred.');
-                });
+                    .then(res => res.json())
+                    .then(res => {
+                        if (!res.success) {
+                            alert('Error: ' + (res.message || 'Failed to update ' + label));
+                            return;
+                        }
+                        dot.dataset.value = next;
+                        dot.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
+                    })
+                    .catch(() => alert('AJAX error occurred.'));
             });
-        });
+        }
 
-        // U-Manual toggle (red/green dot) using mfrg_progresses.u_manual (Yes/No)
-        document.querySelectorAll('.u-manual-toggle').forEach(dot => {
-            dot.addEventListener('click', function () {
-                const sku = this.dataset.sku;
-                const column = this.dataset.column || 'u_manual';
-                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
-                const next = current === 'Yes' ? 'No' : 'Yes';
-
-                fetch('/mfrg-progresses/inline-update-by-sku', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ sku, column, value: next })
-                })
-                .then(res => res.json())
-                .then(res => {
-                    if (!res.success) {
-                        alert('Error: ' + (res.message || 'Failed to update U-Manual.'));
-                        return;
-                    }
-                    this.dataset.value = next;
-                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
-                })
-                .catch(() => {
-                    alert('AJAX error occurred.');
-                });
-            });
-        });
-
-        // Compliance toggle (red/green dot) using mfrg_progresses.compliance (Yes/No)
-        document.querySelectorAll('.compliance-toggle').forEach(dot => {
-            dot.addEventListener('click', function () {
-                const sku = this.dataset.sku;
-                const column = this.dataset.column || 'compliance';
-                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
-                const next = current === 'Yes' ? 'No' : 'Yes';
-
-                fetch('/mfrg-progresses/inline-update-by-sku', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ sku, column, value: next })
-                })
-                .then(res => res.json())
-                .then(res => {
-                    if (!res.success) {
-                        alert('Error: ' + (res.message || 'Failed to update Compliance.'));
-                        return;
-                    }
-                    this.dataset.value = next;
-                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
-                })
-                .catch(() => {
-                    alert('AJAX error occurred.');
-                });
-            });
-        });
-
-        // Delete with checkbox functionality
-        setupDeleteWithCheckbox();
+        // Archive selected rows + archived history modal
+        setupMipArchiveToolbar();
+        setupMipArchivedHistory();
+        refreshMipArchivedBadge();
 
         // Summary Export to Excel
         const summaryExportBtn = document.getElementById('mip-summary-export-btn');
         if (summaryExportBtn) summaryExportBtn.addEventListener('click', exportMipSummaryToExcel);
-
-        // Filter to show only MIP stage on page load
-        setTimeout(() => {
-            filterByMIPStage();
-            const visibleMip = Array.from(rows).filter(r => {
-                const stageAttr = (r.getAttribute('data-stage') || '').toLowerCase().trim();
-                const stageSelect = r.querySelector('.editable-select-stage');
-                const stage = (stageSelect ? stageSelect.value : '').toLowerCase().trim() || stageAttr;
-                return stage === 'mip' && r.style.display !== 'none';
-            });
-            if (visibleMip.length > 0 && typeof sortRowsByOrderDate === 'function') {
-                sortRowsByOrderDate(visibleMip);
-            }
-        }, 100);
 
         // ========= FUNCTIONS ========= //
 
@@ -905,62 +902,84 @@
             });
         }
 
-        // ✅ Fixed version of column search (supports multiple filters) - Only MIP stage
+        // Column filters: debounced + data-sku/data-parent (avoid full table resort on every keypress)
         function setupColumnSearch() {
-            document.querySelectorAll('.column-search').forEach(input => {
-                input.addEventListener('input', function () {
-                    const filters = {};
-                    document.querySelectorAll('.column-search').forEach(searchInput => {
-                        const col = searchInput.getAttribute('data-search-column');
-                        const val = searchInput.value.trim().toLowerCase();
-                        if (val !== '') {
-                            filters[col] = val;
-                        }
-                    });
+            let debounceTimer = null;
 
-                    rows.forEach(row => {
-                        // Check if stage is MIP
-                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                        const stageSelect = row.querySelector('.editable-select-stage');
-                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                        const rowStage = rowStageSelect || rowStageAttr;
-                        const isMIP = rowStage === 'mip';
-                        
-                        // Only show MIP stage rows
-                        if (!isMIP) {
-                            row.style.display = 'none';
-                            return;
-                        }
-                        
-                        let show = true;
-                        for (const col in filters) {
-                            const cell = row.querySelector(`td[data-column="${col}"]`);
+            function collectFilters() {
+                const filters = {};
+                document.querySelectorAll('.column-search').forEach(function (searchInput) {
+                    const col = searchInput.getAttribute('data-search-column');
+                    const val = searchInput.value.trim().toLowerCase();
+                    if (val !== '') {
+                        filters[col] = val;
+                    }
+                });
+                return filters;
+            }
+
+            function applyMipColumnFilters() {
+                const filters = collectFilters();
+                rows.forEach(function (row) {
+                    const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                    const stageSelect = row.querySelector('.editable-select-stage');
+                    const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                    const rowStage = rowStageSelect || rowStageAttr;
+                    if (rowStage !== 'mip') {
+                        row.style.display = 'none';
+                        return;
+                    }
+                    let show = true;
+                    for (const col in filters) {
+                        let cellText = '';
+                        if (col === '3') {
+                            cellText = (row.getAttribute('data-sku') || '').trim().toLowerCase();
+                        } else if (col === '2') {
+                            cellText = (row.getAttribute('data-parent') || '').trim().toLowerCase();
+                        } else if (col === '6') {
+                            const cell = row.querySelector('td[data-column="6"]');
                             if (!cell) {
                                 show = false;
                                 break;
                             }
-                            let cellText = '';
-                            if (col === '6') {
-                                // Supplier column: use selected option text, not all options
-                                const sel = cell.querySelector('select[data-column="supplier"]');
-                                const opt = sel?.selectedOptions?.[0] || sel?.querySelector('option:checked');
-                                cellText = (opt ? opt.textContent : (sel?.value || '')).trim().toLowerCase();
-                            } else {
-                                cellText = (cell.textContent || '').toLowerCase();
-                            }
-                            if (!cellText.includes(filters[col])) {
+                            const sel = cell.querySelector('select[data-column="supplier"]');
+                            const opt = sel?.selectedOptions?.[0] || sel?.querySelector('option:checked');
+                            cellText = (opt ? opt.textContent : (sel?.value || '')).trim().toLowerCase();
+                        } else {
+                            const cell = row.querySelector('td[data-column="' + col + '"]');
+                            if (!cell) {
                                 show = false;
                                 break;
                             }
+                            cellText = (cell.textContent || '').toLowerCase();
                         }
-                        row.style.display = show ? '' : 'none';
-                    });
-                    // Sort visible rows by order date (oldest first)
-                    const visibleRows = Array.from(rows).filter(r => r.style.display !== 'none');
-                    if (visibleRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
-                        sortRowsByOrderDate(visibleRows);
+                        if (!cellText.includes(filters[col])) {
+                            show = false;
+                            break;
+                        }
                     }
+                    row.style.display = show ? '' : 'none';
                 });
+                const visibleRows = Array.from(rows).filter(function (r) { return r.style.display !== 'none'; });
+                if (visibleRows.length > 1 && typeof sortRowsByOrderDate === 'function') {
+                    sortRowsByOrderDate(visibleRows);
+                }
+                if (typeof calculateTotalCBM === 'function') calculateTotalCBM();
+                if (typeof calculateTotalAmount === 'function') calculateTotalAmount();
+                if (typeof calculateTotalOrderItems === 'function') calculateTotalOrderItems();
+                if (typeof updateFollowSupplierCount === 'function') updateFollowSupplierCount();
+            }
+
+            function scheduleApply() {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(function () {
+                    debounceTimer = null;
+                    applyMipColumnFilters();
+                }, 200);
+            }
+
+            document.querySelectorAll('.column-search').forEach(function (input) {
+                input.addEventListener('input', scheduleApply);
             });
         }
 
@@ -1268,7 +1287,6 @@
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderItems();
-            calculateTotalCTNCBM();
             updateFollowSupplierCount();
         }
 
@@ -1393,11 +1411,217 @@
             });
         }
 
-        function setupDeleteWithCheckbox() {
+        function refreshMipArchivedBadge() {
+            fetch('/mfrg-progresses/archived-count', { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    var el = document.getElementById('mipArchivedCountBadge');
+                    if (el && typeof d.count !== 'undefined') {
+                        el.textContent = d.count;
+                    }
+                })
+                .catch(function () { /* ignore */ });
+        }
+
+        let mipArchivedHistoryTable = null;
+
+        function setupMipArchivedHistory() {
+            var historyBtn = document.getElementById('mipArchivedHistoryBtn');
+            var historyModalEl = document.getElementById('mipArchivedHistoryModal');
+            var restoreBtn = document.getElementById('mipHistoryRestoreBtn');
+            if (!historyBtn || !historyModalEl) {
+                return;
+            }
+
+            historyBtn.addEventListener('click', function () {
+                mipEnsureTabulator()
+                    .then(function () {
+                        initMipArchivedHistoryTable();
+                        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                            bootstrap.Modal.getOrCreateInstance(historyModalEl).show();
+                        }
+                    })
+                    .catch(function () {
+                        alert('Could not load the history table. Check your network and try again.');
+                    });
+            });
+
+            if (restoreBtn) {
+                restoreBtn.addEventListener('click', function () {
+                    if (!mipArchivedHistoryTable) {
+                        return;
+                    }
+                    var skus = mipArchivedHistoryTable.getSelectedData().map(function (r) {
+                        return (r.sku || '').trim();
+                    }).filter(Boolean);
+                    if (!skus.length) {
+                        return;
+                    }
+                    if (!confirm('Restore ' + skus.length + ' row(s) to the active MIP list?')) {
+                        return;
+                    }
+                    fetch('/mfrg-progresses/restore', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({ skus: skus }),
+                    })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            if (data.success) {
+                                mipArchivedHistoryTable.deselectRow();
+                                refreshMipArchivedBadge();
+                                alert(data.message || 'Restored.');
+                                window.location.reload();
+                            } else {
+                                alert(data.message || 'Restore failed.');
+                            }
+                        })
+                        .catch(function () {
+                            alert('Network error while restoring.');
+                        });
+                });
+            }
+
+            historyModalEl.addEventListener('hidden.bs.modal', function () {
+                if (mipArchivedHistoryTable) {
+                    mipArchivedHistoryTable.deselectRow();
+                }
+                if (restoreBtn) {
+                    restoreBtn.disabled = true;
+                }
+            });
+        }
+
+        function initMipArchivedHistoryTable() {
+            if (mipArchivedHistoryTable) {
+                mipArchivedHistoryTable.replaceData();
+                return;
+            }
+            if (typeof Tabulator === 'undefined') {
+                return;
+            }
+            mipArchivedHistoryTable = new Tabulator('#mip-archived-history-table', {
+                ajaxURL: '/mfrg-in-progress/data',
+                ajaxParams: { archived: 1 },
+                ajaxResponse: function (url, params, response) {
+                    return response.data || [];
+                },
+                height: '420px',
+                layout: 'fitColumns',
+                selectableRows: true,
+                rowHeader: {
+                    formatter: 'rowSelection',
+                    titleFormatter: 'rowSelection',
+                    headerSort: false,
+                    resizable: false,
+                    frozen: true,
+                    headerHozAlign: 'center',
+                    hozAlign: 'center',
+                    width: 50,
+                },
+                columns: [
+                    {
+                        title: 'Image',
+                        field: 'Image',
+                        headerSort: false,
+                        width: 72,
+                        formatter: function (cell) {
+                            var u = cell.getValue();
+                            return u ? '<img src="' + u + '" alt="" style="width:32px;height:32px;object-fit:contain;border-radius:4px;">' : '—';
+                        },
+                    },
+                    { title: 'Parent', field: 'parent', headerFilter: 'input', minWidth: 100 },
+                    { title: 'SKU', field: 'sku', headerFilter: 'input', minWidth: 120 },
+                    { title: 'QTY', field: 'qty', hozAlign: 'center', width: 72 },
+                    { title: 'Supplier', field: 'supplier', headerFilter: 'input', minWidth: 120 },
+                    { title: 'R2S', field: 'ready_to_ship', width: 72, hozAlign: 'center' },
+                ],
+            });
+            mipArchivedHistoryTable.on('rowSelectionChanged', function () {
+                var n = mipArchivedHistoryTable.getSelectedRows().length;
+                var rb = document.getElementById('mipHistoryRestoreBtn');
+                if (rb) {
+                    rb.disabled = n === 0;
+                }
+            });
+        }
+
+        function setupMipArchiveToolbar() {
             const selectAllCheckbox = document.getElementById('selectAllCheckbox');
             const rowCheckboxes = document.querySelectorAll('.row-checkbox');
-            const deleteBtn = document.getElementById('deleteSelectedBtn');
-            const selectedCountSpan = document.getElementById('selectedCount');
+            const archiveBtn = document.getElementById('archiveSelectedBtn');
+
+            function updateMipArchiveToolbar() {
+                const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                const count = checkedBoxes.length;
+                const show = count > 0;
+                if (archiveBtn) {
+                    archiveBtn.style.display = show ? 'flex' : 'none';
+                }
+            }
+
+            function runArchiveSelected() {
+                const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                if (checkedBoxes.length === 0) {
+                    alert('Please select at least one row.');
+                    return;
+                }
+                if (!confirm('Remove ' + checkedBoxes.length + ' item(s) from this MIP view? They will be archived (not permanently deleted) and you can restore them from History.')) {
+                    return;
+                }
+
+                const skus = Array.from(checkedBoxes).map(cb => (cb.dataset.sku || '').trim()).filter(Boolean);
+
+                fetch('/mfrg-progresses/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ skus: skus }),
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            checkedBoxes.forEach(checkbox => {
+                                const row = checkbox.closest('tr');
+                                if (row) {
+                                    row.remove();
+                                }
+                            });
+
+                            if (selectAllCheckbox) {
+                                selectAllCheckbox.checked = false;
+                                selectAllCheckbox.indeterminate = false;
+                            }
+
+                            updateMipArchiveToolbar();
+
+                            calculateTotalCBM();
+                            calculateTotalAmount();
+                            calculateTotalOrderItems();
+                            updateFollowSupplierCount();
+
+                            refreshMipArchivedBadge();
+                            if (mipArchivedHistoryTable) {
+                                mipArchivedHistoryTable.replaceData();
+                            }
+
+                            alert(data.message || ('Archived ' + (data.deleted_count || 0) + ' item(s).'));
+                        } else {
+                            alert('Error: ' + (data.message || 'Failed to archive items.'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while archiving items.');
+                    });
+            }
 
             // Select All functionality
             if (selectAllCheckbox) {
@@ -1405,7 +1629,7 @@
                     rowCheckboxes.forEach(checkbox => {
                         checkbox.checked = this.checked;
                     });
-                    updateDeleteButton();
+                    updateMipArchiveToolbar();
                 });
             }
 
@@ -1413,7 +1637,7 @@
             rowCheckboxes.forEach(checkbox => {
                 checkbox.addEventListener('change', function() {
                     updateSelectAllState();
-                    updateDeleteButton();
+                    updateMipArchiveToolbar();
                 });
             });
 
@@ -1426,115 +1650,12 @@
                 }
             }
 
-            function updateDeleteButton() {
-                const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-                const count = checkedBoxes.length;
-                
-                if (deleteBtn && selectedCountSpan) {
-                    if (count > 0) {
-                        deleteBtn.style.display = 'flex';
-                        selectedCountSpan.textContent = count;
-                    } else {
-                        deleteBtn.style.display = 'none';
-                    }
-                }
+            if (archiveBtn) {
+                archiveBtn.addEventListener('click', function () { runArchiveSelected(); });
             }
 
-            // Delete button click handler
-            if (deleteBtn) {
-                deleteBtn.addEventListener('click', function() {
-                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-                    if (checkedBoxes.length === 0) {
-                        alert('Please select at least one item to delete.');
-                        return;
-                    }
-
-                    if (!confirm(`Are you sure you want to delete ${checkedBoxes.length} item(s)? This action cannot be undone.`)) {
-                        return;
-                    }
-
-                    const skus = Array.from(checkedBoxes).map(cb => cb.dataset.sku);
-                    
-                    fetch('/mfrg-progresses/delete', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                        },
-                        body: JSON.stringify({ skus: skus })
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.success) {
-                            // Remove deleted rows from table
-                            checkedBoxes.forEach(checkbox => {
-                                const row = checkbox.closest('tr');
-                                if (row) {
-                                    row.remove();
-                                }
-                            });
-                            
-                            // Reset select all checkbox
-                            if (selectAllCheckbox) {
-                                selectAllCheckbox.checked = false;
-                                selectAllCheckbox.indeterminate = false;
-                            }
-                            
-                            // Hide delete button
-                            updateDeleteButton();
-                            
-                            // Recalculate totals
-                            calculateTotalCBM();
-                            calculateTotalAmount();
-                            calculateTotalOrderItems();
-                            calculateTotalCTNCBM();
-                            updateFollowSupplierCount();
-                            
-                            alert(`Successfully deleted ${data.deleted_count} item(s).`);
-                        } else {
-                            alert('Error: ' + (data.message || 'Failed to delete items.'));
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('An error occurred while deleting items.');
-                    });
-                });
-            }
-
-            // Initialize button state
-            updateDeleteButton();
+            updateMipArchiveToolbar();
         }
-
-
-        // document.getElementById('play-auto').addEventListener('click', () => {
-        //     isPlaying = true;
-        //     currentSupplierIndex = 0;
-        //     renderGroup(supplierKeys[currentSupplierIndex]);
-        //     document.getElementById('play-pause').style.display = 'inline-block';
-        //     document.getElementById('play-auto').style.display = 'none';
-        // });
-
-        // document.getElementById('play-forward').addEventListener('click', () => {
-        //     if (!isPlaying) return;
-        //     currentSupplierIndex = (currentSupplierIndex + 1) % supplierKeys.length;
-        //     renderGroup(supplierKeys[currentSupplierIndex]);
-        // });
-
-        // document.getElementById('play-backward').addEventListener('click', () => {
-        //     if (!isPlaying) return;
-        //     currentSupplierIndex = (currentSupplierIndex - 1 + supplierKeys.length) % supplierKeys.length;
-        //     renderGroup(supplierKeys[currentSupplierIndex]);
-        // });
-
-        // document.getElementById('play-pause').addEventListener('click', () => {
-        //     isPlaying = false;
-        //     tableBody.innerHTML = originalTableHtml;
-        //     document.getElementById('play-pause').style.display = 'none';
-        //     document.getElementById('play-auto').style.display = 'inline-block';
-        //     attachEditableListeners();
-        //     attachStageListeners();
-        // });
 
     });
 </script>
@@ -1744,7 +1865,6 @@
                 calculateTotalCBM();
                 calculateTotalAmount();
                 calculateTotalOrderItems();
-                calculateTotalCTNCBM();
                 updateFollowSupplierCount();
                 updateCounts(); // Update pending status counts based on visible rows
             }, 50);
@@ -1845,7 +1965,6 @@
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderItems();
-            calculateTotalCTNCBM();
             updateFollowSupplierCount();
             updateCounts(); // Update pending status counts when pausing
         });
@@ -1987,7 +2106,6 @@
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderItems();
-            calculateTotalCTNCBM();
             updateFollowSupplierCount();
             updateCounts(); // Update pending status counts when filtering by date
         }
@@ -2184,55 +2302,6 @@
         document.getElementById('total-order-items').textContent = totalItems;
     }
 
-    function calculateTotalCTNCBM() {
-        let totalCTNCBM = 0;
-        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
-            // Check stage from data attribute first (more reliable)
-            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-            const stageSelect = row.querySelector('.editable-select-stage');
-            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-            const rowStage = rowStageSelect || rowStageAttr;
-            
-            // Only count MIP stage rows
-            if (rowStage !== 'mip') {
-                return;
-            }
-            
-            if (row.style.display !== "none") {
-                // Get Order Qty (column 4)
-                const qtyCell = row.querySelector('td[data-column="4"]');
-                let qty = 0;
-                if (qtyCell) {
-                    const qtyInput = qtyCell.querySelector('input');
-                    if (qtyInput) {
-                        qty = parseFloat(qtyInput.value) || 0;
-                    } else {
-                        qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
-                    }
-                }
-                
-                // Get CTN CBM E (column 20)
-                const ctnCbmECell = row.querySelector('td[data-column="20"]');
-                let ctnCbmE = 0;
-                if (ctnCbmECell) {
-                    const ctnCbmEText = ctnCbmECell.textContent.trim();
-                    // Remove 'N/A' and parse the value
-                    if (ctnCbmEText !== 'N/A' && ctnCbmEText !== '') {
-                        ctnCbmE = parseFloat(ctnCbmEText.replace(/,/g, '')) || 0;
-                    }
-                }
-                
-                // Calculate: Order Qty * CTN CBM E
-                const rowTotal = qty * ctnCbmE;
-                if (!isNaN(rowTotal)) {
-                    totalCTNCBM += rowTotal;
-                }
-            }
-        });
-
-        document.getElementById('total-ctn-cbm').textContent = totalCTNCBM.toFixed(2);
-    }
-
     // Function to update Follow Supplier count (defined globally)
     function updateFollowSupplierCount() {
         const followSupplierSpan = document.getElementById("followSupplierCount");
@@ -2307,7 +2376,6 @@
         calculateTotalCBM();
         calculateTotalAmount();
         calculateTotalOrderItems();
-        calculateTotalCTNCBM();
         updateFollowSupplierCount();
     }
 

@@ -549,7 +549,7 @@ class RefundController extends Controller
                 ->first();
         };
 
-        foreach (DB::table('mfrg_progress')->get() as $row) {
+        foreach (DB::table('mfrg_progress')->whereNull('deleted_at')->get() as $row) {
             if ($normalizeSku($row->sku ?? '') !== $norm) {
                 continue;
             }

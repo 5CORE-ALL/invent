@@ -89,7 +89,7 @@
         <div class="dropdown d-block w-100">
             @if(count($parents) > 0)
                 <button class="btn btn-sm btn-light dropdown-toggle w-75" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    Parent ({{ count($parents) }})
+                    P ({{ count($parents) }})
                 </button>
                 <ul class="dropdown-menu show-on-top" style="max-height: 200px; overflow-y: auto;">
                     @foreach ($parents as $parent)
@@ -120,24 +120,16 @@
         @php
             $scores = $supplier->ratings->pluck('final_score')->filter();
             $avg = $scores->count() ? round($scores->avg(), 2) : null;
-
+            $ratingPctColor = null;
             if ($avg !== null) {
-                if ($avg >= 90) {
-                    $label = 'Excellent';
-                    $class = 'success';
-                    $icon = 'star-circle';
+                if ($avg > 90) {
+                    $ratingPctColor = '#c2188b';
                 } elseif ($avg >= 75) {
-                    $label = 'Good';
-                    $class = 'primary';
-                    $icon = 'star-half-full';
-                } elseif ($avg >= 60) {
-                    $label = 'Average';
-                    $class = 'warning';
-                    $icon = 'star-outline';
+                    $ratingPctColor = '#198754';
+                } elseif ($avg >= 50) {
+                    $ratingPctColor = '#b58100';
                 } else {
-                    $label = 'Poor';
-                    $class = 'danger';
-                    $icon = 'star-off';
+                    $ratingPctColor = '#dc3545';
                 }
             }
         @endphp
@@ -151,14 +143,29 @@
                 <i class="mdi mdi-star-outline me-1"></i> Rate
             </button>
         @else
-            <div class="d-flex align-items-center">
-                <div class="rating-badge bg-{{ $class }} bg-opacity-10 rounded-pill px-2 py-1" 
-                    style="border: 1.2px solid var(--bs-{{ $class }}); box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                    <i class="mdi mdi-{{ $icon }} text-{{ $class }}" 
-                    style="font-size: 1.2rem; vertical-align: -2px;"></i>
-                    <span class="ms-1 text-{{ $class }} fw-bold" 
-                        style="font-size: 0.9rem;">{{ $label }}</span>
-                </div>
+            @php
+                $latestRating = $supplier->ratings->sortByDesc('id')->first();
+                $editPayload = $latestRating ? [
+                    'id' => $latestRating->id,
+                    'evaluation_date' => $latestRating->evaluation_date
+                        ? \Illuminate\Support\Carbon::parse($latestRating->evaluation_date)->format('Y-m-d')
+                        : now()->format('Y-m-d'),
+                    'criteria' => $latestRating->criteria ?? [],
+                ] : null;
+            @endphp
+            <div class="d-flex align-items-center justify-content-center gap-2">
+                <span class="fw-bold" style="font-size: 0.95rem; color: {{ $ratingPctColor }};" title="Average % (each rating uses only filled criteria)">{{ (int) round($avg) }}%</span>
+                @if ($editPayload)
+                    <button type="button" class="btn btn-link p-0 rating-edit-dot rate-edit-btn"
+                        data-bs-toggle="modal" data-bs-target="#ratingModal"
+                        data-supplier-id="{{ $supplier->id }}"
+                        data-supplier-name="{{ $supplier->name }}"
+                        data-rating-payload='@json($editPayload)'
+                        title="Edit rating"
+                        aria-label="Edit rating">
+                        <span class="rating-edit-dot-inner d-inline-block rounded-circle bg-secondary"></span>
+                    </button>
+                @endif
             </div>
         @endif
     </td>
@@ -167,12 +174,20 @@
             <a href="mailto:{{ $supplier->email }}"
             class="d-flex justify-content-center align-items-center text-decoration-none"
             title="Send Email">
-                <span style="background: #e3f0ff; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                    <i class="mdi mdi-email-outline text-primary" style="font-size: 1.4rem;"></i>
+                <span class="supplier-contact-wrap">
+                    <span class="supplier-contact-icon-inner" style="background: #e3f0ff; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-email-outline text-primary" style="font-size: 1.4rem;"></i>
+                    </span>
                 </span>
             </a>
         @else
-            <span class="text-muted">-</span>
+            <div class="d-flex justify-content-center align-items-center" title="No email on file">
+                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
+                    <span class="supplier-contact-icon-inner" style="background: #e3f0ff; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-email-outline text-primary" style="font-size: 1.4rem;"></i>
+                    </span>
+                </span>
+            </div>
         @endif
     </td>
 
@@ -185,12 +200,20 @@
             <a href="#" onclick="openWhatsApp('{{ $number }}')" target="_blank"
             class="d-flex justify-content-center align-items-center text-decoration-none"
             title="Chat on WhatsApp">
-                <span style="background: #00d757; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                    <i class="mdi mdi-whatsapp" style="font-size: 1.4rem; color: #fff;"></i>
+                <span class="supplier-contact-wrap">
+                    <span class="supplier-contact-icon-inner" style="background: #00d757; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-whatsapp" style="font-size: 1.4rem; color: #fff;"></i>
+                    </span>
                 </span>
             </a>
         @else
-            <span class="text-muted">-</span>
+            <div class="d-flex justify-content-center align-items-center" title="No WhatsApp on file">
+                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
+                    <span class="supplier-contact-icon-inner" style="background: #00d757; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-whatsapp" style="font-size: 1.4rem; color: #fff;"></i>
+                    </span>
+                </span>
+            </div>
         @endif
     </td>
 
@@ -199,12 +222,20 @@
             <a href="javascript:void(0);" 
             class="d-flex justify-content-center align-items-center text-decoration-none"
             title="WeChat ID: {{ $supplier->wechat }}">
-                <span style="background: #09b83e; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                    <i class="mdi mdi-wechat" style="font-size: 1.4rem; color: #fff;"></i>
+                <span class="supplier-contact-wrap">
+                    <span class="supplier-contact-icon-inner" style="background: #09b83e; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-wechat" style="font-size: 1.4rem; color: #fff;"></i>
+                    </span>
                 </span>
             </a>
         @else
-            <span class="text-muted">-</span>
+            <div class="d-flex justify-content-center align-items-center" title="No WeChat on file">
+                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
+                    <span class="supplier-contact-icon-inner" style="background: #09b83e; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-wechat" style="font-size: 1.4rem; color: #fff;"></i>
+                    </span>
+                </span>
+            </div>
         @endif
     </td>
 
@@ -213,12 +244,20 @@
             <a href="{{ $supplier->alibaba }}" target="_blank"
             class="d-flex justify-content-center align-items-center text-decoration-none"
             title="View Alibaba Profile">
-                <span style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                    <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
+                <span class="supplier-contact-wrap">
+                    <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
+                    </span>
                 </span>
             </a>
         @else
-            <span class="text-muted">-</span>
+            <div class="d-flex justify-content-center align-items-center" title="No Alibaba on file">
+                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
+                    <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
+                    </span>
+                </span>
+            </div>
         @endif
     </td>
 
@@ -465,7 +504,7 @@
                                     </div>
 
                                     <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Parent:</span>
+                                        <span class="fw-semibold text-muted">P:</span>
                                         <div class="dropdown d-block w-100">
                                             @php
                                                 $parentList = explode(',', $supplier->parent ?? '');
@@ -475,7 +514,7 @@
 
                                             @if($parentCount > 0)
                                                 <button class="btn btn-sm btn-light dropdown-toggle w-75" type="button" data-bs-toggle="dropdown">
-                                                    Parents ({{ $parentCount }})
+                                                    P ({{ $parentCount }})
                                                 </button>
                                                 <ul class="dropdown-menu">
                                                     @foreach($parentList as $p)

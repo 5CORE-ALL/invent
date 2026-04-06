@@ -25,46 +25,71 @@ class MFRGInProgressController extends Controller
             return trim($sku);
         };
 
-        $mfrgData = MfrgProgress::all();
+        $mfrgData = MfrgProgress::query()->get();
 
-        $shopifyImages = DB::table('shopify_skus')
+        // Shopify images: one query + in-memory keys (normalized + no-spaces) — avoids per-row DB lookups
+        $shopifyImageByKey = [];
+        foreach (DB::table('shopify_skus')
             ->select('sku', 'image_src')
-            ->get()
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+            ->whereNotNull('image_src')
+            ->where('image_src', '!=', '')
+            ->get() as $item) {
+            $norm = $normalizeSku($item->sku);
+            if ($norm === '') {
+                continue;
+            }
+            $src = $item->image_src;
+            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                if ($k !== '' && ! isset($shopifyImageByKey[$k])) {
+                    $shopifyImageByKey[$k] = $src;
+                }
+            }
+        }
 
-        $productMaster = DB::table('product_master')->get()
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+        $productMasterByKey = [];
+        foreach (DB::table('product_master')->select('sku', 'parent', 'Values')->get() as $item) {
+            $norm = $normalizeSku($item->sku);
+            if ($norm === '') {
+                continue;
+            }
+            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                if ($k !== '' && ! isset($productMasterByKey[$k])) {
+                    $productMasterByKey[$k] = $item;
+                }
+            }
+        }
 
         // Get stage data from forecast_analysis table - match by SKU only, prefer record with stage value
         $forecastData = DB::table('forecast_analysis')
+            ->select('sku', 'stage', 'nr')
             ->get()
-            ->groupBy(function($item) use ($normalizeSku) {
+            ->groupBy(function ($item) use ($normalizeSku) {
                 return $normalizeSku($item->sku);
             })
-            ->map(function($group) {
-                // Prefer record with non-empty stage value
+            ->map(function ($group) {
                 $withStage = $group->firstWhere('stage', '!=', null);
-                if ($withStage && !empty(trim($withStage->stage))) {
+                if ($withStage && ! empty(trim((string) $withStage->stage))) {
                     return $withStage;
                 }
+
                 return $group->first();
             });
 
-        // Supplier Table Parent Mapping
-        $supplierRows = Supplier::where('type', 'Supplier')->get();
+        // Supplier Table Parent Mapping + dropdown list (single query)
+        $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
         $supplierMapByParent = [];
 
         foreach ($supplierRows as $row) {
             $parents = array_map('trim', explode(',', strtoupper($row->parent ?? '')));
             foreach ($parents as $parent) {
-                if (!empty($parent)) {
+                if (! empty($parent)) {
                     $supplierMapByParent[$parent][] = $row->name;
                 }
             }
         }
 
-        // Fetch purchase orders and create SKU to price mapping
-        $purchaseOrders = PurchaseOrder::whereNotNull('items')->get();
+        // Fetch purchase orders and create SKU to price mapping (minimal columns)
+        $purchaseOrders = PurchaseOrder::whereNotNull('items')->select(['items', 'created_at'])->get();
         $skuToPriceMap = [];
         
         foreach ($purchaseOrders as $po) {
@@ -109,76 +134,18 @@ class MFRGInProgressController extends Controller
                 $skuVariations[] = strtoupper(preg_replace('/\s+/', ' ', trim($row->sku)));
             }
 
-            // Shopify Image - try multiple variations
             foreach ($skuVariations as $skuVar) {
-                if (isset($shopifyImages[$skuVar]) && !empty($shopifyImages[$skuVar]->image_src)) {
-                    $image = $shopifyImages[$skuVar]->image_src;
-                    break; // Found image, stop searching
-                }
-            }
-            
-            // If still no image, try direct database lookup with flexible matching
-            if (empty($image) && !empty($row->sku)) {
-                try {
-                    // Try exact match first - simplified query
-                    $directImage = DB::table('shopify_skus')
-                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
-                        ->whereNotNull('image_src')
-                        ->where('image_src', '!=', '')
-                        ->value('image_src');
-                    
-                    // If no exact match, try pattern matching
-                    if (empty($directImage)) {
-                        $skuPattern = str_replace(' ', '%', $sku);
-                        $directImage = DB::table('shopify_skus')
-                            ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . $skuPattern . '%'])
-                            ->whereNotNull('image_src')
-                            ->where('image_src', '!=', '')
-                            ->value('image_src');
-                    }
-                    
-                    // If still no match, try without spaces
-                    if (empty($directImage)) {
-                        $skuNoSpaces = str_replace(' ', '', $sku);
-                        $directImage = DB::table('shopify_skus')
-                            ->whereRaw('UPPER(REPLACE(sku, " ", "")) = ?', [$skuNoSpaces])
-                            ->whereNotNull('image_src')
-                            ->where('image_src', '!=', '')
-                            ->value('image_src');
-                    }
-                    
-                    if (!empty($directImage)) {
-                        $image = $directImage;
-                    }
-                } catch (\Exception $e) {
-                    // Silently fail if database query has issues
-                    Log::warning('Image lookup query failed for SKU: ' . $row->sku, ['error' => $e->getMessage()]);
-                }
-            }
-
-            // Product Master Data - try multiple variations
-            $productRow = null;
-            foreach ($skuVariations as $skuVar) {
-                if (isset($productMaster[$skuVar])) {
-                    $productRow = $productMaster[$skuVar];
+                if ($skuVar !== '' && isset($shopifyImageByKey[$skuVar])) {
+                    $image = $shopifyImageByKey[$skuVar];
                     break;
                 }
             }
-            
-            // If still no product master, try direct database lookup
-            if (!$productRow && !empty($row->sku)) {
-                try {
-                    $directProduct = DB::table('product_master')
-                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
-                        ->orWhereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . str_replace(' ', '%', $sku) . '%'])
-                        ->first();
-                    
-                    if ($directProduct) {
-                        $productRow = $directProduct;
-                    }
-                } catch (\Exception $e) {
-                    // Silently fail if database query has issues
-                    Log::warning('Product master lookup query failed for SKU: ' . $row->sku, ['error' => $e->getMessage()]);
+
+            $productRow = null;
+            foreach ($skuVariations as $skuVar) {
+                if ($skuVar !== '' && isset($productMasterByKey[$skuVar])) {
+                    $productRow = $productMasterByKey[$skuVar];
+                    break;
                 }
             }
 
@@ -210,10 +177,8 @@ class MFRGInProgressController extends Controller
                 $supplierNames = $supplierMapByParent[$parent];
             }
 
-            if (!empty($row->supplier)) {
-                $row->supplier = $row->supplier; // keep manual value
-            } else {
-                $row->supplier = implode(', ', $supplierNames); // mapping value
+            if (empty($row->supplier)) {
+                $row->supplier = implode(', ', $supplierNames);
             }
 
             // Get price from purchase_order if available
@@ -247,7 +212,7 @@ class MFRGInProgressController extends Controller
         }
 
 
-        $suppliers = Supplier::pluck('name');
+        $suppliers = $supplierRows->pluck('name')->values();
         
         return view('purchase-master.mfrg-progress.index', [
             'data' => $mfrgData,
@@ -257,6 +222,13 @@ class MFRGInProgressController extends Controller
 
     public function newMfrgView(){
         return view('purchase-master.mfrg-progress.mfrg-new');
+    }
+
+    public function archivedMfrgCount()
+    {
+        return response()->json([
+            'count' => MfrgProgress::onlyTrashed()->count(),
+        ]);
     }
 
     public function getMfrgProgressData()
@@ -269,45 +241,69 @@ class MFRGInProgressController extends Controller
             )
         );
 
-        $mfrgData = MfrgProgress::all();
+        $archived = request()->boolean('archived');
+        $mfrgData = $archived
+            ? MfrgProgress::onlyTrashed()->get()
+            : MfrgProgress::query()->get();
 
-        $shopifyImages = DB::table('shopify_skus')
+        $shopifyImageByKey = [];
+        foreach (DB::table('shopify_skus')
             ->select('sku', 'image_src')
-            ->get()
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+            ->whereNotNull('image_src')
+            ->where('image_src', '!=', '')
+            ->get() as $item) {
+            $norm = $normalizeSku($item->sku);
+            if ($norm === '') {
+                continue;
+            }
+            $src = $item->image_src;
+            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                if ($k !== '' && ! isset($shopifyImageByKey[$k])) {
+                    $shopifyImageByKey[$k] = $src;
+                }
+            }
+        }
 
-        $productMaster = DB::table('product_master')
-            ->get()
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+        $productMasterByKey = [];
+        foreach (DB::table('product_master')->select('sku', 'parent', 'Values')->get() as $item) {
+            $norm = $normalizeSku($item->sku);
+            if ($norm === '') {
+                continue;
+            }
+            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                if ($k !== '' && ! isset($productMasterByKey[$k])) {
+                    $productMasterByKey[$k] = $item;
+                }
+            }
+        }
 
-        // Get stage data from forecast_analysis table - match by SKU only, prefer record with stage value
         $forecastData = DB::table('forecast_analysis')
+            ->select('sku', 'stage', 'nr')
             ->get()
-            ->groupBy(function($item) use ($normalizeSku) {
+            ->groupBy(function ($item) use ($normalizeSku) {
                 return $normalizeSku($item->sku);
             })
-            ->map(function($group) {
-                // Prefer record with non-empty stage value
+            ->map(function ($group) {
                 $withStage = $group->firstWhere('stage', '!=', null);
-                if ($withStage && !empty(trim($withStage->stage))) {
+                if ($withStage && ! empty(trim((string) $withStage->stage))) {
                     return $withStage;
                 }
+
                 return $group->first();
             });
 
-        $supplierRows = Supplier::where('type', 'Supplier')->get();
+        $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
         $supplierMapByParent = [];
         foreach ($supplierRows as $row) {
             $parents = array_map('trim', explode(',', $normalizeSku($row->parent ?? '')));
             foreach ($parents as $parent) {
-                if (!empty($parent)) {
+                if (! empty($parent)) {
                     $supplierMapByParent[$parent][] = $row->name;
                 }
             }
         }
 
-        // Fetch purchase orders and create SKU to price mapping
-        $purchaseOrders = PurchaseOrder::whereNotNull('items')->get();
+        $purchaseOrders = PurchaseOrder::whereNotNull('items')->select(['items', 'created_at'])->get();
         $skuToPriceMap = [];
         
         foreach ($purchaseOrders as $po) {
@@ -340,17 +336,35 @@ class MFRGInProgressController extends Controller
             $priceFromPO = null;
             $currencyFromPO = null;
 
-            if (isset($shopifyImages[$sku]) && !empty($shopifyImages[$sku]->image_src)) {
-                $image = $shopifyImages[$sku]->image_src;
+            $skuVariations = array_unique(array_filter([
+                $sku,
+                str_replace(' ', '', $sku),
+                preg_replace('/\s+/', ' ', $sku),
+                ! empty($row->sku) ? strtoupper(trim($row->sku)) : '',
+                ! empty($row->sku) ? strtoupper(preg_replace('/\s+/', ' ', trim($row->sku))) : '',
+            ]));
+
+            foreach ($skuVariations as $skuVar) {
+                if ($skuVar !== '' && isset($shopifyImageByKey[$skuVar])) {
+                    $image = $shopifyImageByKey[$skuVar];
+                    break;
+                }
             }
 
-            if (isset($productMaster[$sku])) {
-                $productRow = $productMaster[$sku];
+            $productRow = null;
+            foreach ($skuVariations as $skuVar) {
+                if ($skuVar !== '' && isset($productMasterByKey[$skuVar])) {
+                    $productRow = $productMasterByKey[$skuVar];
+                    break;
+                }
+            }
+
+            if ($productRow) {
                 $values = json_decode($productRow->Values ?? '{}', true);
 
                 if (is_array($values)) {
-                    if (!empty($values['image_path'])) {
-                        $image = 'storage/' . ltrim($values['image_path'], '/');
+                    if (! empty($values['image_path']) && empty($image)) {
+                        $image = 'storage/'.ltrim($values['image_path'], '/');
                     }
                     if (isset($values['cbm'])) {
                         $cbm = $values['cbm'];
@@ -524,35 +538,90 @@ class MFRGInProgressController extends Controller
     {
         try {
             $skus = $request->input('skus', []);
-            
-            if (empty($skus) || !is_array($skus)) {
+
+            if (empty($skus) || ! is_array($skus)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No SKUs provided for deletion.'
+                    'message' => 'No SKUs provided for archiving.',
                 ], 400);
             }
 
-            // Normalize SKUs (uppercase and trim)
-            $normalizedSkus = array_map(function($sku) {
-                return strtoupper(trim($sku));
+            $normalizedSkus = array_map(function ($sku) {
+                return strtoupper(trim((string) $sku));
             }, $skus);
 
-            // Delete records
-            $deletedCount = MfrgProgress::whereIn(DB::raw('UPPER(TRIM(sku))'), $normalizedSkus)->delete();
+            $archivedCount = 0;
+            foreach ($normalizedSkus as $ns) {
+                if ($ns === '') {
+                    continue;
+                }
+                $archivedCount += MfrgProgress::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
+                    ->delete();
+            }
 
             return response()->json([
                 'success' => true,
-                'deleted_count' => $deletedCount,
-                'message' => "Successfully deleted {$deletedCount} record(s)."
+                'deleted_count' => $archivedCount,
+                'message' => $archivedCount > 0
+                    ? "Archived {$archivedCount} row(s). You can restore them from “Show archived”."
+                    : 'No matching rows to archive.',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error deleting MFRG Progress records: ' . $e->getMessage());
+            Log::error('Error archiving MFRG Progress records: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while deleting records: ' . $e->getMessage()
+                'message' => 'An error occurred while archiving: '.$e->getMessage(),
             ], 500);
         }
     }
 
+    public function restoreBySkus(Request $request)
+    {
+        try {
+            $skus = $request->input('skus', []);
+
+            if (empty($skus) || ! is_array($skus)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No SKUs provided for restore.',
+                ], 400);
+            }
+
+            $normalizedSkus = array_map(function ($sku) {
+                return strtoupper(trim((string) $sku));
+            }, $skus);
+
+            $restoredCount = 0;
+            foreach ($normalizedSkus as $ns) {
+                if ($ns === '') {
+                    continue;
+                }
+                $rows = MfrgProgress::onlyTrashed()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
+                    ->get();
+                foreach ($rows as $row) {
+                    $row->restore();
+                    $restoredCount++;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'restored_count' => $restoredCount,
+                'message' => $restoredCount > 0
+                    ? "Restored {$restoredCount} row(s)."
+                    : 'No archived rows matched those SKUs.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error restoring MFRG Progress records: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while restoring: '.$e->getMessage(),
+            ], 500);
+        }
+    }
 
 }

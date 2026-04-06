@@ -336,7 +336,7 @@ class ForecastAnalysisController extends Controller
                     'sheet_link'     => $pick('sheet_link'),
                 ];
             });
-        $mfrg = DB::table('mfrg_progress')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $mfrg = DB::table('mfrg_progress')->whereNull('deleted_at')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $purchases = DB::table('purchases')->whereNull('deleted_at')
             ->select('items')
             ->get()
@@ -1212,6 +1212,7 @@ class ForecastAnalysisController extends Controller
             $updated = 0;
             if ($parentNorm !== '') {
                 $updated = (int) DB::table('mfrg_progress')
+                    ->whereNull('deleted_at')
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
                     ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
                     ->update([
@@ -1223,6 +1224,7 @@ class ForecastAnalysisController extends Controller
 
             if ($updated === 0) {
                 $updated = (int) DB::table('mfrg_progress')
+                    ->whereNull('deleted_at')
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
                     ->update([
                         'qty' => $valueNum,
@@ -1466,6 +1468,7 @@ class ForecastAnalysisController extends Controller
                     
                     // Check if record exists - match by SKU only
                     $existingMfrg = DB::table('mfrg_progress')
+                        ->whereNull('deleted_at')
                         ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                         ->orderByRaw("CASE WHEN ready_to_ship = 'No' THEN 0 ELSE 1 END")
                         ->first();
@@ -1578,6 +1581,7 @@ class ForecastAnalysisController extends Controller
                     
                     // Check if record exists - match by SKU only
                     $existingMfrg = DB::table('mfrg_progress')
+                        ->whereNull('deleted_at')
                         ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                         ->orderByRaw("CASE WHEN ready_to_ship = 'No' THEN 0 ELSE 1 END")
                         ->first();

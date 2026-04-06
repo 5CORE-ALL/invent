@@ -259,6 +259,7 @@ class SupplierController extends Controller
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
             'evaluation_date' => 'required|date',
+            'rating_id' => 'nullable|integer|exists:supplier_ratings,id',
         ]);
 
         $criteriaRows = $request->input('criteria', []);
@@ -267,7 +268,8 @@ class SupplierController extends Controller
         }
 
         $criteria = [];
-        $total = 0;
+        $weightedPoints = 0.0;
+        $weightSumFilled = 0.0;
         foreach ($criteriaRows as $c) {
             if (! is_array($c)) {
                 continue;
@@ -280,26 +282,46 @@ class SupplierController extends Controller
                 continue;
             }
             if (! is_numeric($raw)) {
-                return redirect()->back()->withErrors(['criteria' => 'Each score must be a number between 1 and 10, or left blank.'])->withInput();
+                return redirect()->back()->withErrors(['criteria' => 'Each score must be a number between 0 and 10, or left blank.'])->withInput();
             }
             $score = (float) $raw;
-            if ($score < 1 || $score > 10) {
-                return redirect()->back()->withErrors(['criteria' => 'Scores must be between 1 and 10.'])->withInput();
+            if ($score < 0 || $score > 10) {
+                return redirect()->back()->withErrors(['criteria' => 'Scores must be between 0 and 10.'])->withInput();
             }
-            $total += $score * ($weight / 10);
+            $weightedPoints += $score * ($weight / 10);
+            $weightSumFilled += $weight;
             $criteria[] = ['label' => $label, 'weight' => $weight, 'score' => $score];
         }
 
-        $hasAnyScore = collect($criteria)->contains(fn ($row) => ($row['score'] ?? null) !== null);
+        $hasAnyScore = $weightSumFilled > 0;
+        // Percentage 0–100 using only filled rows: 100 * sum(score*weight/10) / sum(weight_filled)
+        $finalScore = $hasAnyScore
+            ? round(100 * $weightedPoints / $weightSumFilled, 2)
+            : null;
 
-        SupplierRating::create([
-            'supplier_id' => $validated['supplier_id'],
-            'evaluation_date' => $validated['evaluation_date'],
-            'criteria' => $criteria,
-            'final_score' => $hasAnyScore ? round($total, 2) : null,
-        ]);
+        $ratingId = $validated['rating_id'] ?? null;
+        if ($ratingId) {
+            $rating = SupplierRating::query()
+                ->where('id', $ratingId)
+                ->where('supplier_id', $validated['supplier_id'])
+                ->firstOrFail();
+            $rating->update([
+                'evaluation_date' => $validated['evaluation_date'],
+                'criteria' => $criteria,
+                'final_score' => $finalScore,
+            ]);
+            $message = 'Supplier rating updated successfully.';
+        } else {
+            SupplierRating::create([
+                'supplier_id' => $validated['supplier_id'],
+                'evaluation_date' => $validated['evaluation_date'],
+                'criteria' => $criteria,
+                'final_score' => $finalScore,
+            ]);
+            $message = 'Supplier rating saved successfully!';
+        }
 
-        return redirect()->back()->with('flash_message', 'Supplier rating saved successfully!');
+        return redirect()->back()->with('flash_message', $message);
     }
 
 }
