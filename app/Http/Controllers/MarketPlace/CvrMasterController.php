@@ -78,6 +78,7 @@ use App\Models\FbaManualData;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
 use App\Services\FbaManualDataService;
+use App\Services\FbaInventoryService;
 use App\Services\DobaApiService;
 use App\Services\WalmartService;
 use App\Services\ReverbApiService;
@@ -483,6 +484,22 @@ class CvrMasterController extends Controller
                     ];
                 });
 
+            // FBA L30: same as FBA Dispatch — resolve ProductMaster SKU → fba_table row, then fba_monthly_sales.l30_units by listing analytics key
+            $fbaInventoryResolver = null;
+            $fbaMonthlyByListingKey = collect();
+            try {
+                $fbaTableFbaRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
+                $fbaInventoryResolver = FbaInventoryService::fromFbaRows($fbaTableFbaRows);
+                $fbaMonthlyByListingKey = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                    ->get()
+                    ->keyBy(function ($item) {
+                        return FbaInventoryService::sellerSkuToAnalyticsListingKey($item->seller_sku ?? '');
+                    });
+            } catch (\Exception $e) {
+                Log::warning('CVR Master - FBA monthly / resolver batch load failed: ' . $e->getMessage());
+                $fbaInventoryResolver = $fbaInventoryResolver ?? FbaInventoryService::fromFbaRows(collect());
+            }
+
             // Process data (skip PARENT rows from database)
             $result = [];
 
@@ -519,6 +536,19 @@ class CvrMasterController extends Controller
 
                 // Calculate DIL% (Overall L30 / INV * 100)
                 $dilPercent = $inventory > 0 ? round(($overallL30 / $inventory) * 100, 2) : 0;
+
+                $fbaL30Units = 0;
+                if ($fbaInventoryResolver !== null) {
+                    $fbaResolved = $fbaInventoryResolver->resolve($sku);
+                    if ($fbaResolved) {
+                        $listingKey = FbaInventoryService::sellerSkuToAnalyticsListingKey($fbaResolved->seller_sku ?? '');
+                        if ($listingKey !== '') {
+                            $fbaMonthlyRow = $fbaMonthlyByListingKey->get($listingKey);
+                            $fbaL30Units = $fbaMonthlyRow ? (int) ($fbaMonthlyRow->l30_units ?? 0) : 0;
+                        }
+                    }
+                }
+                $ovL30PlusFba = (int) $overallL30 + $fbaL30Units;
 
                 // Get LP and Ship from ProductMaster Values
                 $lp = 0;
@@ -1030,6 +1060,8 @@ class CvrMasterController extends Controller
                     "amz_pft" => $amzPft,
                     "amz_roi" => $amzRoi,
                     "overall_l30" => $overallL30,
+                    "fba_l30" => $fbaL30Units,
+                    "ov_l30_plus_fba" => $ovL30PlusFba,
                     "m_l30" => $totalL30,
                     "dil_percent" => $dilPercent,
                     "total_views" => $totalViews,
@@ -1103,6 +1135,8 @@ class CvrMasterController extends Controller
                     'amz_roi' => $rows->filter(fn ($r) => isset($r->amz_roi) && $r->amz_roi !== null)->isNotEmpty()
                         ? round($rows->filter(fn ($r) => isset($r->amz_roi) && $r->amz_roi !== null)->avg('amz_roi'), 2) : null,
                     'overall_l30' => $rows->sum('overall_l30'),
+                    'fba_l30' => $rows->sum('fba_l30'),
+                    'ov_l30_plus_fba' => $rows->sum('ov_l30_plus_fba'),
                     'm_l30' => $rows->sum('m_l30'),
                     'dil_percent' => 0, // Calculate after
                     'total_views' => $rows->sum('total_views'),

@@ -1828,6 +1828,18 @@
                     }
                 },
                 {
+                    title: "OV L30 + FBA",
+                    field: "ov_l30_plus_fba",
+                    hozAlign: "center",
+                    minWidth: 100,
+                    sorter: "number",
+                    headerTooltip: "Shopify OV L30 plus FBA L30: Product SKU is resolved to an FBA listing (FbaInventoryService, same as FBA Dispatch), then fba_monthly_sales.l30_units for that MSKU.",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return `<span style="font-weight: 600;">${value}</span>`;
+                    }
+                },
+                {
                     title: "OV L30",
                     field: "overall_l30",
                     hozAlign: "center",
