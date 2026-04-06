@@ -881,6 +881,13 @@
                         </ul>
                     </div>
 
+                    <!-- OV vs SW L30 (green = match, red = mismatch) -->
+                    <select id="sw-l30-match-filter" class="form-select form-select-sm" style="width: auto; min-width: 168px;"
+                        title="Show rows where OV L30 equals SW L30 (green), or only mismatches (red text)">
+                        <option value="all" selected>SW L30 — All</option>
+                        <option value="red">SW L30 — Red only</option>
+                    </select>
+
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="both" selected>Both (SKU + Parent)</option>
@@ -3432,6 +3439,14 @@ title: "Dil %",
                     return true;
                 });
             }
+            const swL30MatchFilter = ($('#sw-l30-match-filter').val() || 'all').toString();
+            if (swL30MatchFilter === 'red') {
+                displayData = displayData.filter(row => {
+                    const sw = parseFloat(row.m_l30 ?? 0);
+                    const ov = parseFloat(row.overall_l30 ?? 0);
+                    return Math.abs(sw - ov) >= 0.01;
+                });
+            }
             
             console.log('Final display data length:', displayData.length);
             console.log('Expected:', parentRows.length, '+ children if expanded');
@@ -3660,6 +3675,15 @@ title: "Dil %",
                     });
                 }
 
+                const swL30MatchFilter = ($('#sw-l30-match-filter').val() || 'all').toString();
+                if (swL30MatchFilter === 'red') {
+                    table.addFilter(function(data) {
+                        const sw = parseFloat(data.m_l30 ?? 0);
+                        const ov = parseFloat(data.overall_l30 ?? 0);
+                        return Math.abs(sw - ov) >= 0.01;
+                    });
+                }
+
                 // Apply SKU and Parent search filters
                 const skuVal = $('#sku-search').val();
                 if (skuVal) table.addFilter("sku", "like", skuVal);
@@ -3677,7 +3701,7 @@ title: "Dil %",
             }
         }
 
-        $('#inventory-filter, #sku-parent-filter').on('change', function() {
+        $('#inventory-filter, #sku-parent-filter, #sw-l30-match-filter').on('change', function() {
             applyFilters();
         });
 
@@ -3701,6 +3725,7 @@ title: "Dil %",
             $('.column-filter[data-column="avg_gpft"]').removeClass('active');
             $allGpft.addClass('active');
             $('#gpftFilterDropdown').html('').append($allGpft.find('.status-circle').clone()).append(' GPFT%');
+            $('#sw-l30-match-filter').val('all');
             applyFilters();
         });
 
