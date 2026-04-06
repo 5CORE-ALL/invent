@@ -2489,7 +2489,7 @@
                                         </div>
                                     </li>
                                     <li>
-                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Pricing Decrease</a>
+                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.ebayThree') }}">Listing Ebay 3</a>

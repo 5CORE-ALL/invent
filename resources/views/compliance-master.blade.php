@@ -13,8 +13,8 @@
     <style>
         /* Aliexpress-tabulator style: full-height table area */
         #compliance-table-wrapper {
-            height: calc(100vh - 220px);
-            min-height: 320px;
+            height: calc(100vh - 188px);
+            min-height: 280px;
             display: flex;
             flex-direction: column;
             background: #fff;
@@ -28,9 +28,10 @@
         }
 
         #compliance-tabulator .tabulator {
-            font-size: 13px;
+            font-size: 11px;
             width: 100% !important;
             max-width: 100%;
+            border: 1px solid #d1d5db;
         }
 
         #compliance-tabulator .tabulator-tableholder {
@@ -41,58 +42,137 @@
             display: none !important;
         }
 
+        /* AliExpress tabulator: dense neutral header + vertical titles */
+        #compliance-tabulator .tabulator-header {
+            background: #e8ecf1;
+            color: #1e293b;
+            font-weight: 600;
+            border-bottom: 1px solid #cbd5e1;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col {
+            border-right: 1px solid #cbd5e1;
+            height: 76px !important;
+            min-height: 76px !important;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col-content {
+            padding: 2px 1px;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            transform: rotate(180deg);
+            height: 68px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.15;
+            color: #334155;
+            padding: 0;
+            margin: 0 auto;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+
+        /* Bulk-select column: horizontal header (checkbox) */
+        #compliance-tabulator .tabulator-header .tabulator-col.cm-tabulator-cb-header .tabulator-col-title,
+        #compliance-tabulator .tabulator-header .tabulator-col[tabulator-field="_cb"] .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            height: auto !important;
+            width: 100%;
+            min-height: 0;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col.cm-tabulator-cb-header .tabulator-col-content,
+        #compliance-tabulator .tabulator-header .tabulator-col[tabulator-field="_cb"] .tabulator-col-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px !important;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col.cm-tabulator-cb-header {
+            height: 76px !important;
+        }
+
         #compliance-tabulator .tabulator-cell.cm-compliance-field-col {
             min-width: 0;
-            padding-left: 4px;
-            padding-right: 4px;
+            padding-left: 2px;
+            padding-right: 2px;
         }
 
         #compliance-tabulator .compliance-thumb-wrap img,
         #compliance-tabulator .compliance-thumb-img {
-            max-width: 36px;
-            max-height: 36px;
+            max-width: 32px;
+            max-height: 32px;
             width: auto;
             height: auto;
             object-fit: cover;
         }
 
-        #compliance-tabulator .tabulator-header {
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%);
-            color: #fff;
+        #compliance-tabulator .tabulator-row .tabulator-cell {
+            padding: 3px 5px;
+            vertical-align: middle;
+            border-bottom: 1px solid #e5e7eb;
+            border-right: 1px solid #f1f5f9;
+        }
+
+        #compliance-tabulator .tabulator-row .tabulator-cell:last-child {
+            border-right: none;
+        }
+
+        #compliance-tabulator .cm-status-marble {
+            width: 11px;
+            height: 11px;
+        }
+
+        #compliance-tabulator .tabulator-cell.compliance-status-col .cm-status-cell-inner {
+            gap: 0;
+        }
+
+        #compliance-tabulator .compliance-na-badge,
+        #compliance-tabulator .compliance-req-badge {
+            font-size: 9px;
+            padding: 0.08rem 0.3rem;
             font-weight: 600;
         }
 
-        #compliance-tabulator .tabulator-header .tabulator-col {
-            border-right: 1px solid rgba(255, 255, 255, 0.12);
+        #compliance-tabulator .compliance-pdf-icon-bg {
+            width: 22px;
+            height: 22px;
+            font-size: 11px;
+            border-radius: 4px;
         }
 
-        #compliance-tabulator .tabulator-header .tabulator-col-content {
-            padding: 10px 8px;
+        #compliance-tabulator .edit-btn,
+        #compliance-tabulator .delete-btn {
+            padding: 1px 5px;
+            border-radius: 3px;
+            line-height: 1.2;
         }
 
-        #compliance-tabulator .tabulator-header .tabulator-col .tabulator-col-title {
-            white-space: normal;
-        }
-
-        #compliance-tabulator .tabulator-header input.form-control-sm,
-        #compliance-tabulator .tabulator-header select.form-select {
-            background-color: rgba(255, 255, 255, 0.95);
-            border-color: rgba(255, 255, 255, 0.5);
-            color: #1a1a1a;
-        }
-
-        #compliance-tabulator .tabulator-row .tabulator-cell {
-            padding: 10px 12px;
-            vertical-align: middle;
-            border-bottom: 1px solid #edf2f9;
+        #compliance-tabulator .edit-btn:hover,
+        #compliance-tabulator .delete-btn:hover {
+            transform: none;
+            box-shadow: none;
         }
 
         #compliance-tabulator .tabulator-row.tabulator-row-even .tabulator-cell {
-            background-color: #f8fafc;
+            background-color: #fafafa;
         }
 
         #compliance-tabulator .tabulator-row:hover .tabulator-cell {
-            background-color: #e8f0fe;
+            background-color: #f1f5f9;
         }
 
         .cm-toolbar-search-strip {
@@ -103,19 +183,56 @@
             flex-shrink: 0;
         }
 
+        .cm-toolbar-search-strip .form-control-sm {
+            font-size: 11px;
+            padding-top: 0.2rem;
+            padding-bottom: 0.2rem;
+        }
+
+        .cm-compliance-filters-toolbar .form-control-sm,
+        .cm-compliance-filters-toolbar .form-select-sm {
+            font-size: 11px;
+            padding-top: 0.2rem;
+            padding-bottom: 0.2rem;
+        }
+
+        .cm-compliance-filters-toolbar .form-label.small {
+            font-size: 10px;
+            line-height: 1.2;
+        }
+
+        #cm-summary-stats {
+            padding: 0.5rem 0.65rem !important;
+        }
+
+        #cm-summary-stats h6 {
+            font-size: 0.8rem;
+            margin-bottom: 0.35rem !important;
+        }
+
+        #cm-summary-stats .badge {
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 0.2rem 0.4rem;
+        }
+
         .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger {
-            color: #1e3a5f;
+            color: #1e293b;
             background: #fff;
-            border: 1px solid #94a3b8;
+            border: 1px solid #cbd5e1;
+            padding: 3px 6px;
+            border-radius: 5px;
+            gap: 4px;
+            font-size: 11px;
         }
 
         .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger:hover {
-            background: #f1f5f9;
-            border-color: #64748b;
+            background: #f8fafc;
+            border-color: #94a3b8;
         }
 
         .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger-label {
-            color: #1e3a5f;
+            color: #334155;
         }
 
         #compliance-table-wrapper .rainbow-loader {
@@ -364,42 +481,11 @@
         }
 
         #compliance-tabulator .tabulator-row.tabulator-row-even .tabulator-cell.compliance-parent-col:hover {
-            background-color: #f8fafc;
+            background-color: #fafafa;
         }
 
         #compliance-tabulator .tabulator-row:hover .tabulator-cell.compliance-parent-col:hover {
-            background-color: #e8f0fe;
-        }
-
-        /* Status column: CP / product-master style — #284a9e header, pill filter, marble + label cells */
-        #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col {
-            background: #284a9e !important;
-            color: #fff !important;
-        }
-
-        #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col:hover {
-            background: #3257b0 !important;
-        }
-
-        #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col .tabulator-col-content {
-            text-align: center;
-            vertical-align: middle;
-            text-transform: none;
-        }
-
-        #compliance-tabulator .tabulator-col.cm-tabulator-status-header-col .tabulator-col-title {
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.06em;
-        }
-
-        .cm-status-header-label {
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.06em;
-            text-align: center;
-            color: #fff;
-            margin-bottom: 6px;
+            background-color: #f1f5f9;
         }
 
         .cm-status-filter-wrap {
@@ -540,25 +626,24 @@
         }
 
         #compliance-tabulator .tabulator-row:hover .tabulator-cell.compliance-status-col {
-            background-color: #eef1f5 !important;
-            color: #2d3748;
+            background-color: #f1f5f9 !important;
         }
 
         #compliance-tabulator .tabulator-row.tabulator-row-even .tabulator-cell.compliance-status-col {
-            background-color: #f8f9fa !important;
+            background-color: #fafafa !important;
         }
 
         #compliance-tabulator .tabulator-row.tabulator-row-even:hover .tabulator-cell.compliance-status-col {
-            background-color: #eef1f5 !important;
+            background-color: #f1f5f9 !important;
         }
 
         #compliance-tabulator .tabulator-cell.compliance-checkbox-cell {
-            width: 44px;
-            max-width: 44px;
+            width: 36px;
+            max-width: 36px;
             text-align: center;
             vertical-align: middle;
-            padding-left: 8px;
-            padding-right: 8px;
+            padding-left: 4px;
+            padding-right: 4px;
         }
 
         #complianceSelectAllCheckbox {
@@ -661,10 +746,10 @@
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-body py-3">
-                    <h4 class="mb-1">Compliance Masters</h4>
-                    <p class="text-muted small mb-3">Compliance Masters Analysis</p>
-                    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                <div class="card-body py-2">
+                    <h4 class="mb-1 fs-5">Compliance Masters</h4>
+                    <p class="text-muted small mb-2">Compliance Masters Analysis</p>
+                    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="complianceBulkEditBtn" title="Edit compliance fields for all selected rows">
                             <i class="fas fa-pen-to-square me-1"></i> Bulk edit
                         </button>
@@ -678,33 +763,33 @@
                             <i class="fas fa-file-excel me-1"></i> Download Excel
                         </button>
                     </div>
-                    <div id="cm-summary-stats" class="mt-2 p-3 bg-light rounded">
-                        <h6 class="mb-3">Summary statistics</h6>
-                        <div class="d-flex flex-wrap gap-2">
-                            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">Parents <span id="cm-summary-parent">(0)</span></span>
-                            <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">SKUs <span id="cm-summary-sku">(0)</span></span>
-                            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">Battery <span id="cm-summary-battery">(0)</span></span>
-                            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">Wireless <span id="cm-summary-wireless">(0)</span></span>
-                            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">Electric <span id="cm-summary-electric">(0)</span></span>
-                            <span class="badge bg-info fs-6 p-2" style="color: white; font-weight: bold;">GCC <span id="cm-summary-gcc">(0)</span></span>
-                            <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;">Blanket <span id="cm-summary-blanket">(0)</span></span>
-                            <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">Bluetooth <span id="cm-summary-bluetooth">(0)</span></span>
-                            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">Logo <span id="cm-summary-logo">(0)</span></span>
-                            <span class="badge fs-6 p-2" style="background-color: purple; color: white; font-weight: bold;">Graph <span id="cm-summary-graph">(0)</span></span>
+                    <div id="cm-summary-stats" class="mt-1 p-2 bg-light rounded border border-light">
+                        <h6 class="mb-2 text-secondary fw-semibold">Summary statistics</h6>
+                        <div class="d-flex flex-wrap gap-1">
+                            <span class="badge bg-primary">Parents <span id="cm-summary-parent">(0)</span></span>
+                            <span class="badge bg-success">SKUs <span id="cm-summary-sku">(0)</span></span>
+                            <span class="badge bg-danger">Battery <span id="cm-summary-battery">(0)</span></span>
+                            <span class="badge bg-danger">Wireless <span id="cm-summary-wireless">(0)</span></span>
+                            <span class="badge bg-warning text-dark">Electric <span id="cm-summary-electric">(0)</span></span>
+                            <span class="badge bg-info">GCC <span id="cm-summary-gcc">(0)</span></span>
+                            <span class="badge bg-secondary">Blanket <span id="cm-summary-blanket">(0)</span></span>
+                            <span class="badge bg-dark">Bluetooth <span id="cm-summary-bluetooth">(0)</span></span>
+                            <span class="badge bg-primary">Logo <span id="cm-summary-logo">(0)</span></span>
+                            <span class="badge" style="background-color: #6f42c1;">Graph <span id="cm-summary-graph">(0)</span></span>
                         </div>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     <div id="compliance-table-wrapper">
-                        <div class="cm-toolbar-search-strip p-2 bg-light border-bottom">
+                        <div class="cm-toolbar-search-strip px-2 py-1 bg-light border-bottom">
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text bg-white"><i class="fas fa-search"></i></span>
                                 <input type="text" id="customSearch" class="form-control form-control-sm" placeholder="Search Parent, SKU, or Status...">
                                 <button class="btn btn-outline-secondary btn-sm" type="button" id="clearSearch">Clear</button>
                             </div>
                         </div>
-                        <div id="cm-compliance-filters-toolbar" class="cm-compliance-filters-toolbar px-2 py-2 bg-white border-bottom">
-                            <div class="d-flex flex-wrap align-items-end gap-2 gap-md-3">
+                        <div id="cm-compliance-filters-toolbar" class="cm-compliance-filters-toolbar px-2 py-1 bg-white border-bottom">
+                            <div class="d-flex flex-wrap align-items-end gap-1 gap-md-2">
                                 <div class="flex-grow-1" style="min-width: 9rem; max-width: 14rem;">
                                     <label class="form-label small mb-0 text-secondary" for="parentSearch">Parent <span id="parentCount" class="text-danger fw-bold">(0)</span></label>
                                     <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search Parent" autocomplete="off">
@@ -715,7 +800,7 @@
                                 </div>
                                 <div style="min-width: 10rem; max-width: 14rem;">
                                     <span class="form-label small mb-0 text-secondary d-block">Status</span>
-                                    <div class="cm-status-filter-wrap cm-status-filter-wrap--toolbar mt-1">
+                                    <div class="cm-status-filter-wrap cm-status-filter-wrap--toolbar mt-0">
                                         <button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">
                                             <span class="cm-status-filter-trigger-label">All</span>
                                             <span style="font-size:9px;opacity:0.75;" aria-hidden="true">▼</span>
@@ -1515,7 +1600,7 @@
                         title: 'Image',
                         field: 'image_path',
                         headerSort: false,
-                        width: 52,
+                        width: 48,
                         widthShrink: 1,
                         hozAlign: 'center',
                         formatter: function(cell) {
@@ -1554,7 +1639,8 @@
                         title: '',
                         field: '_cb',
                         headerSort: false,
-                        width: 40,
+                        headerClass: 'cm-tabulator-cb-header',
+                        width: 34,
                         widthShrink: 1,
                         hozAlign: 'center',
                         cssClass: 'compliance-checkbox-cell',
@@ -1669,13 +1755,6 @@
                             }
                         },
                         tableBuilt: function() {
-                            const cols = complianceTable.getColumns();
-                            cols.forEach(function(col) {
-                                if (col.getField() === 'status') {
-                                    const hel = col.getElement();
-                                    if (hel) hel.classList.add('cm-tabulator-status-header-col');
-                                }
-                            });
                             refreshCmStatusFilterUI();
                         }
                     });
