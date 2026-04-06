@@ -697,6 +697,67 @@
                                 <button class="btn btn-outline-secondary btn-sm" type="button" id="clearSearch">Clear</button>
                             </div>
                         </div>
+                        <div id="cm-compliance-filters-toolbar" class="cm-compliance-filters-toolbar px-2 py-2 bg-white border-bottom">
+                            <div class="d-flex flex-wrap align-items-end gap-2 gap-md-3">
+                                <div class="flex-grow-1" style="min-width: 9rem; max-width: 14rem;">
+                                    <label class="form-label small mb-0 text-secondary" for="parentSearch">Parent <span id="parentCount" class="text-danger fw-bold">(0)</span></label>
+                                    <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search Parent" autocomplete="off">
+                                </div>
+                                <div class="flex-grow-1" style="min-width: 9rem; max-width: 14rem;">
+                                    <label class="form-label small mb-0 text-secondary" for="skuSearch">SKU <span id="skuCount" class="text-danger fw-bold">(0)</span></label>
+                                    <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU" autocomplete="off">
+                                </div>
+                                <div style="min-width: 10rem; max-width: 14rem;">
+                                    <span class="form-label small mb-0 text-secondary d-block">Status</span>
+                                    <div class="cm-status-filter-wrap cm-status-filter-wrap--toolbar mt-1">
+                                        <button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">
+                                            <span class="cm-status-filter-trigger-label">All</span>
+                                            <span style="font-size:9px;opacity:0.75;" aria-hidden="true">▼</span>
+                                        </button>
+                                        <input type="hidden" id="filterComplianceStatus" value="all" autocomplete="off">
+                                        <div class="cm-status-filter-menu" role="listbox" id="cmStatusFilterMenu">
+                                            <button type="button" class="cm-status-filter-item" data-value="all" role="option">
+                                                <span class="cm-status-filter-check" aria-hidden="true">✓</span>
+                                                <span>All</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="missing" role="option">
+                                                <span class="cm-status-filter-item-spacer"></span>
+                                                <span>Missing</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="active" role="option">
+                                                <span class="cm-status-marble cm-status-marble--active"></span>
+                                                <span>Active</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="inactive" role="option">
+                                                <span class="cm-status-marble cm-status-marble--inactive"></span>
+                                                <span>Inactive</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="DC" role="option">
+                                                <span class="cm-status-marble cm-status-marble--dc"></span>
+                                                <span>DC</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="upcoming" role="option">
+                                                <span class="cm-status-marble cm-status-marble--upcoming"></span>
+                                                <span>Upcoming</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="2BDC" role="option">
+                                                <span class="cm-status-marble cm-status-marble--2bdc"></span>
+                                                <span>2BDC</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                @foreach ($__cmFields as $fkey => $flabel)
+                                    <div style="min-width: 6.5rem; max-width: 9rem;">
+                                        <label class="form-label small mb-0 text-secondary" for="{{ $__cmFilterIds[$fkey] }}">{{ $flabel }} <span id="{{ $fkey }}MissingCount" class="text-danger fw-bold">(0)</span></label>
+                                        <select id="{{ $__cmFilterIds[$fkey] }}" class="form-select form-select-sm">
+                                            <option value="all">All Data</option>
+                                            <option value="req">REQ</option>
+                                        </select>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
                         <div id="compliance-tabulator" class="cm-tabulator-host" aria-label="Compliance data grid"></div>
 
                         <div id="rainbow-loader" class="rainbow-loader">
@@ -1328,7 +1389,7 @@
 
             function refreshCmStatusFilterUI() {
                 const hidden = document.getElementById('filterComplianceStatus');
-                const wrap = document.querySelector('#compliance-tabulator .cm-status-filter-wrap');
+                const wrap = document.querySelector('#cm-compliance-filters-toolbar .cm-status-filter-wrap');
                 if (!hidden || !wrap) return;
                 const trigger = wrap.querySelector('.cm-status-filter-trigger');
                 const labelEl = trigger && trigger.querySelector('.cm-status-filter-trigger-label');
@@ -1351,13 +1412,12 @@
 
                 document.addEventListener('click', function(e) {
                     const wrap = e.target.closest('.cm-status-filter-wrap');
-                    const table = document.getElementById('compliance-tabulator');
-                    if (!table) return;
+                    const toolbar = document.getElementById('cm-compliance-filters-toolbar');
 
                     const item = e.target.closest('.cm-status-filter-item');
                     const trigger = e.target.closest('.cm-status-filter-trigger');
 
-                    if (item && wrap && table.contains(wrap)) {
+                    if (item && wrap && toolbar && toolbar.contains(wrap)) {
                         e.preventDefault();
                         e.stopPropagation();
                         const val = item.getAttribute('data-value');
@@ -1372,11 +1432,11 @@
                         return;
                     }
 
-                    if (trigger && wrap && table.contains(wrap)) {
+                    if (trigger && wrap && toolbar && toolbar.contains(wrap)) {
                         e.preventDefault();
                         e.stopPropagation();
                         const wasOpen = wrap.classList.contains('is-open');
-                        table.querySelectorAll('.cm-status-filter-wrap.is-open').forEach(x => {
+                        document.querySelectorAll('.cm-status-filter-wrap.is-open').forEach(x => {
                             x.classList.remove('is-open');
                             const t = x.querySelector('.cm-status-filter-trigger');
                             if (t) t.setAttribute('aria-expanded', 'false');
@@ -1390,7 +1450,7 @@
                     }
 
                     if (!wrap) {
-                        table.querySelectorAll('.cm-status-filter-wrap.is-open').forEach(x => {
+                        document.querySelectorAll('.cm-status-filter-wrap.is-open').forEach(x => {
                             x.classList.remove('is-open');
                             const t = x.querySelector('.cm-status-filter-trigger');
                             if (t) t.setAttribute('aria-expanded', 'false');
@@ -1470,18 +1530,12 @@
                         }
                     },
                     {
-                        title: '',
+                        title: 'Parent',
                         field: 'Parent',
                         headerSort: false,
                         cssClass: 'compliance-parent-col',
                         minWidth: 56,
                         widthGrow: 2,
-                        titleFormatter: function() {
-                            const w = document.createElement('div');
-                            w.innerHTML = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>Parent</span><span id="parentCount">(0)</span></div>' +
-                                '<input type="text" id="parentSearch" class="form-control form-control-sm mt-1" placeholder="Search Parent" style="width:100%">';
-                            return w;
-                        },
                         formatter: function(cell) {
                             const item = cell.getRow().getData();
                             const raw = item.Parent != null && item.Parent !== '' ? String(item.Parent) : '';
@@ -1490,17 +1544,11 @@
                         }
                     },
                     {
-                        title: '',
+                        title: 'SKU',
                         field: 'SKU',
                         headerSort: false,
                         minWidth: 56,
                         widthGrow: 2,
-                        titleFormatter: function() {
-                            const w = document.createElement('div');
-                            w.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span>SKU</span><span id="skuCount">(0)</span></div>' +
-                                '<input type="text" id="skuSearch" class="form-control form-control-sm mt-1" placeholder="Search SKU" style="width:100%">';
-                            return w;
-                        },
                         formatter: function(cell) {
                             const item = cell.getRow().getData();
                             const v = item.SKU != null && String(item.SKU) !== '' ? String(item.SKU) : '';
@@ -1531,39 +1579,13 @@
                         }
                     },
                     {
-                        title: '',
+                        title: 'STATUS',
                         field: 'status',
                         headerSort: false,
                         cssClass: 'compliance-status-col',
                         hozAlign: 'center',
-                        minWidth: 92,
+                        minWidth: 56,
                         widthGrow: 1,
-                        titleFormatter: function() {
-                            const w = document.createElement('div');
-                            w.innerHTML = '<div class="cm-status-header-label">STATUS</div>' +
-                                '<div class="cm-status-filter-wrap">' +
-                                '<button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">' +
-                                '<span class="cm-status-filter-trigger-label">All</span>' +
-                                '<span style="font-size:9px;opacity:0.85;" aria-hidden="true">▼</span></button>' +
-                                '<input type="hidden" id="filterComplianceStatus" value="all" autocomplete="off">' +
-                                '<div class="cm-status-filter-menu" role="listbox" id="cmStatusFilterMenu">' +
-                                '<button type="button" class="cm-status-filter-item" data-value="all" role="option">' +
-                                '<span class="cm-status-filter-check" aria-hidden="true">✓</span><span>All</span></button>' +
-                                '<button type="button" class="cm-status-filter-item" data-value="missing" role="option">' +
-                                '<span class="cm-status-filter-item-spacer"></span><span>Missing</span></button>' +
-                                '<button type="button" class="cm-status-filter-item" data-value="active" role="option">' +
-                                '<span class="cm-status-marble cm-status-marble--active"></span><span>Active</span></button>' +
-                                '<button type="button" class="cm-status-filter-item" data-value="inactive" role="option">' +
-                                '<span class="cm-status-marble cm-status-marble--inactive"></span><span>Inactive</span></button>' +
-                                '<button type="button" class="cm-status-filter-item" data-value="DC" role="option">' +
-                                '<span class="cm-status-marble cm-status-marble--dc"></span><span>DC</span></button>' +
-                                '<button type="button" class="cm-status-filter-item" data-value="upcoming" role="option">' +
-                                '<span class="cm-status-marble cm-status-marble--upcoming"></span><span>Upcoming</span></button>' +
-                                '<button type="button" class="cm-status-filter-item" data-value="2BDC" role="option">' +
-                                '<span class="cm-status-marble cm-status-marble--2bdc"></span><span>2BDC</span></button>' +
-                                '</div></div>';
-                            return w;
-                        },
                         formatter: function(cell) {
                             return getComplianceStatusCellHtml(cell.getRow().getData());
                         }
@@ -1587,23 +1609,14 @@
 
                 COMPLIANCE_BULK_FIELD_KEYS.forEach(function(fk) {
                     const label = CM_FIELD_LABELS[fk] || fk;
-                    const missingId = fk + 'MissingCount';
-                    const filterId = CM_FIELD_FILTER_IDS[fk];
                     cols.push({
-                        title: '',
+                        title: label,
                         field: fk,
                         headerSort: false,
                         hozAlign: 'center',
                         minWidth: 52,
                         widthGrow: 1,
                         cssClass: 'cm-compliance-field-col',
-                        titleFormatter: function() {
-                            const w = document.createElement('div');
-                            w.innerHTML = '<div>' + label + ' <span id="' + missingId + '" class="text-danger fw-bold">(0)</span></div>' +
-                                '<select id="' + filterId + '" class="form-select form-select-sm mt-1">' +
-                                '<option value="all">All Data</option><option value="req">REQ</option></select>';
-                            return w;
-                        },
                         formatter: function(cell) {
                             const item = cell.getRow().getData();
                             if (complianceRowHasParentKeyword(item)) {
@@ -1669,7 +1682,6 @@
                                 }
                             });
                             refreshCmStatusFilterUI();
-                            setupSearch();
                         }
                     });
                     syncComplianceSelectAllCheckbox();
@@ -2048,7 +2060,7 @@
                     document.getElementById('filterGraph').value = 'all';
                     const fcs = document.getElementById('filterComplianceStatus');
                     if (fcs) fcs.value = 'all';
-                    document.querySelectorAll('#compliance-tabulator .cm-status-filter-wrap.is-open').forEach(x => {
+                    document.querySelectorAll('.cm-status-filter-wrap.is-open').forEach(x => {
                         x.classList.remove('is-open');
                         const t = x.querySelector('.cm-status-filter-trigger');
                         if (t) t.setAttribute('aria-expanded', 'false');
@@ -2697,6 +2709,7 @@
             setupComplianceImageHoverPreview();
             setupComplianceStatusFilter();
             refreshCmStatusFilterUI();
+            setupSearch();
             setupComplianceAddFormListeners();
             setupActionButtons();
             setupComplianceBulkEdit();
