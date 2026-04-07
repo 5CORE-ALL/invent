@@ -4,155 +4,44 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\MfrgProgress;
+use App\Models\PurchaseOrder;
 use App\Models\ReadyToShip;
 use App\Models\Supplier;
-use App\Models\PurchaseOrder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class MFRGInProgressController extends Controller
 {
+    /** Cache key for supplier parent map + name list (invalidates on TTL). */
+    private const SUPPLIER_CACHE_KEY = 'mfrg_mip_suppliers_struct_v1';
+
+    private const SUPPLIER_CACHE_TTL_SECONDS = 120;
+
     public function index()
     {
-        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
+        $t0 = microtime(true);
+        $supplierCache = self::getMipSupplierCache();
+        $mfrgData = self::loadEnrichedMipProgressCollection(
+            onlyTrashed: false,
+            supplierMapByParent: $supplierCache['map'],
+        );
 
-        $mfrgData = MfrgProgress::query()->get();
-
-        $shopifyImageByKey = self::buildShopifyImageByKeyForMipRows($mfrgData, $normalizeSku);
-        $productMasterByKey = self::buildProductMasterByKeyForMipRows($mfrgData, $normalizeSku);
-
-        // Get stage data from forecast_analysis table - match by SKU only, prefer record with stage value
-        $forecastData = DB::table('forecast_analysis')
-            ->select('sku', 'stage', 'nr')
-            ->get()
-            ->groupBy(function ($item) use ($normalizeSku) {
-                return $normalizeSku($item->sku);
-            })
-            ->map(function ($group) {
-                $withStage = $group->firstWhere('stage', '!=', null);
-                if ($withStage && ! empty(trim((string) $withStage->stage))) {
-                    return $withStage;
-                }
-
-                return $group->first();
-            });
-
-        // Supplier Table Parent Mapping + dropdown list (single query)
-        $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
-        $supplierMapByParent = [];
-
-        foreach ($supplierRows as $row) {
-            $parents = array_map('trim', explode(',', strtoupper($row->parent ?? '')));
-            foreach ($parents as $parent) {
-                if (! empty($parent)) {
-                    $supplierMapByParent[$parent][] = $row->name;
-                }
-            }
+        if (config('app.debug')) {
+            Log::debug('mip.index enriched', ['ms' => round((microtime(true) - $t0) * 1000, 2)]);
         }
 
-        $skuToPriceMap = self::buildSkuToPriceMapForMipRows($mfrgData, $normalizeSku);
-
-        foreach ($mfrgData as $row) {
-            $sku = $normalizeSku($row->sku);
-            $image = null;
-            $cbm = null;
-            $ctnCbmE = null;
-            $parent = null;
-            $supplierNames = [];
-            $priceFromPO = null;
-            $currencyFromPO = null;
-
-            $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
-
-            foreach ($skuVariations as $skuVar) {
-                if ($skuVar !== '' && isset($shopifyImageByKey[$skuVar])) {
-                    $image = $shopifyImageByKey[$skuVar];
-                    break;
-                }
-            }
-
-            $productRow = null;
-            foreach ($skuVariations as $skuVar) {
-                if ($skuVar !== '' && isset($productMasterByKey[$skuVar])) {
-                    $productRow = $productMasterByKey[$skuVar];
-                    break;
-                }
-            }
-
-            if ($productRow) {
-                $values = json_decode($productRow->Values ?? '{}', true);
-
-                if (is_array($values)) {
-                    if (!empty($values['image_path']) && empty($image)) {
-                        $image = 'storage/' . ltrim($values['image_path'], '/');
-                    }
-                    if (isset($values['cbm'])) {
-                        $cbm = $values['cbm'];
-                    }
-                    // Get CTN CBM E from dim-wt-master (product_master Values JSON)
-                    if (isset($values['CBM E'])) {
-                        $ctnCbmE = $values['CBM E'];
-                    } elseif (isset($values['cbm_e'])) {
-                        $ctnCbmE = $values['cbm_e'];
-                    } elseif (isset($values['ctn_cbm_e'])) {
-                        $ctnCbmE = $values['ctn_cbm_e'];
-                    }
-                }
-
-                $parent = strtoupper(trim($productRow->parent ?? ''));
-            }
-
-            // Supplier from Parent Mapping
-            if (!empty($parent) && isset($supplierMapByParent[$parent])) {
-                $supplierNames = $supplierMapByParent[$parent];
-            }
-
-            if (empty($row->supplier)) {
-                $row->supplier = implode(', ', $supplierNames);
-            }
-
-            // Get price from purchase_order if available
-            if (isset($skuToPriceMap[$sku])) {
-                $priceFromPO = $skuToPriceMap[$sku]['price'];
-                $currencyFromPO = $skuToPriceMap[$sku]['currency'];
-            }
-
-            // Get stage and nr from forecast_analysis
-            $stage = '';
-            $nr = '';
-            if ($forecastData->has($sku)) {
-                $forecast = $forecastData->get($sku);
-                $stage = $forecast->stage ?? '';
-                $nr = strtoupper(trim($forecast->nr ?? ''));
-                // Normalize stage value to lowercase
-                if (!empty($stage)) {
-                    $stage = strtolower(trim($stage));
-                }
-            }
-            $row->stage = $stage;
-            $row->nr = $nr;
-            $row->order_qty = $row->qty; // Add order_qty field for validation
-
-            // Assign image - ensure it's not null if found
-            $row->Image = !empty($image) ? $image : null;
-            $row->CBM = $cbm;
-            $row->ctn_cbm_e = $ctnCbmE;
-            $row->price_from_po = $priceFromPO;
-            $row->currency_from_po = $currencyFromPO;
-        }
-
-
-        $suppliers = $supplierRows->pluck('name')->values();
-        
         return view('purchase-master.mfrg-progress.index', [
             'data' => $mfrgData,
-            'suppliers' => $suppliers,
+            'suppliers' => $supplierCache['names'],
         ]);
     }
 
-    public function newMfrgView(){
+    public function newMfrgView()
+    {
         return view('purchase-master.mfrg-progress.mfrg-new');
     }
 
@@ -165,125 +54,236 @@ class MFRGInProgressController extends Controller
 
     public function getMfrgProgressData()
     {
-        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
-
+        $t0 = microtime(true);
         $archived = request()->boolean('archived');
-        $mfrgData = $archived
-            ? MfrgProgress::onlyTrashed()->get()
-            : MfrgProgress::query()->get();
+        $supplierCache = self::getMipSupplierCache();
+        $mfrgData = self::loadEnrichedMipProgressCollection(
+            onlyTrashed: $archived,
+            supplierMapByParent: $supplierCache['map'],
+        );
 
-        $shopifyImageByKey = self::buildShopifyImageByKeyForMipRows($mfrgData, $normalizeSku);
-        $productMasterByKey = self::buildProductMasterByKeyForMipRows($mfrgData, $normalizeSku);
-
-        $forecastData = DB::table('forecast_analysis')
-            ->select('sku', 'stage', 'nr')
-            ->get()
-            ->groupBy(function ($item) use ($normalizeSku) {
-                return $normalizeSku($item->sku);
-            })
-            ->map(function ($group) {
-                $withStage = $group->firstWhere('stage', '!=', null);
-                if ($withStage && ! empty(trim((string) $withStage->stage))) {
-                    return $withStage;
-                }
-
-                return $group->first();
-            });
-
-        $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
-        $supplierMapByParent = [];
-        foreach ($supplierRows as $row) {
-            $parents = array_map('trim', explode(',', strtoupper($row->parent ?? '')));
-            foreach ($parents as $parent) {
-                if (! empty($parent)) {
-                    $supplierMapByParent[$parent][] = $row->name;
-                }
-            }
-        }
-
-        $skuToPriceMap = self::buildSkuToPriceMapForMipRows($mfrgData, $normalizeSku);
-
-        $processedData = [];
-
-        foreach ($mfrgData as $row) {
-            $sku = $normalizeSku($row->sku);
-            $image = null;
-            $cbm = null;
-            $parent = null;
-            $supplierNames = [];
-            $priceFromPO = null;
-            $currencyFromPO = null;
-
-            $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
-
-            foreach ($skuVariations as $skuVar) {
-                if ($skuVar !== '' && isset($shopifyImageByKey[$skuVar])) {
-                    $image = $shopifyImageByKey[$skuVar];
-                    break;
-                }
-            }
-
-            $productRow = null;
-            foreach ($skuVariations as $skuVar) {
-                if ($skuVar !== '' && isset($productMasterByKey[$skuVar])) {
-                    $productRow = $productMasterByKey[$skuVar];
-                    break;
-                }
-            }
-
-            if ($productRow) {
-                $values = json_decode($productRow->Values ?? '{}', true);
-
-                if (is_array($values)) {
-                    if (! empty($values['image_path']) && empty($image)) {
-                        $image = 'storage/'.ltrim($values['image_path'], '/');
-                    }
-                    if (isset($values['cbm'])) {
-                        $cbm = $values['cbm'];
-                    }
-                }
-
-                $parent = strtoupper(trim($productRow->parent ?? ''));
-            }
-
-            if (!empty($parent) && isset($supplierMapByParent[$parent])) {
-                $supplierNames = $supplierMapByParent[$parent];
-            }
-
-            $row->supplier = !empty($row->supplier) ? $row->supplier : implode(', ', $supplierNames);
-            
-            // Get price from purchase_order if available
-            if (isset($skuToPriceMap[$sku])) {
-                $priceFromPO = $skuToPriceMap[$sku]['price'];
-                $currencyFromPO = $skuToPriceMap[$sku]['currency'];
-            }
-            
-            // Get stage from forecast_analysis
-            $stage = '';
-            if ($forecastData->has($sku)) {
-                $forecast = $forecastData->get($sku);
-                $stage = $forecast->stage ?? '';
-                // Normalize stage value to lowercase
-                if (!empty($stage)) {
-                    $stage = strtolower(trim($stage));
-                }
-            }
-            $row->stage = $stage;
-            $row->order_qty = $row->qty; // Add order_qty field for validation
-
-            $row->Image = $image;
-            $row->CBM = $cbm;
-            $row->price_from_po = $priceFromPO;
-            $row->currency_from_po = $currencyFromPO;
-
-            $processedData[] = $row;
+        if (config('app.debug')) {
+            Log::debug('mip.getMfrgProgressData', [
+                'archived' => $archived,
+                'rows' => $mfrgData->count(),
+                'ms' => round((microtime(true) - $t0) * 1000, 2),
+            ]);
         }
 
         return response()->json([
-            "data" => $processedData
+            'data' => $mfrgData->values()->all(),
         ]);
     }
 
+    /**
+     * @return array{map: array<string, list<string>>, names: \Illuminate\Support\Collection<int, string>}
+     */
+    private static function buildSupplierMapFromDb(): array
+    {
+        $supplierRows = Supplier::query()
+            ->where('type', 'Supplier')
+            ->orderBy('name')
+            ->get(['name', 'parent']);
+
+        $supplierMapByParent = [];
+        foreach ($supplierRows as $srow) {
+            $parents = array_map('trim', explode(',', strtoupper($srow->parent ?? '')));
+            foreach ($parents as $parent) {
+                if ($parent !== '') {
+                    $supplierMapByParent[$parent][] = $srow->name;
+                }
+            }
+        }
+
+        return [
+            'map' => $supplierMapByParent,
+            'names' => $supplierRows->pluck('name')->values(),
+        ];
+    }
+
+    /**
+     * @return array{map: array<string, list<string>>, names: \Illuminate\Support\Collection<int, string>}
+     */
+    private static function getMipSupplierCache(): array
+    {
+        return Cache::remember(
+            self::SUPPLIER_CACHE_KEY,
+            self::SUPPLIER_CACHE_TTL_SECONDS,
+            fn () => self::buildSupplierMapFromDb()
+        );
+    }
+
+    /**
+     * Forecast rows only for SKU variants present on MIP rows (replaces full-table scan).
+     */
+    private static function buildForecastDataMapForMipRows(iterable $mfrgRows, callable $normalizeSku): Collection
+    {
+        $candidates = self::collectMipSkuCandidates($mfrgRows, $normalizeSku);
+        if ($candidates === []) {
+            return collect();
+        }
+
+        $buckets = collect();
+        foreach (array_chunk($candidates, 400) as $chunk) {
+            $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
+            if ($chunk === []) {
+                continue;
+            }
+            $rows = DB::table('forecast_analysis')
+                ->select('sku', 'stage', 'nr')
+                ->whereIn('sku', $chunk)
+                ->get();
+            foreach ($rows as $item) {
+                $key = $normalizeSku($item->sku);
+                if ($key === '') {
+                    continue;
+                }
+                if (! $buckets->has($key)) {
+                    $buckets->put($key, collect());
+                }
+                $buckets->get($key)->push($item);
+            }
+        }
+
+        return $buckets->map(function (Collection $group) {
+            $withStage = $group->firstWhere('stage', '!=', null);
+            if ($withStage && ! empty(trim((string) $withStage->stage))) {
+                return $withStage;
+            }
+
+            return $group->first();
+        });
+    }
+
+    /**
+     * Load MfrgProgress rows with shared enrichment (index blade + Tabulator JSON).
+     */
+    private static function loadEnrichedMipProgressCollection(bool $onlyTrashed, array $supplierMapByParent): Collection
+    {
+        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
+
+        // No explicit select(): some installs omit columns present in migrations (e.g. `value`),
+        // and SELECT * only returns columns that exist — avoids SQLSTATE[42S22] unknown column.
+        $q = MfrgProgress::query();
+        $mfrgData = $onlyTrashed ? $q->onlyTrashed()->get() : $q->get();
+
+        if ($mfrgData->isEmpty()) {
+            return $mfrgData;
+        }
+
+        $forecastData = self::buildForecastDataMapForMipRows($mfrgData, $normalizeSku);
+        $shopifyImageByKey = self::buildShopifyImageByKeyForMipRows($mfrgData, $normalizeSku);
+        $productMasterByKey = self::buildProductMasterByKeyForMipRows($mfrgData, $normalizeSku);
+        $skuToPriceMap = self::buildSkuToPriceMapForMipRows($mfrgData, $normalizeSku);
+
+        foreach ($mfrgData as $row) {
+            self::enrichSingleMipProgressRow(
+                $row,
+                $normalizeSku,
+                $forecastData,
+                $shopifyImageByKey,
+                $productMasterByKey,
+                $supplierMapByParent,
+                $skuToPriceMap
+            );
+        }
+
+        return $mfrgData;
+    }
+
+    /**
+     * Mutates the model: Image, CBM, stage, nr, supplier default, PO price, etc.
+     */
+    private static function enrichSingleMipProgressRow(
+        object $row,
+        callable $normalizeSku,
+        Collection $forecastData,
+        array $shopifyImageByKey,
+        array $productMasterByKey,
+        array $supplierMapByParent,
+        array $skuToPriceMap
+    ): void {
+        $sku = $normalizeSku($row->sku);
+        $image = null;
+        $cbm = null;
+        $ctnCbmE = null;
+        $parent = null;
+        $supplierNames = [];
+        $priceFromPO = null;
+        $currencyFromPO = null;
+
+        $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
+
+        foreach ($skuVariations as $skuVar) {
+            if ($skuVar !== '' && isset($shopifyImageByKey[$skuVar])) {
+                $image = $shopifyImageByKey[$skuVar];
+                break;
+            }
+        }
+
+        $productRow = null;
+        foreach ($skuVariations as $skuVar) {
+            if ($skuVar !== '' && isset($productMasterByKey[$skuVar])) {
+                $productRow = $productMasterByKey[$skuVar];
+                break;
+            }
+        }
+
+        if ($productRow) {
+            $values = json_decode($productRow->Values ?? '{}', true);
+
+            if (is_array($values)) {
+                if (! empty($values['image_path']) && empty($image)) {
+                    $image = 'storage/'.ltrim($values['image_path'], '/');
+                }
+                if (isset($values['cbm'])) {
+                    $cbm = $values['cbm'];
+                }
+                if (isset($values['CBM E'])) {
+                    $ctnCbmE = $values['CBM E'];
+                } elseif (isset($values['cbm_e'])) {
+                    $ctnCbmE = $values['cbm_e'];
+                } elseif (isset($values['ctn_cbm_e'])) {
+                    $ctnCbmE = $values['ctn_cbm_e'];
+                }
+            }
+
+            $parent = strtoupper(trim($productRow->parent ?? ''));
+        }
+
+        if (! empty($parent) && isset($supplierMapByParent[$parent])) {
+            $supplierNames = $supplierMapByParent[$parent];
+        }
+
+        if (empty($row->supplier)) {
+            $row->supplier = implode(', ', $supplierNames);
+        }
+
+        if (isset($skuToPriceMap[$sku])) {
+            $priceFromPO = $skuToPriceMap[$sku]['price'];
+            $currencyFromPO = $skuToPriceMap[$sku]['currency'];
+        }
+
+        $stage = '';
+        $nr = '';
+        if ($forecastData->has($sku)) {
+            $forecast = $forecastData->get($sku);
+            $stage = $forecast->stage ?? '';
+            $nr = strtoupper(trim($forecast->nr ?? ''));
+            if (! empty($stage)) {
+                $stage = strtolower(trim($stage));
+            }
+        }
+
+        $row->stage = $stage;
+        $row->nr = $nr;
+        $row->order_qty = $row->qty;
+        $row->Image = ! empty($image) ? $image : null;
+        $row->CBM = $cbm;
+        $row->ctn_cbm_e = $ctnCbmE;
+        $row->price_from_po = $priceFromPO;
+        $row->currency_from_po = $currencyFromPO;
+    }
 
     public function convert(Request $request)
     {
@@ -313,19 +313,19 @@ class MFRGInProgressController extends Controller
         $validColumns = [
             'advance_amt', 'pay_conf_date', 'o_links', 'adv_date', 'del_date', 'delivery_date', 'total_cbm',
             'barcode_sku', 'artwork_manual_book', 'notes', 'ready_to_ship', 'rate', 'rate_currency',
-            'photo_packing', 'photo_int_sale','supplier','supplier_sku','created_at', 'qty',
-            'pkg_inst', 'u_manual', 'compliance'
+            'photo_packing', 'photo_int_sale', 'supplier', 'supplier_sku', 'created_at', 'qty',
+            'pkg_inst', 'u_manual', 'compliance',
         ];
 
-        if (!in_array($column, $validColumns)) {
+        if (! in_array($column, $validColumns)) {
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
         }
 
         $columnsAllowCreate = ['supplier', 'supplier_sku'];
         $progress = MfrgProgress::where('sku', $sku)->first();
-        if (!$progress) {
+        if (! $progress) {
             if (in_array($column, $columnsAllowCreate)) {
-                $progress = new MfrgProgress();
+                $progress = new MfrgProgress;
                 $progress->sku = $sku;
             } else {
                 return response()->json(['success' => false, 'message' => 'SKU not found.']);
@@ -334,10 +334,10 @@ class MFRGInProgressController extends Controller
 
         if ($request->hasFile('value') && in_array($column, ['photo_packing', 'photo_int_sale', 'barcode_sku'])) {
             $file = $request->file('value');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $filename = uniqid().'_'.time().'.'.$file->getClientOriginalExtension();
             $destinationPath = public_path('uploads/mfrg_images');
-            
-            if (!file_exists($destinationPath)) {
+
+            if (! file_exists($destinationPath)) {
                 mkdir($destinationPath, 0777, true);
             }
 
@@ -351,12 +351,12 @@ class MFRGInProgressController extends Controller
         }
 
         if ($column === 'advance_amt') {
-            if (!$progress->supplier) {
+            if (! $progress->supplier) {
                 return response()->json(['success' => false, 'message' => 'Supplier not found.']);
             }
 
             MfrgProgress::where('supplier', $progress->supplier)->update([
-                'advance_amt' => $request->input('value')
+                'advance_amt' => $request->input('value'),
             ]);
 
             return response()->json(['success' => true, 'message' => 'Advance updated.']);
@@ -374,7 +374,6 @@ class MFRGInProgressController extends Controller
 
         return response()->json(['success' => true]);
     }
-
 
     public function storeDataReadyToShip(Request $request)
     {

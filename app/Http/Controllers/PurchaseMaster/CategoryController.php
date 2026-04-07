@@ -3,29 +3,27 @@
 namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\AmazonDatasheet;
 use App\Models\Category;
-use App\Models\ProductGroup;
-use App\Models\ProductCategory;
-use App\Models\ProductMaster;
-use App\Models\FbaShipCalculation;
-use App\Models\FbaTable;
-use App\Models\ShopifySku;
-use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
-use App\Models\AmazonDatasheet;
-use App\Services\ShopifyApiService;
+use App\Models\EbayMetric;
+use App\Models\FbaShipCalculation;
+use App\Models\FbaTable;
+use App\Models\ProductCategory;
+use App\Models\ProductGroup;
+use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\EbayApiService;
 use App\Services\WalmartApiService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Redirect;
-use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use SimpleXMLElement;
@@ -38,18 +36,20 @@ class CategoryController extends Controller
 
         foreach ($categories as $category) {
             $category->supplier_count = DB::table('suppliers')
-                ->whereRaw("FIND_IN_SET(?, category_id)", [$category->id])
+                ->whereRaw('FIND_IN_SET(?, category_id)', [$category->id])
                 ->count();
         }
+
         return view('purchase-master.category.category_list', compact('categories'));
     }
 
     public function show($id)
     {
         $category = Category::findOrFail($id);
+
         return response()->json([
             'success' => true,
-            'category' => $category
+            'category' => $category,
         ]);
     }
 
@@ -58,7 +58,7 @@ class CategoryController extends Controller
         $data = $request->except('_token');
 
         $rule = [
-            'category_name' => 'required'
+            'category_name' => 'required',
         ];
 
         $validator = Validator::make($data, $rule);
@@ -68,31 +68,32 @@ class CategoryController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
+
             return redirect()->back()->withErrors($validator)->withInput();
         }
 
         $inputs = $request->all();
-        if (!empty($inputs['category_id'])) {
+        if (! empty($inputs['category_id'])) {
             $category_obj = Category::findOrFail($inputs['category_id']);
         } else {
             $category_obj = new Category;
         }
 
         $category_obj->name = trim($inputs['category_name']);
-        $category_obj->status = !empty($inputs['status']) ? $inputs['status'] : 'inactive';
+        $category_obj->status = ! empty($inputs['status']) ? $inputs['status'] : 'inactive';
 
         // Generate code if not exists
         if (empty($category_obj->code)) {
             $category_obj->code = strtoupper(Str::slug($category_obj->name, '_'));
         }
-        
+
         $category_obj->save();
 
-        $message = !empty($inputs['category_id']) 
-            ? 'Successfully updated category.' 
+        $message = ! empty($inputs['category_id'])
+            ? 'Successfully updated category.'
             : 'Successfully created category.';
 
         // Return JSON response for AJAX requests
@@ -100,7 +101,7 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => $message,
-                'category' => $category_obj
+                'category' => $category_obj,
             ]);
         }
 
@@ -111,13 +112,14 @@ class CategoryController extends Controller
     {
         $category = Category::findOrFail($id);
         $category->delete();
+
         return redirect()->back()->with('flash_message', 'Category deleted successfully.');
     }
 
     public function bulkDelete(Request $request)
     {
         $ids = $request->input('ids');
-        if (!is_array($ids) || empty($ids)) {
+        if (! is_array($ids) || empty($ids)) {
             return response()->json(['success' => false, 'message' => 'No categories selected.']);
         }
 
@@ -135,12 +137,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -195,11 +197,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -213,7 +215,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -224,7 +226,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -237,12 +239,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -297,11 +299,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -315,7 +317,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -326,7 +328,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -339,12 +341,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -399,11 +401,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -417,7 +419,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -428,7 +430,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -447,13 +449,14 @@ class CategoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $skus
+                'data' => $skus,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching SKUs for Dim Wt: ' . $e->getMessage());
+            Log::error('Error fetching SKUs for Dim Wt: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error fetching SKUs: ' . $e->getMessage()
+                'message' => 'Error fetching SKUs: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -477,7 +480,7 @@ class CategoryController extends Controller
                 'ctn_w' => 'nullable|numeric',
                 'ctn_h' => 'nullable|numeric',
                 'ctn_cbm' => 'nullable|numeric',
-                'ctn_qty' => 'nullable|numeric',            
+                'ctn_qty' => 'nullable|numeric',
                 'ctn_cbm_each' => 'nullable|numeric',
                 'cbm_e' => 'nullable|numeric',
                 'ctn_gwt' => 'nullable|numeric',
@@ -497,7 +500,7 @@ class CategoryController extends Controller
 
             // Prepare Values array with dim-wt fields
             $values = [];
-            
+
             if (isset($validated['wt_act']) && $validated['wt_act'] !== null) {
                 $values['wt_act'] = $validated['wt_act'];
             }
@@ -562,13 +565,13 @@ class CategoryController extends Controller
             // Update existing product or create new one
             if ($existingProduct) {
                 // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                if (!is_array($existingValues)) {
+
+                if (! is_array($existingValues)) {
                     $existingValues = [];
                 }
-                
+
                 $mergedValues = array_merge($existingValues, $values);
                 $existingProduct->Values = $mergedValues;
                 $existingProduct->save();
@@ -578,26 +581,27 @@ class CategoryController extends Controller
                 $product = ProductMaster::create([
                     'sku' => $validated['sku'],
                     'parent' => $parent,
-                    'Values' => !empty($values) ? $values : null,
+                    'Values' => ! empty($values) ? $values : null,
                 ]);
             }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Dim & Wt Master stored successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation error: ' . $e->getMessage(),
-                'errors' => $e->errors()
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Error storing Dim & Wt Master: ' . $e->getMessage());
+            Log::error('Error storing Dim & Wt Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -644,19 +648,19 @@ class CategoryController extends Controller
 
             // Find the product
             $product = ProductMaster::find($validated['product_id']);
-            
-            if (!$product) {
+
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found.'
+                    'message' => 'Product not found.',
                 ], 404);
             }
 
             // Get existing Values or create new array
-            $values = is_array($product->Values) ? $product->Values : 
+            $values = is_array($product->Values) ? $product->Values :
                      (is_string($product->Values) ? json_decode($product->Values, true) : []);
-            
-            if (!is_array($values)) {
+
+            if (! is_array($values)) {
                 $values = [];
             }
 
@@ -740,13 +744,14 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Dim & Wt Master updated successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error updating Dim & Wt Master: ' . $e->getMessage());
+            Log::error('Error updating Dim & Wt Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error updating data: ' . $e->getMessage()
+                'message' => 'Error updating data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -776,7 +781,7 @@ class CategoryController extends Controller
             );
 
         if (! $calc && $needsCreate) {
-            $calc = new FbaShipCalculation();
+            $calc = new FbaShipCalculation;
             $calc->sku = $baseSku;
             $calc->fba_ship_calculation = 0;
             $calc->fba_fee_manual = 0;
@@ -814,12 +819,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -886,11 +891,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -904,7 +909,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -930,7 +935,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -944,8 +949,8 @@ class CategoryController extends Controller
             foreach ($products as $product) {
                 // Get Values from product
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                
-                if (is_array($values) && isset($values['status']) && !empty($values['status'])) {
+
+                if (is_array($values) && isset($values['status']) && ! empty($values['status'])) {
                     $statuses[] = $values['status'];
                 }
             }
@@ -956,13 +961,13 @@ class CategoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $uniqueStatuses
+                'data' => $uniqueStatuses,
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch statuses',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -977,40 +982,40 @@ class CategoryController extends Controller
             'tt_ship' => 'nullable|numeric',
             'temu_ship' => 'nullable|numeric',
             'ebay2_ship' => 'nullable|numeric',
-            'label_qty' => 'nullable|integer'
+            'label_qty' => 'nullable|integer',
         ]);
 
         try {
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found'
+                    'message' => 'Product not found',
                 ], 404);
             }
 
             // Get current Values
             $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-            if (!is_array($values)) {
+            if (! is_array($values)) {
                 $values = [];
             }
 
             // Update shipping fields
             if (isset($validated['ship'])) {
-                $values['ship'] = $validated['ship'] !== null && $validated['ship'] !== '' ? (float)$validated['ship'] : null;
+                $values['ship'] = $validated['ship'] !== null && $validated['ship'] !== '' ? (float) $validated['ship'] : null;
             }
             if (isset($validated['tt_ship'])) {
-                $values['tt_ship'] = $validated['tt_ship'] !== null && $validated['tt_ship'] !== '' ? (float)$validated['tt_ship'] : null;
+                $values['tt_ship'] = $validated['tt_ship'] !== null && $validated['tt_ship'] !== '' ? (float) $validated['tt_ship'] : null;
             }
             if (isset($validated['temu_ship'])) {
-                $values['temu_ship'] = $validated['temu_ship'] !== null && $validated['temu_ship'] !== '' ? (float)$validated['temu_ship'] : null;
+                $values['temu_ship'] = $validated['temu_ship'] !== null && $validated['temu_ship'] !== '' ? (float) $validated['temu_ship'] : null;
             }
             if (isset($validated['ebay2_ship'])) {
-                $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float)$validated['ebay2_ship'] : null;
+                $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float) $validated['ebay2_ship'] : null;
             }
             if (isset($validated['label_qty'])) {
-                $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int)$validated['label_qty'] : null;
+                $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int) $validated['label_qty'] : null;
             }
 
             // Save updated Values
@@ -1026,15 +1031,16 @@ class CategoryController extends Controller
                     'tt_ship' => $values['tt_ship'] ?? null,
                     'temu_ship' => $values['temu_ship'] ?? null,
                     'ebay2_ship' => $values['ebay2_ship'] ?? null,
-                    'label_qty' => $values['label_qty'] ?? null
-                ]
+                    'label_qty' => $values['label_qty'] ?? null,
+                ],
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error updating shipping data: ' . $e->getMessage());
+            Log::error('Error updating shipping data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error updating shipping data: ' . $e->getMessage()
+                'message' => 'Error updating shipping data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1047,19 +1053,20 @@ class CategoryController extends Controller
                 ->where('sku', 'not like', 'PARENT %')
                 ->orderBy('sku', 'asc')
                 ->get(['sku'])
-                ->map(function($item) {
+                ->map(function ($item) {
                     return ['sku' => $item->sku];
                 });
 
             return response()->json([
                 'success' => true,
-                'data' => $skus
+                'data' => $skus,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching SKUs for shipping master: ' . $e->getMessage());
+            Log::error('Error fetching SKUs for shipping master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error fetching SKUs: ' . $e->getMessage()
+                'message' => 'Error fetching SKUs: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1074,40 +1081,40 @@ class CategoryController extends Controller
             'tt_ship' => 'nullable|numeric',
             'temu_ship' => 'nullable|numeric',
             'ebay2_ship' => 'nullable|numeric',
-            'label_qty' => 'nullable|integer'
+            'label_qty' => 'nullable|integer',
         ]);
 
         try {
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found'
+                    'message' => 'Product not found',
                 ], 404);
             }
 
             // Get current Values
             $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-            if (!is_array($values)) {
+            if (! is_array($values)) {
                 $values = [];
             }
 
             // Update shipping fields
             if (isset($validated['ship'])) {
-                $values['ship'] = $validated['ship'] !== null && $validated['ship'] !== '' ? (float)$validated['ship'] : null;
+                $values['ship'] = $validated['ship'] !== null && $validated['ship'] !== '' ? (float) $validated['ship'] : null;
             }
             if (isset($validated['tt_ship'])) {
-                $values['tt_ship'] = $validated['tt_ship'] !== null && $validated['tt_ship'] !== '' ? (float)$validated['tt_ship'] : null;
+                $values['tt_ship'] = $validated['tt_ship'] !== null && $validated['tt_ship'] !== '' ? (float) $validated['tt_ship'] : null;
             }
             if (isset($validated['temu_ship'])) {
-                $values['temu_ship'] = $validated['temu_ship'] !== null && $validated['temu_ship'] !== '' ? (float)$validated['temu_ship'] : null;
+                $values['temu_ship'] = $validated['temu_ship'] !== null && $validated['temu_ship'] !== '' ? (float) $validated['temu_ship'] : null;
             }
             if (isset($validated['ebay2_ship'])) {
-                $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float)$validated['ebay2_ship'] : null;
+                $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float) $validated['ebay2_ship'] : null;
             }
             if (isset($validated['label_qty'])) {
-                $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int)$validated['label_qty'] : null;
+                $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int) $validated['label_qty'] : null;
             }
 
             // Save updated Values
@@ -1123,15 +1130,16 @@ class CategoryController extends Controller
                     'tt_ship' => $values['tt_ship'] ?? null,
                     'temu_ship' => $values['temu_ship'] ?? null,
                     'ebay2_ship' => $values['ebay2_ship'] ?? null,
-                    'label_qty' => $values['label_qty'] ?? null
-                ]
+                    'label_qty' => $values['label_qty'] ?? null,
+                ],
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error saving shipping data: ' . $e->getMessage());
+            Log::error('Error saving shipping data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving shipping data: ' . $e->getMessage()
+                'message' => 'Error saving shipping data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1139,23 +1147,23 @@ class CategoryController extends Controller
     public function importShippingMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
             $extension = strtolower($file->getClientOriginalExtension());
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -1174,7 +1182,7 @@ class CategoryController extends Controller
                 'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
                 'ebay2_ship' => 'ebay2_ship',
-                'label_qty' => 'label_qty'
+                'label_qty' => 'label_qty',
             ];
 
             // Find column indices
@@ -1186,10 +1194,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -1199,25 +1207,26 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -1264,7 +1273,7 @@ class CategoryController extends Controller
                     $labelQtyValue = trim($row[$columnIndices['label_qty']]);
                     if ($labelQtyValue !== '') {
                         // Convert to numeric if it's a number
-                        $values['label_qty'] = is_numeric($labelQtyValue) ? (int)$labelQtyValue : $labelQtyValue;
+                        $values['label_qty'] = is_numeric($labelQtyValue) ? (int) $labelQtyValue : $labelQtyValue;
                         $hasChanges = true;
                     }
                 }
@@ -1280,7 +1289,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -1288,14 +1297,15 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Shipping Master Import Error: ' . $e->getMessage());
+            Log::error('Shipping Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1309,12 +1319,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -1369,11 +1379,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -1387,7 +1397,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -1398,7 +1408,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -1419,19 +1429,19 @@ class CategoryController extends Controller
 
             // Find the product
             $product = ProductMaster::find($validated['product_id']);
-            
-            if (!$product) {
+
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found.'
+                    'message' => 'Product not found.',
                 ], 404);
             }
 
             // Get existing Values or create new array
-            $values = is_array($product->Values) ? $product->Values : 
+            $values = is_array($product->Values) ? $product->Values :
                      (is_string($product->Values) ? json_decode($product->Values, true) : []);
-            
-            if (!is_array($values)) {
+
+            if (! is_array($values)) {
                 $values = [];
             }
 
@@ -1463,13 +1473,14 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'General Specific Master updated successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error updating General Specific Master: ' . $e->getMessage());
+            Log::error('Error updating General Specific Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error updating data: ' . $e->getMessage()
+                'message' => 'Error updating data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1499,44 +1510,44 @@ class CategoryController extends Controller
 
             // Check if product with same SKU already has general specific data
             if ($existingProduct) {
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
+
                 // Check if any general specific fields already exist
-                $hasGeneralSpecificData = !empty($existingValues['brand']) || 
-                                         !empty($existingValues['handling_time']) || 
-                                         !empty($existingValues['country_of_origin']) || 
-                                         !empty($existingValues['warranty']) || 
-                                         !empty($existingValues['prop_warning']) || 
-                                         !empty($existingValues['condition']);
-                
+                $hasGeneralSpecificData = ! empty($existingValues['brand']) ||
+                                         ! empty($existingValues['handling_time']) ||
+                                         ! empty($existingValues['country_of_origin']) ||
+                                         ! empty($existingValues['warranty']) ||
+                                         ! empty($existingValues['prop_warning']) ||
+                                         ! empty($existingValues['condition']);
+
                 if ($hasGeneralSpecificData) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This SKU already has general specific data. Please use edit instead.'
+                        'message' => 'This SKU already has general specific data. Please use edit instead.',
                     ], 409);
                 }
             }
 
             // Prepare Values array with general specific fields
             $values = [];
-            
-            if (!empty($validated['brand'])) {
+
+            if (! empty($validated['brand'])) {
                 $values['brand'] = $validated['brand'];
             }
-            if (!empty($validated['handling_time'])) {
+            if (! empty($validated['handling_time'])) {
                 $values['handling_time'] = $validated['handling_time'];
             }
-            if (!empty($validated['country_of_origin'])) {
+            if (! empty($validated['country_of_origin'])) {
                 $values['country_of_origin'] = $validated['country_of_origin'];
             }
-            if (!empty($validated['warranty'])) {
+            if (! empty($validated['warranty'])) {
                 $values['warranty'] = $validated['warranty'];
             }
-            if (!empty($validated['prop_warning'])) {
+            if (! empty($validated['prop_warning'])) {
                 $values['prop_warning'] = $validated['prop_warning'];
             }
-            if (!empty($validated['condition'])) {
+            if (! empty($validated['condition'])) {
                 $values['condition'] = $validated['condition'];
                 $values['Condition'] = $validated['condition']; // Also set capitalized version
             }
@@ -1544,13 +1555,13 @@ class CategoryController extends Controller
             // Update existing product or create new one
             if ($existingProduct) {
                 // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                if (!is_array($existingValues)) {
+
+                if (! is_array($existingValues)) {
                     $existingValues = [];
                 }
-                
+
                 $mergedValues = array_merge($existingValues, $values);
                 $existingProduct->Values = $mergedValues;
                 $existingProduct->save();
@@ -1560,18 +1571,18 @@ class CategoryController extends Controller
                 $product = ProductMaster::create([
                     'sku' => $validated['sku'],
                     'parent' => $parent,
-                    'Values' => !empty($values) ? $values : null,
+                    'Values' => ! empty($values) ? $values : null,
                 ]);
             }
 
             // If parent exists, also create/update the parent row
             if ($parent) {
-                $parentSku = 'PARENT ' . $parent;
+                $parentSku = 'PARENT '.$parent;
                 $parentRow = ProductMaster::where('sku', $parentSku)
                     ->where('parent', $parent)
                     ->first();
 
-                if (!$parentRow) {
+                if (! $parentRow) {
                     ProductMaster::create([
                         'sku' => $parentSku,
                         'parent' => $parent,
@@ -1583,19 +1594,20 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'General Specific Data added successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation error: ' . $e->getMessage(),
-                'errors' => $e->errors()
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Error storing General Specific Master: ' . $e->getMessage());
+            Log::error('Error storing General Specific Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1603,22 +1615,22 @@ class CategoryController extends Controller
     public function importGeneralSpecificMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -1638,7 +1650,7 @@ class CategoryController extends Controller
                 'country_of_origin' => 'country_of_origin',
                 'warranty' => 'warranty',
                 'prop_warning' => 'prop_warning',
-                'condition' => 'condition'
+                'condition' => 'condition',
             ];
 
             // Find column indices
@@ -1650,10 +1662,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -1663,27 +1675,28 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)
                     ->where('sku', 'NOT LIKE', 'PARENT %')
                     ->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -1755,7 +1768,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -1763,14 +1776,15 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('General Specific Master Import Error: ' . $e->getMessage());
+            Log::error('General Specific Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1796,13 +1810,14 @@ class CategoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $skus
+                'data' => $skus,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching SKUs: ' . $e->getMessage());
+            Log::error('Error fetching SKUs: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error fetching SKUs: ' . $e->getMessage()
+                'message' => 'Error fetching SKUs: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1810,6 +1825,554 @@ class CategoryController extends Controller
     public function complianceMaster()
     {
         return view('compliance-master');
+    }
+
+    public function packingInstructionsMaster()
+    {
+        return view('packing_instructions');
+    }
+
+    /**
+     * Keys stored in product_master.Values for the Packing Instructions master grid.
+     *
+     * @return list<string>
+     */
+    private function packingInstructionsValueKeys(): array
+    {
+        return [
+            'packing_box_spec',
+            'packing_units_ctn',
+            'packing_fragile',
+            'packing_seal_method',
+            'packing_instructions',
+            'packing_sheet_url',
+        ];
+    }
+
+    /**
+     * True when any packing-instructions field is non-empty (Add should use Edit instead).
+     */
+    private function packingInstructionsRowHasFieldKeys(array $values): bool
+    {
+        foreach ($this->packingInstructionsValueKeys() as $k) {
+            if (! array_key_exists($k, $values)) {
+                continue;
+            }
+            if (trim((string) ($values[$k] ?? '')) !== '') {
+                return true;
+            }
+        }
+
+        return count($this->normalizePackingImagesList($values)) > 0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, string>
+     */
+    private function mergePackingInstructionsFieldsFromRequest(array $validated): array
+    {
+        $out = [];
+        foreach ($this->packingInstructionsValueKeys() as $field) {
+            $raw = $validated[$field] ?? '';
+            $out[$field] = $raw !== null ? trim((string) $raw) : '';
+        }
+
+        return $out;
+    }
+
+    public function storePackingInstructionsMaster(Request $request)
+    {
+        try {
+            $rules = ['sku' => 'required|string'];
+            foreach ($this->packingInstructionsValueKeys() as $k) {
+                $rules[$k] = 'nullable|string|max:2000';
+            }
+            $validated = $request->validate($rules);
+
+            $existingProduct = $this->findProductMasterBySkuForCompliance($validated['sku']);
+            $parent = $existingProduct ? $existingProduct->parent : null;
+
+            if ($existingProduct) {
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
+                    (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
+
+                if ($this->packingInstructionsRowHasFieldKeys(is_array($existingValues) ? $existingValues : [])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This SKU already has packing instructions. Please use edit instead.',
+                    ], 409);
+                }
+            }
+
+            $patch = $this->mergePackingInstructionsFieldsFromRequest($validated);
+
+            if ($existingProduct) {
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
+                    (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
+                if (! is_array($existingValues)) {
+                    $existingValues = [];
+                }
+                $existingProduct->Values = array_merge($existingValues, $patch);
+                $existingProduct->save();
+                $product = $existingProduct;
+            } else {
+                $canonicalSku = $this->normalizeSkuDisplayValue($validated['sku']);
+                $product = ProductMaster::create([
+                    'sku' => $canonicalSku !== '' ? $canonicalSku : $validated['sku'],
+                    'parent' => $parent,
+                    'Values' => $patch,
+                ]);
+            }
+
+            if ($parent) {
+                $parentSku = 'PARENT '.$parent;
+                $parentRow = ProductMaster::where('sku', $parentSku)
+                    ->where('parent', $parent)
+                    ->first();
+                if (! $parentRow) {
+                    ProductMaster::create([
+                        'sku' => $parentSku,
+                        'parent' => $parent,
+                        'Values' => null,
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Packing instructions saved successfully',
+                'data' => $product,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error storing Packing Instructions Master: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving data: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function updatePackingInstructionsMaster(Request $request)
+    {
+        try {
+            $rules = ['sku' => 'required|string'];
+            foreach ($this->packingInstructionsValueKeys() as $k) {
+                $rules[$k] = 'nullable|string|max:2000';
+            }
+            $validated = $request->validate($rules);
+
+            $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+            if (! $product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found for this SKU.',
+                ], 404);
+            }
+
+            $existingValues = is_array($product->Values) ? $product->Values
+                : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (! is_array($existingValues)) {
+                $existingValues = [];
+            }
+
+            $patch = $this->mergePackingInstructionsFieldsFromRequest($validated);
+            foreach ($patch as $k => $v) {
+                $existingValues[$k] = $v;
+            }
+            $product->Values = $existingValues;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Packing instructions updated successfully.',
+                'data' => $product,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error updating Packing Instructions Master: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving data: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function clearPackingInstructionsMaster(Request $request)
+    {
+        try {
+            $validated = $request->validate(['sku' => 'required|string']);
+            $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+            if (! $product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found for this SKU.',
+                ], 404);
+            }
+
+            $existingValues = is_array($product->Values) ? $product->Values
+                : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (! is_array($existingValues)) {
+                $existingValues = [];
+            }
+            $this->deletePackingInstructionImageFilesFromValues($existingValues);
+            unset($existingValues['packing_images']);
+            foreach ($this->packingInstructionsValueKeys() as $k) {
+                unset($existingValues[$k]);
+            }
+            $product->Values = $existingValues;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Packing instructions cleared for this SKU.',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error clearing Packing Instructions Master: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error clearing data: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return list<array{id: string, path: string, name: string, uploaded_at: string}>
+     */
+    private function normalizePackingImagesList(array $values): array
+    {
+        $raw = $values['packing_images'] ?? [];
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $item) {
+            if (is_string($item) && trim($item) !== '') {
+                $p = trim($item);
+                $out[] = [
+                    'id' => 'legacy-'.md5($p),
+                    'path' => $p,
+                    'name' => basename($p),
+                    'uploaded_at' => '',
+                ];
+
+                continue;
+            }
+            if (is_array($item) && ! empty($item['path'])) {
+                $out[] = [
+                    'id' => isset($item['id']) && is_string($item['id']) ? $item['id'] : (string) Str::uuid(),
+                    'path' => trim((string) $item['path']),
+                    'name' => isset($item['name']) ? (string) $item['name'] : basename((string) $item['path']),
+                    'uploaded_at' => isset($item['uploaded_at']) ? (string) $item['uploaded_at'] : '',
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    private function packingImageDiskRelativePath(string $storagePath): ?string
+    {
+        $s = trim($storagePath);
+        if ($s === '') {
+            return null;
+        }
+        $s = ltrim($s, '/');
+        if (str_starts_with($s, 'storage/')) {
+            return substr($s, strlen('storage/'));
+        }
+
+        return $s;
+    }
+
+    /**
+     * @param  list<array{id: string, path: string, name: string, uploaded_at: string}>  $images
+     */
+    private function deletePackingInstructionImageFilesFromValues(array $values): void
+    {
+        foreach ($this->normalizePackingImagesList($values) as $img) {
+            $rel = $this->packingImageDiskRelativePath($img['path']);
+            if ($rel && Storage::disk('public')->exists($rel)) {
+                Storage::disk('public')->delete($rel);
+            }
+        }
+    }
+
+    private function packingImagePublicUrl(string $storagePath): string
+    {
+        $s = trim($storagePath);
+        if ($s === '') {
+            return '';
+        }
+        if (str_starts_with($s, 'http://') || str_starts_with($s, 'https://')) {
+            return $s;
+        }
+
+        return '/'.ltrim($s, '/');
+    }
+
+    public function listPackingInstructionImages(Request $request)
+    {
+        $request->validate(['sku' => 'required|string']);
+        $product = $this->findProductMasterBySkuForCompliance($request->input('sku'));
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+        $values = is_array($product->Values) ? $product->Values
+            : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+        if (! is_array($values)) {
+            $values = [];
+        }
+        $images = $this->normalizePackingImagesList($values);
+        $payload = array_map(function (array $img) {
+            return [
+                'id' => $img['id'],
+                'path' => $img['path'],
+                'name' => $img['name'],
+                'uploaded_at' => $img['uploaded_at'],
+                'url' => $this->packingImagePublicUrl($img['path']),
+            ];
+        }, $images);
+
+        return response()->json(['success' => true, 'images' => $payload]);
+    }
+
+    public function uploadPackingInstructionImage(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'image' => 'required|file|image|max:10240',
+            ]);
+            $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+            if (! $product) {
+                return response()->json(['success' => false, 'message' => 'Product not found for this SKU.'], 404);
+            }
+
+            $needle = $this->normalizeSkuDisplayValue($validated['sku']);
+            $folder = 'packing_instruction_images/'.substr(hash('sha256', $needle !== '' ? $needle : $validated['sku']), 0, 20);
+            $stored = $request->file('image')->store($folder, 'public');
+            $storagePath = 'storage/'.$stored;
+
+            $existingValues = is_array($product->Values) ? $product->Values
+                : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (! is_array($existingValues)) {
+                $existingValues = [];
+            }
+            $list = $this->normalizePackingImagesList($existingValues);
+            $entry = [
+                'id' => (string) Str::uuid(),
+                'path' => $storagePath,
+                'name' => $request->file('image')->getClientOriginalName(),
+                'uploaded_at' => now()->toIso8601String(),
+            ];
+            $list[] = $entry;
+            $existingValues['packing_images'] = $list;
+            $product->Values = $existingValues;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'id' => $entry['id'],
+                'path' => $entry['path'],
+                'url' => $this->packingImagePublicUrl($entry['path']),
+                'name' => $entry['name'],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Packing instruction image upload: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Upload failed: '.$e->getMessage()], 500);
+        }
+    }
+
+    public function deletePackingInstructionImage(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'id' => 'required|string',
+            ]);
+            $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+            if (! $product) {
+                return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+            }
+            $existingValues = is_array($product->Values) ? $product->Values
+                : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (! is_array($existingValues)) {
+                $existingValues = [];
+            }
+            $list = $this->normalizePackingImagesList($existingValues);
+            $found = null;
+            $next = [];
+            foreach ($list as $img) {
+                if ($img['id'] === $validated['id']) {
+                    $found = $img;
+                } else {
+                    $next[] = $img;
+                }
+            }
+            if (! $found) {
+                return response()->json(['success' => false, 'message' => 'Image not found.'], 404);
+            }
+            $rel = $this->packingImageDiskRelativePath($found['path']);
+            if ($rel && Storage::disk('public')->exists($rel)) {
+                Storage::disk('public')->delete($rel);
+            }
+            if ($next === []) {
+                unset($existingValues['packing_images']);
+            } else {
+                $existingValues['packing_images'] = $next;
+            }
+            $product->Values = $existingValues;
+            $product->save();
+
+            return response()->json(['success' => true, 'message' => 'Image removed.']);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Packing instruction image delete: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function aiDefectScanPackingImage(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'id' => 'required|string',
+        ]);
+        $apiKey = config('services.openai.key');
+        if (! $apiKey) {
+            return response()->json([
+                'success' => false,
+                'message' => 'OpenAI is not configured. Set OPENAI_API_KEY in .env to enable AI defect detection.',
+            ], 503);
+        }
+        $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+        $values = is_array($product->Values) ? $product->Values
+            : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+        if (! is_array($values)) {
+            $values = [];
+        }
+        $list = $this->normalizePackingImagesList($values);
+        $found = null;
+        foreach ($list as $img) {
+            if ($img['id'] === $validated['id']) {
+                $found = $img;
+                break;
+            }
+        }
+        if (! $found) {
+            return response()->json(['success' => false, 'message' => 'Image not found.'], 404);
+        }
+        $rel = $this->packingImageDiskRelativePath($found['path']);
+        if (! $rel || ! Storage::disk('public')->exists($rel)) {
+            return response()->json(['success' => false, 'message' => 'Image file missing on server.'], 404);
+        }
+        $bytes = Storage::disk('public')->get($rel);
+        $mime = Storage::disk('public')->mimeType($rel) ?: 'image/jpeg';
+        if (! str_starts_with((string) $mime, 'image/')) {
+            return response()->json(['success' => false, 'message' => 'Not an image file.'], 422);
+        }
+        $b64 = base64_encode($bytes);
+        $model = (string) config('services.openai.packing_vision_model', 'gpt-4o-mini');
+        $prompt = <<<'PROMPT'
+You are an expert retail packaging QC inspector. Analyze this product/packaging photo for visible defects relevant to shipping and customer experience.
+
+Look for: dents, tears, crushing, stains, moisture, poor sealing/tape, wrong or missing labels, barcode/label readability issues, color mismatch vs expected packaging, foreign objects, dust, and any damage that could cause returns.
+
+Respond with ONLY valid JSON (no markdown) in this exact shape:
+{"severity":"none|low|medium|high","summary":"one short paragraph","defects":[{"type":"string","detail":"string","confidence":"high|medium|low"}],"recommendations":["string"]}
+If the image is unclear, say so in summary and lower confidence.
+PROMPT;
+
+        try {
+            $response = Http::withToken($apiKey)
+                ->timeout(120)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => $model,
+                    'max_tokens' => 900,
+                    'messages' => [
+                        [
+                            'role' => 'user',
+                            'content' => [
+                                ['type' => 'text', 'text' => $prompt],
+                                [
+                                    'type' => 'image_url',
+                                    'image_url' => [
+                                        'url' => 'data:'.$mime.';base64,'.$b64,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ]);
+            if (! $response->successful()) {
+                Log::warning('OpenAI packing vision error', ['body' => $response->body()]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'AI service error: '.$response->json('error.message', 'Request failed'),
+                ], 502);
+            }
+            $text = $response->json('choices.0.message.content');
+            if (! is_string($text) || trim($text) === '') {
+                return response()->json(['success' => false, 'message' => 'Empty AI response.'], 502);
+            }
+            $text = trim($text);
+            $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
+            $text = preg_replace('/\s*```$/', '', $text);
+            $decoded = json_decode($text, true);
+            if (! is_array($decoded)) {
+                return response()->json([
+                    'success' => true,
+                    'raw' => $text,
+                    'parsed' => null,
+                    'message' => 'AI returned non-JSON; see raw text.',
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'analysis' => $decoded,
+                'model' => $model,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('AI packing defect scan: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -1868,7 +2431,7 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
@@ -1929,8 +2492,8 @@ class CategoryController extends Controller
 
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -1943,7 +2506,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -1963,7 +2526,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -2273,22 +2836,22 @@ class CategoryController extends Controller
     public function importComplianceMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -2310,7 +2873,7 @@ class CategoryController extends Controller
                 'blanket' => 'blanket',
                 'bluetooth' => 'bluetooth',
                 'logo' => 'logo',
-                'graph' => 'graph'
+                'graph' => 'graph',
             ];
 
             // Find column indices
@@ -2322,10 +2885,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -2335,7 +2898,7 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
@@ -2348,12 +2911,13 @@ class CategoryController extends Controller
 
                 if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -2416,7 +2980,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -2424,14 +2988,15 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Compliance Master Import Error: ' . $e->getMessage());
+            Log::error('Compliance Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -2445,12 +3010,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -2505,11 +3070,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -2523,7 +3088,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -2534,7 +3099,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -2561,49 +3126,49 @@ class CategoryController extends Controller
 
             // Check if product with same SKU already has extra features data
             if ($existingProduct) {
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
+
                 // Check if any extra features fields already exist
-                $hasExtraFeaturesData = !empty($existingValues['ex_feature_1']) || 
-                                       !empty($existingValues['ex_feature_2']) || 
-                                       !empty($existingValues['ex_feature_3']) || 
-                                       !empty($existingValues['ex_feature_4']);
-                
+                $hasExtraFeaturesData = ! empty($existingValues['ex_feature_1']) ||
+                                       ! empty($existingValues['ex_feature_2']) ||
+                                       ! empty($existingValues['ex_feature_3']) ||
+                                       ! empty($existingValues['ex_feature_4']);
+
                 if ($hasExtraFeaturesData) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This SKU already has extra features data. Please use edit instead.'
+                        'message' => 'This SKU already has extra features data. Please use edit instead.',
                     ], 409);
                 }
             }
 
             // Prepare Values array with extra features fields
             $values = [];
-            
-            if (!empty($validated['ex_feature_1'])) {
+
+            if (! empty($validated['ex_feature_1'])) {
                 $values['ex_feature_1'] = $validated['ex_feature_1'];
             }
-            if (!empty($validated['ex_feature_2'])) {
+            if (! empty($validated['ex_feature_2'])) {
                 $values['ex_feature_2'] = $validated['ex_feature_2'];
             }
-            if (!empty($validated['ex_feature_3'])) {
+            if (! empty($validated['ex_feature_3'])) {
                 $values['ex_feature_3'] = $validated['ex_feature_3'];
             }
-            if (!empty($validated['ex_feature_4'])) {
+            if (! empty($validated['ex_feature_4'])) {
                 $values['ex_feature_4'] = $validated['ex_feature_4'];
             }
 
             // Update existing product or create new one
             if ($existingProduct) {
                 // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                if (!is_array($existingValues)) {
+
+                if (! is_array($existingValues)) {
                     $existingValues = [];
                 }
-                
+
                 $mergedValues = array_merge($existingValues, $values);
                 $existingProduct->Values = $mergedValues;
                 $existingProduct->save();
@@ -2613,18 +3178,18 @@ class CategoryController extends Controller
                 $product = ProductMaster::create([
                     'sku' => $validated['sku'],
                     'parent' => $parent,
-                    'Values' => !empty($values) ? $values : null,
+                    'Values' => ! empty($values) ? $values : null,
                 ]);
             }
 
             // If parent exists, also create/update the parent row
             if ($parent) {
-                $parentSku = 'PARENT ' . $parent;
+                $parentSku = 'PARENT '.$parent;
                 $parentRow = ProductMaster::where('sku', $parentSku)
                     ->where('parent', $parent)
                     ->first();
 
-                if (!$parentRow) {
+                if (! $parentRow) {
                     ProductMaster::create([
                         'sku' => $parentSku,
                         'parent' => $parent,
@@ -2636,19 +3201,20 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Extra Features Data added successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation error: ' . $e->getMessage(),
-                'errors' => $e->errors()
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Error storing Extra Features Master: ' . $e->getMessage());
+            Log::error('Error storing Extra Features Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -2656,22 +3222,22 @@ class CategoryController extends Controller
     public function importExtraFeaturesMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -2689,7 +3255,7 @@ class CategoryController extends Controller
                 'ex_feature_1' => 'ex_feature_1',
                 'ex_feature_2' => 'ex_feature_2',
                 'ex_feature_3' => 'ex_feature_3',
-                'ex_feature_4' => 'ex_feature_4'
+                'ex_feature_4' => 'ex_feature_4',
             ];
 
             // Find column indices
@@ -2701,10 +3267,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -2714,27 +3280,28 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)
                     ->where('sku', 'NOT LIKE', 'PARENT %')
                     ->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -2787,7 +3354,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -2795,14 +3362,15 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Extra Features Master Import Error: ' . $e->getMessage());
+            Log::error('Extra Features Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -2816,12 +3384,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -2876,11 +3444,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -2894,7 +3462,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -2905,7 +3473,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -2930,41 +3498,41 @@ class CategoryController extends Controller
 
             // Check if product with same SKU already has A+ images data
             if ($existingProduct) {
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
+
                 // Check if any A+ images fields already exist
-                $hasAPlusImagesData = !empty($existingValues['standard_a_plus']) || 
-                                     !empty($existingValues['premium_a_plus']);
-                
+                $hasAPlusImagesData = ! empty($existingValues['standard_a_plus']) ||
+                                     ! empty($existingValues['premium_a_plus']);
+
                 if ($hasAPlusImagesData) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This SKU already has A+ images data. Please use edit instead.'
+                        'message' => 'This SKU already has A+ images data. Please use edit instead.',
                     ], 409);
                 }
             }
 
             // Prepare Values array with A+ images fields
             $values = [];
-            
-            if (!empty($validated['standard_a_plus'])) {
+
+            if (! empty($validated['standard_a_plus'])) {
                 $values['standard_a_plus'] = $validated['standard_a_plus'];
             }
-            if (!empty($validated['premium_a_plus'])) {
+            if (! empty($validated['premium_a_plus'])) {
                 $values['premium_a_plus'] = $validated['premium_a_plus'];
             }
 
             // Update existing product or create new one
             if ($existingProduct) {
                 // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                if (!is_array($existingValues)) {
+
+                if (! is_array($existingValues)) {
                     $existingValues = [];
                 }
-                
+
                 $mergedValues = array_merge($existingValues, $values);
                 $existingProduct->Values = $mergedValues;
                 $existingProduct->save();
@@ -2974,18 +3542,18 @@ class CategoryController extends Controller
                 $product = ProductMaster::create([
                     'sku' => $validated['sku'],
                     'parent' => $parent,
-                    'Values' => !empty($values) ? $values : null,
+                    'Values' => ! empty($values) ? $values : null,
                 ]);
             }
 
             // If parent exists, also create/update the parent row
             if ($parent) {
-                $parentSku = 'PARENT ' . $parent;
+                $parentSku = 'PARENT '.$parent;
                 $parentRow = ProductMaster::where('sku', $parentSku)
                     ->where('parent', $parent)
                     ->first();
 
-                if (!$parentRow) {
+                if (! $parentRow) {
                     ProductMaster::create([
                         'sku' => $parentSku,
                         'parent' => $parent,
@@ -2997,19 +3565,20 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'A+ Images Data added successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation error: ' . $e->getMessage(),
-                'errors' => $e->errors()
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Error storing A+ Images Master: ' . $e->getMessage());
+            Log::error('Error storing A+ Images Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3017,22 +3586,22 @@ class CategoryController extends Controller
     public function importAPlusImagesMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -3046,7 +3615,7 @@ class CategoryController extends Controller
 
             // Expected column mappings (try multiple variations)
             $columnIndices = [];
-            
+
             // Find SKU column
             foreach ($headers as $index => $header) {
                 if ($header === 'sku') {
@@ -3054,7 +3623,7 @@ class CategoryController extends Controller
                     break;
                 }
             }
-            
+
             // Find Standard A+ column (try multiple variations)
             foreach ($headers as $index => $header) {
                 if (in_array($header, ['standard_a_plus', 'standard_a', 'standardaplus', 'standard_a'])) {
@@ -3062,9 +3631,9 @@ class CategoryController extends Controller
                     break;
                 }
             }
-            
+
             // If not found, try partial match
-            if (!isset($columnIndices['standard_a_plus'])) {
+            if (! isset($columnIndices['standard_a_plus'])) {
                 foreach ($headers as $index => $header) {
                     if (strpos($header, 'standard') !== false && (strpos($header, 'a') !== false || strpos($header, 'plus') !== false)) {
                         $columnIndices['standard_a_plus'] = $index;
@@ -3072,7 +3641,7 @@ class CategoryController extends Controller
                     }
                 }
             }
-            
+
             // Find Premium A+ column (try multiple variations)
             foreach ($headers as $index => $header) {
                 if (in_array($header, ['premium_a_plus', 'premium_a', 'premiumaplus', 'premium_a'])) {
@@ -3080,9 +3649,9 @@ class CategoryController extends Controller
                     break;
                 }
             }
-            
+
             // If not found, try partial match
-            if (!isset($columnIndices['premium_a_plus'])) {
+            if (! isset($columnIndices['premium_a_plus'])) {
                 foreach ($headers as $index => $header) {
                     if (strpos($header, 'premium') !== false && (strpos($header, 'a') !== false || strpos($header, 'plus') !== false)) {
                         $columnIndices['premium_a_plus'] = $index;
@@ -3091,10 +3660,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -3104,27 +3673,28 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)
                     ->where('sku', 'NOT LIKE', 'PARENT %')
                     ->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -3159,7 +3729,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -3167,14 +3737,15 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('A+ Images Master Import Error: ' . $e->getMessage());
+            Log::error('A+ Images Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3188,12 +3759,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -3248,11 +3819,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -3266,7 +3837,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -3277,7 +3848,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -3302,41 +3873,41 @@ class CategoryController extends Controller
 
             // Check if product with same SKU already has keywords data
             if ($existingProduct) {
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
+
                 // Check if any keywords fields already exist
-                $hasKeywordsData = !empty($existingValues['backend_keywords']) || 
-                                 !empty($existingValues['generic_keyword']);
-                
+                $hasKeywordsData = ! empty($existingValues['backend_keywords']) ||
+                                 ! empty($existingValues['generic_keyword']);
+
                 if ($hasKeywordsData) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This SKU already has keywords data. Please use edit instead.'
+                        'message' => 'This SKU already has keywords data. Please use edit instead.',
                     ], 409);
                 }
             }
 
             // Prepare Values array with keywords fields
             $values = [];
-            
-            if (!empty($validated['backend_keywords'])) {
+
+            if (! empty($validated['backend_keywords'])) {
                 $values['backend_keywords'] = $validated['backend_keywords'];
             }
-            if (!empty($validated['generic_keyword'])) {
+            if (! empty($validated['generic_keyword'])) {
                 $values['generic_keyword'] = $validated['generic_keyword'];
             }
 
             // Update existing product or create new one
             if ($existingProduct) {
                 // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                if (!is_array($existingValues)) {
+
+                if (! is_array($existingValues)) {
                     $existingValues = [];
                 }
-                
+
                 $mergedValues = array_merge($existingValues, $values);
                 $existingProduct->Values = $mergedValues;
                 $existingProduct->save();
@@ -3346,18 +3917,18 @@ class CategoryController extends Controller
                 $product = ProductMaster::create([
                     'sku' => $validated['sku'],
                     'parent' => $parent,
-                    'Values' => !empty($values) ? $values : null,
+                    'Values' => ! empty($values) ? $values : null,
                 ]);
             }
 
             // If parent exists, also create/update the parent row
             if ($parent) {
-                $parentSku = 'PARENT ' . $parent;
+                $parentSku = 'PARENT '.$parent;
                 $parentRow = ProductMaster::where('sku', $parentSku)
                     ->where('parent', $parent)
                     ->first();
 
-                if (!$parentRow) {
+                if (! $parentRow) {
                     ProductMaster::create([
                         'sku' => $parentSku,
                         'parent' => $parent,
@@ -3369,19 +3940,20 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Keywords Data added successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation error: ' . $e->getMessage(),
-                'errors' => $e->errors()
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Error storing Keywords Master: ' . $e->getMessage());
+            Log::error('Error storing Keywords Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3389,22 +3961,22 @@ class CategoryController extends Controller
     public function importKeywordsMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -3418,7 +3990,7 @@ class CategoryController extends Controller
 
             // Expected column mappings (try multiple variations)
             $columnIndices = [];
-            
+
             // Find SKU column
             foreach ($headers as $index => $header) {
                 if ($header === 'sku') {
@@ -3426,7 +3998,7 @@ class CategoryController extends Controller
                     break;
                 }
             }
-            
+
             // Find Backend Keywords column (try multiple variations)
             foreach ($headers as $index => $header) {
                 if (in_array($header, ['backend_keywords', 'backendkeywords', 'backend_keyword'])) {
@@ -3434,9 +4006,9 @@ class CategoryController extends Controller
                     break;
                 }
             }
-            
+
             // If not found, try partial match
-            if (!isset($columnIndices['backend_keywords'])) {
+            if (! isset($columnIndices['backend_keywords'])) {
                 foreach ($headers as $index => $header) {
                     if (strpos($header, 'backend') !== false && (strpos($header, 'keyword') !== false || strpos($header, 'keywords') !== false)) {
                         $columnIndices['backend_keywords'] = $index;
@@ -3444,7 +4016,7 @@ class CategoryController extends Controller
                     }
                 }
             }
-            
+
             // Find Generic Keyword column (try multiple variations)
             foreach ($headers as $index => $header) {
                 if (in_array($header, ['generic_keyword', 'generickeyword', 'generic_keywords'])) {
@@ -3452,9 +4024,9 @@ class CategoryController extends Controller
                     break;
                 }
             }
-            
+
             // If not found, try partial match
-            if (!isset($columnIndices['generic_keyword'])) {
+            if (! isset($columnIndices['generic_keyword'])) {
                 foreach ($headers as $index => $header) {
                     if (strpos($header, 'generic') !== false && (strpos($header, 'keyword') !== false || strpos($header, 'keywords') !== false)) {
                         $columnIndices['generic_keyword'] = $index;
@@ -3463,10 +4035,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -3476,27 +4048,28 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)
                     ->where('sku', 'NOT LIKE', 'PARENT %')
                     ->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -3531,7 +4104,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -3539,14 +4112,15 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Keywords Master Import Error: ' . $e->getMessage());
+            Log::error('Keywords Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3560,12 +4134,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -3620,11 +4194,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -3637,7 +4211,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -3648,7 +4222,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -3681,73 +4255,73 @@ class CategoryController extends Controller
 
             // Check if product with same SKU already has competitors data
             if ($existingProduct) {
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
+
                 // Check if any competitors fields already exist
-                $hasCompetitorsData = !empty($existingValues['brand_1']) || 
-                                     !empty($existingValues['link_1']) ||
-                                     !empty($existingValues['brand_2']) || 
-                                     !empty($existingValues['link_2']) ||
-                                     !empty($existingValues['brand_3']) || 
-                                     !empty($existingValues['link_3']) ||
-                                     !empty($existingValues['brand_4']) || 
-                                     !empty($existingValues['link_4']) ||
-                                     !empty($existingValues['brand_5']) || 
-                                     !empty($existingValues['link_5']);
-                
+                $hasCompetitorsData = ! empty($existingValues['brand_1']) ||
+                                     ! empty($existingValues['link_1']) ||
+                                     ! empty($existingValues['brand_2']) ||
+                                     ! empty($existingValues['link_2']) ||
+                                     ! empty($existingValues['brand_3']) ||
+                                     ! empty($existingValues['link_3']) ||
+                                     ! empty($existingValues['brand_4']) ||
+                                     ! empty($existingValues['link_4']) ||
+                                     ! empty($existingValues['brand_5']) ||
+                                     ! empty($existingValues['link_5']);
+
                 if ($hasCompetitorsData) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This SKU already has competitors data. Please use edit instead.'
+                        'message' => 'This SKU already has competitors data. Please use edit instead.',
                     ], 409);
                 }
             }
 
             // Prepare Values array with competitors fields
             $values = [];
-            
-            if (!empty($validated['brand_1'])) {
+
+            if (! empty($validated['brand_1'])) {
                 $values['brand_1'] = $validated['brand_1'];
             }
-            if (!empty($validated['link_1'])) {
+            if (! empty($validated['link_1'])) {
                 $values['link_1'] = $validated['link_1'];
             }
-            if (!empty($validated['brand_2'])) {
+            if (! empty($validated['brand_2'])) {
                 $values['brand_2'] = $validated['brand_2'];
             }
-            if (!empty($validated['link_2'])) {
+            if (! empty($validated['link_2'])) {
                 $values['link_2'] = $validated['link_2'];
             }
-            if (!empty($validated['brand_3'])) {
+            if (! empty($validated['brand_3'])) {
                 $values['brand_3'] = $validated['brand_3'];
             }
-            if (!empty($validated['link_3'])) {
+            if (! empty($validated['link_3'])) {
                 $values['link_3'] = $validated['link_3'];
             }
-            if (!empty($validated['brand_4'])) {
+            if (! empty($validated['brand_4'])) {
                 $values['brand_4'] = $validated['brand_4'];
             }
-            if (!empty($validated['link_4'])) {
+            if (! empty($validated['link_4'])) {
                 $values['link_4'] = $validated['link_4'];
             }
-            if (!empty($validated['brand_5'])) {
+            if (! empty($validated['brand_5'])) {
                 $values['brand_5'] = $validated['brand_5'];
             }
-            if (!empty($validated['link_5'])) {
+            if (! empty($validated['link_5'])) {
                 $values['link_5'] = $validated['link_5'];
             }
 
             // Update existing product or create new one
             if ($existingProduct) {
                 // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                if (!is_array($existingValues)) {
+
+                if (! is_array($existingValues)) {
                     $existingValues = [];
                 }
-                
+
                 $mergedValues = array_merge($existingValues, $values);
                 $existingProduct->Values = $mergedValues;
                 $existingProduct->save();
@@ -3757,18 +4331,18 @@ class CategoryController extends Controller
                 $product = ProductMaster::create([
                     'sku' => $validated['sku'],
                     'parent' => $parent,
-                    'Values' => !empty($values) ? $values : null,
+                    'Values' => ! empty($values) ? $values : null,
                 ]);
             }
 
             // If parent exists, also create/update the parent row
             if ($parent) {
-                $parentSku = 'PARENT ' . $parent;
+                $parentSku = 'PARENT '.$parent;
                 $parentRow = ProductMaster::where('sku', $parentSku)
                     ->where('parent', $parent)
                     ->first();
 
-                if (!$parentRow) {
+                if (! $parentRow) {
                     ProductMaster::create([
                         'sku' => $parentSku,
                         'parent' => $parent,
@@ -3780,19 +4354,20 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Competitors Data added successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation error: ' . $e->getMessage(),
-                'errors' => $e->errors()
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Error storing Competitors Master: ' . $e->getMessage());
+            Log::error('Error storing Competitors Master: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3800,22 +4375,22 @@ class CategoryController extends Controller
     public function importCompetitorsMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -3829,7 +4404,7 @@ class CategoryController extends Controller
 
             // Expected column mappings
             $columnIndices = [];
-            
+
             // Find SKU column
             foreach ($headers as $index => $header) {
                 if ($header === 'sku') {
@@ -3837,12 +4412,12 @@ class CategoryController extends Controller
                     break;
                 }
             }
-            
+
             // Find Brand and Link columns (Brand 1 through Brand 5, Link 1 through Link 5)
             for ($i = 1; $i <= 5; $i++) {
                 $brandKey = "brand_{$i}";
                 $linkKey = "link_{$i}";
-                
+
                 // Find Brand column
                 foreach ($headers as $index => $header) {
                     if (in_array($header, [$brandKey, "brand{$i}", "brand_{$i}"])) {
@@ -3850,17 +4425,17 @@ class CategoryController extends Controller
                         break;
                     }
                 }
-                
+
                 // If not found, try partial match
-                if (!isset($columnIndices[$brandKey])) {
+                if (! isset($columnIndices[$brandKey])) {
                     foreach ($headers as $index => $header) {
-                        if (strpos($header, 'brand') !== false && (strpos($header, (string)$i) !== false || preg_match('/brand\s*' . $i . '/i', $header))) {
+                        if (strpos($header, 'brand') !== false && (strpos($header, (string) $i) !== false || preg_match('/brand\s*'.$i.'/i', $header))) {
                             $columnIndices[$brandKey] = $index;
                             break;
                         }
                     }
                 }
-                
+
                 // Find Link column
                 foreach ($headers as $index => $header) {
                     if (in_array($header, [$linkKey, "link{$i}", "link_{$i}"])) {
@@ -3868,11 +4443,11 @@ class CategoryController extends Controller
                         break;
                     }
                 }
-                
+
                 // If not found, try partial match
-                if (!isset($columnIndices[$linkKey])) {
+                if (! isset($columnIndices[$linkKey])) {
                     foreach ($headers as $index => $header) {
-                        if (strpos($header, 'link') !== false && (strpos($header, (string)$i) !== false || preg_match('/link\s*' . $i . '/i', $header))) {
+                        if (strpos($header, 'link') !== false && (strpos($header, (string) $i) !== false || preg_match('/link\s*'.$i.'/i', $header))) {
                             $columnIndices[$linkKey] = $index;
                             break;
                         }
@@ -3880,10 +4455,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -3893,27 +4468,28 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)
                     ->where('sku', 'NOT LIKE', 'PARENT %')
                     ->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -3923,7 +4499,7 @@ class CategoryController extends Controller
                 for ($i = 1; $i <= 5; $i++) {
                     $brandKey = "brand_{$i}";
                     $linkKey = "link_{$i}";
-                    
+
                     // Update Brand if column exists and has value
                     if (isset($columnIndices[$brandKey]) && isset($row[$columnIndices[$brandKey]])) {
                         $brandValue = trim($row[$columnIndices[$brandKey]]);
@@ -3932,7 +4508,7 @@ class CategoryController extends Controller
                             $hasChanges = true;
                         }
                     }
-                    
+
                     // Update Link if column exists and has value
                     if (isset($columnIndices[$linkKey]) && isset($row[$columnIndices[$linkKey]])) {
                         $linkValue = trim($row[$columnIndices[$linkKey]]);
@@ -3954,7 +4530,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -3962,14 +4538,15 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Competitors Master Import Error: ' . $e->getMessage());
+            Log::error('Competitors Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3983,12 +4560,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -4043,11 +4620,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -4060,7 +4637,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -4071,7 +4648,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -4084,12 +4661,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -4144,11 +4721,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -4161,7 +4738,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -4172,7 +4749,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -4185,12 +4762,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -4245,11 +4822,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -4262,7 +4839,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -4273,7 +4850,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -4286,12 +4863,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -4350,11 +4927,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -4367,7 +4944,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -4378,7 +4955,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -4389,15 +4966,15 @@ class CategoryController extends Controller
                 'product_id' => 'required|integer',
                 'sku' => 'required|string',
                 'field' => 'required|string|in:group_id,category_id',
-                'value' => 'nullable|integer'
+                'value' => 'nullable|integer',
             ]);
 
             $product = ProductMaster::find($request->product_id);
-            
-            if (!$product) {
+
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found.'
+                    'message' => 'Product not found.',
                 ], 404);
             }
 
@@ -4405,43 +4982,43 @@ class CategoryController extends Controller
             if ($product->sku !== $request->sku) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU mismatch.'
+                    'message' => 'SKU mismatch.',
                 ], 400);
             }
 
             $field = $request->field;
-            $value = $request->value ? (int)$request->value : null;
+            $value = $request->value ? (int) $request->value : null;
 
             // Validate that the group/category exists if value is provided
             if ($value !== null) {
                 if ($field === 'group_id') {
                     // Check if group exists (including soft-deleted to see if it exists at all)
                     $group = ProductGroup::withTrashed()->find($value);
-                    if (!$group) {
+                    if (! $group) {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Selected group does not exist. Please select a valid group.'
+                            'message' => 'Selected group does not exist. Please select a valid group.',
                         ], 400);
                     }
                     if ($group->trashed() || $group->status !== 'active') {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Selected group exists but is deleted or inactive. Please restore it or select a different group.'
+                            'message' => 'Selected group exists but is deleted or inactive. Please restore it or select a different group.',
                         ], 400);
                     }
                 } elseif ($field === 'category_id') {
                     // Check if category exists (including soft-deleted to see if it exists at all)
                     $category = ProductCategory::withTrashed()->find($value);
-                    if (!$category) {
+                    if (! $category) {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Selected category does not exist. Please select a valid category.'
+                            'message' => 'Selected category does not exist. Please select a valid category.',
                         ], 400);
                     }
                     if ($category->trashed() || $category->status !== 'active') {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Selected category exists but is deleted or inactive. Please restore it or select a different category.'
+                            'message' => 'Selected category exists but is deleted or inactive. Please restore it or select a different category.',
                         ], 400);
                     }
                 }
@@ -4457,19 +5034,19 @@ class CategoryController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => ucfirst(str_replace('_id', '', $field)) . ' updated successfully.',
+                    'message' => ucfirst(str_replace('_id', '', $field)).' updated successfully.',
                     'data' => [
                         'id' => $product->id,
                         'sku' => $product->sku,
                         $field => $product->$field,
                         'group_name' => $product->productGroup ? $product->productGroup->group_name : null,
                         'category_name' => $product->productCategory ? $product->productCategory->category_name : null,
-                    ]
+                    ],
                 ]);
             } catch (\Illuminate\Database\QueryException $e) {
                 // Handle foreign key constraint violations
                 if ($e->getCode() == 23000) {
-                    $errorMsg = 'Failed to update ' . str_replace('_id', '', $field) . '. ';
+                    $errorMsg = 'Failed to update '.str_replace('_id', '', $field).'. ';
                     if (strpos($e->getMessage(), 'group_id_foreign') !== false) {
                         $errorMsg .= 'The selected group does not exist in the database.';
                     } elseif (strpos($e->getMessage(), 'category_id_foreign') !== false) {
@@ -4477,11 +5054,12 @@ class CategoryController extends Controller
                     } else {
                         $errorMsg .= 'Database constraint violation occurred.';
                     }
-                    
-                    Log::error('Update product field foreign key error: ' . $e->getMessage());
+
+                    Log::error('Update product field foreign key error: '.$e->getMessage());
+
                     return response()->json([
                         'success' => false,
-                        'message' => $errorMsg
+                        'message' => $errorMsg,
                     ], 400);
                 }
                 throw $e; // Re-throw if it's not a foreign key error
@@ -4491,13 +5069,14 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Update product field error: ' . $e->getMessage());
+            Log::error('Update product field error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update field: ' . $e->getMessage()
+                'message' => 'Failed to update field: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -4516,14 +5095,15 @@ class CategoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'groups' => $groups
+                'groups' => $groups,
             ]);
         } catch (\Exception $e) {
-            Log::error('Get product groups error: ' . $e->getMessage());
+            Log::error('Get product groups error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch groups',
-                'groups' => []
+                'groups' => [],
             ], 500);
         }
     }
@@ -4542,14 +5122,15 @@ class CategoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'categories' => $categories
+                'categories' => $categories,
             ]);
         } catch (\Exception $e) {
-            Log::error('Get product categories error: ' . $e->getMessage());
+            Log::error('Get product categories error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch categories',
-                'categories' => []
+                'categories' => [],
             ], 500);
         }
     }
@@ -4563,31 +5144,32 @@ class CategoryController extends Controller
             $request->validate([
                 'group_name' => 'required|string|max:191|unique:product_groups,group_name',
                 'description' => 'nullable|string',
-                'status' => 'nullable|string|in:active,inactive'
+                'status' => 'nullable|string|in:active,inactive',
             ]);
 
             $group = ProductGroup::create([
                 'group_name' => trim($request->group_name),
                 'description' => $request->description,
-                'status' => $request->status ?? 'active'
+                'status' => $request->status ?? 'active',
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Group created successfully',
-                'group' => $group
+                'group' => $group,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Store product group error: ' . $e->getMessage());
+            Log::error('Store product group error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create group: ' . $e->getMessage()
+                'message' => 'Failed to create group: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -4602,32 +5184,33 @@ class CategoryController extends Controller
                 'category_name' => 'required|string|max:191|unique:product_categories,category_name',
                 'code' => 'nullable|string|max:191|unique:product_categories,code',
                 'description' => 'nullable|string',
-                'status' => 'nullable|string|in:active,inactive'
+                'status' => 'nullable|string|in:active,inactive',
             ]);
 
             $category = ProductCategory::create([
                 'category_name' => trim($request->category_name),
                 'code' => $request->code ? trim($request->code) : null,
                 'description' => $request->description,
-                'status' => $request->status ?? 'active'
+                'status' => $request->status ?? 'active',
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Category created successfully',
-                'category' => $category
+                'category' => $category,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Store product category error: ' . $e->getMessage());
+            Log::error('Store product category error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create category: ' . $e->getMessage()
+                'message' => 'Failed to create category: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -4635,7 +5218,7 @@ class CategoryController extends Controller
     public function uploadGroupMasterExcel(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls|max:10240' // Max 10MB
+            'excel_file' => 'required|file|mimes:xlsx,xls|max:10240', // Max 10MB
         ]);
 
         try {
@@ -4647,7 +5230,7 @@ class CategoryController extends Controller
             if (empty($rows) || count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows.'
+                    'message' => 'Excel file is empty or has no data rows.',
                 ], 400);
             }
 
@@ -4744,10 +5327,10 @@ class CategoryController extends Controller
             }
 
             // Check if SKU column exists (required)
-            if (!isset($headerIndexMap['sku'])) {
+            if (! isset($headerIndexMap['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column is required in the Excel file.'
+                    'message' => 'SKU column is required in the Excel file.',
                 ], 400);
             }
 
@@ -4759,11 +5342,11 @@ class CategoryController extends Controller
             $allGroups = ProductGroup::pluck('id', 'group_name')->mapWithKeys(function ($id, $name) {
                 return [strtolower(trim($name)) => $id];
             });
-            
+
             $allCategories = ProductCategory::pluck('id', 'category_name')->mapWithKeys(function ($id, $name) {
                 return [strtolower(trim($name)) => $id];
             });
-            
+
             // Active groups/categories for validation
             $groupsMap = ProductGroup::where('status', 'active')
                 ->pluck('id', 'group_name')
@@ -4791,15 +5374,17 @@ class CategoryController extends Controller
 
                 if (empty($sku)) {
                     $skippedCount++;
+
                     continue;
                 }
 
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)->first();
 
-                if (!$product) {
+                if (! $product) {
                     $skippedCount++;
-                    $errors[] = "Row " . ($rowIndex + 2) . ": SKU '{$sku}' not found in database.";
+                    $errors[] = 'Row '.($rowIndex + 2).": SKU '{$sku}' not found in database.";
+
                     continue;
                 }
 
@@ -4814,7 +5399,7 @@ class CategoryController extends Controller
                     'product_description', 'feature1', 'feature2', 'feature3', 'feature4',
                     'main_image', 'main_image_brand',
                     'image1', 'image2', 'image3', 'image4', 'image5', 'image6',
-                    'image7', 'image8', 'image9', 'image10', 'image11', 'image12'
+                    'image7', 'image8', 'image9', 'image10', 'image11', 'image12',
                 ];
 
                 foreach ($directFields as $field) {
@@ -4845,18 +5430,18 @@ class CategoryController extends Controller
                         if ($categoryValue !== null && $categoryValue !== '') {
                             // Check if it's already an ID (numeric)
                             if (is_numeric($categoryValue)) {
-                                $categoryId = (int)$categoryValue;
+                                $categoryId = (int) $categoryValue;
                                 // Verify category exists (including soft-deleted to check if it exists at all)
                                 $category = ProductCategory::withTrashed()->find($categoryId);
                                 if ($category) {
                                     if ($category->trashed() || $category->status !== 'active') {
                                         // Category exists but is deleted or inactive
-                                        $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$categoryValue}' exists but is deleted or inactive. Please restore it or use a different category.";
+                                        $errors[] = 'Row '.($rowIndex + 2).": Category ID '{$categoryValue}' exists but is deleted or inactive. Please restore it or use a different category.";
                                     } else {
                                         $updateData['category_id'] = $categoryId;
                                     }
                                 } else {
-                                    $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$categoryValue}' does not exist. Please use a valid category ID or category name.";
+                                    $errors[] = 'Row '.($rowIndex + 2).": Category ID '{$categoryValue}' does not exist. Please use a valid category ID or category name.";
                                 }
                             } else {
                                 // It's a category name, look it up
@@ -4874,10 +5459,10 @@ class CategoryController extends Controller
                                         try {
                                             $newCategory = ProductCategory::create([
                                                 'category_name' => trim($categoryValue),
-                                                'status' => 'active'
+                                                'status' => 'active',
                                             ]);
                                             $updateData['category_id'] = $newCategory->id;
-                                            
+
                                             // Add to maps for subsequent rows
                                             $categoriesMap[$categoryNameLower] = $newCategory->id;
                                             $allCategories[$categoryNameLower] = $newCategory->id;
@@ -4890,13 +5475,13 @@ class CategoryController extends Controller
                                                     $categoriesMap[$categoryNameLower] = $existingCategory->id;
                                                     $allCategories[$categoryNameLower] = $existingCategory->id;
                                                 } else {
-                                                    $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}'.";
+                                                    $errors[] = 'Row '.($rowIndex + 2).": Failed to create category '{$categoryValue}'.";
                                                 }
                                             } else {
-                                                $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}': " . $e->getMessage();
+                                                $errors[] = 'Row '.($rowIndex + 2).": Failed to create category '{$categoryValue}': ".$e->getMessage();
                                             }
                                         } catch (\Exception $e) {
-                                            $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}': " . $e->getMessage();
+                                            $errors[] = 'Row '.($rowIndex + 2).": Failed to create category '{$categoryValue}': ".$e->getMessage();
                                         }
                                     }
                                 }
@@ -4907,7 +5492,7 @@ class CategoryController extends Controller
                         }
                     }
                 }
-                
+
                 // Handle group - lookup group_id from group name
                 if (isset($headerIndexMap['group']) || isset($headerIndexMap['group_id'])) {
                     $groupIndex = $headerIndexMap['group'] ?? $headerIndexMap['group_id'] ?? null;
@@ -4916,18 +5501,18 @@ class CategoryController extends Controller
                         if ($groupValue !== null && $groupValue !== '') {
                             // Check if it's already an ID (numeric)
                             if (is_numeric($groupValue)) {
-                                $groupId = (int)$groupValue;
+                                $groupId = (int) $groupValue;
                                 // Verify group exists (including soft-deleted to check if it exists at all)
                                 $group = ProductGroup::withTrashed()->find($groupId);
                                 if ($group) {
                                     if ($group->trashed() || $group->status !== 'active') {
                                         // Group exists but is deleted or inactive
-                                        $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$groupValue}' exists but is deleted or inactive. Please restore it or use a different group.";
+                                        $errors[] = 'Row '.($rowIndex + 2).": Group ID '{$groupValue}' exists but is deleted or inactive. Please restore it or use a different group.";
                                     } else {
                                         $updateData['group_id'] = $groupId;
                                     }
                                 } else {
-                                    $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$groupValue}' does not exist. Please use a valid group ID or group name.";
+                                    $errors[] = 'Row '.($rowIndex + 2).": Group ID '{$groupValue}' does not exist. Please use a valid group ID or group name.";
                                 }
                             } else {
                                 // It's a group name, look it up
@@ -4945,10 +5530,10 @@ class CategoryController extends Controller
                                         try {
                                             $newGroup = ProductGroup::create([
                                                 'group_name' => trim($groupValue),
-                                                'status' => 'active'
+                                                'status' => 'active',
                                             ]);
                                             $updateData['group_id'] = $newGroup->id;
-                                            
+
                                             // Add to maps for subsequent rows
                                             $groupsMap[$groupNameLower] = $newGroup->id;
                                             $allGroups[$groupNameLower] = $newGroup->id;
@@ -4961,13 +5546,13 @@ class CategoryController extends Controller
                                                     $groupsMap[$groupNameLower] = $existingGroup->id;
                                                     $allGroups[$groupNameLower] = $existingGroup->id;
                                                 } else {
-                                                    $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}'.";
+                                                    $errors[] = 'Row '.($rowIndex + 2).": Failed to create group '{$groupValue}'.";
                                                 }
                                             } else {
-                                                $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}': " . $e->getMessage();
+                                                $errors[] = 'Row '.($rowIndex + 2).": Failed to create group '{$groupValue}': ".$e->getMessage();
                                             }
                                         } catch (\Exception $e) {
-                                            $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}': " . $e->getMessage();
+                                            $errors[] = 'Row '.($rowIndex + 2).": Failed to create group '{$groupValue}': ".$e->getMessage();
                                         }
                                     }
                                 }
@@ -4978,7 +5563,7 @@ class CategoryController extends Controller
                         }
                     }
                 }
-                
+
                 // Handle image_path (goes into Values JSON)
 
                 if (isset($headerIndexMap['image_path'])) {
@@ -4989,10 +5574,10 @@ class CategoryController extends Controller
                 }
 
                 // Update Values JSON if needed
-                if (!empty($valuesToUpdate)) {
-                    $currentValues = is_array($product->Values) ? $product->Values : 
+                if (! empty($valuesToUpdate)) {
+                    $currentValues = is_array($product->Values) ? $product->Values :
                                     (is_string($product->Values) ? json_decode($product->Values, true) : []);
-                    if (!is_array($currentValues)) {
+                    if (! is_array($currentValues)) {
                         $currentValues = [];
                     }
                     $mergedValues = array_merge($currentValues, $valuesToUpdate);
@@ -5001,36 +5586,38 @@ class CategoryController extends Controller
 
                 // Validate foreign keys before updating
                 if (isset($updateData['category_id']) && $updateData['category_id'] !== null) {
-                    if (!ProductCategory::where('id', $updateData['category_id'])->exists()) {
-                        $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$updateData['category_id']}' does not exist. Skipping update for SKU '{$sku}'.";
+                    if (! ProductCategory::where('id', $updateData['category_id'])->exists()) {
+                        $errors[] = 'Row '.($rowIndex + 2).": Category ID '{$updateData['category_id']}' does not exist. Skipping update for SKU '{$sku}'.";
                         $skippedCount++;
+
                         continue;
                     }
                 }
 
                 if (isset($updateData['group_id']) && $updateData['group_id'] !== null) {
-                    if (!ProductGroup::where('id', $updateData['group_id'])->exists()) {
-                        $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$updateData['group_id']}' does not exist. Skipping update for SKU '{$sku}'.";
+                    if (! ProductGroup::where('id', $updateData['group_id'])->exists()) {
+                        $errors[] = 'Row '.($rowIndex + 2).": Group ID '{$updateData['group_id']}' does not exist. Skipping update for SKU '{$sku}'.";
                         $skippedCount++;
+
                         continue;
                     }
                 }
 
                 // Update the product
-                if (!empty($updateData)) {
+                if (! empty($updateData)) {
                     try {
                         $product->update($updateData);
                         $updatedCount++;
                     } catch (\Illuminate\Database\QueryException $e) {
                         // Handle foreign key constraint violations
                         if ($e->getCode() == 23000) {
-                            $errorMsg = "Row " . ($rowIndex + 2) . ": Failed to update product '{$sku}'. ";
+                            $errorMsg = 'Row '.($rowIndex + 2).": Failed to update product '{$sku}'. ";
                             if (strpos($e->getMessage(), 'category_id_foreign') !== false) {
-                                $errorMsg .= "Invalid category_id. The category does not exist in the database.";
+                                $errorMsg .= 'Invalid category_id. The category does not exist in the database.';
                             } elseif (strpos($e->getMessage(), 'group_id_foreign') !== false) {
-                                $errorMsg .= "Invalid group_id. The group does not exist in the database.";
+                                $errorMsg .= 'Invalid group_id. The group does not exist in the database.';
                             } else {
-                                $errorMsg .= "Database constraint violation: " . substr($e->getMessage(), 0, 100);
+                                $errorMsg .= 'Database constraint violation: '.substr($e->getMessage(), 0, 100);
                             }
                             $errors[] = $errorMsg;
                             $skippedCount++;
@@ -5038,7 +5625,7 @@ class CategoryController extends Controller
                             throw $e; // Re-throw if it's not a foreign key error
                         }
                     } catch (\Exception $e) {
-                        $errors[] = "Row " . ($rowIndex + 2) . ": Error updating product '{$sku}': " . $e->getMessage();
+                        $errors[] = 'Row '.($rowIndex + 2).": Error updating product '{$sku}': ".$e->getMessage();
                         $skippedCount++;
                     }
                 } else {
@@ -5052,10 +5639,10 @@ class CategoryController extends Controller
             if ($skippedCount > 0) {
                 $message .= ", Skipped: {$skippedCount} records";
             }
-            if (!empty($errors) && count($errors) <= 10) {
-                $message .= ". Errors: " . implode('; ', $errors);
-            } elseif (!empty($errors)) {
-                $message .= ". " . count($errors) . " errors occurred (showing first 10): " . implode('; ', array_slice($errors, 0, 10));
+            if (! empty($errors) && count($errors) <= 10) {
+                $message .= '. Errors: '.implode('; ', $errors);
+            } elseif (! empty($errors)) {
+                $message .= '. '.count($errors).' errors occurred (showing first 10): '.implode('; ', array_slice($errors, 0, 10));
             }
 
             return response()->json([
@@ -5063,19 +5650,19 @@ class CategoryController extends Controller
                 'message' => $message,
                 'updated' => $updatedCount,
                 'skipped' => $skippedCount,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Excel upload error: ' . $e->getMessage());
+            Log::error('Excel upload error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to process Excel file: ' . $e->getMessage()
+                'message' => 'Failed to process Excel file: '.$e->getMessage(),
             ], 500);
         }
     }
-
 
     public function seoKeywordsMaster()
     {
@@ -5086,12 +5673,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -5146,11 +5733,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -5163,7 +5750,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -5174,14 +5761,14 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
     public function importDimWtMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
@@ -5212,7 +5799,7 @@ class CategoryController extends Controller
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -5230,49 +5817,49 @@ class CategoryController extends Controller
             // Covers the sample file headers ("Weight ACT (Kg)" etc.) after normalization
             // as well as plain short-form names for flexibility.
             $columnMap = [
-                'sku'                 => 'sku',
+                'sku' => 'sku',
                 // Sample-file normalized headers (parentheses/spaces → underscores)
-                'weight_act__kg_'     => 'wt_act_kg',   // Weight ACT (Kg)
-                'wt_act__lb_'         => 'wt_act',      // WT ACT (LB)
-                'wt_decl__lb_'        => 'wt_decl',     // WT DECL (LB)
-                'length__inch_'       => 'l',            // Length (inch)
-                'width__inch_'        => 'w',            // Width (inch)
-                'height__inch_'       => 'h',            // Height (Inch)
-                'length__cm_'         => 'l_cm',         // Length (CM)
-                'width__cm_'          => 'w_cm',         // Width (CM)
-                'height__cm_'         => 'h_cm',         // Height (CM)
-                'cbm'                 => 'cbm',
-                'ctn_l__cm_'          => 'ctn_l',        // CTN L (CM)
-                'ctn_w__cm_'          => 'ctn_w',        // CTN W (CM)
-                'ctn_h__cm_'          => 'ctn_h',        // CTN H (CM)
-                'ctn__cbm_'           => 'ctn_cbm',      // CTN (CBM)
-                'ctn__qty_'           => 'ctn_qty',      // CTN (QTY)
-                'ctn__cbm_each_'      => 'ctn_cbm_each', // CTN (CBM/Each)
-                'cbm__e_'             => 'cbm_e',        // CBM (E)
-                'ctn_weight__kg_'     => 'ctn_weight_kg',// CTN Weight (KG)
+                'weight_act__kg_' => 'wt_act_kg',   // Weight ACT (Kg)
+                'wt_act__lb_' => 'wt_act',      // WT ACT (LB)
+                'wt_decl__lb_' => 'wt_decl',     // WT DECL (LB)
+                'length__inch_' => 'l',            // Length (inch)
+                'width__inch_' => 'w',            // Width (inch)
+                'height__inch_' => 'h',            // Height (Inch)
+                'length__cm_' => 'l_cm',         // Length (CM)
+                'width__cm_' => 'w_cm',         // Width (CM)
+                'height__cm_' => 'h_cm',         // Height (CM)
+                'cbm' => 'cbm',
+                'ctn_l__cm_' => 'ctn_l',        // CTN L (CM)
+                'ctn_w__cm_' => 'ctn_w',        // CTN W (CM)
+                'ctn_h__cm_' => 'ctn_h',        // CTN H (CM)
+                'ctn__cbm_' => 'ctn_cbm',      // CTN (CBM)
+                'ctn__qty_' => 'ctn_qty',      // CTN (QTY)
+                'ctn__cbm_each_' => 'ctn_cbm_each', // CTN (CBM/Each)
+                'cbm__e_' => 'cbm_e',        // CBM (E)
+                'ctn_weight__kg_' => 'ctn_weight_kg', // CTN Weight (KG)
                 // Short-form / plain names for custom files
-                'wt_act'              => 'wt_act',
-                'wt_act_kg'           => 'wt_act_kg',
-                'wt_decl'             => 'wt_decl',
-                'l'                   => 'l',
-                'w'                   => 'w',
-                'h'                   => 'h',
-                'l_cm'                => 'l_cm',
-                'w_cm'                => 'w_cm',
-                'h_cm'                => 'h_cm',
-                'ctn_l'               => 'ctn_l',
-                'ctn_w'               => 'ctn_w',
-                'ctn_h'               => 'ctn_h',
-                'ctn_cbm'             => 'ctn_cbm',
-                'ctn_qty'             => 'ctn_qty',
-                'ctn_cbm_each'        => 'ctn_cbm_each',
-                'cbm_e'               => 'cbm_e',
-                'ctn_gwt'             => 'ctn_gwt',
-                'ctn_weight_kg'       => 'ctn_weight_kg',
-                'ship'                => 'ship',
-                'tt_ship'             => 'tt_ship',
-                'temu_ship'           => 'temu_ship',
-                'ebay2_ship'          => 'ebay2_ship',
+                'wt_act' => 'wt_act',
+                'wt_act_kg' => 'wt_act_kg',
+                'wt_decl' => 'wt_decl',
+                'l' => 'l',
+                'w' => 'w',
+                'h' => 'h',
+                'l_cm' => 'l_cm',
+                'w_cm' => 'w_cm',
+                'h_cm' => 'h_cm',
+                'ctn_l' => 'ctn_l',
+                'ctn_w' => 'ctn_w',
+                'ctn_h' => 'ctn_h',
+                'ctn_cbm' => 'ctn_cbm',
+                'ctn_qty' => 'ctn_qty',
+                'ctn_cbm_each' => 'ctn_cbm_each',
+                'cbm_e' => 'cbm_e',
+                'ctn_gwt' => 'ctn_gwt',
+                'ctn_weight_kg' => 'ctn_weight_kg',
+                'ship' => 'ship',
+                'tt_ship' => 'tt_ship',
+                'temu_ship' => 'temu_ship',
+                'ebay2_ship' => 'ebay2_ship',
             ];
 
             // Find column indices
@@ -5284,10 +5871,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -5297,40 +5884,43 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)
                     ->where('sku', 'NOT LIKE', 'PARENT %')
                     ->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
                 // Process each column
                 foreach ($columnIndices as $field => $colIndex) {
-                    if ($field === 'sku') continue; // Skip SKU field
-                    
+                    if ($field === 'sku') {
+                        continue;
+                    } // Skip SKU field
+
                     if (isset($row[$colIndex]) && $row[$colIndex] !== '' && $row[$colIndex] !== null) {
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
                             if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ship', 'tt_ship', 'temu_ship', 'ebay2_ship'])) {
-                                $value = is_numeric($value) ? (float)$value : null;
+                                $value = is_numeric($value) ? (float) $value : null;
                             }
                             if ($value !== null) {
                                 $values[$field] = $value;
@@ -5340,14 +5930,14 @@ class CategoryController extends Controller
                 }
 
                 // Calculate CTN CBM if CTN L, W, H are provided but CTN CBM is not
-                if (!isset($values['ctn_cbm']) || $values['ctn_cbm'] == 0) {
+                if (! isset($values['ctn_cbm']) || $values['ctn_cbm'] == 0) {
                     if (isset($values['ctn_l']) && isset($values['ctn_w']) && isset($values['ctn_h'])) {
                         $values['ctn_cbm'] = ($values['ctn_l'] * $values['ctn_w'] * $values['ctn_h']) / 1000000;
                     }
                 }
 
                 // Calculate CTN CBM/Each if CTN CBM and CTN QTY are provided but CTN CBM/Each is not
-                if (!isset($values['ctn_cbm_each']) || $values['ctn_cbm_each'] == 0) {
+                if (! isset($values['ctn_cbm_each']) || $values['ctn_cbm_each'] == 0) {
                     if (isset($values['ctn_cbm']) && isset($values['ctn_qty']) && $values['ctn_qty'] > 0) {
                         $values['ctn_cbm_each'] = $values['ctn_cbm'] / $values['ctn_qty'];
                     }
@@ -5362,7 +5952,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} records.";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -5370,13 +5960,14 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
         } catch (\Exception $e) {
-            Log::error('Dim Wt Master Import Error: ' . $e->getMessage());
+            Log::error('Dim Wt Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -5392,10 +5983,10 @@ class CategoryController extends Controller
 
             $skus = $request->input('skus');
             $platforms = [
-                'amazon', 'ebay', 'ebay2', 'ebay3', 'shopify', 'walmart', 
-                'doba', 'temu', 'shein', 'bestbuy', 'tiendamia', 'macy', 
-                'reverb', 'wayfair', 'faire', 'aliexpress', 'mercari', 
-                'fb_marketplace', 'tiktok_shop', 'fb_shop', 'insta_shop', 'pls'
+                'amazon', 'ebay', 'ebay2', 'ebay3', 'shopify', 'walmart',
+                'doba', 'temu', 'shein', 'bestbuy', 'tiendamia', 'macy',
+                'reverb', 'wayfair', 'faire', 'aliexpress', 'mercari',
+                'fb_marketplace', 'tiktok_shop', 'fb_shop', 'insta_shop', 'pls',
             ];
 
             $results = [];
@@ -5408,7 +5999,7 @@ class CategoryController extends Controller
                 $results[$platform] = [
                     'success' => 0,
                     'failed' => 0,
-                    'errors' => []
+                    'errors' => [],
                 ];
             }
 
@@ -5416,48 +6007,49 @@ class CategoryController extends Controller
             foreach ($skus as $skuData) {
                 $sku = trim($skuData['sku']);
                 $productId = $skuData['id'];
-                
+
                 // Get product from database
                 $product = ProductMaster::find($productId);
-                
-                if (!$product || $product->sku !== $sku) {
+
+                if (! $product || $product->sku !== $sku) {
                     $errors[] = "SKU {$sku}: Product not found";
                     $totalFailed++;
+
                     continue;
                 }
 
                 // Get existing Values
-                $values = is_array($product->Values) ? $product->Values : 
+                $values = is_array($product->Values) ? $product->Values :
                          (is_string($product->Values) ? json_decode($product->Values, true) : []);
-                
-                if (!is_array($values)) {
+
+                if (! is_array($values)) {
                     $values = [];
                 }
 
                 // Update dimensions and weight in Values
                 $hasChanges = false;
                 if (isset($skuData['wt_act']) && $skuData['wt_act'] !== null) {
-                    $values['wt_act'] = (float)$skuData['wt_act'];
+                    $values['wt_act'] = (float) $skuData['wt_act'];
                     $hasChanges = true;
                 }
                 if (isset($skuData['wt_decl']) && $skuData['wt_decl'] !== null) {
-                    $values['wt_decl'] = (float)$skuData['wt_decl'];
+                    $values['wt_decl'] = (float) $skuData['wt_decl'];
                     $hasChanges = true;
                 }
                 if (isset($skuData['l']) && $skuData['l'] !== null) {
-                    $values['l'] = (float)$skuData['l'];
+                    $values['l'] = (float) $skuData['l'];
                     $hasChanges = true;
                 }
                 if (isset($skuData['w']) && $skuData['w'] !== null) {
-                    $values['w'] = (float)$skuData['w'];
+                    $values['w'] = (float) $skuData['w'];
                     $hasChanges = true;
                 }
                 if (isset($skuData['h']) && $skuData['h'] !== null) {
-                    $values['h'] = (float)$skuData['h'];
+                    $values['h'] = (float) $skuData['h'];
                     $hasChanges = true;
                 }
                 if (isset($skuData['cbm']) && $skuData['cbm'] !== null) {
-                    $values['cbm'] = (float)$skuData['cbm'];
+                    $values['cbm'] = (float) $skuData['cbm'];
                     $hasChanges = true;
                 }
 
@@ -5471,7 +6063,7 @@ class CategoryController extends Controller
                 foreach ($platforms as $platform) {
                     try {
                         $success = $this->pushToPlatform($platform, $sku, $skuData);
-                        
+
                         if ($success) {
                             $results[$platform]['success']++;
                             $totalSuccess++;
@@ -5483,10 +6075,10 @@ class CategoryController extends Controller
                     } catch (\Exception $e) {
                         $results[$platform]['failed']++;
                         $totalFailed++;
-                        $errorMsg = "SKU {$sku}: " . $e->getMessage();
+                        $errorMsg = "SKU {$sku}: ".$e->getMessage();
                         $results[$platform]['errors'][] = $errorMsg;
-                        $errors[] = ucfirst($platform) . " - " . $errorMsg;
-                        Log::error("Push Dim/Wt to {$platform} failed for SKU {$sku}: " . $e->getMessage());
+                        $errors[] = ucfirst($platform).' - '.$errorMsg;
+                        Log::error("Push Dim/Wt to {$platform} failed for SKU {$sku}: ".$e->getMessage());
                     }
                 }
             }
@@ -5497,30 +6089,31 @@ class CategoryController extends Controller
                 'results' => $results,
                 'total_success' => $totalSuccess,
                 'total_failed' => $totalFailed,
-                'errors' => array_slice($errors, 0, 50) // Limit errors to first 50
+                'errors' => array_slice($errors, 0, 50), // Limit errors to first 50
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Push Dim/Wt Data Error: ' . $e->getMessage());
+            Log::error('Push Dim/Wt Data Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error pushing data: ' . $e->getMessage()
+                'message' => 'Error pushing data: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Push dimensions and weight to a specific platform
-     * 
-     * @param string $platform Platform name
-     * @param string $sku Product SKU
-     * @param array $data Dimension and weight data
+     *
+     * @param  string  $platform  Platform name
+     * @param  string  $sku  Product SKU
+     * @param  array  $data  Dimension and weight data
      * @return bool Success status
      */
     private function pushToPlatform($platform, $sku, $data)
@@ -5529,104 +6122,109 @@ class CategoryController extends Controller
             switch (strtolower($platform)) {
                 case 'amazon':
                     return $this->pushToAmazon($sku, $data);
-                
+
                 case 'ebay':
                 case 'ebay2':
                 case 'ebay3':
                     return $this->pushToEbay($platform, $sku, $data);
-                
+
                 case 'shopify':
                     return $this->pushToShopify($sku, $data);
-                
+
                 case 'walmart':
                     return $this->pushToWalmart($sku, $data);
-                
+
                 case 'doba':
                     return $this->pushToDoba($sku, $data);
-                
+
                 case 'temu':
                     return $this->pushToTemu($sku, $data);
-                
+
                 case 'shein':
                     return $this->pushToShein($sku, $data);
-                
+
                 case 'bestbuy':
                     return $this->pushToBestBuy($sku, $data);
-                
+
                 case 'tiendamia':
                     return $this->pushToTiendamia($sku, $data);
-                
+
                 case 'macy':
                     return $this->pushToMacy($sku, $data);
-                
+
                 case 'reverb':
                     return $this->pushToReverb($sku, $data);
-                
+
                 case 'wayfair':
                     return $this->pushToWayfair($sku, $data);
-                
+
                 case 'faire':
                     return $this->pushToFaire($sku, $data);
-                
+
                 case 'aliexpress':
                     return $this->pushToAliExpress($sku, $data);
-                
+
                 case 'mercari':
                     return $this->pushToMercari($sku, $data);
-                
+
                 case 'fb_marketplace':
                     return $this->pushToFbMarketplace($sku, $data);
-                
+
                 case 'tiktok_shop':
                     return $this->pushToTikTokShop($sku, $data);
-                
+
                 case 'fb_shop':
                     return $this->pushToFbShop($sku, $data);
-                
+
                 case 'insta_shop':
                     return $this->pushToInstaShop($sku, $data);
-                
+
                 case 'pls':
                     return $this->pushToPls($sku, $data);
-                
+
                 default:
                     Log::warning("Unknown platform: {$platform} for SKU: {$sku}");
+
                     return false;
             }
         } catch (\Exception $e) {
-            Log::error("Error pushing to {$platform} for SKU {$sku}: " . $e->getMessage());
+            Log::error("Error pushing to {$platform} for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
 
     // Platform-specific push methods
     // These methods can be implemented to call the respective API services
-    
+
     private function pushToAmazon($sku, $data)
     {
         try {
             // Get ASIN from AmazonDatasheet
             $amazonData = AmazonDatasheet::where('sku', $sku)->first();
-            
-            if (!$amazonData || !$amazonData->asin) {
+
+            if (! $amazonData || ! $amazonData->asin) {
                 Log::warning("Amazon ASIN not found for SKU: {$sku}");
+
                 return false;
             }
 
             $asin = $amazonData->asin;
-            $amazonService = new AmazonSpApiService();
+            $amazonService = new AmazonSpApiService;
             $accessToken = $amazonService->getAccessToken();
 
-            if (!$accessToken) {
+            if (! $accessToken) {
                 Log::error('Failed to get Amazon access token');
+
                 return false;
             }
 
             $sellerId = config('services.amazon_sp.seller_id');
             $marketplaceId = config('services.amazon_sp.marketplace_id');
 
-            if (!$sellerId) {
+            if (! $sellerId) {
                 Log::error('Amazon seller ID not configured');
+
                 return false;
             }
 
@@ -5637,57 +6235,58 @@ class CategoryController extends Controller
             // Package dimensions
             if (isset($data['l']) && $data['l'] !== null) {
                 $patches[] = [
-                    "op" => "replace",
-                    "path" => "/attributes/item_package_dimensions/item_package_length",
-                    "value" => [
+                    'op' => 'replace',
+                    'path' => '/attributes/item_package_dimensions/item_package_length',
+                    'value' => [
                         [
-                            "value" => (float)$data['l'],
-                            "unit" => "inches"
-                        ]
-                    ]
+                            'value' => (float) $data['l'],
+                            'unit' => 'inches',
+                        ],
+                    ],
                 ];
             }
             if (isset($data['w']) && $data['w'] !== null) {
                 $patches[] = [
-                    "op" => "replace",
-                    "path" => "/attributes/item_package_dimensions/item_package_width",
-                    "value" => [
+                    'op' => 'replace',
+                    'path' => '/attributes/item_package_dimensions/item_package_width',
+                    'value' => [
                         [
-                            "value" => (float)$data['w'],
-                            "unit" => "inches"
-                        ]
-                    ]
+                            'value' => (float) $data['w'],
+                            'unit' => 'inches',
+                        ],
+                    ],
                 ];
             }
             if (isset($data['h']) && $data['h'] !== null) {
                 $patches[] = [
-                    "op" => "replace",
-                    "path" => "/attributes/item_package_dimensions/item_package_height",
-                    "value" => [
+                    'op' => 'replace',
+                    'path' => '/attributes/item_package_dimensions/item_package_height',
+                    'value' => [
                         [
-                            "value" => (float)$data['h'],
-                            "unit" => "inches"
-                        ]
-                    ]
+                            'value' => (float) $data['h'],
+                            'unit' => 'inches',
+                        ],
+                    ],
                 ];
             }
 
             // Package weight
             if (isset($data['wt_act']) && $data['wt_act'] !== null) {
                 $patches[] = [
-                    "op" => "replace",
-                    "path" => "/attributes/item_package_weight",
-                    "value" => [
+                    'op' => 'replace',
+                    'path' => '/attributes/item_package_weight',
+                    'value' => [
                         [
-                            "value" => (float)$data['wt_act'],
-                            "unit" => "pounds"
-                        ]
-                    ]
+                            'value' => (float) $data['wt_act'],
+                            'unit' => 'pounds',
+                        ],
+                    ],
                 ];
             }
 
             if (empty($patches)) {
                 Log::warning("No dimension/weight data to update for Amazon SKU: {$sku}");
+
                 return false;
             }
 
@@ -5698,8 +6297,8 @@ class CategoryController extends Controller
             $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds={$marketplaceId}";
 
             $body = [
-                "productType" => $productType,
-                "patches" => $patches
+                'productType' => $productType,
+                'patches' => $patches,
             ];
 
             $response = Http::withToken($accessToken)
@@ -5716,16 +6315,19 @@ class CategoryController extends Controller
             // Amazon returns 202 (Accepted) for successful updates
             if ($response->status() === 202 || $response->successful()) {
                 Log::info("Successfully updated Amazon dimensions/weight for SKU: {$sku}");
+
                 return true;
             } else {
                 Log::error("Failed to update Amazon dimensions/weight for SKU: {$sku}", [
                     'status' => $response->status(),
-                    'response' => $responseData
+                    'response' => $responseData,
                 ]);
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("Error pushing dim/wt to Amazon for SKU {$sku}: " . $e->getMessage());
+            Log::error("Error pushing dim/wt to Amazon for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -5750,25 +6352,27 @@ class CategoryController extends Controller
                     break;
             }
 
-            if (!$itemId) {
+            if (! $itemId) {
                 Log::warning("eBay item_id not found for SKU: {$sku} on platform: {$platform}");
+
                 return false;
             }
 
-            $ebayService = new EbayApiService();
-            
+            $ebayService = new EbayApiService;
+
             // Get item details first to ensure we have all required fields
             $itemDetails = $ebayService->getItem($itemId);
-            
-            if (!$itemDetails) {
+
+            if (! $itemDetails) {
                 Log::error("Failed to get eBay item details for item_id: {$itemId}");
+
                 return false;
             }
 
             // Build XML for ReviseItem with dimensions and weight
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
             $credentials = $xml->addChild('RequesterCredentials');
-            
+
             $authToken = $ebayService->generateBearerToken();
             $credentials->addChild('eBayAuthToken', $authToken ?? '');
 
@@ -5780,32 +6384,32 @@ class CategoryController extends Controller
             $item->addChild('ItemID', $itemId);
 
             // Add SKU if available
-            if (isset($itemDetails['Item']['SKU']) && !empty($itemDetails['Item']['SKU'])) {
+            if (isset($itemDetails['Item']['SKU']) && ! empty($itemDetails['Item']['SKU'])) {
                 $item->addChild('SKU', $itemDetails['Item']['SKU']);
             }
 
             // Add ShippingPackageDetails with dimensions and weight
             $shippingPackageDetails = $item->addChild('ShippingPackageDetails');
-            
+
             // Weight (eBay expects weight in pounds)
             if (isset($data['wt_act']) && $data['wt_act'] !== null) {
-                $shippingPackageDetails->addChild('WeightMajor', (int)$data['wt_act']); // Whole pounds
-                $shippingPackageDetails->addChild('WeightMinor', (int)(($data['wt_act'] - (int)$data['wt_act']) * 16)); // Ounces
+                $shippingPackageDetails->addChild('WeightMajor', (int) $data['wt_act']); // Whole pounds
+                $shippingPackageDetails->addChild('WeightMinor', (int) (($data['wt_act'] - (int) $data['wt_act']) * 16)); // Ounces
             }
 
             // Dimensions (eBay expects dimensions in inches)
             if (isset($data['l']) && $data['l'] !== null) {
-                $shippingPackageDetails->addChild('PackageDepth', (float)$data['l']);
+                $shippingPackageDetails->addChild('PackageDepth', (float) $data['l']);
             }
             if (isset($data['w']) && $data['w'] !== null) {
-                $shippingPackageDetails->addChild('PackageWidth', (float)$data['w']);
+                $shippingPackageDetails->addChild('PackageWidth', (float) $data['w']);
             }
             if (isset($data['h']) && $data['h'] !== null) {
-                $shippingPackageDetails->addChild('PackageHeight', (float)$data['h']);
+                $shippingPackageDetails->addChild('PackageHeight', (float) $data['h']);
             }
 
             $xmlBody = $xml->asXML();
-            
+
             $endpoint = config('services.ebay.trading_api_endpoint');
             $headers = [
                 'X-EBAY-API-COMPATIBILITY-LEVEL' => config('services.ebay.compat_level'),
@@ -5816,37 +6420,41 @@ class CategoryController extends Controller
                 'X-EBAY-API-SITEID' => config('services.ebay.site_id'),
                 'Content-Type' => 'text/xml',
             ];
-            
+
             $response = Http::withHeaders($headers)
                 ->withBody($xmlBody, 'text/xml')
                 ->post($endpoint);
-            
+
             $body = $response->body();
             libxml_use_internal_errors(true);
             $xmlResp = simplexml_load_string($body);
-            
+
             if ($xmlResp === false) {
                 Log::error("Failed to parse eBay ReviseItem response for SKU: {$sku}", ['body' => $body]);
+
                 return false;
             }
-            
+
             $responseArray = json_decode(json_encode($xmlResp), true);
             $ack = $responseArray['Ack'] ?? 'Failure';
-            
+
             if ($ack === 'Success' || $ack === 'Warning') {
                 Log::info("Successfully updated eBay dimensions/weight for SKU: {$sku} on platform: {$platform}");
+
                 return true;
             } else {
                 $errors = $responseArray['Errors'] ?? [];
                 $errorMsg = is_array($errors) && isset($errors['LongMessage']) ? $errors['LongMessage'] : 'Unknown error';
                 Log::error("Failed to update eBay dimensions/weight for SKU: {$sku}", [
                     'ack' => $ack,
-                    'errors' => $errors
+                    'errors' => $errors,
                 ]);
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("Error pushing dim/wt to eBay ({$platform}) for SKU {$sku}: " . $e->getMessage());
+            Log::error("Error pushing dim/wt to eBay ({$platform}) for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -5856,44 +6464,46 @@ class CategoryController extends Controller
         try {
             // Get variant_id from ShopifySku
             $shopifySku = ShopifySku::where('sku', $sku)->first();
-            
-            if (!$shopifySku || !$shopifySku->variant_id) {
+
+            if (! $shopifySku || ! $shopifySku->variant_id) {
                 Log::warning("Shopify variant_id not found for SKU: {$sku}");
+
                 return false;
             }
 
             $variantId = $shopifySku->variant_id;
-            $storeUrl = "https://" . config('services.shopify.store_url');
-            $apiVersion = "2025-01";
+            $storeUrl = 'https://'.config('services.shopify.store_url');
+            $apiVersion = '2025-01';
             $accessToken = config('services.shopify.password');
 
-            if (!$storeUrl || !$accessToken) {
+            if (! $storeUrl || ! $accessToken) {
                 Log::error('Shopify credentials missing');
+
                 return false;
             }
 
             // Build payload with weight and dimensions
             $payload = [
-                "variant" => [
-                    "id" => $variantId
-                ]
+                'variant' => [
+                    'id' => $variantId,
+                ],
             ];
 
             // Add weight (in grams) - Shopify expects weight in grams
             if (isset($data['wt_act']) && $data['wt_act'] !== null) {
-                $payload["variant"]["weight"] = (float)$data['wt_act'] * 453.592; // Convert lbs to grams
-                $payload["variant"]["weight_unit"] = "g";
+                $payload['variant']['weight'] = (float) $data['wt_act'] * 453.592; // Convert lbs to grams
+                $payload['variant']['weight_unit'] = 'g';
             }
 
             // Add dimensions (in cm) - Shopify expects dimensions in cm
             if (isset($data['l']) && $data['l'] !== null) {
-                $payload["variant"]["length"] = (float)$data['l'] * 2.54; // Convert inches to cm
+                $payload['variant']['length'] = (float) $data['l'] * 2.54; // Convert inches to cm
             }
             if (isset($data['w']) && $data['w'] !== null) {
-                $payload["variant"]["width"] = (float)$data['w'] * 2.54; // Convert inches to cm
+                $payload['variant']['width'] = (float) $data['w'] * 2.54; // Convert inches to cm
             }
             if (isset($data['h']) && $data['h'] !== null) {
-                $payload["variant"]["height"] = (float)$data['h'] * 2.54; // Convert inches to cm
+                $payload['variant']['height'] = (float) $data['h'] * 2.54; // Convert inches to cm
             }
 
             // Rate limiting: 2 calls per second
@@ -5901,7 +6511,7 @@ class CategoryController extends Controller
             $now = now();
             $windowStart = $now->copy()->startOfSecond();
             $recentCalls = Cache::get($rateLimitKey, []);
-            $recentCalls = array_filter($recentCalls, function($timestamp) use ($windowStart) {
+            $recentCalls = array_filter($recentCalls, function ($timestamp) use ($windowStart) {
                 return $timestamp >= $windowStart->timestamp;
             });
 
@@ -5917,22 +6527,25 @@ class CategoryController extends Controller
             $url = "{$storeUrl}/admin/api/{$apiVersion}/variants/{$variantId}.json";
 
             $response = Http::withHeaders([
-                "X-Shopify-Access-Token" => $accessToken,
-                "Content-Type" => "application/json",
+                'X-Shopify-Access-Token' => $accessToken,
+                'Content-Type' => 'application/json',
             ])->put($url, $payload);
 
             if ($response->successful()) {
                 Log::info("Successfully updated Shopify dimensions/weight for SKU: {$sku}");
+
                 return true;
             } else {
                 Log::error("Failed to update Shopify dimensions/weight for SKU: {$sku}", [
                     'status' => $response->status(),
-                    'response' => $response->json()
+                    'response' => $response->json(),
                 ]);
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("Error pushing dim/wt to Shopify for SKU {$sku}: " . $e->getMessage());
+            Log::error("Error pushing dim/wt to Shopify for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -5940,16 +6553,17 @@ class CategoryController extends Controller
     private function pushToWalmart($sku, $data)
     {
         try {
-            $walmartService = new WalmartApiService();
+            $walmartService = new WalmartApiService;
             $accessToken = $walmartService->getAccessToken();
 
-            if (!$accessToken) {
+            if (! $accessToken) {
                 Log::error('Failed to get Walmart access token');
+
                 return false;
             }
 
             $baseUrl = config('services.walmart.api_endpoint');
-            
+
             // Build payload for Walmart item update
             $payload = [
                 'sku' => $sku,
@@ -5958,25 +6572,25 @@ class CategoryController extends Controller
             // Walmart expects dimensions in inches and weight in pounds
             if (isset($data['l']) || isset($data['w']) || isset($data['h']) || isset($data['wt_act'])) {
                 $payload['product'] = [];
-                
+
                 if (isset($data['l']) && $data['l'] !== null) {
-                    $payload['product']['shelfLength'] = (float)$data['l'];
+                    $payload['product']['shelfLength'] = (float) $data['l'];
                 }
                 if (isset($data['w']) && $data['w'] !== null) {
-                    $payload['product']['shelfWidth'] = (float)$data['w'];
+                    $payload['product']['shelfWidth'] = (float) $data['w'];
                 }
                 if (isset($data['h']) && $data['h'] !== null) {
-                    $payload['product']['shelfHeight'] = (float)$data['h'];
+                    $payload['product']['shelfHeight'] = (float) $data['h'];
                 }
                 if (isset($data['wt_act']) && $data['wt_act'] !== null) {
                     $payload['product']['productWeight'] = [
-                        'value' => (float)$data['wt_act'],
-                        'unit' => 'LB'
+                        'value' => (float) $data['wt_act'],
+                        'unit' => 'LB',
                     ];
                 }
             }
 
-            $endpoint = $baseUrl . "/v3/items/{$sku}";
+            $endpoint = $baseUrl."/v3/items/{$sku}";
 
             $response = Http::withHeaders([
                 'WM_SEC.ACCESS_TOKEN' => $accessToken,
@@ -5988,16 +6602,19 @@ class CategoryController extends Controller
 
             if ($response->successful()) {
                 Log::info("Successfully updated Walmart dimensions/weight for SKU: {$sku}");
+
                 return true;
             } else {
                 Log::error("Failed to update Walmart dimensions/weight for SKU: {$sku}", [
                     'status' => $response->status(),
-                    'response' => $response->json()
+                    'response' => $response->json(),
                 ]);
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("Error pushing dim/wt to Walmart for SKU {$sku}: " . $e->getMessage());
+            Log::error("Error pushing dim/wt to Walmart for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -6006,6 +6623,7 @@ class CategoryController extends Controller
     {
         // Doba API not yet implemented
         Log::info("Pushing dim/wt to Doba for SKU: {$sku} - API not implemented");
+
         return false; // Return false to indicate not implemented
     }
 
@@ -6013,6 +6631,7 @@ class CategoryController extends Controller
     {
         // Temu API not yet implemented
         Log::info("Pushing dim/wt to Temu for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6020,6 +6639,7 @@ class CategoryController extends Controller
     {
         // Shein API not yet implemented
         Log::info("Pushing dim/wt to Shein for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6027,6 +6647,7 @@ class CategoryController extends Controller
     {
         // BestBuy API not yet implemented
         Log::info("Pushing dim/wt to BestBuy for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6034,6 +6655,7 @@ class CategoryController extends Controller
     {
         // Tiendamia API not yet implemented
         Log::info("Pushing dim/wt to Tiendamia for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6041,6 +6663,7 @@ class CategoryController extends Controller
     {
         // Macy's API not yet implemented
         Log::info("Pushing dim/wt to Macy for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6048,6 +6671,7 @@ class CategoryController extends Controller
     {
         // Reverb API not yet implemented
         Log::info("Pushing dim/wt to Reverb for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6055,6 +6679,7 @@ class CategoryController extends Controller
     {
         // Wayfair API not yet implemented
         Log::info("Pushing dim/wt to Wayfair for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6062,6 +6687,7 @@ class CategoryController extends Controller
     {
         // Faire API not yet implemented
         Log::info("Pushing dim/wt to Faire for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6069,6 +6695,7 @@ class CategoryController extends Controller
     {
         // AliExpress API not yet implemented
         Log::info("Pushing dim/wt to AliExpress for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6076,6 +6703,7 @@ class CategoryController extends Controller
     {
         // Mercari API not yet implemented
         Log::info("Pushing dim/wt to Mercari for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6083,6 +6711,7 @@ class CategoryController extends Controller
     {
         // Facebook Marketplace API not yet implemented
         Log::info("Pushing dim/wt to FB Marketplace for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6090,6 +6719,7 @@ class CategoryController extends Controller
     {
         // TikTok Shop API not yet implemented
         Log::info("Pushing dim/wt to TikTok Shop for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6097,6 +6727,7 @@ class CategoryController extends Controller
     {
         // Facebook Shop API not yet implemented
         Log::info("Pushing dim/wt to FB Shop for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6104,6 +6735,7 @@ class CategoryController extends Controller
     {
         // Instagram Shop API not yet implemented
         Log::info("Pushing dim/wt to Instagram Shop for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6111,6 +6743,7 @@ class CategoryController extends Controller
     {
         // PLS API not yet implemented
         Log::info("Pushing dim/wt to PLS for SKU: {$sku} - API not implemented");
+
         return false;
     }
 
@@ -6123,12 +6756,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -6183,11 +6816,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -6200,7 +6833,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -6211,7 +6844,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -6223,7 +6856,7 @@ class CategoryController extends Controller
             for ($i = 1; $i <= 10; $i++) {
                 $rules["item{$i}"] = 'nullable|string';
             }
-            
+
             $validated = $request->validate($rules);
 
             // Get the product by SKU to retrieve parent
@@ -6238,31 +6871,31 @@ class CategoryController extends Controller
 
             // Check if product with same SKU already has package includes data
             if ($existingProduct) {
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
+
                 // Check if any item fields already exist
                 $hasPackageIncludesData = false;
                 for ($i = 1; $i <= 10; $i++) {
-                    if (!empty($existingValues["item{$i}"])) {
+                    if (! empty($existingValues["item{$i}"])) {
                         $hasPackageIncludesData = true;
                         break;
                     }
                 }
-                
+
                 if ($hasPackageIncludesData) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This SKU already has package includes data. Please use edit instead.'
+                        'message' => 'This SKU already has package includes data. Please use edit instead.',
                     ], 409);
                 }
             }
 
             // Prepare Values array with item fields
             $values = [];
-            
+
             for ($i = 1; $i <= 10; $i++) {
-                if (!empty($validated["item{$i}"])) {
+                if (! empty($validated["item{$i}"])) {
                     $values["item{$i}"] = $validated["item{$i}"];
                 }
             }
@@ -6270,13 +6903,13 @@ class CategoryController extends Controller
             // Update existing product or create new one
             if ($existingProduct) {
                 // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
-                if (!is_array($existingValues)) {
+
+                if (! is_array($existingValues)) {
                     $existingValues = [];
                 }
-                
+
                 $mergedValues = array_merge($existingValues, $values);
                 $existingProduct->Values = $mergedValues;
                 $existingProduct->save();
@@ -6286,18 +6919,18 @@ class CategoryController extends Controller
                 $product = ProductMaster::create([
                     'sku' => $validated['sku'],
                     'parent' => $parent,
-                    'Values' => !empty($values) ? $values : null,
+                    'Values' => ! empty($values) ? $values : null,
                 ]);
             }
 
             // If parent exists, also create/update the parent row
             if ($parent) {
-                $parentSku = 'PARENT ' . $parent;
+                $parentSku = 'PARENT '.$parent;
                 $parentRow = ProductMaster::where('sku', $parentSku)
                     ->where('parent', $parent)
                     ->first();
 
-                if (!$parentRow) {
+                if (! $parentRow) {
                     ProductMaster::create([
                         'sku' => $parentSku,
                         'parent' => $parent,
@@ -6305,22 +6938,22 @@ class CategoryController extends Controller
                     ]);
                 }
             }
-                
+
             return response()->json([
                 'success' => true,
                 'message' => 'Package includes data saved successfully',
-                'data' => $product
+                'data' => $product,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -6328,22 +6961,22 @@ class CategoryController extends Controller
     public function importPackageIncludesMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -6357,7 +6990,7 @@ class CategoryController extends Controller
 
             // Expected column mappings
             $columnIndices = [];
-            
+
             // Find SKU column
             foreach ($headers as $index => $header) {
                 if ($header === 'sku') {
@@ -6365,7 +6998,7 @@ class CategoryController extends Controller
                     break;
                 }
             }
-            
+
             // Find Item columns (Item1 through Item10)
             for ($i = 1; $i <= 10; $i++) {
                 $itemKey = "item{$i}";
@@ -6375,11 +7008,11 @@ class CategoryController extends Controller
                         break;
                     }
                 }
-                
+
                 // If not found, try partial match
-                if (!isset($columnIndices[$itemKey])) {
+                if (! isset($columnIndices[$itemKey])) {
                     foreach ($headers as $index => $header) {
-                        if (strpos($header, 'item') !== false && (strpos($header, (string)$i) !== false || preg_match('/item\s*' . $i . '/i', $header))) {
+                        if (strpos($header, 'item') !== false && (strpos($header, (string) $i) !== false || preg_match('/item\s*'.$i.'/i', $header))) {
                             $columnIndices[$itemKey] = $index;
                             break;
                         }
@@ -6387,10 +7020,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -6400,27 +7033,28 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)
                     ->where('sku', 'NOT LIKE', 'PARENT %')
                     ->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -6449,7 +7083,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -6457,14 +7091,15 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Package Includes Master Import Error: ' . $e->getMessage());
+            Log::error('Package Includes Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -6478,12 +7113,12 @@ class CategoryController extends Controller
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -6538,11 +7173,11 @@ class CategoryController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -6555,7 +7190,7 @@ class CategoryController extends Controller
             if ($shopifyImage) {
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -6566,7 +7201,7 @@ class CategoryController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
@@ -6579,7 +7214,7 @@ class CategoryController extends Controller
                 $rules["question{$i}"] = 'nullable|string';
                 $rules["answer{$i}"] = 'nullable|string';
             }
-            
+
             $validated = $request->validate($rules);
 
             // Get the product by SKU to retrieve parent
@@ -6594,34 +7229,34 @@ class CategoryController extends Controller
 
             // Check if product with same SKU already has Q&A data
             if ($existingProduct) {
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
+
                 // Check if any Q&A fields already exist
                 $hasQAData = false;
                 for ($i = 1; $i <= 10; $i++) {
-                    if (!empty($existingValues["question{$i}"]) || !empty($existingValues["answer{$i}"])) {
+                    if (! empty($existingValues["question{$i}"]) || ! empty($existingValues["answer{$i}"])) {
                         $hasQAData = true;
                         break;
                     }
                 }
-                
+
                 if ($hasQAData) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This SKU already has Q&A data. Please use edit instead.'
+                        'message' => 'This SKU already has Q&A data. Please use edit instead.',
                     ], 409);
                 }
             }
 
             // Prepare Values array with Q&A fields
             $values = [];
-            
+
             for ($i = 1; $i <= 10; $i++) {
-                if (!empty($validated["question{$i}"])) {
+                if (! empty($validated["question{$i}"])) {
                     $values["question{$i}"] = $validated["question{$i}"];
                 }
-                if (!empty($validated["answer{$i}"])) {
+                if (! empty($validated["answer{$i}"])) {
                     $values["answer{$i}"] = $validated["answer{$i}"];
                 }
             }
@@ -6629,44 +7264,44 @@ class CategoryController extends Controller
             // Update existing product or create new one
             if ($existingProduct) {
                 // Merge with existing Values
-                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values :
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
-                
+
                 $mergedValues = array_merge($existingValues ?? [], $values);
-                
+
                 $existingProduct->update([
-                    'Values' => $mergedValues
+                    'Values' => $mergedValues,
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Q&A data updated successfully',
-                    'data' => $existingProduct
+                    'data' => $existingProduct,
                 ]);
             } else {
                 // Create new product
                 $newProduct = ProductMaster::create([
                     'sku' => $validated['sku'],
                     'parent' => $parent,
-                    'Values' => $values
+                    'Values' => $values,
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Q&A data created successfully',
-                    'data' => $newProduct
+                    'data' => $newProduct,
                 ]);
             }
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving data: ' . $e->getMessage()
+                'message' => 'Error saving data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -6674,22 +7309,22 @@ class CategoryController extends Controller
     public function importQAMaster(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -6698,7 +7333,8 @@ class CategoryController extends Controller
                 if ($header === null) {
                     return '';
                 }
-                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', (string)$header)));
+
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', (string) $header)));
             }, $rows[0]);
 
             // Remove header row
@@ -6706,21 +7342,21 @@ class CategoryController extends Controller
 
             // Expected column mappings
             $columnIndices = [];
-            
+
             // Find SKU column (support "sku", "seller_sku", and variations)
             foreach ($headers as $index => $header) {
-                if (!empty($header) && strpos($header, 'sku') !== false) {
+                if (! empty($header) && strpos($header, 'sku') !== false) {
                     $columnIndices['sku'] = $index;
                     break;
                 }
             }
-            
+
             // Find Question and Answer columns
             // Support both formats: Question1/Answer1 and FAQ 1/ANS 1
             for ($i = 1; $i <= 10; $i++) {
                 $questionKey = "question{$i}";
                 $answerKey = "answer{$i}";
-                
+
                 // Find Question column - try multiple patterns
                 foreach ($headers as $index => $header) {
                     // Standard format: question1, question_1, question 1
@@ -6734,19 +7370,19 @@ class CategoryController extends Controller
                         break;
                     }
                 }
-                
+
                 // If not found, try partial match
-                if (!isset($columnIndices[$questionKey])) {
+                if (! isset($columnIndices[$questionKey])) {
                     foreach ($headers as $index => $header) {
                         // Match question/FAQ with number
-                        if ((strpos($header, 'question') !== false || strpos($header, 'faq') !== false) && 
-                            (strpos($header, (string)$i) !== false || preg_match('/(question|faq)\s*' . $i . '/i', $header))) {
+                        if ((strpos($header, 'question') !== false || strpos($header, 'faq') !== false) &&
+                            (strpos($header, (string) $i) !== false || preg_match('/(question|faq)\s*'.$i.'/i', $header))) {
                             $columnIndices[$questionKey] = $index;
                             break;
                         }
                     }
                 }
-                
+
                 // Find Answer column - try multiple patterns
                 foreach ($headers as $index => $header) {
                     // Standard format: answer1, answer_1, answer 1
@@ -6760,13 +7396,13 @@ class CategoryController extends Controller
                         break;
                     }
                 }
-                
+
                 // If not found, try partial match
-                if (!isset($columnIndices[$answerKey])) {
+                if (! isset($columnIndices[$answerKey])) {
                     foreach ($headers as $index => $header) {
                         // Match answer/ANS with number
-                        if ((strpos($header, 'answer') !== false || strpos($header, 'ans') !== false) && 
-                            (strpos($header, (string)$i) !== false || preg_match('/(answer|ans)\s*' . $i . '/i', $header))) {
+                        if ((strpos($header, 'answer') !== false || strpos($header, 'ans') !== false) &&
+                            (strpos($header, (string) $i) !== false || preg_match('/(answer|ans)\s*'.$i.'/i', $header))) {
                             $columnIndices[$answerKey] = $index;
                             break;
                         }
@@ -6774,10 +7410,10 @@ class CategoryController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -6787,27 +7423,28 @@ class CategoryController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find product by SKU
                 $product = ProductMaster::where('sku', $sku)
                     ->where('sku', 'NOT LIKE', 'PARENT %')
                     ->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -6817,7 +7454,7 @@ class CategoryController extends Controller
                 for ($i = 1; $i <= 10; $i++) {
                     $questionKey = "question{$i}";
                     $answerKey = "answer{$i}";
-                    
+
                     // Update Question if column exists and has value
                     if (isset($columnIndices[$questionKey]) && isset($row[$columnIndices[$questionKey]])) {
                         $questionValue = trim($row[$columnIndices[$questionKey]]);
@@ -6826,7 +7463,7 @@ class CategoryController extends Controller
                             $hasChanges = true;
                         }
                     }
-                    
+
                     // Update Answer if column exists and has value
                     if (isset($columnIndices[$answerKey]) && isset($row[$columnIndices[$answerKey]])) {
                         $answerValue = trim($row[$columnIndices[$answerKey]]);
@@ -6848,7 +7485,7 @@ class CategoryController extends Controller
 
             $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -6856,16 +7493,16 @@ class CategoryController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Q&A Master Import Error: ' . $e->getMessage());
+            Log::error('Q&A Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
-
 }

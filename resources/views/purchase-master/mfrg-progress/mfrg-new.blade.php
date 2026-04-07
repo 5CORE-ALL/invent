@@ -126,6 +126,33 @@
         .red-bg {
             color: #ff2727 !important;
         }
+
+        /* Image column: fill cell, no card, object-fit contain */
+        .tabulator .tabulator-cell.mip-new-image-cell {
+            padding: 0 !important;
+            vertical-align: middle !important;
+            line-height: 0;
+        }
+        .tabulator .mip-new-img-aspect {
+            width: 46px !important;
+            height: 46px !important;
+            max-width: 46px !important;
+            max-height: 46px !important;
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+        .tabulator .mip-new-img-aspect img {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            object-fit: contain;
+            display: block;
+            cursor: pointer;
+            border-radius: 0;
+            box-shadow: none;
+            background: transparent;
+        }
     </style>
 @endsection
 @section('content')
@@ -292,13 +319,15 @@
                         title: "#",
                         field: "Image",
                         headerSort: false,
+                        cssClass: "mip-new-image-cell",
+                        width: 52,
+                        minWidth: 52,
+                        maxWidth: 52,
                         formatter: (cell) => {
                             const url = cell.getValue();
-                            return url ?
-                                `<img src="${url}" data-full="${url}" class="hover-thumb" 
-                                   style="width:30px;height:30px;border-radius:6px;object-fit:contain;
-                                   box-shadow:0 1px 4px #0001;cursor: pointer;">` :
-                                `<span class="text-muted">N/A</span>`;
+                            return url
+                                ? `<div class="w-100 h-100 p-0 m-0 mip-new-img-aspect"><img src="${url}" data-full="${url}" class="w-100 h-100 hover-thumb" style="object-fit: contain; display: block;" /></div>`
+                                : `<span class="text-muted" style="line-height: normal;">N/A</span>`;
                         },
                         cellMouseOver: (e, cell) => {
                             clearTimeout(hideTimeout);
@@ -398,6 +427,7 @@
                     {
                         title: "Supplier",
                         field: "supplier",
+                        width: 90,
                         hozAlign: "center",
                         formatter: function(cell){
                             let value = cell.getValue() || "";
@@ -408,13 +438,13 @@
 
                             return `
                                 <select class="form-select form-select-sm editable-select" 
-                                    data-sku="${cell.getRow().getData().SKU}" data-column="Supplier" style="width: 120px;">
+                                    data-sku="${cell.getRow().getData().SKU}" data-column="Supplier" style="width: 90px;">
                                     ${options}
                                 </select>`;
                         }
                     },
                     {
-                        title: "Order Date",
+                        title: "O Date",
                         field: "created_at",
                         hozAlign: "center",
                         formatter: function (cell) {
@@ -442,7 +472,7 @@
                         }
                     },
                     {
-                        title: "Delivery Date",
+                        title: "D date",
                         field: "delivery_date",
                         hozAlign: "center",
                         formatter: function (cell) {

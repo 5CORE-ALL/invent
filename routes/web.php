@@ -2145,6 +2145,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-doba-pricing', [DobaController::class, 'updatePrice']);
     Route::get('/doba-pricing-cvr', [DobaController::class, 'dobaPricingCVR']);
     Route::get('/doba-tabulator', [DobaController::class, 'dobaTabulatorView']);
+    Route::get('/doba-data-view-withoutship', [DobaController::class, 'getViewDobaDataWithoutShip']);
+    Route::get('/doba-tabulator-withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship.tabulator');
+    Route::get('/doba_withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship');
     Route::get('/doba/summary-metrics', [DobaController::class, 'getDobaSummaryMetrics']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
     Route::post('/doba/push-price', [DobaController::class, 'pushPriceToDoba'])->name('doba.push-price');
@@ -3027,6 +3030,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/compliance-master/field-image', [CategoryController::class, 'uploadComplianceFieldImage'])->name('compliance.master.field.image');
     Route::post('/compliance-master/field-pdf', [CategoryController::class, 'uploadComplianceFieldPdf'])->name('compliance.master.field.pdf');
     Route::post('/compliance-master/import', [CategoryController::class, 'importComplianceMaster'])->name('compliance.master.import');
+    Route::get('/packing-instructions-master', [CategoryController::class, 'packingInstructionsMaster'])->name('packing.instructions.master');
+    Route::get('/packing-instructions-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('packing.instructions.master.data');
+    Route::post('/packing-instructions-master/store', [CategoryController::class, 'storePackingInstructionsMaster'])->name('packing.instructions.master.store');
+    Route::post('/packing-instructions-master/update', [CategoryController::class, 'updatePackingInstructionsMaster'])->name('packing.instructions.master.update');
+    Route::post('/packing-instructions-master/clear', [CategoryController::class, 'clearPackingInstructionsMaster'])->name('packing.instructions.master.clear');
+    Route::get('/packing-instructions-master/images', [CategoryController::class, 'listPackingInstructionImages'])->name('packing.instructions.master.images');
+    Route::post('/packing-instructions-master/upload-image', [CategoryController::class, 'uploadPackingInstructionImage'])->name('packing.instructions.master.upload.image');
+    Route::post('/packing-instructions-master/delete-image', [CategoryController::class, 'deletePackingInstructionImage'])->name('packing.instructions.master.delete.image');
+    Route::post('/packing-instructions-master/ai-defect-scan', [CategoryController::class, 'aiDefectScanPackingImage'])->name('packing.instructions.master.ai.scan');
     Route::get('/extra-features-master', [CategoryController::class, 'extraFeaturesMaster'])->name('extra.features.master');
     Route::get('/extra-features-master-data-view', [CategoryController::class, 'getExtraFeaturesMasterData'])->name('extra.features.master.data');
     Route::post('/extra-features-master/store', [CategoryController::class, 'storeExtraFeaturesMaster'])->name('extra.features.master.store');

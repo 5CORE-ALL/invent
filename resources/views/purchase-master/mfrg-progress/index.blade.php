@@ -3,21 +3,65 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
-    /* Product image column (data-column="1") — wide-table uses overflow:hidden + fixed layout */
+    /* Image column: compact thumb */
     .table-container .wide-table th[data-column="1"],
     .table-container .wide-table td[data-column="1"] {
-        min-width: 112px !important;
-        overflow: visible !important;
+        width: 52px !important;
+        min-width: 52px !important;
+        max-width: 52px !important;
         white-space: normal !important;
     }
-    .mip-product-thumb {
-        width: 96px !important;
-        height: 96px !important;
-        max-width: none !important;
-        object-fit: cover;
-        border-radius: 8px;
+    .table-container .wide-table th[data-column="1"] {
+        padding: 0 !important;
         vertical-align: middle;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
+    .table-container .wide-table td[data-column="1"] {
+        padding: 0 !important;
+        vertical-align: middle;
+        line-height: 0;
+    }
+    .table-container .wide-table td[data-column="1"] > .mip-image-aspect {
+        width: 46px !important;
+        height: 46px !important;
+        max-width: 46px !important;
+        max-height: 46px !important;
+        margin: 0 auto;
+        box-sizing: border-box;
+        flex-shrink: 0;
+    }
+    .table-container .wide-table td[data-column="1"] .mip-image-aspect img {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        object-fit: contain;
+        display: block;
+        border-radius: 0;
+        box-shadow: none;
+        background: transparent;
+        vertical-align: top;
+    }
+    /* Archived MIP Tabulator: image column */
+    #mip-archived-history-table .tabulator-cell.mip-archived-image-cell {
+        padding: 0 !important;
+        vertical-align: middle !important;
+        line-height: 0;
+    }
+    #mip-archived-history-table .mip-archived-img-aspect {
+        width: 46px !important;
+        height: 46px !important;
+        max-width: 46px !important;
+        max-height: 46px !important;
+        margin: 0 auto;
+        box-sizing: border-box;
+    }
+    #mip-archived-history-table .mip-archived-img-aspect img {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        object-fit: contain;
+        display: block;
     }
     .preview-popup {
         position: fixed;
@@ -38,6 +82,61 @@
     .wide-table .column-search {
         text-align: center;
     }
+
+    /* Stage column: same pattern as Forecast Analysis (colored dot + invisible select overlay) */
+    .wide-table .stage-dot-cell.mip-stage-dot {
+        min-height: 36px;
+        min-width: 44px;
+        max-width: 56px;
+    }
+    .wide-table .stage-dot-cell .stage-status-dot {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+    }
+    .wide-table .stage-dot-cell .stage-stage-select {
+        opacity: 0;
+        cursor: pointer;
+        margin: 0 !important;
+        border: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        -webkit-appearance: none;
+        appearance: none;
+        z-index: 2;
+    }
+    .wide-table .stage-dot-cell .stage-transit-icon {
+        font-size: 1.05rem;
+        line-height: 1;
+        color: #334155;
+    }
+    .wide-table th[data-column="17"] {
+        max-width: 64px;
+    }
+
+    .wide-table .mip-sku-cell {
+        gap: 4px;
+        max-width: 100%;
+    }
+    .wide-table .mip-sku-cell .mip-sku-text {
+        min-width: 0;
+        word-break: break-word;
+        text-align: left;
+    }
+    .wide-table .mip-copy-sku {
+        flex-shrink: 0;
+        line-height: 1;
+        color: #3bc0c3;
+        opacity: 0.85;
+    }
+    .wide-table .mip-copy-sku:hover {
+        opacity: 1;
+        color: #2a9a9d;
+    }
+
     /* Toolbar: uniform height, alignment, equal spread */
     #columnControls .toolbar-row {
         display: flex;
@@ -102,17 +201,114 @@
         align-items: center;
         justify-content: center;
     }
+
+    /* ── Fit MIP into one screen: flex column + scroll only the grid ── */
+    .mip-minh-0 {
+        min-height: 0 !important;
+    }
+    #mip-page-root.mip-viewport-fit {
+        display: flex;
+        flex-direction: column;
+        max-height: calc(100dvh - 128px);
+        min-height: 0;
+        /* Page-scale zoom scoped here (was body zoom — narrower reflow / less jank than document.body.style.zoom) */
+        zoom: 0.85;
+    }
+    #mip-page-root.mip-viewport-fit .page-title-box {
+        flex-shrink: 0;
+        margin-bottom: 0.35rem !important;
+        padding-bottom: 0 !important;
+    }
+    #mip-page-root.mip-viewport-fit .page-title-box .page-title {
+        font-size: 1.1rem;
+    }
+    #mip-page-root.mip-viewport-fit > .row:first-child {
+        flex-shrink: 0;
+    }
+    #mip-page-root.mip-viewport-fit > .row.mip-main-outer {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+    }
+    #mip-page-root.mip-viewport-fit > .row.mip-main-outer > [class*="col-"] {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    #mip-page-root.mip-viewport-fit .mip-main-col {
+        min-height: 0;
+    }
+    #mip-page-root.mip-viewport-fit .mip-main-card {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    #mip-page-root.mip-viewport-fit .mip-card-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding: 0.35rem 0.45rem !important;
+    }
+    #mip-page-root.mip-viewport-fit #columnControls {
+        flex-shrink: 0;
+        margin-bottom: 0.35rem !important;
+        padding: 0.35rem 0.45rem !important;
+    }
+    #mip-page-root.mip-viewport-fit #columnControls .toolbar-row {
+        min-height: 36px;
+    }
+    #mip-page-root.mip-viewport-fit #columnControls .toolbar-item .btn,
+    #mip-page-root.mip-viewport-fit #columnControls .toolbar-item .custom-select-box {
+        height: 34px !important;
+        min-height: 34px;
+    }
+    #mip-page-root.mip-viewport-fit #columnControls .toolbar-item .btn.rounded-circle {
+        width: 34px;
+        height: 34px;
+    }
+    #mip-page-root.mip-viewport-fit #columnControls .mip-toolbar-search-input {
+        height: 34px;
+        width: 128px;
+        min-width: 100px;
+        font-size: 12px;
+    }
+    #mip-page-root.mip-viewport-fit #columnControls .stat-panel .text-muted {
+        font-size: 0.7rem !important;
+    }
+    #mip-page-root.mip-viewport-fit #columnControls .stat-panel .fw-bold {
+        font-size: 0.95rem !important;
+    }
+    #mip-page-root.mip-viewport-fit .mip-table-scroll {
+        flex: 1 1 auto;
+        min-height: 100px;
+        max-height: none !important;
+        overflow: auto !important;
+    }
+    #mip-page-root.mip-viewport-fit .wide-table th,
+    #mip-page-root.mip-viewport-fit .wide-table td {
+        padding: 2px 4px !important;
+        font-size: 0.75rem !important;
+    }
+    #mip-page-root.mip-viewport-fit .wide-table tbody tr:hover {
+        transform: none !important;
+        box-shadow: none !important;
+    }
     
 </style>
 @endsection
 @section('content')
+<div id="mip-page-root" class="mip-viewport-fit">
 @include('layouts.shared.page-title', ['page_title' => 'MIP', 'sub_title' => 'MIP'])
-<div class="row">
-    <div class="col-12">
-        <div class="card shadow-sm">
-            <div class="card-body">
+<div class="row mip-main-outer g-0">
+    <div class="col-12 mip-main-col d-flex flex-column mip-minh-0">
+        <div class="card shadow-sm mip-main-card mb-0 d-flex flex-column mip-minh-0">
+            <div class="card-body mip-card-body d-flex flex-column mip-minh-0">
                 <!-- Filters Row - First Row -->
-                <div class="column-controls card mb-3 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 10px;">
+                <div class="column-controls card mb-2 p-2 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 8px;">
                     <div class="toolbar-row" style="overflow-x: auto;">
                         <!-- Controls Group -->
                         <div class="toolbar-item controls-group d-flex flex-nowrap">
@@ -251,7 +447,7 @@
                     </div>
                 </div>
                             
-                <div class="wide-table-wrapper table-container">
+                <div class="wide-table-wrapper table-container mip-table-scroll">
                     <table class="wide-table">
                         <thead>
                             <tr>
@@ -259,7 +455,7 @@
                                     <input type="checkbox" id="selectAllCheckbox" title="Select All">
                                     <div class="resizer"></div>
                                 </th>
-                                <th data-column="1">Image<div class="resizer"></div></th>
+                                <th data-column="1" class="p-0 m-0" style="width:52px;min-width:52px;max-width:52px;">Image</th>
                                 <th data-column="2" hidden>
                                     Parent
                                     <div class="resizer"></div>
@@ -272,10 +468,10 @@
                                 </th>
                                 <th data-column="18" class="text-center" hidden>NRP<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">QTY<div class="resizer"></div></th>
-                                <th data-column="10" class="text-center">Order<br/>Date<div class="resizer"></div></th>
-                                <th data-column="11" class="text-center">Delivery<br/>Date<div class="resizer"></div></th>
+                                <th data-column="10" class="text-center">O<br/>Date<div class="resizer"></div></th>
+                                <th data-column="11" class="text-center">D<br/>date<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
-                                <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
+                                <th data-column="6" class="text-center" style="width: 112.5px; min-width: 112.5px; max-width: 112.5px;">Supplier<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -285,12 +481,12 @@
                                 <th data-column="13" hidden>Payment<br/>Pending<div class="resizer"></div></th>
                                 {{-- <th data-column="15">photo<br/>packing<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="16">photo int.<br/>sale<div class="resizer"></div></th> --}}
-                                <th data-column="14">CBM<div class="resizer"></div></th>
-                                <th data-column="15">Total CBM<div class="resizer"></div></th>
+                                <th data-column="14" hidden>CBM<div class="resizer"></div></th>
+                                <th data-column="15">T-CBM<div class="resizer"></div></th>
                                 <th data-column="23" class="text-center">Pkg Inst<div class="resizer"></div></th>
                                 <th data-column="24" class="text-center">U-Manual<div class="resizer"></div></th>
                                 <th data-column="25" class="text-center">Compliance<div class="resizer"></div></th>
-                                <th data-column="20" class="text-center">CTN CBM E<div class="resizer"></div></th>
+                                <th data-column="20" class="text-center" hidden>CTN CBM E<div class="resizer"></div></th>
                                 <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 {{-- <th data-column="19" class="text-center">BARCODE<br/>&<br/>SKU<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="20">artwork<br/>&<br/>maual<br/>book<div class="resizer"></div></th> --}}
@@ -310,7 +506,7 @@
                                     <td data-column="0" class="text-center">
                                         <input type="checkbox" class="row-checkbox" data-sku="{{ $item->sku }}">
                                     </td>
-                                    <td data-column="1">
+                                    <td data-column="1" class="p-0 m-0">
                                         @if(!empty($item->Image))
                                             @php
                                                 // Check if it's a storage path or full URL
@@ -322,17 +518,37 @@
                                                     $imageUrl = asset($imageUrl);
                                                 }
                                             @endphp
-                                            <img src="{{ $imageUrl }}" class="hover-img mip-product-thumb" data-src="{{ $imageUrl }}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
-                                            <span class="text-muted" style="display: none;">No</span>
+                                            <div class="w-100 h-100 p-0 m-0 mip-image-aspect">
+                                                <img src="{{ $imageUrl }}"
+                                                     class="w-100 h-100 hover-img"
+                                                     data-src="{{ $imageUrl }}"
+                                                     alt=""
+                                                     loading="lazy"
+                                                     decoding="async"
+                                                     style="object-fit: contain; display: block;"
+                                                     onerror="this.style.display='none'; var s=this.nextElementSibling; if(s) s.style.display='inline';">
+                                                <span class="text-muted mip-img-fallback" style="display: none; line-height: normal;">No</span>
+                                            </div>
                                         @else
-                                            <span class="text-muted">No</span>
+                                            <span class="text-muted" style="line-height: normal;">No</span>
                                         @endif
                                     </td>
                                     <td data-column="2" class="text-center" hidden>
                                         {{ $item->parent ?? '' }}
                                     </td>
-                                    <td data-column="3" class="text-center">
-                                        {{ $item->sku ?? '' }}
+                                    <td data-column="3" class="text-center align-middle">
+                                        <div class="d-inline-flex align-items-center justify-content-center mip-sku-cell">
+                                            <span class="mip-sku-text">{{ $item->sku ?? '' }}</span>
+                                            @if(!empty($item->sku))
+                                                <button type="button"
+                                                    class="btn btn-link mip-copy-sku p-0 border-0"
+                                                    data-sku="{{ e($item->sku) }}"
+                                                    title="Copy SKU"
+                                                    aria-label="Copy SKU">
+                                                    <i class="far fa-copy" aria-hidden="true"></i>
+                                                </button>
+                                            @endif
+                                        </div>
                                     </td>
                                     <td data-column="18" class="text-center" hidden>
                                         @php
@@ -438,8 +654,8 @@
                                         </div>
                                     </td>
 
-                                    <td data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">
-                                        <select data-sku="{{ $item->sku }}" data-column="supplier" class="form-select form-select-sm auto-save" style="min-width: 140px; font-size: 12px;">
+                                    <td data-column="6" class="text-center" style="width: 112.5px; min-width: 112.5px; max-width: 112.5px;">
+                                        <select data-sku="{{ $item->sku }}" data-column="supplier" class="form-select form-select-sm auto-save" style="min-width: 105px; max-width: 105px; font-size: 12px;">
                                             <option value="">supplier</option>
                                             @foreach ($suppliers as $supplierName)
                                                 <option value="{{ $supplierName }}" {{ ($item->supplier ?? '') == $supplierName ? 'selected' : '' }}>
@@ -559,7 +775,7 @@
                                         </div>
                                     </td> --}}
 
-                                    <td data-column="14">
+                                    <td data-column="14" hidden>
                                         {{ isset($item->CBM) ? number_format($item->CBM, 4) : 'N/A' }}
                                     </td>
                                     <td data-column="15">
@@ -570,7 +786,7 @@
                                             value="{{ is_numeric($item->qty ?? null) && is_numeric($item->CBM ?? null) ? number_format($item->qty * $item->CBM, 2, '.', '') : '' }}"
                                             class="form-control form-control-sm auto-save"
                                             style="min-width: 90px; width: 100px; font-size: 13px;"
-                                            placeholder="Total CBM"
+                                            placeholder="T-CBM"
                                             readonly>
                                     </td>
                                     <td data-column="23" class="text-center">
@@ -612,36 +828,58 @@
                                             style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $complianceYes ? '#28a745' : '#dc3545' }};">
                                         </span>
                                     </td>
-                                    <td data-column="20" class="text-center">
+                                    <td data-column="20" class="text-center" hidden>
                                         {{ isset($item->ctn_cbm_e) && $item->ctn_cbm_e !== null ? number_format($item->ctn_cbm_e, 4) : 'N/A' }}
                                     </td>
-                                    <td data-column="17" class="text-center">
+                                    <td data-column="17" class="text-center align-middle">
                                         @php
                                             $stageValue = $item->stage ?? '';
-                                            $bgColor = '#fff';
-                                            if ($stageValue === 'to_order_analysis') {
-                                                $bgColor = '#ffc107'; // Yellow
-                                            } elseif ($stageValue === 'mip') {
-                                                $bgColor = '#ADD8E6'; // Light Blue
-                                            } elseif ($stageValue === 'r2s') {
-                                                $bgColor = '#90EE90'; // Light Green
+                                            $sv = strtolower(trim((string) $stageValue));
+                                            $mipStageTips = [
+                                                '' => 'Select stage',
+                                                'appr_req' => 'Appr Req — Approval',
+                                                'mip' => 'MIP',
+                                                'r2s' => 'R2S — Ready to ship',
+                                                'transit' => 'Transit',
+                                                'to_order_analysis' => 'Order — 2 Order',
+                                                'all_good' => 'All Good',
+                                            ];
+                                            $mipStageTip = $mipStageTips[$sv] ?? 'Select stage';
+                                            $mipDotColor = '#94a3b8';
+                                            if ($sv === 'appr_req') {
+                                                $mipDotColor = '#facc15';
+                                            } elseif ($sv === 'mip') {
+                                                $mipDotColor = '#2563eb';
+                                            } elseif ($sv === 'to_order_analysis') {
+                                                $mipDotColor = '#c2410c';
+                                            } elseif ($sv === 'r2s') {
+                                                $mipDotColor = '#16a34a';
+                                            } elseif ($sv === 'all_good') {
+                                                $mipDotColor = '#22c55e';
                                             }
                                         @endphp
-                                        <select class="form-select form-select-sm editable-select-stage" 
-                                            data-type="Stage"
-                                            data-sku="{{ $item->sku }}"
-                                            data-parent="{{ $item->parent ?? '' }}"
-                                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
-                                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                                background-color: {{ $bgColor }}; color: #000;">
-                                            <option value="">Select</option>
-                                            <option value="appr_req" {{ $stageValue === 'appr_req' ? 'selected' : '' }}>Appr. Req</option>
-                                            <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
-                                            <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
-                                            <option value="transit" {{ $stageValue === 'transit' ? 'selected' : '' }}>Transit</option>
-                                            <option value="all_good" {{ $stageValue === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
-                                            <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
-                                        </select>
+                                        <div class="stage-dot-cell mip-stage-dot position-relative d-flex justify-content-center align-items-center mx-auto" title="{{ $mipStageTip }}">
+                                            <span class="mip-stage-marker d-inline-flex justify-content-center align-items-center" style="pointer-events: none;">
+                                                @if ($sv === 'transit')
+                                                    <i class="fas fa-truck stage-transit-icon" aria-hidden="true"></i>
+                                                @else
+                                                    <span class="stage-status-dot" style="background-color: {{ $mipDotColor }};" aria-hidden="true"></span>
+                                                @endif
+                                            </span>
+                                            <select class="form-select form-select-sm editable-select-stage stage-stage-select position-absolute top-0 start-0 w-100 h-100"
+                                                data-type="Stage"
+                                                data-sku="{{ $item->sku }}"
+                                                data-parent="{{ e($item->parent ?? '') }}"
+                                                aria-label="{{ $mipStageTip }}">
+                                                <option value="">Select</option>
+                                                <option value="appr_req" {{ $sv === 'appr_req' ? 'selected' : '' }}>Appr. Req</option>
+                                                <option value="mip" {{ $sv === 'mip' ? 'selected' : '' }}>MIP</option>
+                                                <option value="r2s" {{ $sv === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                                <option value="transit" {{ $sv === 'transit' ? 'selected' : '' }}>Transit</option>
+                                                <option value="all_good" {{ $sv === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
+                                                <option value="to_order_analysis" {{ $sv === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                            </select>
+                                        </div>
                                     </td>
 
                                     {{-- <td data-column="19">
@@ -677,6 +915,7 @@
         </div>
     </div>
 </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -706,11 +945,41 @@
         return mipTabulatorLoadPromise;
     }
 
-    document.body.style.zoom = '85%';
-
     const popup = document.createElement('img');
     popup.className = 'preview-popup';
     document.body.appendChild(popup);
+
+    function mipCopySkuToClipboard(text, onDone) {
+        const t = String(text || '').trim();
+        if (!t) return;
+        const finish = typeof onDone === 'function' ? onDone : function () {};
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(t).then(finish).catch(function () {
+                mipCopySkuFallback(t, finish);
+            });
+            return;
+        }
+        mipCopySkuFallback(t, finish);
+    }
+
+    function mipCopySkuFallback(text, onDone) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+            document.execCommand('copy');
+            if (typeof onDone === 'function') {
+                onDone();
+            }
+        } catch (err) {
+            alert('Unable to copy SKU.');
+        }
+        document.body.removeChild(ta);
+    }
 
     function calculateTotalCBM() {
         let totalCBM = 0;
@@ -736,8 +1005,9 @@
         document.documentElement.setAttribute("data-sidenav-size", "condensed");
 
         const table = document.querySelector('.wide-table');
-        const rows = table.querySelectorAll('tbody tr');
         const mipTbody = table.querySelector('tbody');
+        /** Static snapshot of row nodes at load; filter/sort re-query when needed inside rAF. */
+        const rows = table.querySelectorAll('tbody tr');
 
         // Image preview: one delegated listener (was 3 listeners × every row image)
         if (mipTbody) {
@@ -770,6 +1040,29 @@
                 if (rel && img.contains(rel)) return;
                 popup.style.display = 'none';
             });
+
+            mipTbody.addEventListener('click', function (e) {
+                const btn = e.target.closest('.mip-copy-sku');
+                if (!btn || !mipTbody.contains(btn)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = (btn.dataset.sku || '').trim();
+                if (!sku) return;
+                const icon = btn.querySelector('i');
+                const prevClass = icon ? icon.className : '';
+                mipCopySkuToClipboard(sku, function () {
+                    if (icon) {
+                        icon.className = 'fas fa-check';
+                    }
+                    btn.classList.add('text-success');
+                    setTimeout(function () {
+                        if (icon) {
+                            icon.className = prevClass;
+                        }
+                        btn.classList.remove('text-success');
+                    }, 1100);
+                });
+            });
         }
 
         initColumnResizing();
@@ -789,28 +1082,29 @@
         setupMipBulkStage();
         setupNRPUpdate();
 
-        // Filter to show only MIP stage on page load
-        filterByMIPStage();
-        // Sort visible MIP rows by order date (oldest first)
-        const visibleMipRows = Array.from(rows).filter(r => {
-            const stageAttr = (r.getAttribute('data-stage') || '').toLowerCase().trim();
-            const stageSelect = r.querySelector('.editable-select-stage');
-            const stage = (stageSelect ? stageSelect.value : '').toLowerCase().trim() || stageAttr;
-            return stage === 'mip' && r.style.display !== 'none';
+        // Defer row-heavy work so first paint + toolbar stay responsive (large tables).
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                filterByMIPStage();
+                const rowsAfter = table.querySelectorAll('tbody tr');
+                const visibleMipRows = Array.from(rowsAfter).filter(r => {
+                    const stageAttr = (r.getAttribute('data-stage') || '').toLowerCase().trim();
+                    const stageSelect = r.querySelector('.editable-select-stage');
+                    const stage = (stageSelect ? stageSelect.value : '').toLowerCase().trim() || stageAttr;
+                    return stage === 'mip' && r.style.display !== 'none';
+                });
+                if (visibleMipRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
+                    sortRowsByOrderDate(visibleMipRows);
+                }
+
+                setupCurrencyConversion();
+                setupOlinkEditor();
+
+                calculateTotalCBM();
+                calculateTotalAmount();
+                calculateTotalOrderItems();
+            });
         });
-        if (visibleMipRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
-            sortRowsByOrderDate(visibleMipRows);
-        }
-
-        // Currency Conversion
-        setupCurrencyConversion();
-
-        // Open/Edit O Links
-        setupOlinkEditor();
-
-        calculateTotalCBM();
-        calculateTotalAmount();
-        calculateTotalOrderItems();
 
         // Pkg Inst / U-Manual / Compliance dots: one delegated handler (was 3 listeners × rows)
         if (mipTbody) {
@@ -870,6 +1164,9 @@
             function initResize(e) {
                 e.preventDefault();
                 const th = e.target.parentElement;
+                if (th.getAttribute('data-column') === '1') {
+                    return;
+                }
                 const startX = e.clientX;
                 const startWidth = th.offsetWidth;
                 e.target.classList.add('resizing');
@@ -898,7 +1195,8 @@
             const widths = {};
             document.querySelectorAll('.wide-table thead th').forEach(th => {
                 const col = th.getAttribute('data-column');
-                widths[col] = th.offsetWidth;
+                if (col === null || col === '') return;
+                widths[col] = col === '1' ? 52 : th.offsetWidth;
             });
             localStorage.setItem('columnWidths_mfrg', JSON.stringify(widths));
         }
@@ -908,7 +1206,8 @@
                 Object.keys(widths).forEach(col => {
                     const th = document.querySelector(`.wide-table thead th[data-column="${col}"]`);
                     if (th) {
-                        th.style.width = th.style.minWidth = th.style.maxWidth = widths[col] + 'px';
+                        const w = col === '1' ? 52 : widths[col];
+                        th.style.width = th.style.minWidth = th.style.maxWidth = w + 'px';
                     }
                 });
             }
@@ -1087,7 +1386,7 @@
                             // ✅ Insert into Ready to Ship table
                             if (column === 'ready_to_ship' && value === 'Yes') {
                                 const parent = row.querySelector('td[data-column="2"]')?.innerText?.trim() || '';
-                                const skuVal = row.querySelector('td[data-column="3"]')?.innerText?.trim() || '';
+                                const skuVal = (row.getAttribute('data-sku') || row.querySelector('td[data-column="3"] .mip-sku-text')?.textContent || '').trim();
                                 const supplierSelect = row.querySelector('td[data-column="6"] select[data-column="supplier"]');
                                 const supplier = supplierSelect ? supplierSelect.value.trim() : '';
                                 const qty = row.querySelector('td[data-column="4"] input[data-column="qty"]')?.value?.trim() || '';
@@ -1163,18 +1462,49 @@
             });
         }
 
+        /** Match Forecast Analysis stage colors + transit truck icon. */
+        function mipStageTooltip(v) {
+            const tips = {
+                '': 'Select stage',
+                appr_req: 'Appr Req — Approval',
+                mip: 'MIP',
+                r2s: 'R2S — Ready to ship',
+                transit: 'Transit',
+                to_order_analysis: 'Order — 2 Order',
+                all_good: 'All Good',
+            };
+            return tips[v] || 'Select stage';
+        }
+
         function mipApplyStageSelectVisual(selectEl, value) {
             if (!selectEl) return;
-            let bgColor = '#fff';
-            if (value === 'to_order_analysis') {
-                bgColor = '#ffc107';
-            } else if (value === 'mip') {
-                bgColor = '#ADD8E6';
-            } else if (value === 'r2s') {
-                bgColor = '#90EE90';
+            const v = String(value || '').trim().toLowerCase();
+            const wrap = selectEl.closest('.mip-stage-dot');
+            const slot = wrap ? wrap.querySelector('.mip-stage-marker') : null;
+            if (wrap) {
+                wrap.title = mipStageTooltip(v);
             }
-            selectEl.style.backgroundColor = bgColor;
-            selectEl.style.color = '#000';
+            selectEl.setAttribute('aria-label', mipStageTooltip(v));
+            if (!slot) {
+                return;
+            }
+            if (v === 'transit') {
+                slot.innerHTML = '<i class="fas fa-truck stage-transit-icon" aria-hidden="true"></i>';
+            } else {
+                let c = '#94a3b8';
+                if (v === 'appr_req') {
+                    c = '#facc15';
+                } else if (v === 'mip') {
+                    c = '#2563eb';
+                } else if (v === 'to_order_analysis') {
+                    c = '#c2410c';
+                } else if (v === 'r2s') {
+                    c = '#16a34a';
+                } else if (v === 'all_good') {
+                    c = '#22c55e';
+                }
+                slot.innerHTML = '<span class="stage-status-dot" style="background-color:' + c + ';" aria-hidden="true"></span>';
+            }
         }
 
         function updateForecastFieldAsync(data) {
@@ -1263,43 +1593,52 @@
         }
 
         function setupStageUpdate() {
-            document.querySelectorAll('.editable-select-stage').forEach(function(select) {
-                select.addEventListener('change', function() {
-                    const sku = this.dataset.sku;
-                    const parent = this.dataset.parent;
-                    const value = this.value.trim();
+            document.querySelectorAll('.editable-select-stage').forEach(function (select) {
+                select.addEventListener('focus', function () {
+                    this.dataset.prevStage = this.value;
+                });
+                select.addEventListener('change', function () {
+                    const sel = this;
+                    const sku = sel.dataset.sku;
+                    const parent = sel.dataset.parent;
+                    const value = sel.value.trim();
 
-                    mipApplyStageSelectVisual(this, value);
+                    mipApplyStageSelectVisual(sel, value);
 
-                    // Get order_qty for validation
-                    const row = this.closest('tr');
-                    const qtyCell = row.querySelector('td[data-column="4"] input');
+                    const row = sel.closest('tr');
+                    const qtyCell = row ? row.querySelector('td[data-column="4"] input') : null;
                     const orderQty = qtyCell ? parseFloat(qtyCell.value) : 0;
 
                     if (!orderQty || orderQty === 0) {
-                        alert("Order Qty cannot be empty or zero.");
-                        this.value = '';
-                        this.style.backgroundColor = '#fff';
+                        alert('Order Qty cannot be empty or zero.');
+                        sel.value = sel.dataset.prevStage || '';
+                        mipApplyStageSelectVisual(sel, sel.value);
                         return;
                     }
 
-                    updateForecastField({
-                        sku: sku,
-                        parent: parent,
-                        column: 'Stage',
-                        value: value
-                    }, function() {
-                        // Success - update the select value to ensure it matches saved value
-                        this.value = value;
-                        // Color already updated
-                    }, function() {
-                        alert('Failed to save Stage.');
-                        // Revert color and value
-                        this.style.backgroundColor = '#fff';
-                        // Reload page to get correct value from database
-                        location.reload();
-                    });
+                    updateForecastField(
+                        {
+                            sku: sku,
+                            parent: parent,
+                            column: 'Stage',
+                            value: value,
+                        },
+                        function () {
+                            sel.value = value;
+                            if (row) {
+                                row.setAttribute('data-stage', value);
+                            }
+                            mipApplyStageSelectVisual(sel, value);
+                        },
+                        function () {
+                            alert('Failed to save Stage.');
+                            location.reload();
+                        }
+                    );
                 });
+            });
+            document.querySelectorAll('.mip-stage-dot .editable-select-stage').forEach(function (sel) {
+                mipApplyStageSelectVisual(sel, sel.value);
             });
         }
 
@@ -1623,16 +1962,22 @@
                         title: 'Image',
                         field: 'Image',
                         headerSort: false,
-                        width: 72,
+                        cssClass: 'mip-archived-image-cell',
+                        width: 52,
+                        minWidth: 52,
+                        maxWidth: 52,
                         formatter: function (cell) {
                             var u = cell.getValue();
-                            return u ? '<img src="' + u + '" alt="" style="width:32px;height:32px;object-fit:contain;border-radius:4px;">' : '—';
+                            if (!u) return '—';
+                            return '<div class="w-100 h-100 p-0 m-0 mip-archived-img-aspect">' +
+                                '<img src="' + u.replace(/"/g, '&quot;') + '" alt="" class="w-100 h-100" style="object-fit:contain;display:block;" />' +
+                                '</div>';
                         },
                     },
                     { title: 'Parent', field: 'parent', headerFilter: 'input', minWidth: 100 },
                     { title: 'SKU', field: 'sku', headerFilter: 'input', minWidth: 120 },
                     { title: 'QTY', field: 'qty', hozAlign: 'center', width: 72 },
-                    { title: 'Supplier', field: 'supplier', headerFilter: 'input', minWidth: 120 },
+                    { title: 'Supplier', field: 'supplier', headerFilter: 'input', width: 90, minWidth: 90 },
                     { title: 'R2S', field: 'ready_to_ship', width: 72, hozAlign: 'center' },
                 ],
             });
@@ -2098,7 +2443,7 @@
                 // Only count visible rows (filtered by play button or other filters)
                 if (row.style.display === "none") return;
 
-                // Check created_at (Order Date) field for text color
+                // Check created_at (O Date) field for text color
                 const dateInput = row.querySelector('input[data-column="created_at"]');
                 if (!dateInput) {
                     green++; // Default to green if no date
@@ -2159,7 +2504,7 @@
                     return;
                 }
 
-                // Check created_at (Order Date) field for text color
+                // Check created_at (O Date) field for text color
                 const dateInput = row.querySelector('input[data-column="created_at"]');
                 if (!dateInput) {
                     // If no date input, default to green
@@ -2482,6 +2827,12 @@
             const getCellText = (col) => {
                 const cell = row.querySelector(`td[data-column="${col}"]`);
                 if (!cell) return '';
+                if (col === '3') {
+                    const st = cell.querySelector('.mip-sku-text');
+                    if (st) return (st.textContent || '').trim();
+                    const ds = row.getAttribute('data-sku');
+                    if (ds) return ds.trim();
+                }
                 const input = cell.querySelector('input, select');
                 if (input) return (input.value || '').trim();
                 return (cell.textContent || '').trim();
@@ -2520,7 +2871,7 @@
                 'SKU': getCellText('3'),
                 'Image': getImageUrl('1'),
                 'QTY': getCellVal('4'),
-                'Order Date': orderDateFormatted,
+                'O Date': orderDateFormatted,
                 'Days': daysDiff !== '' ? daysDiff : ''
             });
         });
@@ -2538,9 +2889,9 @@
                 ['Supplier', supplierName],
                 ['Items', itemsCount],
                 [],
-                ['SKU', 'Image', 'QTY', 'Order Date', 'Days']
+                ['SKU', 'Image', 'QTY', 'O Date', 'Days']
             ];
-            const dataRows = exportData.map(r => [r['SKU'], r['Image'], r['QTY'], r['Order Date'], r['Days']]);
+            const dataRows = exportData.map(r => [r['SKU'], r['Image'], r['QTY'], r['O Date'], r['Days']]);
             const aoa = [...headerRows, ...dataRows];
 
             const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -2551,7 +2902,7 @@
             const imageUrls = exportData.map(r => r['Image']).filter(url => url);
             if (imageUrls.length > 0) {
                 const urlsJson = JSON.stringify([...new Set(imageUrls)]);
-                const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MIP Summary ' + dateStr + '</title><style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#3bc0c3;color:#fff;}</style></head><body><h2>MIP Summary - ' + dateStr + '</h2><p><strong>Supplier:</strong> ' + supplierName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' | <strong>Items:</strong> ' + itemsCount + '</p><table><thead><tr><th>SKU</th><th>Image</th><th>QTY</th><th>Order Date</th><th>Days</th></tr></thead><tbody>' + exportData.map(r => '<tr><td>' + (r['SKU']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['Image'] ? '<a href="' + r['Image'].replace(/"/g,'&quot;') + '" target="_blank">View</a>' : '') + '</td><td>' + (r['QTY']||'') + '</td><td>' + (r['Order Date']||'') + '</td><td>' + (r['Days']||'') + '</td></tr>').join('') + '</tbody></table><script>var urls=' + urlsJson + ';var i=0;function openNext(){if(i<urls.length){window.open(urls[i],"_blank");i++;setTimeout(openNext,800);}}setTimeout(openNext,1000);<\/script></body></html>';
+                const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MIP Summary ' + dateStr + '</title><style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#3bc0c3;color:#fff;}</style></head><body><h2>MIP Summary - ' + dateStr + '</h2><p><strong>Supplier:</strong> ' + supplierName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' | <strong>Items:</strong> ' + itemsCount + '</p><table><thead><tr><th>SKU</th><th>Image</th><th>QTY</th><th>O Date</th><th>Days</th></tr></thead><tbody>' + exportData.map(r => '<tr><td>' + (r['SKU']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['Image'] ? '<a href="' + r['Image'].replace(/"/g,'&quot;') + '" target="_blank">View</a>' : '') + '</td><td>' + (r['QTY']||'') + '</td><td>' + (r['O Date']||'') + '</td><td>' + (r['Days']||'') + '</td></tr>').join('') + '</tbody></table><script>var urls=' + urlsJson + ';var i=0;function openNext(){if(i<urls.length){window.open(urls[i],"_blank");i++;setTimeout(openNext,800);}}setTimeout(openNext,1000);<\/script></body></html>';
                 const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
