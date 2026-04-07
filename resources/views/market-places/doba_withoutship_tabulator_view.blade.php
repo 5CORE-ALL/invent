@@ -317,16 +317,9 @@
                         <option value="skus">SKUs</option>
                     </select>
 
-                    <select id="dws-inv-filter" class="form-select form-select-sm" style="width:140px;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>&gt; 0</option>
-                    </select>
-
-                    <select id="dws-ovl30-filter" class="form-select form-select-sm" style="width:140px;" title="Shopify OV L30">
-                        <option value="all">OV L30</option>
-                        <option value="zero">0 OV L30</option>
-                        <option value="more">OV L30 &gt; 0</option>
+                    <select id="dws-inv-filter" class="form-select form-select-sm" style="width:110px;" title="Inventory (INV)">
+                        <option value="zero">0 INV</option>
+                        <option value="more" selected>&gt; 0 INV</option>
                     </select>
 
                     <select id="dws-gpft-filter" class="form-select form-select-sm" style="width:130px;">
@@ -350,11 +343,10 @@
                         <option value="gt250">&gt; 250%</option>
                     </select>
 
-                    <select id="dws-al30-filter" class="form-select form-select-sm" style="width:130px;" title="Doba L30 sold; excludes 0 inventory when filtering buckets">
-                        <option value="all">L30</option>
-                        <option value="0">0</option>
-                        <option value="0-10">1–10</option>
-                        <option value="10plus">10+</option>
+                    <select id="dws-al30-filter" class="form-select form-select-sm" style="width:140px;" title="Doba L30 sold; when filtering L30 = 0 or L30 &gt; 0, only child rows with INV &gt; 0">
+                        <option value="all" selected>L30</option>
+                        <option value="0">L30 = 0</option>
+                        <option value="more">L30 &gt; 0</option>
                     </select>
 
                     <select id="dws-map-filter" class="form-select form-select-sm" style="width:120px;">
@@ -422,7 +414,8 @@
                 {{-- Row 3: summary KPIs (/aliexpress-pricing style) --}}
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
                     <div class="d-flex flex-wrap gap-2">
-                        <span id="total-skus" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Total SKUs: 0</span>
+                        <span id="dws-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
+                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;">Total SKUs: 0</span>
                         <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
                         <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
                         <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
@@ -1961,6 +1954,17 @@
                         }
                     },
                     {
+                        title: "LP",
+                        field: "LP_productmaster",
+                        width: 70,
+                        sorter: "number",
+                        visible: true,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            return value > 0 ? `$${value.toFixed(2)}` : '';
+                        }
+                    },
+                    {
                         title: "SPRICE",
                         field: "sprice",
                         width: 80,
@@ -1974,17 +1978,6 @@
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `<span style="color: #000; font-weight: 600;">$${value.toFixed(2)}</span>` : '';
-                        }
-                    },
-                    {
-                        title: "LP",
-                        field: "LP_productmaster",
-                        width: 70,
-                        sorter: "number",
-                        visible: true,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },
                     {
@@ -2120,7 +2113,6 @@
                 const skuSearch = ($('#dws-sku-search').val() || '').toLowerCase().trim();
                 const rowType = $('#dws-row-type-filter').val();
                 const invFilter = $('#dws-inv-filter').val();
-                const ovl30Filter = $('#dws-ovl30-filter').val();
                 const gpftFilter = $('#dws-gpft-filter').val();
                 const roiFilter = $('#dws-roi-filter').val();
                 const al30Filter = $('#dws-al30-filter').val();
@@ -2142,14 +2134,8 @@
 
                 if (invFilter === 'zero') {
                     table.addFilter(function(data) { return (parseFloat(data.INV) || 0) === 0; });
-                } else if (invFilter === 'more') {
+                } else {
                     table.addFilter(function(data) { return (parseFloat(data.INV) || 0) > 0; });
-                }
-
-                if (ovl30Filter === 'zero') {
-                    table.addFilter(function(data) { return (parseFloat(data.L30) || 0) === 0; });
-                } else if (ovl30Filter === 'more') {
-                    table.addFilter(function(data) { return (parseFloat(data.L30) || 0) > 0; });
                 }
 
                 if (gpftFilter !== 'all') {
@@ -2182,8 +2168,7 @@
                         if ((parseFloat(data.INV) || 0) <= 0) return false;
                         const al30 = parseFloat(data['doba L30']) || 0;
                         if (al30Filter === '0') return al30 === 0;
-                        if (al30Filter === '0-10') return al30 > 0 && al30 <= 10;
-                        if (al30Filter === '10plus') return al30 > 10;
+                        if (al30Filter === 'more') return al30 > 0;
                         return true;
                     });
                 }
@@ -2265,7 +2250,7 @@
                 if (el) el.textContent = 'Visible rows: ' + n;
             }
 
-            $('#dws-row-type-filter, #dws-inv-filter, #dws-ovl30-filter, #dws-gpft-filter, #dws-roi-filter, #dws-al30-filter, #dws-map-filter, #dws-growth-sign-filter').on('change', function() {
+            $('#dws-row-type-filter, #dws-inv-filter, #dws-gpft-filter, #dws-roi-filter, #dws-al30-filter, #dws-map-filter, #dws-growth-sign-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -2395,6 +2380,7 @@
                     gpftGrowthColor = '#dc3545'; // Red for negative
                 }
 
+                $('#dws-total-sales-badge').text('Sales: $' + Math.round(totalL30Sales).toLocaleString());
                 $('#total-skus').text('Total SKUs: ' + totalSkus);
                 $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
                 $('#sold-count').text('SOLD: ' + sold);

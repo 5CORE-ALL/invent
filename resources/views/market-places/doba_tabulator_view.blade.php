@@ -456,7 +456,8 @@
                 {{-- Row 3: summary KPIs (/aliexpress-pricing style) --}}
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
                     <div class="d-flex flex-wrap gap-2">
-                        <span id="total-skus" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Total SKUs: 0</span>
+                        <span id="doba-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
+                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;">Total SKUs: 0</span>
                         <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
                         <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
                         <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
@@ -2580,6 +2581,7 @@
                     gpftGrowthColor = '#dc3545'; // Red for negative
                 }
 
+                $('#doba-total-sales-badge').text('Sales: $' + Math.round(totalL30Sales).toLocaleString());
                 $('#total-skus').text('Total SKUs: ' + totalSkus);
                 $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
                 $('#sold-count').text('SOLD: ' + sold);
