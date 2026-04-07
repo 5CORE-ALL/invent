@@ -12,8 +12,12 @@
         white-space: normal !important;
     }
     .table-container .wide-table th[data-column="1"] {
-        padding: 0 !important;
+        padding: 2px !important;
         vertical-align: middle;
+        white-space: normal !important;
+        line-height: 1.15;
+        font-size: 0.65rem;
+        overflow: hidden !important;
     }
     .table-container .wide-table td[data-column="1"] {
         padding: 0 !important;
@@ -28,12 +32,14 @@
         margin: 0 auto;
         box-sizing: border-box;
         flex-shrink: 0;
+        overflow: hidden !important;
+        position: relative;
     }
     .table-container .wide-table td[data-column="1"] .mip-image-aspect img {
         width: 100% !important;
         height: 100% !important;
-        max-width: 100% !important;
-        max-height: 100% !important;
+        max-width: 46px !important;
+        max-height: 46px !important;
         object-fit: contain;
         display: block;
         border-radius: 0;
@@ -76,8 +82,16 @@
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
         transition: opacity 0.15s ease;
     }
-    td {
+    /* Keep stage/popovers usable, but do not override image column clipping (global td broke thumb bounds). */
+    .wide-table td {
         overflow: visible !important;
+    }
+    .table-container .wide-table thead th {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+    }
+    .table-container .wide-table td[data-column="1"] {
+        overflow: hidden !important;
     }
     .wide-table .column-search {
         text-align: center;
@@ -212,7 +226,7 @@
         max-height: calc(100dvh - 128px);
         min-height: 0;
         /* Page-scale zoom scoped here (was body zoom — narrower reflow / less jank than document.body.style.zoom) */
-        zoom: 0.85;
+        zoom: 0.95;
     }
     #mip-page-root.mip-viewport-fit .page-title-box {
         flex-shrink: 0;
@@ -220,7 +234,7 @@
         padding-bottom: 0 !important;
     }
     #mip-page-root.mip-viewport-fit .page-title-box .page-title {
-        font-size: 1.1rem;
+        font-size: 1.2rem;
     }
     #mip-page-root.mip-viewport-fit > .row:first-child {
         flex-shrink: 0;
@@ -251,36 +265,36 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        padding: 0.35rem 0.45rem !important;
+        padding: 0.45rem 0.6rem !important;
     }
     #mip-page-root.mip-viewport-fit #columnControls {
         flex-shrink: 0;
-        margin-bottom: 0.35rem !important;
-        padding: 0.35rem 0.45rem !important;
+        margin-bottom: 0.45rem !important;
+        padding: 0.45rem 0.6rem !important;
     }
     #mip-page-root.mip-viewport-fit #columnControls .toolbar-row {
-        min-height: 36px;
+        min-height: 40px;
     }
     #mip-page-root.mip-viewport-fit #columnControls .toolbar-item .btn,
     #mip-page-root.mip-viewport-fit #columnControls .toolbar-item .custom-select-box {
-        height: 34px !important;
-        min-height: 34px;
+        height: 38px !important;
+        min-height: 38px;
     }
     #mip-page-root.mip-viewport-fit #columnControls .toolbar-item .btn.rounded-circle {
-        width: 34px;
-        height: 34px;
+        width: 38px;
+        height: 38px;
     }
     #mip-page-root.mip-viewport-fit #columnControls .mip-toolbar-search-input {
-        height: 34px;
-        width: 128px;
-        min-width: 100px;
-        font-size: 12px;
+        height: 38px;
+        width: 140px;
+        min-width: 110px;
+        font-size: 13px;
     }
     #mip-page-root.mip-viewport-fit #columnControls .stat-panel .text-muted {
-        font-size: 0.7rem !important;
+        font-size: 0.78rem !important;
     }
     #mip-page-root.mip-viewport-fit #columnControls .stat-panel .fw-bold {
-        font-size: 0.95rem !important;
+        font-size: 1.05rem !important;
     }
     #mip-page-root.mip-viewport-fit .mip-table-scroll {
         flex: 1 1 auto;
@@ -290,12 +304,79 @@
     }
     #mip-page-root.mip-viewport-fit .wide-table th,
     #mip-page-root.mip-viewport-fit .wide-table td {
-        padding: 2px 4px !important;
-        font-size: 0.75rem !important;
+        padding: 4px 6px !important;
+        font-size: 0.8125rem !important;
+    }
+    #mip-page-root.mip-viewport-fit .wide-table td[data-column="1"] {
+        padding: 0 !important;
+    }
+    #mip-page-root.mip-viewport-fit .wide-table th[data-column="1"] {
+        padding: 2px !important;
+        font-size: 0.65rem !important;
+        line-height: 1.15;
+        white-space: normal !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        overflow: hidden !important;
     }
     #mip-page-root.mip-viewport-fit .wide-table tbody tr:hover {
         transform: none !important;
         box-shadow: none !important;
+    }
+
+    /* Optional compact layout (localStorage mipDenseLayout=1) — previous one-screen density */
+    #mip-page-root.mip-viewport-fit.mip-dense-layout {
+        zoom: 0.85;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout .page-title-box .page-title {
+        font-size: 1.1rem;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout .mip-card-body {
+        padding: 0.35rem 0.45rem !important;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls {
+        margin-bottom: 0.35rem !important;
+        padding: 0.35rem 0.45rem !important;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .toolbar-row {
+        min-height: 36px;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .toolbar-item .btn,
+    #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .toolbar-item .custom-select-box {
+        height: 34px !important;
+        min-height: 34px;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .toolbar-item .btn.rounded-circle {
+        width: 34px;
+        height: 34px;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .mip-toolbar-search-input {
+        height: 34px;
+        width: 128px;
+        min-width: 100px;
+        font-size: 12px;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .stat-panel .text-muted {
+        font-size: 0.7rem !important;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .stat-panel .fw-bold {
+        font-size: 0.95rem !important;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout .wide-table th,
+    #mip-page-root.mip-viewport-fit.mip-dense-layout .wide-table td {
+        padding: 2px 4px !important;
+        font-size: 0.75rem !important;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout .wide-table td[data-column="1"] {
+        padding: 0 !important;
+    }
+    #mip-page-root.mip-viewport-fit.mip-dense-layout .wide-table th[data-column="1"] {
+        padding: 2px !important;
+        font-size: 0.6rem !important;
+        white-space: normal !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        overflow: hidden !important;
     }
     
 </style>
@@ -335,6 +416,10 @@
                             <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-1 shadow-sm" id="mipArchivedHistoryBtn" style="border-radius: 6px;" title="View archived MIP rows">
                                 <i class="fas fa-history"></i> History
                                 <span class="badge rounded-pill bg-secondary" id="mipArchivedCountBadge">0</span>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-1 shadow-sm" id="mipToggleDenseLayout" style="border-radius: 6px;" aria-pressed="false" title="Compact layout — more rows on screen">
+                                <i class="fas fa-text-height" aria-hidden="true"></i>
+                                <span class="mip-density-label text-nowrap">Dense view</span>
                             </button>
                             <div class="d-flex align-items-center flex-nowrap gap-2 mip-toolbar-bulk-stage border-start ps-3 ms-1" title="Apply stage to rows checked in the first column">
                                 <label for="mip-bulk-stage-select" class="mb-0 small fw-semibold text-nowrap text-secondary">Bulk Stage</label>
@@ -455,7 +540,7 @@
                                     <input type="checkbox" id="selectAllCheckbox" title="Select All">
                                     <div class="resizer"></div>
                                 </th>
-                                <th data-column="1" class="p-0 m-0" style="width:52px;min-width:52px;max-width:52px;">Image</th>
+                                <th data-column="1" class="p-0 m-0" style="width:52px;min-width:52px;max-width:52px;">Img</th>
                                 <th data-column="2" hidden>
                                     Parent
                                     <div class="resizer"></div>
@@ -1003,6 +1088,29 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         document.documentElement.setAttribute("data-sidenav-size", "condensed");
+
+        (function initMipLayoutDensity() {
+            const root = document.getElementById('mip-page-root');
+            const btn = document.getElementById('mipToggleDenseLayout');
+            const KEY = 'mipDenseLayout';
+            function sync() {
+                const dense = localStorage.getItem(KEY) === '1';
+                if (root) root.classList.toggle('mip-dense-layout', dense);
+                if (btn) {
+                    btn.setAttribute('aria-pressed', dense ? 'true' : 'false');
+                    btn.title = dense ? 'Switch to larger text and spacing' : 'Compact layout — more rows on screen';
+                    const label = btn.querySelector('.mip-density-label');
+                    if (label) label.textContent = dense ? 'Comfort view' : 'Dense view';
+                }
+            }
+            if (btn) {
+                btn.addEventListener('click', function () {
+                    localStorage.setItem(KEY, localStorage.getItem(KEY) === '1' ? '0' : '1');
+                    sync();
+                });
+            }
+            sync();
+        })();
 
         const table = document.querySelector('.wide-table');
         const mipTbody = table.querySelector('tbody');
