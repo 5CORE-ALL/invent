@@ -833,6 +833,20 @@ class ChannelMasterController extends Controller
         return view('channels.all-marketplace-master');
     }
 
+    /**
+     * EbayTwo channel-level Ads% — same formula as getViewChannelData (all-marketplace-master):
+     * Total Ad Spend from fetchAdMetricsFromTables('ebaytwo') over L30 total_sales from
+     * marketplace_daily_metrics (channel eBay 2).
+     */
+    public function getEbaytwoMasterAdsPercent(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebaytwo');
+        $totalAdSpend = (float) ($metrics['Total Ad Spend'] ?? 0);
+        $m = MarketplaceDailyMetric::where('channel', 'eBay 2')->latest('date')->first();
+        $l30SalesVal = (float) ($m->total_sales ?? 0);
+
+        return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 2) : 0.0;
+    }
 
     public function getViewChannelData(Request $request)
     {

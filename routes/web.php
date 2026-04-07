@@ -2769,7 +2769,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay3-low-visibility-view', action: [Ebay3LowVisibilityController::class, 'ebay3LowVisibility'])->name('ebay3.low.visibility.view');
     // Listing Audit ebay2
     Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
+    Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
+    Route::get('/ebay2op-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2op.data');
+    Route::get('/get-ebay2op-column-visibility', [EbayTwoController::class, 'getEbay2opColumnVisibility'])->name('ebay2op.column.visibility.get');
+    Route::post('/set-ebay2op-column-visibility', [EbayTwoController::class, 'setEbay2opColumnVisibility'])->name('ebay2op.column.visibility.set');
     Route::get('/ebay2-metrics-history', [EbayTwoController::class, 'getMetricsHistory'])->name('ebay2.metrics.history');
     Route::get('/ebay2-ads-spend', [EbayTwoController::class, 'getEbay2AdsSpend'])->name('ebay2.ads.spend');
     Route::get('/get-ebay2-column-visibility', [EbayTwoController::class, 'getEbay2ColumnVisibility'])->name('ebay2.column.visibility.get');

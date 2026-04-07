@@ -2442,6 +2442,8 @@
                                     </li>
                                     <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Pricing </a>
                                     </li>
+                                    <li> <a href="{{ url('ebay2op-tabulator-view') }}">Ebay 2 Open Box </a>
+                                    </li>
 
                                     <li>
                                         <a href="{{ route('listing.ebayTwo') }}">Listing Ebay 2</a>
