@@ -553,22 +553,22 @@
                     <div class="d-flex flex-wrap gap-2">
                         <!-- Sold Filter Badges (Clickable) -->
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: <span id="zero-sold-count">0</span></span>
-                        <span class="badge bg-success fs-6 p-2 sold-filter-badge" data-filter="sold" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter sold items">> 0 Sold: <span id="more-sold-count">0</span></span>
+                        <span class="badge fs-6 p-2 sold-filter-badge" data-filter="sold" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">> 0 Sold: <span id="more-sold-count">0</span></span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
                         
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="tacos-percent-badge" style="color: black; font-weight: bold;">Ads%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="tacos-percent-badge" style="color: white; font-weight: bold;">Ads%: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">NPFT: 0%</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: white; font-weight: bold;">GROI: 0%</span>
                         <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
                         
                         <!-- eBay Metrics -->
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">CVR: 0.00%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">E Stock: 0</span>
                     </div>
@@ -590,9 +590,6 @@
                             placeholder="Enter percentage" step="0.01" min="0" style="width: 150px;">
                         <button id="apply-discount-btn" class="btn btn-sm btn-primary">
                             <i class="fas fa-check"></i> Apply
-                        </button>
-                        <button id="sugg-amz-prc-selected-btn" class="btn btn-sm btn-info">
-                            <i class="fas fa-amazon"></i> Suggest Amazon Price
                         </button>
                         <button id="clear-sprice-selected-btn" class="btn btn-sm btn-danger">
                             <i class="fa fa-eraser"></i> Clear SPRICE
@@ -1394,72 +1391,6 @@
                     applyDiscount();
                 }
             });
-
-            // Suggest Amazon Price button handler
-            $('#sugg-amz-prc-selected-btn').on('click', function() {
-                applySuggestAmazonPrice();
-            });
-
-            function applySuggestAmazonPrice() {
-                if (selectedSkus.size === 0) {
-                    showToast('Please select SKUs first', 'error');
-                    return;
-                }
-
-                let updatedCount = 0;
-                let noAmazonPriceCount = 0;
-                const totalSkus = selectedSkus.size;
-
-                selectedSkus.forEach(sku => {
-                    const rows = table.searchRows("(Child) sku", "=", sku);
-                    
-                    if (rows.length > 0) {
-                        const row = rows[0];
-                        const rowData = row.getData();
-                        const amazonPrice = parseFloat(rowData['A Price']);
-                        
-                        if (amazonPrice && amazonPrice > 0) {
-                            // Update SPRICE in table
-                            row.update({
-                                SPRICE: amazonPrice
-                            });
-                            
-                            // Force redraw
-                            row.reformat();
-                            
-                            // Save to database
-                            saveSpriceWithRetry(sku, amazonPrice, row)
-                                .then(() => {
-                                    updatedCount++;
-                                    if (updatedCount + noAmazonPriceCount === totalSkus) {
-                                        let message = `Amazon price applied to ${updatedCount} SKU(s)`;
-                                        if (noAmazonPriceCount > 0) {
-                                            message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price)`;
-                                        }
-                                        showToast(message, updatedCount > 0 ? 'success' : 'error');
-                                    }
-                                })
-                                .catch(() => {
-                                    noAmazonPriceCount++;
-                                    if (updatedCount + noAmazonPriceCount === totalSkus) {
-                                        showToast(`Applied to ${updatedCount} SKU(s), ${noAmazonPriceCount} failed`, 'error');
-                                    }
-                                });
-                            
-                            updatedCount++;
-                        } else {
-                            noAmazonPriceCount++;
-                        }
-                    } else {
-                        noAmazonPriceCount++;
-                    }
-                });
-                
-                // Show immediate feedback
-                if (noAmazonPriceCount === totalSkus) {
-                    showToast('No Amazon prices found for selected SKUs', 'error');
-                }
-            }
 
             // Clear SPRICE button handler
             $('#clear-sprice-selected-btn').on('click', function() {
@@ -2810,22 +2741,9 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
-                            const rowData = cell.getRow().getData();
-                            const amazonPrice = parseFloat(rowData['A Price']) || 0;
-                            
                             if (value === 0) {
                                 return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                             }
-                            
-                            // Color code based on Amazon price comparison
-                            if (amazonPrice > 0 && value > 0) {
-                                if (value < amazonPrice) {
-                                    return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
-                                } else if (value > amazonPrice) {
-                                    return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
-                                }
-                            }
-                            
                             return `$${value.toFixed(2)}`;
                         },
                         width: 70
@@ -4617,7 +4535,7 @@
 
             // Section Filter: column visibility groups
             var pricingOnlyColumns = [
-                'image_path', 'E Stock', 'nr_req', 'SCVR',
+                'image_path', 'E Stock', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
                 'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
                 'AD_Spend_L30'
@@ -5041,7 +4959,7 @@
                 $('#more-sold-count').text(moreSoldCount.toLocaleString());
                 
                 $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
-                $('#total-sales-amt-badge').text('Total Sales: $' + Math.round(totalSalesAmt).toLocaleString());
+                $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSalesAmt).toLocaleString());
                 
                 $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
                 $('#avg-pft-badge').text('NPFT: ' + Math.round(npftPercent) + '%');
@@ -5049,7 +4967,7 @@
                 $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
                 $('#tacos-percent-badge').text('Ads%: ' + Math.round(tacosPercent) + '%');
                 
-                $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
+                $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());

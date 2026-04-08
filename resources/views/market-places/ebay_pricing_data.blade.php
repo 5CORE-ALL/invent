@@ -109,8 +109,8 @@
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">Avg CVR: 0.00%</span>
                         
                         <!-- eBay Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
@@ -128,8 +128,6 @@
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs (INV>0)">Map: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="not-map-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">N MP: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon (INV>0)">< Amz: 0</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon (INV>0)">> Amz: 0</span>
                     </div>
                 </div>
             </div>
@@ -470,35 +468,8 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
-                            const rowData = cell.getRow().getData();
-                            const amazonPrice = parseFloat(rowData['A Price']) || 0;
-                            
                             if (value === 0) {
                                 return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
-                            }
-                            
-                            // Color code based on Amazon price comparison (like Reverb)
-                            if (amazonPrice > 0 && value > 0) {
-                                if (value < amazonPrice) {
-                                    return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
-                                } else if (value > amazonPrice) {
-                                    return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
-                                }
-                            }
-                            
-                            return `$${value.toFixed(2)}`;
-                        },
-                        width: 70
-                    },
-                    {
-                        title: "A Prc",
-                        field: "A Price",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue());
-                            if (value === null || value === 0 || isNaN(value)) {
-                                return '<span style="color: #6c757d;">-</span>';
                             }
                             return `$${value.toFixed(2)}`;
                         },
@@ -1103,26 +1074,6 @@
                     });
                 }
 
-                // < Amz badge filter (only INV > 0)
-                if (lessAmzFilterActive) {
-                    table.addFilter(function(data) {
-                        const inv = parseFloat(data['INV']) || 0;
-                        const ebayPrice = parseFloat(data['eBay Price']) || 0;
-                        const amazonPrice = parseFloat(data['A Price']) || 0;
-                        return inv > 0 && amazonPrice > 0 && ebayPrice > 0 && ebayPrice < amazonPrice;
-                    });
-                }
-
-                // > Amz badge filter (only INV > 0)
-                if (moreAmzFilterActive) {
-                    table.addFilter(function(data) {
-                        const inv = parseFloat(data['INV']) || 0;
-                        const ebayPrice = parseFloat(data['eBay Price']) || 0;
-                        const amazonPrice = parseFloat(data['A Price']) || 0;
-                        return inv > 0 && amazonPrice > 0 && ebayPrice > 0 && ebayPrice > amazonPrice;
-                    });
-                }
-                
                 updateCalcValues();
                 updateSummary();
             }
@@ -1188,21 +1139,6 @@
                 applyFilters();
             });
 
-            let lessAmzFilterActive = false;
-            let moreAmzFilterActive = false;
-
-            $('#less-amz-badge').on('click', function() {
-                lessAmzFilterActive = !lessAmzFilterActive;
-                moreAmzFilterActive = false;
-                applyFilters();
-            });
-
-            $('#more-amz-badge').on('click', function() {
-                moreAmzFilterActive = !moreAmzFilterActive;
-                lessAmzFilterActive = false;
-                applyFilters();
-            });
-            
             // Update PFT% and ROI% calc values
             function updateCalcValues() {
                 const data = table.getData("active");
@@ -1245,9 +1181,6 @@
                 let missingCount = 0;
                 let mapCount = 0;
                 let notMapCount = 0;
-                let lessAmzCount = 0;
-                let moreAmzCount = 0;
-
                 data.forEach(row => {
                     totalTcos += parseFloat(row['AD%'] || 0);
                     totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
@@ -1290,16 +1223,6 @@
                         }
                     }
                     
-                    // Count < Amz and > Amz (only INV > 0)
-                    const ebayPrice = parseFloat(row['eBay Price']) || 0;
-                    const amazonPrice = parseFloat(row['A Price']) || 0;
-                    if (inv > 0 && amazonPrice > 0 && ebayPrice > 0) {
-                        if (ebayPrice < amazonPrice) {
-                            lessAmzCount++;
-                        } else if (ebayPrice > amazonPrice) {
-                            moreAmzCount++;
-                        }
-                    }
                 });
 
                 let totalWeightedPrice = 0;
@@ -1311,7 +1234,7 @@
                     totalL30 += l30;
                 });
                 const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
-                $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
+                $('#avg-price-badge').text('Price: $' + Math.round(avgPrice));
 
                 let totalViews = 0;
                 data.forEach(row => {
@@ -1331,7 +1254,7 @@
                 $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
                 $('#total-sales-amt-badge').text('Total Sales: $' + Math.round(totalSalesAmt).toLocaleString());
                 $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
-                $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
+                $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-inv-badge').text('Total INV: ' + Math.round(totalFbaInv).toLocaleString());
                 $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
@@ -1344,8 +1267,6 @@
                 $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
                 $('#map-count-badge').text('Map: ' + mapCount.toLocaleString());
                 $('#not-map-count-badge').text('N MP: ' + notMapCount.toLocaleString());
-                $('#less-amz-badge').text('< Amz: ' + lessAmzCount.toLocaleString());
-                $('#more-amz-badge').text('> Amz: ' + moreAmzCount.toLocaleString());
             }
 
             // Build Column Visibility Dropdown
