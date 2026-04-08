@@ -588,7 +588,7 @@
                                 @endphp
                                 @continue($readyToShip === 'Yes')
                                 @continue($nrValue === 'NR')
-                                <tr data-stage="{{ $stageValue ?? '' }}" class="stage-row" data-sku="{{ $item->sku }}" data-parent="{{ e($item->parent ?? '') }}">
+                                <tr data-stage="{{ $stageValue ?? '' }}" class="stage-row" data-mip-id="{{ $item->id }}" data-sku="{{ e($item->sku ?? '') }}" data-parent="{{ e($item->parent ?? '') }}">
                                     <td data-column="0" class="text-center">
                                         <input type="checkbox" class="row-checkbox" data-sku="{{ $item->sku }}">
                                     </td>
@@ -741,7 +741,7 @@
                                     </td>
 
                                     <td data-column="6" class="text-center" style="width: 112.5px; min-width: 112.5px; max-width: 112.5px;">
-                                        <select data-sku="{{ $item->sku }}" data-column="supplier" class="form-select form-select-sm auto-save" style="min-width: 105px; max-width: 105px; font-size: 12px;">
+                                        <select data-sku="{{ e($item->sku ?? '') }}" data-column="supplier" class="form-select form-select-sm auto-save" style="min-width: 105px; max-width: 105px; font-size: 12px;">
                                             <option value="">supplier</option>
                                             @foreach ($suppliers as $supplierName)
                                                 <option value="{{ $supplierName }}" {{ ($item->supplier ?? '') == $supplierName ? 'selected' : '' }}>
@@ -1288,14 +1288,23 @@
                 const label = column === 'pkg_inst' ? 'Pkg Inst.' : column === 'u_manual' ? 'U-Manual.' : 'Compliance.';
                 const current = (dot.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
                 const next = current === 'Yes' ? 'No' : 'Yes';
+                const row = dot.closest('tr');
+                const mipId = row ? String(row.getAttribute('data-mip-id') || '').trim() : '';
 
                 fetch('/mfrg-progresses/inline-update-by-sku', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
-                    body: JSON.stringify({ sku, column, value: next })
+                    body: JSON.stringify({
+                        sku,
+                        column,
+                        value: next,
+                        mip_id: mipId !== '' ? mipId : undefined,
+                    })
                 })
                     .then(res => res.json())
                     .then(res => {
@@ -1482,23 +1491,61 @@
         function setupAutoSave() {
             document.querySelectorAll('.auto-save').forEach(function (input) {
                 input.addEventListener('change', function () {
-                    const sku = this.dataset.sku;
+                    const row = this.closest('tr');
+                    let sku = (this.getAttribute('data-sku') || this.dataset.sku || '').trim();
+                    if (!sku && row) {
+                        sku = (row.getAttribute('data-sku') || '').trim();
+                    }
+                    if (!sku && row) {
+                        const skuText = row.querySelector('td[data-column="3"] .mip-sku-text');
+                        if (skuText) {
+                            sku = (skuText.textContent || '').trim();
+                        }
+                    }
                     const column = this.dataset.column;
                     const value = this.value;
-                    const row = this.closest('tr');
 
-                    if (!sku || !column) return;
+                    if (!column) {
+                        return;
+                    }
+                    if (!sku) {
+                        alert('Could not read SKU for this row — please refresh the page and try again.');
+                        return;
+                    }
 
-                    // ✅ Save via AJAX
+                    const mipId = row ? String(row.getAttribute('data-mip-id') || '').trim() : '';
+
+                    // ✅ Save via AJAX (mip_id = exact mfrg_progress row — fixes duplicate-SKU updating the wrong DB row)
                     fetch('/mfrg-progresses/inline-update-by-sku', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
-                        body: JSON.stringify({ sku, column, value })
+                        body: JSON.stringify({
+                            sku,
+                            column,
+                            value,
+                            mip_id: mipId !== '' ? mipId : undefined,
+                        })
                     })
-                    .then(res => res.json())
+                    .then(function (res) {
+                        return res.text().then(function (text) {
+                            let data = null;
+                            try {
+                                data = text ? JSON.parse(text) : {};
+                            } catch (e) {
+                                throw new Error(text ? text.slice(0, 240) : 'Empty response');
+                            }
+                            if (!res.ok) {
+                                const msg = (data && data.message) ? data.message : ('HTTP ' + res.status);
+                                throw new Error(msg);
+                            }
+                            return data;
+                        });
+                    })
                     .then(res => {
                         if (res.success) {
                             this.style.border = '2px solid green';
@@ -1596,11 +1643,13 @@
                         } else {
                             this.style.border = '2px solid red';
                             console.log('❌ Error:', res.message);
+                            alert(res.message ? ('Save failed: ' + res.message) : 'Save failed.');
                         }
                     })
-                    .catch(() => {
+                    .catch(function (err) {
                         this.style.border = '2px solid red';
-                        alert('❌ AJAX error occurred.');
+                        const msg = err && err.message ? err.message : String(err);
+                        alert('❌ Save error: ' + msg);
                     });
                 });
             });
@@ -1906,10 +1955,16 @@
 
                     if (!sku || !column || !file) return;
 
+                    const row = input.closest('tr');
+                    const mipId = row ? String(row.getAttribute('data-mip-id') || '').trim() : '';
+
                     const formData = new FormData();
                     formData.append('sku', sku);
                     formData.append('column', column);
-                    formData.append('value', file); 
+                    formData.append('value', file);
+                    if (mipId !== '') {
+                        formData.append('mip_id', mipId);
+                    }
 
                     fetch('/mfrg-progresses/inline-update-by-sku', {
                         method: 'POST',

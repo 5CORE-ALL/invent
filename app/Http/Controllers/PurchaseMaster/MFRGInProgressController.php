@@ -9,18 +9,12 @@ use App\Models\ReadyToShip;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class MFRGInProgressController extends Controller
 {
-    /** Cache key for supplier parent map + name list + platform links (invalidates on TTL). */
-    private const SUPPLIER_CACHE_KEY = 'mfrg_mip_suppliers_struct_v2';
-
-    private const SUPPLIER_CACHE_TTL_SECONDS = 120;
-
     public function index()
     {
         $t0 = microtime(true);
@@ -158,15 +152,13 @@ class MFRGInProgressController extends Controller
     }
 
     /**
+     * Supplier parent map, names (dropdown), and platform links — always from DB (no cache), so MIP stays in sync with /supplier.list edits.
+     *
      * @return array{map: array<string, list<string>>, names: \Illuminate\Support\Collection<int, string>, platformsByName: array<string, list<array{label: string, url: ?string, external?: bool, display?: string}>>}
      */
     private static function getMipSupplierCache(): array
     {
-        return Cache::remember(
-            self::SUPPLIER_CACHE_KEY,
-            self::SUPPLIER_CACHE_TTL_SECONDS,
-            fn () => self::buildSupplierMapFromDb()
-        );
+        return self::buildSupplierMapFromDb();
     }
 
     /**
@@ -371,7 +363,39 @@ class MFRGInProgressController extends Controller
     }
 
     /**
-     * Resolve MIP row by SKU: exact match first, then TRIM+UPPER (like archive APIs), then full normalizeMipSku (spaces/NBSP/case).
+     * Aggressive SKU normalization for inline update lookup (Unicode spaces, NBSP, ZWSP, case, collapsed spaces).
+     */
+    private static function normalizeSkuForMipLookup(?string $sku): string
+    {
+        if ($sku === null || $sku === '') {
+            return '';
+        }
+        $s = (string) $sku;
+        $s = str_replace(["\xC2\xA0", "\xE2\x80\x8B", "\r", "\n", "\t"], ' ', $s);
+        // Thin space, narrow NBSP, figure space, etc. → regular space
+        $s = preg_replace('/\p{Z}+/u', ' ', $s);
+        $s = strtoupper(trim($s));
+        $s = preg_replace('/\s+/u', ' ', $s);
+
+        return trim($s);
+    }
+
+    private static function normalizeSkuForMipLookupCompact(?string $sku): string
+    {
+        $n = self::normalizeSkuForMipLookup($sku);
+
+        return $n === '' ? '' : preg_replace('/\s+/u', '', $n);
+    }
+
+    private static function normalizeSkuForMipLookupAlnum(?string $sku): string
+    {
+        $n = self::normalizeSkuForMipLookup($sku);
+
+        return $n === '' ? '' : strtoupper(preg_replace('/[^A-Z0-9]/u', '', $n));
+    }
+
+    /**
+     * Resolve MIP row by SKU: exact → TRIM+UPPER SQL → normalized → space-stripped → alphanumeric (hyphen/space drift).
      */
     private static function findMfrgProgressBySkuForInlineUpdate(?string $sku): ?MfrgProgress
     {
@@ -395,16 +419,27 @@ class MFRGInProgressController extends Controller
             return $byTrimUpper;
         }
 
-        $needle = self::normalizeMipSku($sku);
+        $needle = self::normalizeSkuForMipLookup($sku);
         if ($needle === '') {
             return null;
         }
+
+        $needleCompact = self::normalizeSkuForMipLookupCompact($sku);
+        $needleAlnum = self::normalizeSkuForMipLookupAlnum($sku);
+        $useAlnum = strlen($needleAlnum) >= 10;
 
         foreach (MfrgProgress::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->cursor() as $candidate) {
-            if (self::normalizeMipSku($candidate->sku) === $needle) {
+            $raw = (string) ($candidate->sku ?? '');
+            if (self::normalizeSkuForMipLookup($raw) === $needle) {
+                return $candidate;
+            }
+            if ($needleCompact !== '' && self::normalizeSkuForMipLookupCompact($raw) === $needleCompact) {
+                return $candidate;
+            }
+            if ($useAlnum && self::normalizeSkuForMipLookupAlnum($raw) === $needleAlnum) {
                 return $candidate;
             }
         }
@@ -430,7 +465,26 @@ class MFRGInProgressController extends Controller
         }
 
         $columnsAllowCreate = ['supplier', 'supplier_sku'];
-        $progress = self::findMfrgProgressBySkuForInlineUpdate($skuKey);
+
+        $progress = null;
+        $mipIdRaw = $request->input('mip_id');
+        if ($mipIdRaw !== null && $mipIdRaw !== '' && ctype_digit((string) $mipIdRaw)) {
+            $rowById = MfrgProgress::query()->find((int) $mipIdRaw);
+            if ($rowById) {
+                if ($skuKey !== null && $skuKey !== ''
+                    && self::normalizeSkuForMipLookup((string) $rowById->sku) !== self::normalizeSkuForMipLookup($skuKey)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Row does not match this SKU — refresh the page.',
+                    ], 409);
+                }
+                $progress = $rowById;
+            }
+        }
+
+        if (! $progress) {
+            $progress = self::findMfrgProgressBySkuForInlineUpdate($skuKey);
+        }
         if (! $progress) {
             if (in_array($column, $columnsAllowCreate) && $skuKey !== null && $skuKey !== '') {
                 $progress = new MfrgProgress;
@@ -477,8 +531,21 @@ class MFRGInProgressController extends Controller
         if ($column === 'delivery_date' && ($value === '' || $value === null)) {
             $value = null;
         }
-        $progress->{$column} = $value;
-        $progress->save();
+        try {
+            $progress->{$column} = $value;
+            $progress->save();
+        } catch (\Throwable $e) {
+            Log::warning('mip.inlineUpdateBySku.save_failed', [
+                'sku' => $skuKey,
+                'column' => $column,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Save failed: '.$e->getMessage(),
+            ], 500);
+        }
 
         return response()->json(['success' => true]);
     }
