@@ -71,7 +71,11 @@ class EbayTwoController extends Controller
 
     public function ebay2TabulatorView(Request $request)
     {
-        return view("market-places.ebay2_tabulator_view");
+        $channelAdsPercent = app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+
+        return view('market-places.ebay2_tabulator_view', [
+            'channelAdsPercent' => $channelAdsPercent,
+        ]);
     }
 
     public function ebay2opTabulatorView(Request $request)
@@ -830,6 +834,20 @@ class EbayTwoController extends Controller
             }
         }
 
+        // AD% = channel-level Ads% (same as /all-marketplace-master), every row identical
+        $channelAdsPct = app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+        foreach ($result as $row) {
+            if (! is_object($row)) {
+                continue;
+            }
+            $row->{'AD%'} = $channelAdsPct;
+            $gpft = (float) ($row->{'GPFT%'} ?? 0);
+            $row->{'PFT %'} = round($gpft - $channelAdsPct, 2);
+            if (isset($row->SGPFT) && $row->SGPFT !== null && $row->SGPFT !== '') {
+                $row->SPFT = round((float) $row->SGPFT - $channelAdsPct, 2);
+            }
+        }
+
         // Auto-save daily summary in background (non-blocking); skip for filtered views
         if (! $request->boolean('open_box_only')) {
             $this->saveDailySummaryIfNeeded($result);
@@ -843,17 +861,6 @@ class EbayTwoController extends Controller
 
                 return stripos((string) $sku, 'OPEN BOX') !== false;
             }));
-
-            // AD% = channel-level Ads% (same as all-marketplace-master), every row identical
-            $channelAdsPct = app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
-            foreach ($result as $row) {
-                if (! is_object($row)) {
-                    continue;
-                }
-                $row->{'AD%'} = $channelAdsPct;
-                $gpft = (float) ($row->{'GPFT%'} ?? 0);
-                $row->{'PFT %'} = round($gpft - $channelAdsPct, 2);
-            }
         }
 
         return response()->json([

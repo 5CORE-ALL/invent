@@ -66,6 +66,16 @@
             background-color: #e83e8c;
         }
 
+        #summary-stats #tacos-percent-badge.summary-badge-tacos {
+            background-color: #b91c1c !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            border-radius: 0.75rem;
+            border: none;
+        }
+
         /* Image hover preview (same pattern as doba_tabulator_view) */
         .ebay2op-img-hover-wrap {
             display: inline-block;
@@ -561,7 +571,7 @@
                         
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="tacos-percent-badge" style="color: white; font-weight: bold;">Ads%: 0%</span>
+                        <span class="badge fs-6 p-2 summary-badge-tacos" id="tacos-percent-badge">TACOS: 0.0%</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">NPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: white; font-weight: bold;">GROI: 0%</span>
                         <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
@@ -2808,7 +2818,7 @@
                                 return `<span style="color: #dc3545; font-weight: 600;">100%</span>${iconHtml}`;
                             }
                             
-                            return `${Math.round(parseFloat(value))}%${iconHtml}`;
+                            return `${parseFloat(value).toFixed(1)}%${iconHtml}`;
                         },
                         width: 70
                     },
@@ -4965,7 +4975,7 @@
                 $('#avg-pft-badge').text('NPFT: ' + Math.round(npftPercent) + '%');
                 $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
                 $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
-                $('#tacos-percent-badge').text('Ads%: ' + Math.round(tacosPercent) + '%');
+                $('#tacos-percent-badge').text('TACOS: ' + tacosPercent.toFixed(1) + '%');
                 
                 $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');

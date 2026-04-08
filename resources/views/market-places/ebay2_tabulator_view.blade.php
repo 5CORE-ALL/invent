@@ -165,6 +165,41 @@
             opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
+
+        /* Summary badges: one row only; share width; text scales to fit; thin scroll if needed */
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
+        /* TACOS summary badge: white bold uppercase on brick red */
+        #summary-stats #tacos-percent-badge.summary-badge-tacos {
+            background-color: #b91c1c !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            border-radius: 0.75rem;
+            border: none;
+        }
     </style>
 @endsection
 
@@ -266,6 +301,15 @@
                             <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="ACTIVATE">Activate Campaigns</a></li>
                         </ul>
                     </div>
+
+                    <select id="growth-sign-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="eBay E L30 vs E L60: (L30 − L60) / L60 × 100; L60=0 and L30&gt;0 counts as +100%">
+                        <option value="all" selected>All Growth</option>
+                        <option value="negative">Negative Only</option>
+                        <option value="zero">Zero Only</option>
+                        <option value="positive">Positive Only</option>
+                    </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
@@ -525,7 +569,7 @@
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary (E Stock &gt; 0)</h6>
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="ebay2-summary-badge-row">
                         <!-- Sold Filter Badges (Clickable) -->
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: <span id="zero-sold-count">0</span></span>
                         <span class="badge fs-6 p-2 sold-filter-badge" data-filter="sold" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">> 0 Sold: <span id="more-sold-count">0</span></span>
@@ -540,7 +584,7 @@
                         <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">NPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: white; font-weight: bold;">GROI: 0%</span>
                         <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="tacos-percent-badge" style="color: white; font-weight: bold;">TACOS: 0%</span>
+                        <span class="badge fs-6 p-2 summary-badge-tacos" id="tacos-percent-badge">TACOS: 0.0%</span>
                         
                         <!-- eBay Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
@@ -897,6 +941,8 @@
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         const COLUMN_VIS_KEY = "ebay2_tabulator_column_visibility";
+        /** Same as AD% column — getEbaytwoMasterAdsPercent() / all-marketplace-master */
+        const EBAY2_CHANNEL_ADS_PCT = {{ number_format((float) ($channelAdsPercent ?? 0), 4, '.', '') }};
         let skuMetricsChart = null;
         let currentSku = null;
         let table = null; // Global table reference
@@ -2472,6 +2518,40 @@
                         sorter: "number"
                     },
                     {
+                        title: "Growth",
+                        field: "growth_percent",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: function(a, b, aRow, bRow) {
+                            function ebaySalesGrowthPct(row) {
+                                const d = row.getData();
+                                const l30 = parseFloat(d['eBay L30']) || 0;
+                                const l60 = parseFloat(d['eBay L60']) || 0;
+                                if (l60 === 0) return l30 > 0 ? 100 : 0;
+                                return ((l30 - l60) / l60) * 100;
+                            }
+                            return ebaySalesGrowthPct(aRow) - ebaySalesGrowthPct(bRow);
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const l30 = parseFloat(rowData['eBay L30']) || 0;
+                            const l60 = parseFloat(rowData['eBay L60']) || 0;
+                            if (l60 === 0) {
+                                if (l30 > 0) {
+                                    return `<span style="color: #28a745; font-weight: bold;">+100%</span>`;
+                                }
+                                return '<span style="color: #6c757d;">0%</span>';
+                            }
+                            const growth = ((l30 - l60) / l60) * 100;
+                            const growthRounded = Math.round(growth);
+                            let color = '#6c757d';
+                            if (growthRounded > 0) color = '#28a745';
+                            else if (growthRounded < 0) color = '#dc3545';
+                            const sign = growthRounded > 0 ? '+' : '';
+                            return `<span style="color: ${color}; font-weight: bold;">${sign}${growthRounded}%</span>`;
+                        }
+                    },
+                    {
                         title: "E Stock",
                         field: "E Stock",
                         hozAlign: "center",
@@ -2713,7 +2793,7 @@
                                 return `<span style="color: #dc3545; font-weight: 600;">100%</span>${iconHtml}`;
                             }
                             
-                            return `${parseFloat(value).toFixed(0)}%${iconHtml}`;
+                            return `${parseFloat(value).toFixed(1)}%${iconHtml}`;
                         },
                         width: 70
                     },
@@ -3158,6 +3238,7 @@
                         field: "pmt_spend_L30",
                         hozAlign: "center",
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             return `<span>$${value.toFixed(2)}</span>`;
@@ -4111,6 +4192,25 @@
                     });
                 }
 
+                const growthSign = $('#growth-sign-filter').val();
+                if (growthSign && growthSign !== 'all') {
+                    table.addFilter(function(data) {
+                        const l30 = parseFloat(data['eBay L30']) || 0;
+                        const l60 = parseFloat(data['eBay L60']) || 0;
+                        let growth = 0;
+                        if (l60 > 0) {
+                            growth = ((l30 - l60) / l60) * 100;
+                        } else if (l30 > 0) {
+                            growth = 100;
+                        }
+                        const g = Math.round(growth);
+                        if (growthSign === 'negative') return g < 0;
+                        if (growthSign === 'zero') return g === 0;
+                        if (growthSign === 'positive') return g > 0;
+                        return true;
+                    });
+                }
+
                 if (nrlFilter !== 'all') {
                     table.addFilter(function(data) {
                         if (nrlFilter === 'REQ') {
@@ -4394,6 +4494,13 @@
                 applyFilters();
             });
 
+            $('#growth-sign-filter').on('change', function() {
+                applyFilters();
+                if ($('#section-filter').val() === 'kw_ads') {
+                    updateKwAdsStats();
+                }
+            });
+
             // KW Ads filter change handlers
             $('#kw-utilization-filter, #kw-status-filter, #kw-nra-filter, #kw-nrl-filter, #kw-sbidm-filter').on('change', function() {
                 applyFilters();
@@ -4458,8 +4565,7 @@
             var pricingOnlyColumns = [
                 'image_path', 'E Stock', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
-                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
-                'AD_Spend_L30', 'pmt_spend_L30'
+                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI'
             ];
             var kwAdsOnlyColumns = [
                 'kw_hasCampaign', 'NRL', 'l7_views', 'kw_cvr',
@@ -4473,7 +4579,7 @@
                 'pmt_pft', 'pmt_roi', 'pmt_tpft', 'pmt_troi', 'pmt_nrl'
             ];
             var sharedColumns = [
-                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30', 'views'
+                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30', 'growth_percent', 'views'
             ];
 
             function applySectionColumnVisibility(sectionVal) {
@@ -4574,9 +4680,10 @@
                 var processedSkusForNrlMissing = new Set();
                 var processedSkusForZeroInv = new Set();
 
-                // Get current inventory / E L30 filter values (match applyFilters)
+                // Get current inventory / E L30 / Growth sign filter values (match applyFilters)
                 var invFilterVal = $('#inventory-filter').val() || 'more';
                 var el30FilterVal = $('#el30-filter').val() || 'all';
+                var growthSignKw = $('#growth-sign-filter').val() || 'all';
 
                 allData.forEach(function(row) {
                     if (row.is_parent_summary) return;
@@ -4624,6 +4731,20 @@
                         if (ebayL30ForFilter !== 0) return;
                     } else if (el30FilterVal === 'more') {
                         if (ebayL30ForFilter <= 0) return;
+                    }
+
+                    var l60g = parseFloat(row['eBay L60']) || 0;
+                    var growthRawKw = 0;
+                    if (l60g > 0) {
+                        growthRawKw = ((ebayL30ForFilter - l60g) / l60g) * 100;
+                    } else if (ebayL30ForFilter > 0) {
+                        growthRawKw = 100;
+                    }
+                    var gRoundKw = Math.round(growthRawKw);
+                    if (growthSignKw && growthSignKw !== 'all') {
+                        if (growthSignKw === 'negative' && gRoundKw >= 0) return;
+                        if (growthSignKw === 'zero' && gRoundKw !== 0) return;
+                        if (growthSignKw === 'positive' && gRoundKw <= 0) return;
                     }
 
                     // NRL count (unique per SKU)
@@ -4850,8 +4971,8 @@
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
                 
-                // Calculate percentages
-                const tacosPercent = totalSalesAmt > 0 ? ((totalPmtSpendL30 / totalSalesAmt) * 100) : 0;
+                // TACOS badge = AD% column (channel Ads%, not PMT÷filtered sales)
+                const tacosPercent = EBAY2_CHANNEL_ADS_PCT;
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
                 const npftPercent = avgGpft - tacosPercent;
@@ -4869,7 +4990,7 @@
                 $('#avg-pft-badge').text('NPFT: ' + Math.round(npftPercent) + '%');
                 $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
                 $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
-                $('#tacos-percent-badge').text('TACOS: ' + Math.round(tacosPercent) + '%');
+                $('#tacos-percent-badge').text('TACOS: ' + tacosPercent.toFixed(1) + '%');
                 
                 $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
@@ -5085,6 +5206,7 @@
                 'E Dil%': 'Dil%',
                 'eBay L30': 'eBay L30',
                 'eBay L60': 'eBay L60',
+                'growth_percent': 'Growth',
                 'eBay Price': 'eBay Price',
                 'lmp_price': 'LMP',
                 'AD_Spend_L30': 'AD Spend L30',

@@ -163,6 +163,7 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "ebay_tabulator_column_visibility";
+        const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
 
         $(document).ready(function() {
             // Badge filter state variables
@@ -172,7 +173,7 @@
             let notMapFilterActive = false;
 
             const table = new Tabulator("#ebay-table", {
-                ajaxURL: "/ebay-data-json",
+                ajaxURL: EBAY_DATA_JSON_URL,
                 ajaxSorting: false,
                 layout: "fitDataStretch",
                 pagination: true,

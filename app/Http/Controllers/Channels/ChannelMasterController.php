@@ -848,6 +848,32 @@ class ChannelMasterController extends Controller
         return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 2) : 0.0;
     }
 
+    /**
+     * eBay 1 channel Ads% — same as getViewChannelData / all-marketplace-master for channel eBay.
+     */
+    public function getEbayMasterAdsPercent(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebay');
+        $totalAdSpend = (float) ($metrics['Total Ad Spend'] ?? 0);
+        $m = MarketplaceDailyMetric::where('channel', 'eBay')->latest('date')->first();
+        $l30SalesVal = (float) ($m->total_sales ?? 0);
+
+        return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 4) : 0.0;
+    }
+
+    /**
+     * eBay 3 channel Ads% — same as getViewChannelData / all-marketplace-master for channel eBay 3.
+     */
+    public function getEbaythreeMasterAdsPercent(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebaythree');
+        $totalAdSpend = (float) ($metrics['Total Ad Spend'] ?? 0);
+        $m = MarketplaceDailyMetric::where('channel', 'eBay 3')->latest('date')->first();
+        $l30SalesVal = (float) ($m->total_sales ?? 0);
+
+        return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 4) : 0.0;
+    }
+
     public function getViewChannelData(Request $request)
     {
         // Fetch both channel and sheet_link from ChannelMaster

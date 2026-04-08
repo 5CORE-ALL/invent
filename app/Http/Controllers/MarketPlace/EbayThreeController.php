@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
@@ -50,10 +51,13 @@ class EbayThreeController extends Controller
             ->where('report_range', 'L30')
             ->selectRaw('SUM(CAST(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
             ->value('total_spend') ?? 0;
-        
-        return view("market-places.ebay3_tabulator_view", [
+
+        $channelAdsPercent = app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+
+        return view('market-places.ebay3_tabulator_view', [
             'kwSpent' => (float) $kwSpent,
             'pmtSpent' => (float) $pmtSpent,
+            'channelAdsPercent' => $channelAdsPercent,
         ]);
     }
 
@@ -1178,11 +1182,64 @@ class EbayThreeController extends Controller
             $treeData[] = $orphan;
         }
 
+        $this->applyEbay3ChannelAdsPercentToTree($treeData);
+
         return response()->json([
             'message' => 'eBay3 Data Fetched Successfully',
             'data' => $treeData,
             'status' => 200
         ]);
+    }
+
+    /**
+     * Set AD% on every row to channel Ads% (same formula as /all-marketplace-master).
+     *
+     * @param  array<int, array<string, mixed>>  $treeData
+     */
+    private function applyEbay3ChannelAdsPercentToTree(array &$treeData): void
+    {
+        $channelAdsPct = app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+        $walk = function (&$row) use (&$walk, $channelAdsPct) {
+            if (! is_array($row)) {
+                return;
+            }
+            $gpft = (float) ($row['GPFT%'] ?? 0);
+            $row['AD%'] = $channelAdsPct;
+            $row['PFT %'] = round($gpft - $channelAdsPct, 2);
+            if (isset($row['SGPFT']) && $row['SGPFT'] !== null && $row['SGPFT'] !== '') {
+                $row['SPFT'] = round((float) $row['SGPFT'] - $channelAdsPct, 2);
+            }
+            if (! empty($row['_children']) && is_array($row['_children'])) {
+                foreach ($row['_children'] as &$child) {
+                    $walk($child);
+                }
+                unset($child);
+            }
+        };
+        foreach ($treeData as &$top) {
+            $walk($top);
+        }
+        unset($top);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function applyEbay3ChannelAdsPercentToFlatRows(array &$rows): void
+    {
+        $channelAdsPct = app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+        foreach ($rows as &$row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $gpft = (float) ($row['GPFT%'] ?? 0);
+            $row['AD%'] = $channelAdsPct;
+            $row['PFT %'] = round($gpft - $channelAdsPct, 2);
+            if (isset($row['SGPFT']) && $row['SGPFT'] !== null && $row['SGPFT'] !== '') {
+                $row['SPFT'] = round((float) $row['SGPFT'] - $channelAdsPct, 2);
+            }
+        }
+        unset($row);
     }
 
     public function getEbay3ColumnVisibility(Request $request)
@@ -1686,6 +1743,8 @@ class EbayThreeController extends Controller
 
             $processedData[] = $processedItem;
         }
+
+        $this->applyEbay3ChannelAdsPercentToFlatRows($processedData);
 
         return response()->json([
             'message' => 'Data fetched successfully',

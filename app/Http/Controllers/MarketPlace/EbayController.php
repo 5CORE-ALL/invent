@@ -27,6 +27,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Carbon\Carbon;
 use Exception;
 use App\Models\AmazonChannelSummary;
+use App\Http\Controllers\Channels\ChannelMasterController;
 
 class EbayController extends Controller
 {
@@ -71,7 +72,16 @@ class EbayController extends Controller
         try {
             $response = $this->getViewEbayData($request);
             $data = json_decode($response->getContent(), true);
+            if (!is_array($data)) {
+                Log::error('ebayDataJson: getViewEbayData returned non-JSON or invalid JSON', [
+                    'snippet' => substr((string) $response->getContent(), 0, 400),
+                ]);
+                return response()->json(['error' => 'Invalid data payload from server'], 500);
+            }
             $rows = $data['data'] ?? [];
+            if (!is_array($rows)) {
+                $rows = [];
+            }
 
             // Auto-save daily summary in background (non-blocking); never break response on save failure
             try {
@@ -891,6 +901,17 @@ class EbayController extends Controller
             $result[] = (object) $row;
         }
 
+        // AD% = channel-level Ads% (same as /all-marketplace-master), every row identical
+        $channelAdsPct = app(ChannelMasterController::class)->getEbayMasterAdsPercent();
+        foreach ($result as $r) {
+            $r->{'AD%'} = $channelAdsPct;
+            $gpft = (float) ($r->{'GPFT%'} ?? 0);
+            $r->{'PFT %'} = round($gpft - $channelAdsPct, 2);
+            if (isset($r->SGPFT) && $r->SGPFT !== null && $r->SGPFT !== '') {
+                $r->SPFT = round((float) $r->SGPFT - $channelAdsPct, 2);
+            }
+        }
+
         // Inject parent summary rows so "View: Parent" filter shows them (one row per unique Parent)
         $byParent = [];
         foreach ($result as $r) {
@@ -964,7 +985,7 @@ class EbayController extends Controller
             $parentRow->kw_last_sbid = '';
             $parentRow->kw_sbid_m = '';
             $parentRow->kw_apprSbid = '';
-            $parentRow->{'AD%'} = 0;
+            $parentRow->{'AD%'} = $channelAdsPct;
             $parentRow->{'Total_pft'} = array_sum(array_map(function ($c) { return (float) ($c->{'Total_pft'} ?? 0); }, $children));
             $parentRow->Profit = $parentRow->{'Total_pft'};
             $parentRow->{'T_Sale_l30'} = array_sum(array_map(function ($c) { return (float) ($c->{'T_Sale_l30'} ?? 0); }, $children));
