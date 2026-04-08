@@ -370,9 +370,52 @@ class MFRGInProgressController extends Controller
         }
     }
 
+    /**
+     * Resolve MIP row by SKU: exact match first, then TRIM+UPPER (like archive APIs), then full normalizeMipSku (spaces/NBSP/case).
+     */
+    private static function findMfrgProgressBySkuForInlineUpdate(?string $sku): ?MfrgProgress
+    {
+        if ($sku === null) {
+            return null;
+        }
+        $sku = (string) $sku;
+        if ($sku === '') {
+            return null;
+        }
+
+        $byExact = MfrgProgress::query()->where('sku', $sku)->first();
+        if ($byExact) {
+            return $byExact;
+        }
+
+        $byTrimUpper = MfrgProgress::query()
+            ->whereRaw('UPPER(TRIM(sku)) = UPPER(TRIM(?))', [$sku])
+            ->first();
+        if ($byTrimUpper) {
+            return $byTrimUpper;
+        }
+
+        $needle = self::normalizeMipSku($sku);
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach (MfrgProgress::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->cursor() as $candidate) {
+            if (self::normalizeMipSku($candidate->sku) === $needle) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     public function inlineUpdateBySku(Request $request)
     {
-        $sku = $request->input('sku');
+        $skuRaw = $request->input('sku');
+        $skuKey = (is_string($skuRaw) || is_int($skuRaw) || is_float($skuRaw)) ? (string) $skuRaw : null;
         $column = $request->input('column');
 
         $validColumns = [
@@ -387,11 +430,11 @@ class MFRGInProgressController extends Controller
         }
 
         $columnsAllowCreate = ['supplier', 'supplier_sku'];
-        $progress = MfrgProgress::where('sku', $sku)->first();
+        $progress = self::findMfrgProgressBySkuForInlineUpdate($skuKey);
         if (! $progress) {
-            if (in_array($column, $columnsAllowCreate)) {
+            if (in_array($column, $columnsAllowCreate) && $skuKey !== null && $skuKey !== '') {
                 $progress = new MfrgProgress;
-                $progress->sku = $sku;
+                $progress->sku = $skuKey;
             } else {
                 return response()->json(['success' => false, 'message' => 'SKU not found.']);
             }
