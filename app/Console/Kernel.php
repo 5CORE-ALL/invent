@@ -211,6 +211,15 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(120)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-amazon-orders --auto-sync --with-items')
+            ->everyFourHours()
+            ->timezone('America/Los_Angeles')
+            ->name('amazon-fetch-orders')
+            ->withoutOverlapping(240)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Reverb: full sync (orders + Shopify→Reverb inventory) every 5 minutes
         // $schedule->command('reverb:sync-all')
         //     ->everyThirtyMinutes()

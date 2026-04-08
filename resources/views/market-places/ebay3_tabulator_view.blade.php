@@ -5,6 +5,13 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Image column hover preview (forecast.analysis) */
+        #image-hover-preview {
+            transition: opacity 0.2s ease;
+            pointer-events: auto;
+            z-index: 10050;
+        }
+
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
@@ -91,6 +98,27 @@
         }
         .tabulator-row.parent-row:hover .tabulator-frozen {
             background-color: #bef3f9 !important;
+        }
+
+        /* Hide tree + / − glyphs and box styling; keep control clickable to expand/collapse */
+        #ebay3-table .tabulator-data-tree-control {
+            background: transparent !important;
+            border: none !important;
+        }
+        #ebay3-table .tabulator-data-tree-control .tabulator-data-tree-control-expand,
+        #ebay3-table .tabulator-data-tree-control .tabulator-data-tree-control-expand::after,
+        #ebay3-table .tabulator-data-tree-control .tabulator-data-tree-control-collapse,
+        #ebay3-table .tabulator-data-tree-control .tabulator-data-tree-control-collapse::after {
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }
+
+        .ebay3-variation-dot:focus {
+            outline: 2px solid #0d6efd;
+            outline-offset: 2px;
         }
 
         .acos-info-icon {
@@ -234,8 +262,8 @@
 
                     <select id="view-mode-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="sku" selected>SKU Only</option>
-                        <option value="parent">Parent Only</option>
+                        <option value="sku">SKU Only</option>
+                        <option value="parent" selected>Parent Only</option>
                         <option value="both">Both (Parent + SKU)</option>
                     </select>
 
@@ -251,6 +279,13 @@
                         <option value="all" selected>All E L30</option>
                         <option value="zero">0 E L30</option>
                         <option value="more">E L30 &gt; 0</option>
+                    </select>
+
+                    <select id="variation-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all" selected>Variation — All</option>
+                        <option value="red">Variation — Red</option>
+                        <option value="green">Variation — Green</option>
                     </select>
 
                     <!-- KW Ads specific filters (hidden by default) -->
@@ -947,6 +982,25 @@
 
     // Background retry storage key
     const BACKGROUND_RETRY_KEY = 'ebay3_failed_price_pushes';
+    const VARIATION_GREEN_KEY = 'ebay3_variation_green_skus';
+
+    function loadVariationGreenSkus() {
+        try {
+            const raw = localStorage.getItem(VARIATION_GREEN_KEY);
+            const arr = raw ? JSON.parse(raw) : [];
+            return new Set(Array.isArray(arr) ? arr : []);
+        } catch (e) {
+            return new Set();
+        }
+    }
+
+    function persistVariationGreenSkus() {
+        try {
+            localStorage.setItem(VARIATION_GREEN_KEY, JSON.stringify([...variationGreenSkus]));
+        } catch (e) {}
+    }
+
+    let variationGreenSkus = loadVariationGreenSkus();
     
     // Save failed SKU to localStorage for background retry
     function saveFailedSkuForRetry(sku, price, retryCount = 0) {
@@ -2055,6 +2109,85 @@
         // Play/Pause parent navigation (like pricing-master-cvr)
         let isPlayNavigationActive = false;
         let currentPlayParentIndex = 0;
+
+        let ebayMpImagePreviewHideTimer = null;
+        let ebayMpImagePreviewEl = null;
+        function ebayMpRemoveImagePreview() {
+            if (ebayMpImagePreviewHideTimer) {
+                clearTimeout(ebayMpImagePreviewHideTimer);
+                ebayMpImagePreviewHideTimer = null;
+            }
+            document.querySelectorAll('#image-hover-preview').forEach(function(el) { el.remove(); });
+            ebayMpImagePreviewEl = null;
+        }
+        function ebayMpCancelImagePreviewHide() {
+            if (ebayMpImagePreviewHideTimer) {
+                clearTimeout(ebayMpImagePreviewHideTimer);
+                ebayMpImagePreviewHideTimer = null;
+            }
+        }
+        function ebayMpScheduleImagePreviewHide() {
+            ebayMpCancelImagePreviewHide();
+            ebayMpImagePreviewHideTimer = setTimeout(ebayMpRemoveImagePreview, 220);
+        }
+        function ebayMpEnsureImagePreviewListeners(wrap) {
+            if (wrap.dataset.ebayMpPreviewListeners === '1') return;
+            wrap.dataset.ebayMpPreviewListeners = '1';
+            wrap.addEventListener('mouseenter', ebayMpCancelImagePreviewHide);
+            wrap.addEventListener('mouseleave', ebayMpScheduleImagePreviewHide);
+        }
+        function ebayMpClampPreviewPosition(wrap, clientX, clientY) {
+            const pad = 12;
+            let left = clientX + pad;
+            let top = clientY + pad;
+            wrap.style.position = 'fixed';
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+            const rect = wrap.getBoundingClientRect();
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const m = 8;
+            if (rect.right > vw - m) left = Math.max(m, vw - rect.width - m);
+            if (rect.bottom > vh - m) top = Math.max(m, vh - rect.height - m);
+            if (left < m) left = m;
+            if (top < m) top = m;
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+        }
+        function ebayMpShowImagePreview(clientX, clientY, fullUrl) {
+            if (!fullUrl) return;
+            ebayMpCancelImagePreviewHide();
+            const existing = ebayMpImagePreviewEl;
+            if (existing && document.body.contains(existing)) {
+                const prevImg = existing.querySelector('img');
+                if (prevImg && prevImg.getAttribute('src') === fullUrl) {
+                    ebayMpClampPreviewPosition(existing, clientX, clientY);
+                    return;
+                }
+            }
+            document.querySelectorAll('#image-hover-preview').forEach(function(el) { el.remove(); });
+            ebayMpImagePreviewEl = null;
+            const wrap = document.createElement('div');
+            wrap.id = 'image-hover-preview';
+            wrap.style.zIndex = '10050';
+            wrap.style.pointerEvents = 'auto';
+            wrap.style.border = '1px solid #ccc';
+            wrap.style.background = '#fff';
+            wrap.style.padding = '4px';
+            wrap.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
+            wrap.style.borderRadius = '6px';
+            const big = document.createElement('img');
+            big.style.maxWidth = '350px';
+            big.style.maxHeight = '350px';
+            big.style.display = 'block';
+            big.alt = '';
+            big.src = fullUrl;
+            wrap.appendChild(big);
+            ebayMpEnsureImagePreviewListeners(wrap);
+            document.body.appendChild(wrap);
+            ebayMpImagePreviewEl = wrap;
+            ebayMpClampPreviewPosition(wrap, clientX, clientY);
+        }
         
         // Initialize Tabulator
         table = new Tabulator("#ebay3-table", {
@@ -2145,9 +2278,32 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
-                            return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
+                            const u = String(value).replace(/"/g, '&quot;');
+                            return '<img src="' + u + '" data-full="' + u + '" class="hover-thumb" alt="Product" style="width: 50px; height: 50px; object-fit: cover; cursor: zoom-in;">';
                         }
                         return '';
+                    },
+                    cellMouseOver: function(e, cell) {
+                        const img = cell.getElement().querySelector('.hover-thumb');
+                        if (!img) return;
+                        ebayMpShowImagePreview(e.clientX, e.clientY, img.getAttribute('data-full'));
+                    },
+                    cellMouseMove: function(e, cell) {
+                        const preview = ebayMpImagePreviewEl;
+                        if (!preview || !document.body.contains(preview)) return;
+                        const img = cell.getElement().querySelector('.hover-thumb');
+                        const fullUrl = img ? img.getAttribute('data-full') : '';
+                        const big = preview.querySelector('img');
+                        if (!fullUrl || !big || big.getAttribute('src') !== fullUrl) return;
+                        ebayMpClampPreviewPosition(preview, e.clientX, e.clientY);
+                    },
+                    cellMouseOut: function(e, cell) {
+                        const related = e.relatedTarget;
+                        if (related && typeof related.closest === 'function' && related.closest('#image-hover-preview')) {
+                            ebayMpCancelImagePreviewHide();
+                            return;
+                        }
+                        ebayMpScheduleImagePreviewHide();
                     },
                     headerSort: false,
                     width: 80,
@@ -2376,13 +2532,66 @@
                     width: 70,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        const skuUpper = ((rowData['(Child) sku'] || '') + '').toUpperCase();
+                        const isParentRow = skuUpper.includes('PARENT');
+                        const children = rowData._children;
+
+                        function isMissingItemId(itemId) {
+                            return !itemId || itemId === null || itemId === '';
+                        }
+
+                        // Parent row: M if any child would show M; else green dot (including zero children)
+                        if (isParentRow && children && Array.isArray(children)) {
+                            if (children.length > 0) {
+                                const anyChildMissing = children.some(function(ch) {
+                                    return isMissingItemId(ch['eBay_item_id']);
+                                });
+                                if (anyChildMissing) {
+                                    return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
+                                }
+                            }
+                            return '<span title="All child SKUs have eBay listing" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#28a745;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,0.12);"></span>';
+                        }
+
+                        // Child / leaf: Missing = no eBay3 item_id
                         const itemId = rowData['eBay_item_id'];
-                        
-                        // Missing = SKU exists in ProductMaster but not in eBay3 (no item_id)
-                        if (!itemId || itemId === null || itemId === '') {
+                        if (isMissingItemId(itemId)) {
                             return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                         }
                         return '';
+                    }
+                },
+                {
+                    title: "Variation",
+                    field: "_ebay3_variation",
+                    hozAlign: "center",
+                    width: 76,
+                    headerSort: false,
+                    headerTooltip: "Click dot: red ↔ green (saved in this browser)",
+                    formatter: function(cell) {
+                        const sku = cell.getRow().getData()['(Child) sku'] || '';
+                        const green = sku && variationGreenSkus.has(sku);
+                        const color = green ? '#28a745' : '#dc3545';
+                        const title = green ? 'Marked OK — click for red' : 'Default — click for green';
+                        const safeSku = String(sku).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                        return '<span class="ebay3-variation-dot" data-sku="' + safeSku + '" title="' + title + '" role="button" tabindex="0" ' +
+                            'style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + color +
+                            ';cursor:pointer;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,0.12);"></span>';
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                        const sku = cell.getRow().getData()['(Child) sku'];
+                        if (!sku) return;
+                        if (variationGreenSkus.has(sku)) {
+                            variationGreenSkus.delete(sku);
+                        } else {
+                            variationGreenSkus.add(sku);
+                        }
+                        persistVariationGreenSkus();
+                        cell.getRow().reformat();
+                        if (($('#variation-filter').val() || 'all') !== 'all') {
+                            applyFilters();
+                        }
                     }
                 },
                 {
@@ -3619,6 +3828,7 @@
             const roiFilter = $('#roi-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const cvrTrendFilter = $('#cvr-trend-filter').val();
+            const variationFilter = $('#variation-filter').val() || 'all';
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
             table.clearFilter(true);
@@ -4057,6 +4267,21 @@
                 });
             }
 
+            // Variation column state: default red; green = user-marked in this browser
+            if (variationFilter === 'red') {
+                table.addFilter(function(data) {
+                    const sku = data['(Child) sku'] || '';
+                    if (!sku) return true;
+                    return !variationGreenSkus.has(sku);
+                });
+            } else if (variationFilter === 'green') {
+                table.addFilter(function(data) {
+                    const sku = data['(Child) sku'] || '';
+                    if (!sku) return true;
+                    return variationGreenSkus.has(sku);
+                });
+            }
+
             // Map filter - show SKUs where INV = eBay Stock
             if (mapFilterActive) {
                 table.addFilter(function(data) {
@@ -4091,7 +4316,7 @@
             }, 100);
         }
 
-        $('#view-mode-filter, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter').on('change', function() {
+        $('#view-mode-filter, #inventory-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter').on('change', function() {
             applyFilters();
             if ($('#section-filter').val() === 'kw_ads') {
                 updateKwAdsStats();
@@ -4107,7 +4332,7 @@
 
         // ======== Section Filter: show/hide column groups ========
         var pricingOnlyColumns = [
-            'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
+            'image_path', 'Missing', '_ebay3_variation', 'eBay Stock', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
             'GPFT%', 'AD%', 'PFT %', 'ROI%',
             'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI'
         ];

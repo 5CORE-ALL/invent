@@ -5,6 +5,13 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Image column hover preview (forecast.analysis) */
+        #image-hover-preview {
+            transition: opacity 0.2s ease;
+            pointer-events: auto;
+            z-index: 10050;
+        }
+
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
@@ -2240,6 +2247,85 @@
                     onFail();
                 });
             }
+
+            let ebayMpImagePreviewHideTimer = null;
+            let ebayMpImagePreviewEl = null;
+            function ebayMpRemoveImagePreview() {
+                if (ebayMpImagePreviewHideTimer) {
+                    clearTimeout(ebayMpImagePreviewHideTimer);
+                    ebayMpImagePreviewHideTimer = null;
+                }
+                document.querySelectorAll('#image-hover-preview').forEach(function(el) { el.remove(); });
+                ebayMpImagePreviewEl = null;
+            }
+            function ebayMpCancelImagePreviewHide() {
+                if (ebayMpImagePreviewHideTimer) {
+                    clearTimeout(ebayMpImagePreviewHideTimer);
+                    ebayMpImagePreviewHideTimer = null;
+                }
+            }
+            function ebayMpScheduleImagePreviewHide() {
+                ebayMpCancelImagePreviewHide();
+                ebayMpImagePreviewHideTimer = setTimeout(ebayMpRemoveImagePreview, 220);
+            }
+            function ebayMpEnsureImagePreviewListeners(wrap) {
+                if (wrap.dataset.ebayMpPreviewListeners === '1') return;
+                wrap.dataset.ebayMpPreviewListeners = '1';
+                wrap.addEventListener('mouseenter', ebayMpCancelImagePreviewHide);
+                wrap.addEventListener('mouseleave', ebayMpScheduleImagePreviewHide);
+            }
+            function ebayMpClampPreviewPosition(wrap, clientX, clientY) {
+                const pad = 12;
+                let left = clientX + pad;
+                let top = clientY + pad;
+                wrap.style.position = 'fixed';
+                wrap.style.left = left + 'px';
+                wrap.style.top = top + 'px';
+                const rect = wrap.getBoundingClientRect();
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+                const m = 8;
+                if (rect.right > vw - m) left = Math.max(m, vw - rect.width - m);
+                if (rect.bottom > vh - m) top = Math.max(m, vh - rect.height - m);
+                if (left < m) left = m;
+                if (top < m) top = m;
+                wrap.style.left = left + 'px';
+                wrap.style.top = top + 'px';
+            }
+            function ebayMpShowImagePreview(clientX, clientY, fullUrl) {
+                if (!fullUrl) return;
+                ebayMpCancelImagePreviewHide();
+                const existing = ebayMpImagePreviewEl;
+                if (existing && document.body.contains(existing)) {
+                    const prevImg = existing.querySelector('img');
+                    if (prevImg && prevImg.getAttribute('src') === fullUrl) {
+                        ebayMpClampPreviewPosition(existing, clientX, clientY);
+                        return;
+                    }
+                }
+                document.querySelectorAll('#image-hover-preview').forEach(function(el) { el.remove(); });
+                ebayMpImagePreviewEl = null;
+                const wrap = document.createElement('div');
+                wrap.id = 'image-hover-preview';
+                wrap.style.zIndex = '10050';
+                wrap.style.pointerEvents = 'auto';
+                wrap.style.border = '1px solid #ccc';
+                wrap.style.background = '#fff';
+                wrap.style.padding = '4px';
+                wrap.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
+                wrap.style.borderRadius = '6px';
+                const big = document.createElement('img');
+                big.style.maxWidth = '350px';
+                big.style.maxHeight = '350px';
+                big.style.display = 'block';
+                big.alt = '';
+                big.src = fullUrl;
+                wrap.appendChild(big);
+                ebayMpEnsureImagePreviewListeners(wrap);
+                document.body.appendChild(wrap);
+                ebayMpImagePreviewEl = wrap;
+                ebayMpClampPreviewPosition(wrap, clientX, clientY);
+            }
             
             table = new Tabulator("#ebay2-table", {
                 ajaxURL: "/ebay2-data",
@@ -2330,9 +2416,32 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value) {
-                                return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
+                                const u = String(value).replace(/"/g, '&quot;');
+                                return '<img src="' + u + '" data-full="' + u + '" class="hover-thumb" alt="Product" style="width: 50px; height: 50px; object-fit: cover; cursor: zoom-in;">';
                             }
                             return '';
+                        },
+                        cellMouseOver: function(e, cell) {
+                            const img = cell.getElement().querySelector('.hover-thumb');
+                            if (!img) return;
+                            ebayMpShowImagePreview(e.clientX, e.clientY, img.getAttribute('data-full'));
+                        },
+                        cellMouseMove: function(e, cell) {
+                            const preview = ebayMpImagePreviewEl;
+                            if (!preview || !document.body.contains(preview)) return;
+                            const img = cell.getElement().querySelector('.hover-thumb');
+                            const fullUrl = img ? img.getAttribute('data-full') : '';
+                            const big = preview.querySelector('img');
+                            if (!fullUrl || !big || big.getAttribute('src') !== fullUrl) return;
+                            ebayMpClampPreviewPosition(preview, e.clientX, e.clientY);
+                        },
+                        cellMouseOut: function(e, cell) {
+                            const related = e.relatedTarget;
+                            if (related && typeof related.closest === 'function' && related.closest('#image-hover-preview')) {
+                                ebayMpCancelImagePreviewHide();
+                                return;
+                            }
+                            ebayMpScheduleImagePreviewHide();
                         },
                         headerSort: false,
                         width: 80

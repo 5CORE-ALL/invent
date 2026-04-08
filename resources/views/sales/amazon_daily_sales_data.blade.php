@@ -80,7 +80,7 @@
                 <h4>Amazon Daily Sales Data </h4>
                 <p class="text-muted small mb-2" id="date-range-info">
                     Date range (Pacific): {{ $amazonSalesWindowStart ?? '—' }} – {{ $amazonSalesWindowEnd ?? '—' }}
-                    — {{ (int) ($amazonSalesWindowDays ?? 29) }} days through yesterday (today excluded). Use the same dates in Seller Central; this app uses one SP-API marketplace and local DB sync.
+                    — {{ (int) ($amazonSalesWindowDays ?? 29) }} days through yesterday (today excluded). This total is a <strong>rolling</strong> window: each day the oldest date drops out, so the sum can go down even when sales are fine. Match the same dates in Seller Central; canceled orders are excluded here.
                 </p>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
