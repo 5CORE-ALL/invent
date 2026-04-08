@@ -557,6 +557,7 @@
                                 <th data-column="11" class="text-center">D<br/>date<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 112.5px; min-width: 112.5px; max-width: 112.5px;">Supplier<div class="resizer"></div></th>
+                                <th data-column="26" class="text-center" style="width: 96px; min-width: 88px; max-width: 120px;">Platform<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -748,6 +749,32 @@
                                                 </option>
                                             @endforeach
                                         </select>
+                                    </td>
+                                    <td data-column="26" class="text-center align-middle mip-platform-cell" style="min-width: 88px; max-width: 120px;">
+                                        @php
+                                            $mipPlats = $item->supplier_platform_links ?? [];
+                                            $mipPlatCount = is_countable($mipPlats) ? count($mipPlats) : 0;
+                                        @endphp
+                                        @if ($mipPlatCount > 0)
+                                            <div class="dropdown d-inline-block">
+                                                <button class="btn btn-sm btn-light dropdown-toggle py-0 px-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 11px; max-width: 100%;">
+                                                    Platform ({{ $mipPlatCount }})
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end mip-platform-menu" style="max-height: 220px; overflow-y: auto; min-width: 10rem;">
+                                                    @foreach ($mipPlats as $plink)
+                                                        <li>
+                                                            @if (! empty($plink['url']))
+                                                                <a class="dropdown-item py-1 px-2 small" href="{{ $plink['url'] }}" @if (! empty($plink['external'])) target="_blank" rel="noopener noreferrer" @endif>{{ $plink['label'] }}</a>
+                                                            @else
+                                                                <span class="dropdown-item-text py-1 px-2 small text-muted">{{ $plink['label'] }}{{ ! empty($plink['display']) ? ': '.$plink['display'] : '' }}</span>
+                                                            @endif
+                                                        </li>
+                                                    @endforeach
+                                                </ul>
+                                            </div>
+                                        @else
+                                            <span class="text-muted">-</span>
+                                        @endif
                                     </td>
                                     <td data-column="7" hidden>
                                         @php
@@ -1064,6 +1091,37 @@
             alert('Unable to copy SKU.');
         }
         document.body.removeChild(ta);
+    }
+
+    window.MIP_SUPPLIER_PLATFORMS = @json($supplier_platforms_by_name ?? []);
+
+    function mipEscapeHtml(str) {
+        return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function mipPlatformCellHtml(supplierName) {
+        const map = window.MIP_SUPPLIER_PLATFORMS || {};
+        const list = map[supplierName] || [];
+        if (!list.length) {
+            return '<span class="text-muted">-</span>';
+        }
+        let items = '';
+        for (let i = 0; i < list.length; i++) {
+            const p = list[i];
+            if (p.url) {
+                const ext = p.external ? ' target="_blank" rel="noopener noreferrer"' : '';
+                items += '<li><a class="dropdown-item py-1 px-2 small" href="' + mipEscapeHtml(p.url) + '"' + ext + '>' + mipEscapeHtml(p.label) + '</a></li>';
+            } else {
+                items += '<li><span class="dropdown-item-text py-1 px-2 small text-muted">' + mipEscapeHtml(p.label) + (p.display ? ': ' + mipEscapeHtml(p.display) : '') + '</span></li>';
+            }
+        }
+        return '<div class="dropdown d-inline-block">' +
+            '<button class="btn btn-sm btn-light dropdown-toggle py-0 px-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 11px; max-width: 100%;">Platform (' + list.length + ')</button>' +
+            '<ul class="dropdown-menu dropdown-menu-end mip-platform-menu" style="max-height: 220px; overflow-y: auto; min-width: 10rem;">' + items + '</ul></div>';
     }
 
     function calculateTotalCBM() {
@@ -1446,6 +1504,12 @@
                             this.style.border = '2px solid green';
                             setTimeout(() => this.style.border = '', 1000);
 
+                            if (column === 'supplier' && row) {
+                                const platCell = row.querySelector('td[data-column="26"]');
+                                if (platCell) {
+                                    platCell.innerHTML = mipPlatformCellHtml(String(value || '').trim());
+                                }
+                            }
 
                             // ✅ Recalculate Total on rate change
                             if (column === 'rate') {
@@ -2086,6 +2150,39 @@
                     { title: 'SKU', field: 'sku', headerFilter: 'input', minWidth: 120 },
                     { title: 'QTY', field: 'qty', hozAlign: 'center', width: 72 },
                     { title: 'Supplier', field: 'supplier', headerFilter: 'input', width: 90, minWidth: 90 },
+                    {
+                        title: 'Platform',
+                        field: 'supplier_platform_links',
+                        headerSort: false,
+                        width: 96,
+                        minWidth: 80,
+                        formatter: function (cell) {
+                            var rows = cell.getValue();
+                            if (!rows || !rows.length) {
+                                return '—';
+                            }
+                            function esc(s) {
+                                return String(s == null ? '' : s)
+                                    .replace(/&/g, '&amp;')
+                                    .replace(/</g, '&lt;')
+                                    .replace(/>/g, '&gt;')
+                                    .replace(/"/g, '&quot;');
+                            }
+                            var lis = '';
+                            for (var i = 0; i < rows.length; i++) {
+                                var p = rows[i];
+                                if (p.url) {
+                                    var ext = p.external ? ' target="_blank" rel="noopener noreferrer"' : '';
+                                    lis += '<li><a class="dropdown-item py-1 px-2 small" href="' + esc(p.url) + '"' + ext + '>' + esc(p.label) + '</a></li>';
+                                } else {
+                                    lis += '<li><span class="dropdown-item-text py-1 px-2 small text-muted">' + esc(p.label) + (p.display ? ': ' + esc(p.display) : '') + '</span></li>';
+                                }
+                            }
+                            return '<div class="dropdown d-inline-block">' +
+                                '<button class="btn btn-sm btn-light dropdown-toggle py-0 px-1" type="button" data-bs-toggle="dropdown" style="font-size:11px;">Platform (' + rows.length + ')</button>' +
+                                '<ul class="dropdown-menu dropdown-menu-end mip-platform-menu" style="max-height:220px;overflow-y:auto;min-width:10rem;">' + lis + '</ul></div>';
+                        },
+                    },
                     { title: 'R2S', field: 'ready_to_ship', width: 72, hozAlign: 'center' },
                 ],
             });

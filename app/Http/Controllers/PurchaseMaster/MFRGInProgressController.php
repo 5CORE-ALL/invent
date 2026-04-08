@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Log;
 
 class MFRGInProgressController extends Controller
 {
-    /** Cache key for supplier parent map + name list (invalidates on TTL). */
-    private const SUPPLIER_CACHE_KEY = 'mfrg_mip_suppliers_struct_v1';
+    /** Cache key for supplier parent map + name list + platform links (invalidates on TTL). */
+    private const SUPPLIER_CACHE_KEY = 'mfrg_mip_suppliers_struct_v2';
 
     private const SUPPLIER_CACHE_TTL_SECONDS = 120;
 
@@ -27,7 +27,7 @@ class MFRGInProgressController extends Controller
         $supplierCache = self::getMipSupplierCache();
         $mfrgData = self::loadEnrichedMipProgressCollection(
             onlyTrashed: false,
-            supplierMapByParent: $supplierCache['map'],
+            supplierCache: $supplierCache,
         );
 
         if (config('app.debug')) {
@@ -37,6 +37,7 @@ class MFRGInProgressController extends Controller
         return view('purchase-master.mfrg-progress.index', [
             'data' => $mfrgData,
             'suppliers' => $supplierCache['names'],
+            'supplier_platforms_by_name' => $supplierCache['platformsByName'],
         ]);
     }
 
@@ -59,7 +60,7 @@ class MFRGInProgressController extends Controller
         $supplierCache = self::getMipSupplierCache();
         $mfrgData = self::loadEnrichedMipProgressCollection(
             onlyTrashed: $archived,
-            supplierMapByParent: $supplierCache['map'],
+            supplierCache: $supplierCache,
         );
 
         if (config('app.debug')) {
@@ -76,14 +77,68 @@ class MFRGInProgressController extends Controller
     }
 
     /**
-     * @return array{map: array<string, list<string>>, names: \Illuminate\Support\Collection<int, string>}
+     * Contact / marketplace links for each supplier name (same fields as supplier list / view modal).
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Supplier>  $supplierRows
+     * @return array<string, list<array{label: string, url: ?string, external?: bool, display?: string}>>
+     */
+    private static function buildPlatformsByNameFromSupplierRows(Collection $supplierRows): array
+    {
+        $byName = [];
+        foreach ($supplierRows as $s) {
+            $name = trim((string) ($s->name ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $links = [];
+
+            $website = trim((string) ($s->website ?? ''));
+            if ($website !== '') {
+                $url = preg_match('#^https?://#i', $website) ? $website : ('https://'.ltrim($website, '/'));
+                $links[] = ['label' => 'Website', 'url' => $url, 'external' => true];
+            }
+
+            $email = trim((string) ($s->email ?? ''));
+            if ($email !== '') {
+                $links[] = ['label' => 'Email', 'url' => 'mailto:'.$email, 'external' => false];
+            }
+
+            $whatsapp = trim((string) ($s->whatsapp ?? ''));
+            if ($whatsapp !== '') {
+                $digits = preg_replace('/\D/', '', $whatsapp);
+                if ($digits !== '') {
+                    $links[] = ['label' => 'WhatsApp', 'url' => 'https://wa.me/'.$digits, 'external' => true];
+                }
+            }
+
+            $wechat = trim((string) ($s->wechat ?? ''));
+            if ($wechat !== '') {
+                $links[] = ['label' => 'WeChat', 'url' => null, 'display' => $wechat];
+            }
+
+            $alibaba = trim((string) ($s->alibaba ?? ''));
+            if ($alibaba !== '') {
+                $url = preg_match('#^https?://#i', $alibaba) ? $alibaba : ('https://'.ltrim($alibaba, '/'));
+                $links[] = ['label' => 'Alibaba', 'url' => $url, 'external' => true];
+            }
+
+            if ($links !== []) {
+                $byName[$name] = $links;
+            }
+        }
+
+        return $byName;
+    }
+
+    /**
+     * @return array{map: array<string, list<string>>, names: \Illuminate\Support\Collection<int, string>, platformsByName: array<string, list<array{label: string, url: ?string, external?: bool, display?: string}>>}
      */
     private static function buildSupplierMapFromDb(): array
     {
         $supplierRows = Supplier::query()
             ->where('type', 'Supplier')
             ->orderBy('name')
-            ->get(['name', 'parent']);
+            ->get(['name', 'parent', 'website', 'email', 'whatsapp', 'wechat', 'alibaba']);
 
         $supplierMapByParent = [];
         foreach ($supplierRows as $srow) {
@@ -98,11 +153,12 @@ class MFRGInProgressController extends Controller
         return [
             'map' => $supplierMapByParent,
             'names' => $supplierRows->pluck('name')->values(),
+            'platformsByName' => self::buildPlatformsByNameFromSupplierRows($supplierRows),
         ];
     }
 
     /**
-     * @return array{map: array<string, list<string>>, names: \Illuminate\Support\Collection<int, string>}
+     * @return array{map: array<string, list<string>>, names: \Illuminate\Support\Collection<int, string>, platformsByName: array<string, list<array{label: string, url: ?string, external?: bool, display?: string}>>}
      */
     private static function getMipSupplierCache(): array
     {
@@ -158,9 +214,10 @@ class MFRGInProgressController extends Controller
     /**
      * Load MfrgProgress rows with shared enrichment (index blade + Tabulator JSON).
      */
-    private static function loadEnrichedMipProgressCollection(bool $onlyTrashed, array $supplierMapByParent): Collection
+    private static function loadEnrichedMipProgressCollection(bool $onlyTrashed, array $supplierCache): Collection
     {
         $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
+        $supplierMapByParent = $supplierCache['map'];
 
         // No explicit select(): some installs omit columns present in migrations (e.g. `value`),
         // and SELECT * only returns columns that exist — avoids SQLSTATE[42S22] unknown column.
@@ -175,6 +232,7 @@ class MFRGInProgressController extends Controller
         $shopifyImageByKey = self::buildShopifyImageByKeyForMipRows($mfrgData, $normalizeSku);
         $productMasterByKey = self::buildProductMasterByKeyForMipRows($mfrgData, $normalizeSku);
         $skuToPriceMap = self::buildSkuToPriceMapForMipRows($mfrgData, $normalizeSku);
+        $platformsByName = $supplierCache['platformsByName'] ?? [];
 
         foreach ($mfrgData as $row) {
             self::enrichSingleMipProgressRow(
@@ -184,7 +242,8 @@ class MFRGInProgressController extends Controller
                 $shopifyImageByKey,
                 $productMasterByKey,
                 $supplierMapByParent,
-                $skuToPriceMap
+                $skuToPriceMap,
+                $platformsByName
             );
         }
 
@@ -201,7 +260,8 @@ class MFRGInProgressController extends Controller
         array $shopifyImageByKey,
         array $productMasterByKey,
         array $supplierMapByParent,
-        array $skuToPriceMap
+        array $skuToPriceMap,
+        array $platformsByName
     ): void {
         $sku = $normalizeSku($row->sku);
         $image = null;
@@ -283,6 +343,11 @@ class MFRGInProgressController extends Controller
         $row->ctn_cbm_e = $ctnCbmE;
         $row->price_from_po = $priceFromPO;
         $row->currency_from_po = $currencyFromPO;
+
+        $supplierName = trim((string) ($row->supplier ?? ''));
+        $row->supplier_platform_links = ($supplierName !== '' && isset($platformsByName[$supplierName]))
+            ? $platformsByName[$supplierName]
+            : [];
     }
 
     public function convert(Request $request)
