@@ -316,7 +316,7 @@ class AmzUnderUtilizedBgtController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch FBA data where seller_sku contains FBA, then key by base SKU (without FBA)
         $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
@@ -585,7 +585,7 @@ class AmzUnderUtilizedBgtController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 

@@ -884,8 +884,7 @@ class StockBalanceController extends Controller
             ->map(fn($sku) => $normalizeSku($sku))
             ->toArray();
 
-        // Fetch Shopify data from local DB (shopify_skus)
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifyByPm = ShopifySku::mapByProductSkus($productMasterData->pluck('sku')->filter()->unique()->values()->all());
 
         // Fetch inventory action data
         // Get all inventory records and normalize their SKUs for matching
@@ -926,9 +925,9 @@ class StockBalanceController extends Controller
         }
 
         // Merge everything
-        $data = $productMasterData->map(function ($item) use ($shopifyData, $inventoryActions, $lastStockBalances, $normalizeSku) {
+        $data = $productMasterData->map(function ($item) use ($shopifyByPm, $inventoryActions, $lastStockBalances, $normalizeSku) {
             $sku = $normalizeSku($item->sku ?? '');
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyByPm->get($item->sku ?? '');
             $inventory = $inventoryActions[$sku] ?? null;
             $lastBalance = $lastStockBalances[$sku] ?? null;
 
@@ -1088,7 +1087,7 @@ class StockBalanceController extends Controller
             ->map(fn($sku) => $normalizeSku($sku))
             ->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifyByPm = ShopifySku::mapByProductSkus($productMasterData->pluck('sku')->filter()->unique()->values()->all());
 
         // ACTION from inventories.combo_action (same table as stock balance, different column)
         $allInventoryActions = Inventory::all();
@@ -1119,9 +1118,9 @@ class StockBalanceController extends Controller
             }
         }
 
-        $data = $productMasterData->map(function ($item) use ($shopifyData, $inventoryActions, $lastStockBalances, $normalizeSku) {
+        $data = $productMasterData->map(function ($item) use ($shopifyByPm, $inventoryActions, $lastStockBalances, $normalizeSku) {
             $sku = $normalizeSku($item->sku ?? '');
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyByPm->get($item->sku ?? '');
             $inventory = $inventoryActions[$sku] ?? null;
             $lastBalance = $lastStockBalances[$sku] ?? null;
 

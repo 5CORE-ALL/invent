@@ -33,7 +33,7 @@ class ListingTiktokShopController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         
         // Get status data, handling duplicates by taking the most recent non-empty record
         $statusData = TiktokShopListingStatus::whereIn('sku', $skus)
@@ -129,7 +129,7 @@ class ListingTiktokShopController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         
         // Get status data, handling duplicates by taking the most recent non-empty record
         $statusData = TiktokShopListingStatus::whereIn('sku', $skus)

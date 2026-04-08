@@ -121,7 +121,11 @@ class EbayRunningAdsController extends Controller
         // Merge both lists
         $skus = array_merge($productMasterSkus, $additionalRunningCampaigns);
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifySkuKeys = array_values(array_unique(array_merge(
+            $productMasters->pluck('sku')->filter()->unique()->values()->all(),
+            $additionalRunningCampaigns
+        )));
+        $shopifyData = ShopifySku::mapByProductSkus($shopifySkuKeys);
 
         $ebayMetricData = DB::connection('apicentral')->table('ebay_one_metrics')
             ->select('sku', 'ebay_price', 'item_id')
@@ -165,7 +169,7 @@ class EbayRunningAdsController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $ebay = $ebayMetricData[$sku] ?? null;
 
             // Find matching campaigns, prioritize RUNNING status
@@ -263,7 +267,7 @@ class EbayRunningAdsController extends Controller
         // Now process additional RUNNING campaigns that are not in ProductMaster
         foreach ($additionalRunningCampaigns as $campaignSku) {
             $sku = $normalizeSku($campaignSku);
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($campaignSku);
             $ebay = $ebayMetricData[$sku] ?? null;
 
             // Find matching campaigns

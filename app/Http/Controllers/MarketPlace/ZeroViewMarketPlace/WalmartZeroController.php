@@ -55,7 +55,7 @@ class WalmartZeroController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = WalmartDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -374,7 +374,7 @@ class WalmartZeroController extends Controller
     //         if ($isParent) continue;
 
     //         // Get inventory from ShopifySku
-    //         $inv = $shopifyData[$sku]->inv ?? 0;
+    //         $inv = $shopifyData->get($item->sku)?->inv ?? 0;
     //         $quantity = $shopifyData[$sku]->quantity ?? 0;
 
     //         // Skip items with no inventory
@@ -481,7 +481,7 @@ class WalmartZeroController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
 
         // Only count SKUs where INV > 0 (zero view logic can be adjusted as needed)
         $zeroViewCount = $productMasters->filter(function ($product) use ($shopifySkus) {
@@ -499,7 +499,7 @@ class WalmartZeroController extends Controller
     //     $productMasters = ProductMaster::whereNull('deleted_at')->get();
     //     $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $ebayDataViews = WalmartListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
     //     $ebayMetrics = DB::connection('apicentral')
@@ -528,7 +528,7 @@ class WalmartZeroController extends Controller
 
     //     foreach ($productMasters as $item) {
     //         $sku = trim($item->sku);
-    //         $inv = $shopifyData[$sku]->inv ?? 0;
+    //         $inv = $shopifyData->get($item->sku)?->inv ?? 0;
     //         $isParent = stripos($sku, 'PARENT') !== false;
     //         if ($isParent) continue;
 
@@ -583,8 +583,7 @@ class WalmartZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $walmartListingStatus = WalmartListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -602,7 +601,7 @@ class WalmartZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

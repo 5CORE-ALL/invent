@@ -73,7 +73,7 @@ class TiktokAdsController extends Controller
 
             $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
-            $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             
             // Fetch TikTok L30 sales from ShipHub (like daily sales page)
             $latestDate = DB::connection('shiphub')

@@ -58,9 +58,7 @@ class Neweggb2cController extends Controller
                 ->toArray();
 
             // Fetch Shopify inventory data for non-PARENT SKUs
-            $shopifyData = ShopifySku::whereIn('sku', $skus)
-                ->get()
-                ->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             
             // Fetch NR values before processing data
             $nrValues = Neweegb2cDataView::pluck('value', 'sku');

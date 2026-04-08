@@ -267,7 +267,14 @@
                         <option value="both">Both (Parent + SKU)</option>
                     </select>
 
-                    <select id="inventory-filter" class="form-select form-select-sm"
+                    <select id="inv-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All Inventory</option>
+                        <option value="zero">0 Inventory</option>
+                        <option value="more" selected>More than 0</option>
+                    </select>
+
+                    <select id="ebay-stock-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All E Stock</option>
                         <option value="zero">0 E Stock</option>
@@ -3569,7 +3576,7 @@
                             else if (sold >= 1 && sold <= 5) v = 10;
                             else if (sold > 5) v = 8;
                             else v = es;
-                            v = Math.min(v, 13);
+                            v = Math.min(v, 15);
                             return v > 0 ? v : (es > 0 ? es : 0);
                         };
                         var aVal = getVal(aRow.getData());
@@ -3581,12 +3588,12 @@
                         var sold = parseInt(rd['eBay L30'], 10) || 0;
                         var es = parseFloat(rd.suggested_bid) || 0;
                         var v;
-                        // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 9; <7 (i.e. 6) → 7; >=7 → ESbid; cap at 12
+                        // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 10; >5 → 8; else → ESbid; cap at 15
                         if (sold === 0) v = es;
                         else if (sold >= 1 && sold <= 5) v = 10;
                         else if (sold > 5) v = 8;
                         else v = es;
-                        v = Math.min(v, 13);
+                        v = Math.min(v, 15);
                         return v > 0 ? Number(v).toFixed(2) : (es > 0 ? es.toFixed(2) : '-');
                     },
                     width: 80
@@ -3821,7 +3828,8 @@
             }
 
             const viewModeFilter = $('#view-mode-filter').val();
-            const inventoryFilter = $('#inventory-filter').val();
+            const invFilter = $('#inv-filter').val() || 'more';
+            const ebayStockFilter = $('#ebay-stock-filter').val();
             const el30Filter = $('#el30-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
@@ -3866,12 +3874,24 @@
             // If 'both' is selected, no additional filter needed
             // If 'sku' is selected, data is already filtered above
 
-            if (inventoryFilter === 'zero') {
+            if (invFilter === 'zero') {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data.INV || 0) || 0;
+                    return inv === 0;
+                });
+            } else if (invFilter === 'more') {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data.INV || 0) || 0;
+                    return inv > 0;
+                });
+            }
+
+            if (ebayStockFilter === 'zero') {
                 table.addFilter(function(data) {
                     const estock = parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0;
                     return estock === 0;
                 });
-            } else if (inventoryFilter === 'more') {
+            } else if (ebayStockFilter === 'more') {
                 table.addFilter(function(data) {
                     const estock = parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0;
                     return estock > 0;
@@ -4316,7 +4336,7 @@
             }, 100);
         }
 
-        $('#view-mode-filter, #inventory-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter').on('change', function() {
+        $('#view-mode-filter, #inv-filter, #ebay-stock-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter').on('change', function() {
             applyFilters();
             if ($('#section-filter').val() === 'kw_ads') {
                 updateKwAdsStats();
@@ -4794,7 +4814,8 @@
             var processedSkusForNrlMissing = new Set();
             var processedSkusForZeroInv = new Set();
 
-            var invFilterVal = $('#inventory-filter').val() || 'more';
+            var invFilterVal = $('#inv-filter').val() || 'more';
+            var ebayStockFilterVal = $('#ebay-stock-filter').val() || 'more';
             var el30FilterVal = $('#el30-filter').val() || 'all';
             var growthSignKw = $('#growth-sign-filter').val() || 'all';
 
@@ -4828,9 +4849,12 @@
                     zeroInvCount++;
                 }
 
-                // Apply E Stock filter for remaining counts
-                if (invFilterVal === 'zero') { if (estock > 0) return; }
-                else if (invFilterVal === 'more') { if (estock <= 0) return; }
+                var shopifyInv = parseFloat(row['INV'] || 0) || 0;
+                if (invFilterVal === 'zero') { if (shopifyInv !== 0) return; }
+                else if (invFilterVal === 'more') { if (shopifyInv <= 0) return; }
+
+                if (ebayStockFilterVal === 'zero') { if (estock > 0) return; }
+                else if (ebayStockFilterVal === 'more') { if (estock <= 0) return; }
 
                 if (el30FilterVal === 'zero') {
                     if (ebayL30ForFilter !== 0) return;

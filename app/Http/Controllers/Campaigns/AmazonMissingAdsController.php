@@ -51,9 +51,7 @@ class AmazonMissingAdsController extends Controller
                 return strtoupper($item->sku);
             });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrListingValues = AmazonListingStatus::whereIn('sku', $skus)->pluck('value', 'sku');
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
@@ -198,11 +196,7 @@ class AmazonMissingAdsController extends Controller
             return strtoupper(trim($base));
         })->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
-            ->get()
-            ->keyBy(function ($item) {
-                return trim(strtoupper($item->sku));
-            });
+        $shopifyData = ShopifySku::mapByProductSkus($baseSkus);
 
         $fbaMonthlySales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
             ->get()

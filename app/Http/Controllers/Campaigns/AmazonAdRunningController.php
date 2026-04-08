@@ -37,15 +37,14 @@ class AmazonAdRunningController extends Controller
             return strtoupper($item->sku);
         });
 
-        // Normalized key for case-insensitive SKU lookup
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper(trim($i->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         // Inventory by parent: SUM(child inv) for parent-level display
         $inventoryByParent = [];
         foreach ($productMasters->filter(fn($pm) => $pm->parent && !str_starts_with(strtoupper($pm->sku), 'PARENT')) as $child) {
             $pKey = strtoupper(trim($child->parent));
-            $inv = (float) (($shopifyData[strtoupper(trim($child->sku))] ?? null)?->inv ?? 0);
+            $inv = (float) ($shopifyData->get($child->sku)?->inv ?? 0);
             $inventoryByParent[$pKey] = ($inventoryByParent[$pKey] ?? 0) + $inv;
         }
 
@@ -142,7 +141,7 @@ class AmazonAdRunningController extends Controller
             $isParentRow = str_starts_with($sku, 'PARENT');
 
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$sku] ?? null; // Normalized key
+            $shopify = $shopifyData->get($pm->sku);
 
             $matchedCampaignKwL30 = ADVMastersData::matchKwCampaign($amazonKwL30, $pm->sku, $parent ?: null, $isParentRow);
             $matchedCampaignKwL7 = ADVMastersData::matchKwCampaign($amazonKwL7, $pm->sku, $parent ?: null, $isParentRow);

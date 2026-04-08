@@ -174,7 +174,7 @@ class TikTokPricingController extends Controller
         $skusUpper = array_map('strtoupper', $skus);
 
         // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch TikTok product data - use uppercase SKUs for query and normalize keys
         $tiktokData = TikTokProduct::whereIn("sku", $skusUpper)

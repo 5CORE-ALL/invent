@@ -61,7 +61,7 @@ class EbayCvrLqsController extends Controller
         $ebayMetricsBySku = EbayMetric::whereIn('sku', $skus)->get()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // 3. NR values
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
@@ -342,7 +342,7 @@ class EbayCvrLqsController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = EbayCvrLqs::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $reqCount = 0;

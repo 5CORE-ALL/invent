@@ -30,7 +30,7 @@ class ListingAuditAmazonController extends Controller
     {
         $productMasters = ProductMaster::all();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $amazonDataViewValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $amazonDataViewValues) {

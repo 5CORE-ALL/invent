@@ -55,9 +55,7 @@ class OverallAmazonFbaController extends Controller
 
 
             // Fetch Shopify inventory data for non-PARENT SKUs
-            $shopifyData = ShopifySku::whereIn('sku', $skus)
-                ->get()
-                ->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             $amazonDataViews = AmazonDataView::whereIn('sku', $skus)->get()->keyBy(function ($item) {
                 return strtoupper($item->sku);

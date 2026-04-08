@@ -67,9 +67,15 @@ class AmazonZeroController extends Controller
                 // Return the record with the lowest ID (earliest/original)
                 return $group->sortBy('id')->first();
             });
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        $shopifyByPm = ShopifySku::mapByProductSkus($skus);
+        $shopifyData = [];
+        foreach ($productMasters as $pm) {
+            $k = strtoupper($pm->sku);
+            $row = $shopifyByPm->get($pm->sku);
+            if ($row !== null) {
+                $shopifyData[$k] = $row;
+            }
+        }
 
         // 3. JungleScout Data (by parent)
         $parents = $productMasters->pluck('parent')->filter()->unique()->map('strtoupper')->values()->all();
@@ -225,9 +231,15 @@ class AmazonZeroController extends Controller
                 // Return the record with the lowest ID (earliest/original)
                 return $group->sortBy('id')->first();
             });
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        $shopifyByPm = ShopifySku::mapByProductSkus($skus);
+        $shopifyData = [];
+        foreach ($productMasters as $pm) {
+            $k = strtoupper($pm->sku);
+            $row = $shopifyByPm->get($pm->sku);
+            if ($row !== null) {
+                $shopifyData[$k] = $row;
+            }
+        }
 
         // 3. Fetch API data (Google Sheet)
         $response = $this->apiController->fetchDataFromAmazonGoogleSheet();
@@ -334,7 +346,7 @@ class AmazonZeroController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $reqCount = 0;
@@ -344,7 +356,7 @@ class AmazonZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = trim($item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($sku)?->inv ?? 0;
             $isParent = stripos($sku, 'PARENT') !== false;
 
             if ($isParent || floatval($inv) <= 0) continue;
@@ -385,7 +397,7 @@ class AmazonZeroController extends Controller
     //     $productMasters = ProductMaster::whereNull('deleted_at')->get();
     //     $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $statusData = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
     //     $sheetData = AmazonDataSheet::whereIn('sku', $skus)->get()->keyBy('sku'); // sessions_l30 here
 
@@ -462,7 +474,7 @@ class AmazonZeroController extends Controller
     //     $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
     //         return strtoupper($item->sku);
     //     });
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
 
     //     $parents = $productMasters->pluck('parent')->filter()->unique()->map('strtoupper')->values()->all();
     //     $jungleScoutData = JungleScoutProductData::whereIn('parent', $parents)
@@ -540,8 +552,7 @@ class AmazonZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $amazonListingStatus = AmazonListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -566,7 +577,7 @@ class AmazonZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

@@ -58,12 +58,7 @@ class PurchasingPowerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        // Match Product Master / marketplace pricing: NBSP → space, trim, uppercase; full Shopify map (whereIn misses NBSP variants).
-        $canonicalSku = static function ($value): string {
-            return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
-        };
-
-        $shopifyData = ShopifySku::all()->keyBy(fn ($row) => $canonicalSku($row->sku));
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ppMetrics    = PurchasingPowerProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $dataViews    = PurchasingPowerDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         $amazonData   = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper($i->sku));
@@ -84,7 +79,7 @@ class PurchasingPowerController extends Controller
             $sku     = strtoupper($pm->sku);
             $parent  = $pm->parent;
 
-            $shopify   = $shopifyData->get($canonicalSku($pm->sku));
+            $shopify   = $shopifyData->get($pm->sku);
             $ppMetric  = $ppMetrics[$pm->sku] ?? null;
             $amazon    = $amazonData[strtoupper($pm->sku)] ?? null;
 

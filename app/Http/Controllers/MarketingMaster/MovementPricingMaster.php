@@ -88,9 +88,7 @@ class MovementPricingMaster extends Controller
             })
             ->unique()
             ->toArray();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return trim(strtoupper($item->sku));
-        });
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $amazonData  = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
         $amazonListingData = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
         $ebayData    = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -160,7 +158,7 @@ class MovementPricingMaster extends Controller
             $ebay3   = $ebay3Lookup[$sku] ?? null;
 
             // Get Shopify data for L30 and INV
-            $shopifyItem = $shopifyData[trim(strtoupper($sku))] ?? null;
+            $shopifyItem = $shopifyData->get($sku);
             $inv = $shopifyItem ? ($shopifyItem->inv ?? 0) : 0;
             $l30 = $shopifyItem ? ($shopifyItem->quantity ?? 0) : 0;
             $shopify_l30 = $shopifyItem ? ($shopifyItem->shopify_l30 ?? 0) : 0;
@@ -192,7 +190,7 @@ class MovementPricingMaster extends Controller
                 'SHIP'    => $ship,
                 'temu_ship' => $temuship,
                 'is_parent' => $isParent,
-                'inv' => $shopifyData[trim(strtoupper($sku))]->inv ?? 0,
+                'inv' => $shopifyData->get($sku)?->inv ?? 0,
                 'avgCvr' => $avgCvr,
 
 
@@ -419,7 +417,7 @@ class MovementPricingMaster extends Controller
 
 
             // Add shopifyb2c fields after $item is created
-            $shopify = $shopifyData[trim(strtoupper($sku))] ?? null;
+            $shopify = $shopifyData->get($sku);
             $item->shopifyb2c_price = $shopify ? $shopify->price : 0;
             $item->shopifyb2c_l30 = $shopify ? $shopify->quantity : 0;
             $item->shopifyb2c_l30_data = $shopify ? $shopify->shopify_l30 : 0;

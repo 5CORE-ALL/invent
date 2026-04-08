@@ -294,7 +294,7 @@ class DobaZeroController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = DobaDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $reqCount = 0;
@@ -304,7 +304,7 @@ class DobaZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = trim($item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
             $isParent = stripos($sku, 'PARENT') !== false;
 
             if ($isParent || floatval($inv) <= 0) continue;
@@ -347,7 +347,7 @@ class DobaZeroController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
 
         // Only count SKUs where INV > 0 (zero view logic can be adjusted as needed)
         $zeroViewCount = $productMasters->filter(function ($product) use ($shopifySkus) {
@@ -365,7 +365,7 @@ class DobaZeroController extends Controller
     //     $productMasters = ProductMaster::whereNull('deleted_at')->get();
     //     $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $ebayDataViews = DobaListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
     //     // $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -390,7 +390,7 @@ class DobaZeroController extends Controller
 
     //     foreach ($productMasters as $item) {
     //         $sku = trim($item->sku);
-    //         $inv = $shopifyData[$sku]->inv ?? 0;
+    //         $inv = $shopifyData->get($item->sku)?->inv ?? 0;
     //         $isParent = stripos($sku, 'PARENT') !== false;
     //         if ($isParent) continue;
 
@@ -444,8 +444,7 @@ class DobaZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $dobaListingStatus = DobaListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -463,7 +462,7 @@ class DobaZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

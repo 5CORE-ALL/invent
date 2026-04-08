@@ -90,7 +90,7 @@ class EbayACOSController extends Controller
             ->values()
             ->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 

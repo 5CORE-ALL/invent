@@ -119,7 +119,7 @@ class TemuController extends Controller
             $skus = $productMasterRows->pluck('sku')->toArray();
 
             // Fetch shopify data for these SKUs
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             // Fetch NR values from temu_data_view
             $temuDataViews = TemuDataView::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -2421,7 +2421,7 @@ class TemuController extends Controller
             $temuPricingSkusNormalized = $temuPricingSkusNormalized->flip();
             
             // Fetch shopify data for inventory
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             // L30 = orders from temu_daily_data matched by SKU (contribution_sku normalized to ProductMaster)
             // Same source as tabulator; normalized so "abc" on orders matches "ABC" on ProductMaster

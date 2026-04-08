@@ -102,9 +102,7 @@ class WayfairController extends Controller
                 ->unique()
                 ->toArray();
 
-            $shopifyData = ShopifySku::whereIn('sku', $skus)
-                ->get()
-                ->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             // Fetch NR values before processing data
             $nrValues = WayfairDataView::pluck('value', 'sku');

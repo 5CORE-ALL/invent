@@ -37,8 +37,7 @@ class Ebay2ZeroController extends Controller
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
         // 2. Fetch ShopifySku for those SKUs (normalized keys)
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -55,7 +54,7 @@ class Ebay2ZeroController extends Controller
 
             if (stripos($sku, 'PARENT') !== false) continue;
 
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($originalSku);
 
             $inv = $shopify ? floatval($shopify->inv) : 0;
             $ov_l30 = $shopify ? $shopify->quantity : 0;
@@ -189,7 +188,7 @@ class Ebay2ZeroController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
 
         // Only count SKUs where INV > 0 (zero view logic can be adjusted as needed)
         $zeroViewCount = $productMasters->filter(function ($product) use ($shopifySkus) {
@@ -208,7 +207,7 @@ class Ebay2ZeroController extends Controller
     //     $productMasters = ProductMaster::whereNull('deleted_at')->get();
     //     $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $ebayDataViews = EbayTwoListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
     //     // $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -222,7 +221,7 @@ class Ebay2ZeroController extends Controller
 
     //     foreach ($productMasters as $item) {
     //         $sku = trim($item->sku);
-    //         $inv = $shopifyData[$sku]->inv ?? 0;
+    //         $inv = $shopifyData->get($item->sku)?->inv ?? 0;
     //         $isParent = stripos($sku, 'PARENT') !== false;
     //         if ($isParent) continue;
 
@@ -276,8 +275,7 @@ class Ebay2ZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $ebayListingStatus = EbayTwoListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -295,7 +293,7 @@ class Ebay2ZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

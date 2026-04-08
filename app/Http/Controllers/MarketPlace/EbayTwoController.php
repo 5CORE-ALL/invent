@@ -118,11 +118,6 @@ class EbayTwoController extends Controller
             ->unique()
             ->values()
             ->all();
-        
-        // 3. Related Models
-        $shopifyData = ShopifySku::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
 
         // Fetch ALL ebay2_metrics (including Open Box items not in product_masters)
         $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock')
@@ -171,6 +166,8 @@ class EbayTwoController extends Controller
             ->unique()
             ->values()
             ->all();
+
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Forecast Analysis NRP (forecast_analysis.nr) — same as Faire / TikTok pricing.
         $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
@@ -395,7 +392,7 @@ class EbayTwoController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
             // Try both lowercase and original case for listing status lookup
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? $listingStatusData[$pm->sku] ?? null;
@@ -411,13 +408,7 @@ class EbayTwoController extends Controller
                     $pmKey = $resolveProductMasterKey($baseCandidate);
                     if ($pmKey !== null) {
                         $row['base_sku'] = (string) $productMasters[$pmKey]->sku;
-                        $baseShopify = $shopifyData[$pmKey] ?? null;
-                        if ($baseShopify === null) {
-                            $skMatch = $shopifyData->keys()->first(function ($k) use ($pmKey) {
-                                return strcasecmp((string) $k, $pmKey) === 0;
-                            });
-                            $baseShopify = $skMatch !== null ? $shopifyData[$skMatch] : null;
-                        }
+                        $baseShopify = $shopifyData->get($pmKey) ?? ShopifySku::firstForProductSku($pmKey);
                         $row['base_inv'] = $baseShopify ? (float) ($baseShopify->inv ?? 0) : 0;
                     }
                 }
@@ -694,13 +685,7 @@ class EbayTwoController extends Controller
                         $pmKey = $resolveProductMasterKey($baseCandidate);
                         if ($pmKey !== null) {
                             $row['base_sku'] = (string) $productMasters[$pmKey]->sku;
-                            $baseShopify = $shopifyData[$pmKey] ?? null;
-                            if ($baseShopify === null) {
-                                $skMatch = $shopifyData->keys()->first(function ($k) use ($pmKey) {
-                                    return strcasecmp((string) $k, $pmKey) === 0;
-                                });
-                                $baseShopify = $skMatch !== null ? $shopifyData[$skMatch] : null;
-                            }
+                            $baseShopify = $shopifyData->get($pmKey) ?? ShopifySku::firstForProductSku($pmKey);
                             $row['base_inv'] = $baseShopify ? (float) ($baseShopify->inv ?? 0) : 0;
                         }
                     }
@@ -1882,10 +1867,7 @@ class EbayTwoController extends Controller
         }
         $itemId = $ebay2Metric && !empty($ebay2Metric->item_id) ? trim((string) $ebay2Metric->item_id) : null;
 
-        $shopify = ShopifySku::where('sku', $sku)->first();
-        if (!$shopify) {
-            $shopify = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$cleanSku])->first();
-        }
+        $shopify = ShopifySku::firstForProductSku($sku);
         $inv = $shopify ? (float) ($shopify->inv ?? 0) : 0.0;
 
         $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));

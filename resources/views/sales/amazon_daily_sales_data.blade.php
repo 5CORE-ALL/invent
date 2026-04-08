@@ -71,7 +71,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 29) . ' Days, California)',
+        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 31) . ' Days, California)',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -80,7 +80,7 @@
                 <h4>Amazon Daily Sales Data </h4>
                 <p class="text-muted small mb-2" id="date-range-info">
                     Date range (Pacific): {{ $amazonSalesWindowStart ?? '—' }} – {{ $amazonSalesWindowEnd ?? '—' }}
-                    — {{ (int) ($amazonSalesWindowDays ?? 29) }} days through yesterday (today excluded). This total is a <strong>rolling</strong> window: each day the oldest date drops out, so the sum can go down even when sales are fine. Match the same dates in Seller Central; canceled orders are excluded here.
+                    — {{ (int) ($amazonSalesWindowDays ?? 31) }} days through yesterday (today excluded). This total is a <strong>rolling</strong> window: each day the oldest date drops out, so the sum can go down even when sales are fine. Match the same dates in Seller Central; canceled orders are excluded here.
                 </p>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
@@ -342,7 +342,8 @@
                 {
                     title: "Period",
                     field: "period",
-                    width: 80
+                    width: 80,
+                    headerTooltip: "API period label (e.g. L31). Matches the page: {{ (int) ($amazonSalesWindowDays ?? 31) }} Pacific calendar days through yesterday, today excluded."
                 },
                 {
                     title: "LP",
@@ -511,7 +512,7 @@
             let totalQuantity = 0;
             let totalRevenue = 0;
             let totalPft = 0;
-            let totalL30Sales = 0;
+            let totalSkuLineSales = 0;
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
@@ -562,8 +563,7 @@
                 totalPft += pft;
                 totalCogs += cogs;
                 
-                // L30 Sales = use sale_amount
-                totalL30Sales += saleAmount;
+                totalSkuLineSales += saleAmount;
                 
                 // Track unique SKU spend (KW + PT) - only count once per SKU
                 if (row.sku && !uniqueSkuSpend[row.sku]) {
@@ -579,7 +579,7 @@
             const totalSalesByOrders = Object.values(uniqueOrderTotals).reduce((sum, v) => sum + v, 0);
 
             // Calculate PFT Percentage: (Sum of T PFT / Sum of Total Sales) * 100
-            const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
+            const pftPercentage = totalSkuLineSales > 0 ? (totalPft / totalSkuLineSales) * 100 : 0;
             
             // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;

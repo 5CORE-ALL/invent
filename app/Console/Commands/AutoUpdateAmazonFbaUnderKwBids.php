@@ -250,11 +250,7 @@ class AutoUpdateAmazonFbaUnderKwBids extends Command
                 return [];
             }
 
-            $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
-                ->get()
-                ->keyBy(function ($item) {
-                    return strtoupper(trim((string) $item->sku));
-                });
+            $shopifyData = ShopifySku::mapByProductSkus($baseSkus);
 
             // Preload enabled keyword campaign reports (exclude PT campaigns).
             $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')

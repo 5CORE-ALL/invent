@@ -271,7 +271,18 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
                 return [];
             }
 
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+            $shopifyByPm = ShopifySku::mapByProductSkus($skus);
+            $shopifyData = [];
+            foreach ($productMasters as $pm) {
+                $nk = $normalizeSku($pm->sku);
+                if ($nk === '') {
+                    continue;
+                }
+                $row = $shopifyByPm->get($pm->sku);
+                if ($row !== null) {
+                    $shopifyData[$nk] = $row;
+                }
+            }
             $ebayMetricData = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
             $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -303,7 +314,7 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
 
                 $normalizedSku = $normalizeSku($pm->sku);
                 $sku = $normalizedSku;
-                $shopify = $shopifyData[$normalizedSku] ?? ShopifySku::where('sku', $pm->sku)->first();
+                $shopify = $shopifyData[$normalizedSku] ?? ShopifySku::firstForProductSku($pm->sku);
                 $ebay = $ebayMetricData[$normalizedSku] ?? Ebay3Metric::where('sku', $pm->sku)->first();
 
                 $nrValue = '';

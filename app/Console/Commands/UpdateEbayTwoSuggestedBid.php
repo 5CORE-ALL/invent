@@ -89,7 +89,7 @@ class UpdateEbayTwoSuggestedBid extends Command
             $ebayMetrics = collect();
             
             if (!empty($skus)) {
-                $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+                $shopifyData = ShopifySku::mapByProductSkus($skus);
                 $ebayMetrics = Ebay2Metric::whereIn("sku", $skus)->get();
             }
             DB::connection()->disconnect();

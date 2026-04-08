@@ -138,7 +138,7 @@ class CvrMasterController extends Controller
                 ->toArray();
 
             // Fetch shopify data for these SKUs (for inventory and overall L30)
-            $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             // Fetch Amazon data for GPFT/AD/PFT calculations
             $amazonDatasheets = AmazonDatasheet::whereIn("sku", $skus)->get()->keyBy("sku");

@@ -25,7 +25,7 @@ class ListingAuditMacyController extends Controller
     {
         $productMasters = ProductMaster::all();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $dataViewValues = MacyDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
 

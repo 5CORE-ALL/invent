@@ -40,7 +40,7 @@ class WalmartUtilisationController extends Controller
 
         $walmartProductSheet = WalmartProductSheet::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $nrValues = WalmartDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         
@@ -100,7 +100,7 @@ class WalmartUtilisationController extends Controller
             }
 
             $amazonSheet = $walmartProductSheet[$sku] ?? null;
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
 
             // Campaign name & budget - get from any report range
             $matchedCampaign = $walmartCampaignReportsAll[$sku] ?? null;

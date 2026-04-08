@@ -41,10 +41,7 @@ class ListingAmazonController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         // Load all data in one go with proper indexing
-        $shopifyData = ShopifySku::whereIn('sku', $skus)
-            ->select('sku', 'inv', 'quantity', 'image_src')
-            ->get()
-            ->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         
         $statusData = AmazonDataView::whereIn('sku', $skus)
             ->select('sku', 'value')
@@ -255,7 +252,7 @@ class ListingAmazonController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
         $amazonListed = ProductStockMapping::pluck('inventory_amazon_product', 'sku');
 

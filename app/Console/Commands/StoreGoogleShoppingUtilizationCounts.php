@@ -29,7 +29,7 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 ->get();
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             // Calculate date ranges (same as controller)
             $dateRanges = $this->calculateDateRanges();

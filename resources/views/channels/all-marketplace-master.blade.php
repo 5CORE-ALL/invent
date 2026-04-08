@@ -156,7 +156,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Master',
-        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 29-day Pacific rolling window (same as Amazon Daily Sales)',
+        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 31-day Pacific rolling window (same as Amazon Daily Sales)',
     ])
 
     <div class="toast-container"></div>
@@ -223,6 +223,14 @@
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
 
+                    <select id="inventory-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="Filter by Qty items (L30 order quantity total)">
+                        <option value="all" selected>Qty — All</option>
+                        <option value="zero">Qty — 0</option>
+                        <option value="more">Qty — &gt; 0</option>
+                    </select>
+
                     <!-- Type Filter (hidden from UI) -->
                     <select id="type-filter" class="form-select form-select-sm" style="width: auto; display: none;">
                         <option value="all">All Types</option>
@@ -270,19 +278,19 @@
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Channels: <span id="total-channels">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last 29 days Pacific order totals, non-canceled. Other channels vary.">
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last 31 days Pacific order totals, non-canceled. Other channels vary.">
                             Sales: <span id="total-l30-sales">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column (L30 Orders). Amazon uses 29-day Pacific; other channels vary.">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = 31-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
                             Orders: <span id="total-l30-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Qty items: <span id="total-qty">0</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="Blended Gprofit% = sum(L30×G%) / sum(L30); matches GPFT% column footer">
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="Blended Gprofit% = sum(Sales×G%) / sum(Sales) using each channel’s rolling Sales column; matches GPFT% column footer">
                             GPFT%: <span id="avg-gprofit">0%</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $ = sum of L30 Sales × Gprofit% per channel; matches Gross PFT column (show column to verify)">
+                        <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $ = sum of (rolling Sales × Gprofit%) per channel; matches Gross PFT column (show column to verify)">
                             GPFT: <span id="total-gross-pft">$0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
@@ -297,7 +305,7 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="CVR % = Orders / Total Views">
                             CVR %: <span id="cvr-pct-badge">0%</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(L30×Gprofit% − Ad spend); same as L30 Sales × (G% − Ad Spend/Sales)">
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
                             NPFT: <span id="total-pft">$0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="npft" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
@@ -445,7 +453,7 @@
                 <div class="modal-header" style="background: linear-gradient(135deg, #4361ee, #3f37c9);">
                     <h5 class="modal-title text-white">
                         <i class="fas fa-history me-2"></i>
-                        <span id="modalChannelName">Channel</span> - Historical Data (Last 30 Days)
+                        <span id="modalChannelName">Channel</span> - Historical Data (31-day Pacific, through yesterday)
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -485,7 +493,7 @@
                 <div class="modal-header" style="background: linear-gradient(135deg, #4361ee, #3f37c9);">
                     <h5 class="modal-title text-white">
                         <i class="fas fa-chart-area me-2"></i>
-                        <span id="modalGraphChannelName">Channel</span> - Historical Graph (Last 30 Days)
+                        <span id="modalGraphChannelName">Channel</span> - Historical Graph (31-day Pacific, through yesterday)
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -643,12 +651,13 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="adChartModalTitle">Ad Breakdown - Rolling L30</span>
+                        <span id="adChartModalTitle">Ad Breakdown - Rolling window</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="adChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
                             <option value="7">7 Days</option>
-                            <option value="30" selected>30 Days</option>
+                            <option value="30">30 Days</option>
+                            <option value="31" selected>31 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
                             <option value="0">Lifetime</option>
@@ -1110,7 +1119,7 @@
                     {
                         title: "Sales",
                         field: "L30 Sales",
-                        headerTooltip: "Rolling sales per channel. Amazon = last 29 days Pacific, SUM(order total), non-canceled — same as Amazon Daily Sales.",
+                        headerTooltip: "Rolling sales per channel. Amazon = last 31 days Pacific, SUM(order total), non-canceled — same as Amazon Daily Sales.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -1263,7 +1272,7 @@
                     {
                         title: "Orders",
                         field: "L30 Orders",
-                        headerTooltip: "Rolling order count per channel. Amazon = 29 days Pacific, non-canceled — same as Amazon Daily Sales.",
+                        headerTooltip: "Rolling order count per channel. Amazon = 31 days Pacific, non-canceled — same as Amazon Daily Sales.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -3015,20 +3024,41 @@
                 $('#seller-ratings-reviews-badge').text(sellerWeightedAvg + ' ★ | ' + sellerTotalRev);
             }
 
+            // Combine channel search, type (B2C/B2B/Dropship), and Qty inventory filter
+            function applyMasterFilters() {
+                if (!table || typeof table.clearFilter !== 'function') return;
+                const q = ($('#channel-search').val() || '').trim().toLowerCase();
+                const inv = $('#inventory-filter').val() || 'all';
+                const typeVal = $('#type-filter').val() || 'all';
+                const needsFilter = q.length > 0 || inv !== 'all' || (typeVal && typeVal !== 'all');
+                if (!needsFilter) {
+                    table.clearFilter(true);
+                    return;
+                }
+                table.clearFilter(true);
+                table.addFilter(function(data) {
+                    const ch = String(data['Channel '] || data['Channel'] || '').toLowerCase();
+                    if (q && ch.indexOf(q) === -1) return false;
+                    if (typeVal && typeVal !== 'all' && String(data['type'] || '') !== typeVal) return false;
+                    const qty = parseNumber(data['Qty'] || 0);
+                    if (inv === 'zero' && qty !== 0) return false;
+                    if (inv === 'more' && qty <= 0) return false;
+                    return true;
+                });
+            }
+
             // Channel Search
             $('#channel-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("Channel ", "like", value);
+                applyMasterFilters();
+            });
+
+            $('#inventory-filter').on('change', function() {
+                applyMasterFilters();
             });
 
             // Type Filter
             $('#type-filter').on('change', function() {
-                const value = $(this).val();
-                if (value === 'all') {
-                    table.clearFilter(true);
-                } else {
-                    table.setFilter("type", "=", value);
-                }
+                applyMasterFilters();
             });
 
             // Build Column Visibility Dropdown
@@ -3111,14 +3141,14 @@
                 
                 // Type filter: B2C, B2B, Dropship — filter rows by channel type
                 if (section === 'B2C' || section === 'B2B' || section === 'Dropship') {
-                    table.setFilter('type', '=', section);
                     $('#type-filter').val(section);
+                    applyMasterFilters();
                     return;
                 }
                 
                 if (section === 'all') {
-                    table.clearFilter(true);
                     $('#type-filter').val('all');
+                    applyMasterFilters();
                     // Show all columns
                     table.getColumns().forEach(col => {
                         if (col.getField() !== 'Channel ') { // Keep channel column always visible
@@ -3501,7 +3531,7 @@
             let currentChartChannel = '';
             let currentChartAdType = '';
             let currentChartMetric = 'spend';
-            let currentChartDays = 30;
+            let currentChartDays = 31;
             let adChartAjax = null; // track in-flight request
             let currentChartMode = 'ad'; // 'ad' = ad breakdown, 'metric' = channel metric
             let currentMetricKey = ''; // metric key for channel metric mode
@@ -3564,12 +3594,11 @@
                 currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
                 currentChartAdType = adType.toLowerCase();
                 currentChartMetric = metricType;
-                currentChartDays = 30; // reset to default
+                currentChartDays = 30; // ad reports: default rolling 30
 
                 const hasData = channelsWithDailyData.includes(currentChartChannel) &&
                     (adTypesForChannel[currentChartChannel] || []).includes(currentChartAdType);
 
-                // Reset dropdown to 30D
                 $('#adChartRangeSelect').val('30');
 
                 // Set modal title
@@ -3705,11 +3734,10 @@
                 currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
                 currentMetricKey = metricKey;
                 currentChartMetric = metricKey; // for fmtVal formatting
-                currentChartDays = 30;
+                currentChartDays = 31; // align with Amazon Daily Sales / channel rolling window
                 currentCellValue = (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) ? cellValue : null;
 
-                // Reset dropdown
-                $('#adChartRangeSelect').val('30');
+                $('#adChartRangeSelect').val('31');
 
                 // Set title
                 const label = metricLabels[metricKey] || metricKey;

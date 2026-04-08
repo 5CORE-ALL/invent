@@ -147,7 +147,7 @@ class TiktokSheetUploadController extends Controller
                 ->all();
             
             // Get Shopify inventory data
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             $data = [];
 

@@ -88,7 +88,7 @@ class UpdateEbayThreeSuggestedBid extends Command
             $ebayMetrics = collect();
             
             if (!empty($skus)) {
-                $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+                $shopifyData = ShopifySku::mapByProductSkus($skus);
                 $ebayMetrics = Ebay3Metric::whereIn("sku", $skus)->get();
             }
             DB::connection()->disconnect();
@@ -163,7 +163,7 @@ class UpdateEbayThreeSuggestedBid extends Command
                         // Get ESBID (suggested bid from campaign listing)
                         $esbid = (float) ($listing->suggested_bid ?? 0);
                         
-                        // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 10; >5 → 8; else → ESbid; cap at 13
+                        // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 10; >5 → 8; else → ESbid; cap at 15
                         if ($soldL30 === 0) {
                             $newBid = $esbid;
                         } elseif ($soldL30 >= 1 && $soldL30 <= 5) {
@@ -174,8 +174,8 @@ class UpdateEbayThreeSuggestedBid extends Command
                             $newBid = $esbid;
                         }
                         
-                        // Cap newBid to maximum of 13
-                        $newBid = min($newBid, 13.0);
+                        // Cap newBid to maximum of 15
+                        $newBid = min($newBid, 15.0);
                         
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku; // Store SKU for logging

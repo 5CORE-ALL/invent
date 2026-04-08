@@ -85,13 +85,8 @@ class MacyController extends Controller
             ->values()
             ->all();
 
-        // Match Product Master / marketplace pricing: NBSP → space, trim, uppercase; full Shopify map (whereIn misses NBSP variants).
-        $canonicalSku = static function ($value): string {
-            return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
-        };
-
         // 3. Related Models
-        $shopifyData = ShopifySku::all()->keyBy(fn ($row) => $canonicalSku($row->sku));
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $macysMetrics = MacyProduct::whereIn('sku', $skus)
             ->get()
@@ -140,7 +135,7 @@ class MacyController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData->get($canonicalSku($pm->sku));
+            $shopify = $shopifyData->get($pm->sku);
             $macysMetric = $macysMetrics[$pm->sku] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
             $priceData = $priceDataCollection[strtoupper($pm->sku)] ?? null; // Use uppercase for lookup
@@ -810,17 +805,13 @@ class MacyController extends Controller
         $productMasters = ProductMaster::all();
         $skus = $productMasters->pluck('sku')->toArray();
 
-        $canonicalSku = static function ($value): string {
-            return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
-        };
-
-        $shopifySkus = ShopifySku::all()->keyBy(fn ($row) => $canonicalSku($row->sku));
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
         $macyProducts = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $macyDataViews = MacyDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        $processedData = $productMasters->map(function ($product) use ($shopifySkus, $macyProducts, $macyDataViews, $canonicalSku) {
+        $processedData = $productMasters->map(function ($product) use ($shopifySkus, $macyProducts, $macyDataViews) {
             $sku = $product->sku;
-            $shopifyRow = $shopifySkus->get($canonicalSku($sku));
+            $shopifyRow = $shopifySkus->get($sku);
 
             // 🟢 Shopify + Macy base metrics
             $product->INV = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;

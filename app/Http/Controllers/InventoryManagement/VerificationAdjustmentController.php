@@ -240,10 +240,8 @@ class VerificationAdjustmentController extends Controller
             return response()->json(['message' => 'Data fetched successfully', 'data' => [], 'status' => 200]);
         }
 
-        // Single query: Shopify data keyed by normalized SKU
-        $shopifyData = ShopifySku::whereIn('sku', $originalSkus)
-            ->get()
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+        // Shopify rows keyed by product_master.sku (NBSP / unicode space safe)
+        $shopifyData = ShopifySku::mapByProductSkus($originalSkus);
 
         // Latest inventory per SKU (one query for ids, one with eager load - avoids N+1)
         $latestInventoryIds = Inventory::whereIn('sku', $originalSkus)
@@ -275,7 +273,7 @@ class VerificationAdjustmentController extends Controller
             $item->IS_PARENT = stripos($sku, 'PARENT') === 0;
 
             if (!$item->IS_PARENT) {
-                $shopify = $shopifyData[$sku] ?? null;
+                $shopify = $shopifyData->get($item->sku);
                 $inv = $verifiedInventory[$sku] ?? null;
 
                 $item->INV = $shopify->inv ?? 0;

@@ -43,7 +43,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = VideoPosted::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -181,7 +181,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = ProductVideoUpload::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -303,7 +303,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = AssemblyVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -433,7 +433,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = AssemblyVideoUpload::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -555,7 +555,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = ThreeDVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -684,7 +684,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = ThreeDVideoUpload::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -806,7 +806,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = Video360::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -935,7 +935,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = Video360Upload::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -1058,7 +1058,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = BenefitVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -1184,7 +1184,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = BenefitVideoUpload::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -1307,7 +1307,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = DiyVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -1439,7 +1439,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = DiyVideoUpload::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -1562,7 +1562,7 @@ class VideoPostedController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = ShoppableVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 

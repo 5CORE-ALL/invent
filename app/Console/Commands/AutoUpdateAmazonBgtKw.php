@@ -171,7 +171,7 @@ class AutoUpdateAmazonBgtKw extends Command
                 return [];
             }
 
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
             

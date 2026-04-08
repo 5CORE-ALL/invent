@@ -116,9 +116,7 @@ class DobaController extends Controller
             ->all();
 
         // 4. Related Models
-        $shopifyData = ShopifySku::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $dobaMetrics = dobaMetric::whereIn("sku", $skus)
             ->get()
             ->keyBy("sku");
@@ -231,7 +229,7 @@ class DobaController extends Controller
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $dobaMetric = $dobaMetrics[$pm->sku] ?? null;
 
             $row = [];

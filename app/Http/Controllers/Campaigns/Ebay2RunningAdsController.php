@@ -34,7 +34,7 @@ class Ebay2RunningAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $ebayMetricData = DB::connection('apicentral')->table('ebay2_metrics')
             ->select('sku', 'ebay_price', 'item_id')
@@ -60,7 +60,7 @@ class Ebay2RunningAdsController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $ebay = $ebayMetricData[$sku] ?? null;
             
             $matchedGeneralL30 = $ebayGeneralReportsL30->first(function ($item) use ($ebay) {

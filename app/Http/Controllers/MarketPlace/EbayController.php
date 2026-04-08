@@ -252,10 +252,8 @@ class EbayController extends Controller
             ]);
         }
 
-        // 3. Related Models
-        $shopifyData = ShopifySku::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
+        // 3. Related Models (NBSP / Unicode space–safe PM ↔ shopify_skus match)
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $ebayMetrics = EbayMetric::select(
                 'sku',
@@ -479,7 +477,7 @@ class EbayController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
 
@@ -2714,10 +2712,7 @@ class EbayController extends Controller
         }
         $itemId = $ebayMetric && !empty($ebayMetric->item_id) ? trim((string) $ebayMetric->item_id) : null;
 
-        $shopify = ShopifySku::where('sku', $sku)->first();
-        if (!$shopify) {
-            $shopify = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$cleanSku])->first();
-        }
+        $shopify = ShopifySku::firstForProductSku($sku);
         $inv = $shopify ? (float) ($shopify->inv ?? 0) : 0.0;
 
         $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));

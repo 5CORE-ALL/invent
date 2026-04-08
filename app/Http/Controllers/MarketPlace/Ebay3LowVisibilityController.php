@@ -66,7 +66,7 @@ class Ebay3LowVisibilityController extends Controller
             $skus = $productMasters->pluck('sku')->unique()->toArray();
 
             // Fetch related data
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->where('inv', '>', 0)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus)->filter(fn ($row) => (float) ($row->inv ?? 0) > 0);
             $ebayMetrics = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy('sku');
             // Fetch all EbayTwoDataView rows for these SKUs
             $ebayDataViews = EbayThreeDataView::whereIn('sku', $skus)->get()->keyBy('sku');

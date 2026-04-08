@@ -26,7 +26,7 @@ class Ebay3KeywordAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $nrValues    = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         // Get all campaigns, excluding generic ones
@@ -248,7 +248,7 @@ class Ebay3KeywordAdsController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ebayMetrics = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy('sku');
         $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -350,7 +350,7 @@ class Ebay3KeywordAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 

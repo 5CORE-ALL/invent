@@ -37,7 +37,7 @@ class ListingAuditShopifyb2cController extends Controller
     {
         $productMasters = ProductMaster::all();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ebayDataViewValues = Shopifyb2cDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
 

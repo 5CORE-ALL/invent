@@ -35,7 +35,7 @@ class Ebay3RunningAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $ebayMetricData = DB::table('ebay_3_metrics')
             ->select('sku', 'ebay_price', 'item_id')
@@ -77,7 +77,7 @@ class Ebay3RunningAdsController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $ebay = $ebayMetricData[$sku] ?? null;
 
             $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {

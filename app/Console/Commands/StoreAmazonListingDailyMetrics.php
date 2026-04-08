@@ -32,10 +32,7 @@ class StoreAmazonListingDailyMetrics extends Command
             $skus = $productMasters->pluck('sku')->unique()->toArray();
 
             // Load all data in one go with proper indexing
-            $shopifyData = ShopifySku::whereIn('sku', $skus)
-                ->select('sku', 'inv', 'quantity', 'image_src')
-                ->get()
-                ->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             
             $statusData = AmazonDataView::whereIn('sku', $skus)
                 ->select('sku', 'value')

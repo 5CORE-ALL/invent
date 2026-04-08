@@ -644,13 +644,17 @@ class Ebay3UtilizedAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
         
-        // Fetch Shopify data with normalized SKU matching
-        $shopifyDataRaw = ShopifySku::whereIn('sku', $skus)->get();
+        $shopifyByPm = ShopifySku::mapByProductSkus($skus);
         $shopifyData = [];
-        foreach ($shopifyDataRaw as $shopify) {
-            // Store with normalized key for matching
-            $normalizedKey = $normalizeSku($shopify->sku);
-            $shopifyData[$normalizedKey] = $shopify;
+        foreach ($productMasters as $pm) {
+            $nk = $normalizeSku($pm->sku);
+            if ($nk === '') {
+                continue;
+            }
+            $row = $shopifyByPm->get($pm->sku);
+            if ($row !== null) {
+                $shopifyData[$nk] = $row;
+            }
         }
         
         // Fetch eBay metric data with normalized SKU matching
@@ -687,10 +691,10 @@ class Ebay3UtilizedAdsController extends Controller
             
             // Get child SKU's INV value
             $normalizedChildSku = $normalizeSku($pm->sku);
-            $childShopify = $shopifyData[$normalizedChildSku] ?? null;
-            if (!$childShopify) {
-                $childShopify = ShopifySku::where('sku', $pm->sku)->first();
-            }
+                $childShopify = $shopifyData[$normalizedChildSku] ?? null;
+                if (!$childShopify) {
+                    $childShopify = ShopifySku::firstForProductSku($pm->sku);
+                }
             
             $childInv = ($childShopify && isset($childShopify->inv)) ? (int)$childShopify->inv : 0;
             
@@ -718,8 +722,7 @@ class Ebay3UtilizedAdsController extends Controller
             // Try to get Shopify data using normalized key
             $shopify = $shopifyData[$normalizedSku] ?? null;
             if (!$shopify) {
-                // Fallback: Direct database lookup for edge cases
-                $shopify = ShopifySku::where('sku', $pm->sku)->first();
+                $shopify = ShopifySku::firstForProductSku($pm->sku);
             }
             
             // Try to get eBay metric data using normalized key
@@ -1617,11 +1620,17 @@ class Ebay3UtilizedAdsController extends Controller
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
             
-            $shopifyDataRaw = ShopifySku::whereIn('sku', $skus)->get();
+            $shopifyByPm = ShopifySku::mapByProductSkus($skus);
             $shopifyData = [];
-            foreach ($shopifyDataRaw as $shopify) {
-                $normalizedKey = $normalizeSku($shopify->sku);
-                $shopifyData[$normalizedKey] = $shopify;
+            foreach ($productMasters as $pm) {
+                $nk = $normalizeSku($pm->sku);
+                if ($nk === '') {
+                    continue;
+                }
+                $row = $shopifyByPm->get($pm->sku);
+                if ($row !== null) {
+                    $shopifyData[$nk] = $row;
+                }
             }
             
             $ebayMetricDataRaw = Ebay3Metric::whereIn('sku', $skus)->get();
@@ -1661,7 +1670,7 @@ class Ebay3UtilizedAdsController extends Controller
                 $normalizedChildSku = $normalizeSku($pm->sku);
                 $childShopify = $shopifyData[$normalizedChildSku] ?? null;
                 if (!$childShopify) {
-                    $childShopify = ShopifySku::where('sku', $pm->sku)->first();
+                    $childShopify = ShopifySku::firstForProductSku($pm->sku);
                 }
                 
                 $childInv = ($childShopify && isset($childShopify->inv)) ? (int)$childShopify->inv : 0;
@@ -1688,7 +1697,7 @@ class Ebay3UtilizedAdsController extends Controller
                 
                 $shopify = $shopifyData[$normalizedSku] ?? null;
                 if (!$shopify) {
-                    $shopify = ShopifySku::where('sku', $pm->sku)->first();
+                    $shopify = ShopifySku::firstForProductSku($pm->sku);
                 }
                 
                 $ebay = $ebayMetricData[$normalizedSku] ?? null;
@@ -2231,7 +2240,7 @@ class Ebay3UtilizedAdsController extends Controller
                 ->get();
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             $ebayMetricData = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy('sku');
             $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -2287,7 +2296,7 @@ class Ebay3UtilizedAdsController extends Controller
 
             foreach ($productMasters as $pm) {
                 $sku = strtoupper(trim($pm->sku));
-                $shopify = $shopifyData[$pm->sku] ?? null;
+                $shopify = $shopifyData->get($pm->sku);
                 $ebay = $ebayMetricData[$pm->sku] ?? null;
 
                 $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {

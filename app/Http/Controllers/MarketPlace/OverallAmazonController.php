@@ -84,7 +84,7 @@ class OverallAmazonController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -512,7 +512,7 @@ class OverallAmazonController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -976,7 +976,7 @@ class OverallAmazonController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $parents = $productMasters->pluck('parent')->filter()->unique()->map('strtoupper')->values()->all();
 
@@ -1199,7 +1199,7 @@ class OverallAmazonController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -1471,7 +1471,7 @@ class OverallAmazonController extends Controller
             return str_replace(' ', '', $norm);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // FBA price by SKU (seller_sku like "ABC FBA" -> key "ABC")
         $fbaPriceBySku = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")

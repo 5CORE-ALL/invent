@@ -821,7 +821,7 @@ class AmazonSpBudgetController extends Controller
         // Get INV values from ShopifySku for KW and PT campaigns (same as StoreAmazonUtilizationCounts)
         $shopifyData = [];
         if ($campaignType === 'KW' || $campaignType === 'PT') {
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
         }
 
         // Handle HL campaigns differently (use AmazonSbCampaignReport)
@@ -1501,7 +1501,7 @@ class AmazonSpBudgetController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch FBA data where seller_sku contains FBA, then key by base SKU (without FBA)
         $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
@@ -1699,7 +1699,7 @@ class AmazonSpBudgetController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -1997,7 +1997,7 @@ class AmazonSpBudgetController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
             ->get()

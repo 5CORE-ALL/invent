@@ -28,7 +28,7 @@ class DHGateZeroController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $dhgateDataViews = DHGateDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $result = [];

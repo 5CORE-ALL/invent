@@ -70,7 +70,7 @@ class WayfairZeroController extends Controller
     //         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
     //         // 4. Fetch related data
-    //         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //         $shopifyData = ShopifySku::mapByProductSkus($skus);
     //         $nrValues = WayfairDataView::pluck('value', 'sku');
     //         $jungleScoutData = JungleScoutProductData::all()
     //             ->groupBy('parent')
@@ -207,10 +207,7 @@ class WayfairZeroController extends Controller
             ]);
         }
 
-        // Fetch related data keyed by normalized SKU
-        $shopifyData = ShopifySku::whereIn(DB::raw('UPPER(TRIM(sku))'), $skus)
-            ->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $temuMetrics = WaifairProductSheet::whereIn(DB::raw('UPPER(TRIM(sku))'), $skus)
             ->get()
@@ -227,8 +224,7 @@ class WayfairZeroController extends Controller
             $sku = strtoupper(trim($productMaster->sku));
             if ($sku === '') continue; // safety
 
-            // Get Shopify data safely
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($productMaster->sku);
             $inv = $shopify->inv ?? 0;
             $quantity = $shopify->quantity ?? 0;
 
@@ -353,13 +349,13 @@ class WayfairZeroController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         // 4. Fetch related data
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // 5. Count SKUs where INV > 0 and Sess30 == 0
         $zeroViewCount = 0;
         foreach ($productMasters as $pm) {
             $sku = $pm->sku;
-            $inv = $shopifyData->has($sku) ? $shopifyData[$sku]->inv : 0;
+            $inv = $shopifyData->get($sku)?->inv ?? 0;
             $sess30 = isset($sheetSkuMap[$sku]) ? (int)($sheetSkuMap[$sku]->{'Sess30'} ?? 0) : 0;
             if ($inv > 0 && $sess30 == 0) {
                 $zeroViewCount++;
@@ -375,7 +371,7 @@ class WayfairZeroController extends Controller
     //     $productMasters = ProductMaster::whereNull('deleted_at')->get();
     //     $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $ebayDataViews = WayfairListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
     //     $ebayMetrics = WaifairProductSheet::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -388,7 +384,7 @@ class WayfairZeroController extends Controller
 
     //     foreach ($productMasters as $item) {
     //         $sku = trim($item->sku);
-    //         $inv = $shopifyData[$sku]->inv ?? 0;
+    //         $inv = $shopifyData->get($item->sku)?->inv ?? 0;
     //         $isParent = stripos($sku, 'PARENT') !== false;
     //         if ($isParent) continue;
 
@@ -443,8 +439,7 @@ class WayfairZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $wayfairListingStatus = WayfairListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -462,7 +457,7 @@ class WayfairZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

@@ -46,7 +46,7 @@ class Ebay3MissingAdsController extends Controller
             $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
 
             // Fetch all required data
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+            $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
             $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
             $ebayMetricData = DB::table('ebay_3_metrics')
                 ->select('sku', 'ebay_price', 'item_id')
@@ -85,7 +85,7 @@ class Ebay3MissingAdsController extends Controller
 
             foreach ($productMasters as $pm) {
                 $sku = strtoupper($pm->sku);
-                $shopify = $shopifyData->get($sku);
+                $shopify = $shopifyData->get($pm->sku);
                 $ebayMetric = $ebayMetricData->get($sku);
                 $campaignReport = $campaignLookup[$sku] ?? null;
                 

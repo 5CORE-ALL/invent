@@ -257,7 +257,7 @@ class AutoUpdateAmzUnderHlBids extends Command
             };
 
             if (!empty($skus)) {
-                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+                $shopifyData = ShopifySku::mapByProductSkus($skus);
             }
 
         $amazonSpCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')

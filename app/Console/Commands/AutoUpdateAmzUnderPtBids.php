@@ -188,7 +188,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             $amazonDatasheets = [];
 
             if (!empty($skus)) {
-                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+                $shopifyData = ShopifySku::mapByProductSkus($skus);
                 $amazonDatasheets = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
                     return strtoupper($item->sku);
                 });

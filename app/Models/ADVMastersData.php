@@ -758,7 +758,7 @@ class ADVMastersData extends Model
                 ->get();
             
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             
             $ebayMetrics = DB::connection('apicentral')->table('ebay2_metrics')
                 ->whereIn('sku', $skus)
@@ -825,7 +825,7 @@ class ADVMastersData extends Model
                 ->get();
             
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             
             $ebayMetrics = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy('sku');
 

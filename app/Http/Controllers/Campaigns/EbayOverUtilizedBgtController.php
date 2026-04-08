@@ -478,7 +478,7 @@ class EbayOverUtilizedBgtController extends Controller
             ->values()
             ->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -880,7 +880,7 @@ class EbayOverUtilizedBgtController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -1165,13 +1165,17 @@ class EbayOverUtilizedBgtController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
         
-        // Fetch Shopify data with normalized SKU matching
-        $shopifyDataRaw = ShopifySku::whereIn('sku', $skus)->get();
+        $shopifyByPm = ShopifySku::mapByProductSkus($skus);
         $shopifyData = [];
-        foreach ($shopifyDataRaw as $shopify) {
-            // Store with normalized key for matching
-            $normalizedKey = $normalizeSku($shopify->sku);
-            $shopifyData[$normalizedKey] = $shopify;
+        foreach ($productMasters as $pm) {
+            $nk = $normalizeSku($pm->sku);
+            if ($nk === '') {
+                continue;
+            }
+            $row = $shopifyByPm->get($pm->sku);
+            if ($row !== null) {
+                $shopifyData[$nk] = $row;
+            }
         }
         
         // Fetch eBay metric data with normalized SKU matching
@@ -1213,7 +1217,7 @@ class EbayOverUtilizedBgtController extends Controller
             $shopify = $shopifyData[$normalizedSku] ?? null;
             if (!$shopify) {
                 // Fallback: Direct database lookup for edge cases
-                $shopify = ShopifySku::where('sku', $pm->sku)->first();
+                $shopify = ShopifySku::firstForProductSku($pm->sku);
             }
             
             // Try to get eBay metric data using normalized key
@@ -1804,7 +1808,7 @@ class EbayOverUtilizedBgtController extends Controller
 
                 // Get SKU from campaign name for DIL calculation
                 $sku = strtoupper(trim($report->campaign_name ?? ''));
-                $shopify = ShopifySku::where('sku', $sku)->first();
+                $shopify = ShopifySku::firstForProductSku($report->campaign_name ?? '');
                 $dil = 0;
                 if ($shopify && $shopify->inv > 0) {
                     $l30 = (float)($shopify->quantity ?? 0);
@@ -2052,11 +2056,17 @@ class EbayOverUtilizedBgtController extends Controller
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
             
-            $shopifyDataRaw = ShopifySku::whereIn('sku', $skus)->get();
+            $shopifyByPm = ShopifySku::mapByProductSkus($skus);
             $shopifyData = [];
-            foreach ($shopifyDataRaw as $shopify) {
-                $normalizedKey = $normalizeSku($shopify->sku);
-                $shopifyData[$normalizedKey] = $shopify;
+            foreach ($productMasters as $pm) {
+                $nk = $normalizeSku($pm->sku);
+                if ($nk === '') {
+                    continue;
+                }
+                $row = $shopifyByPm->get($pm->sku);
+                if ($row !== null) {
+                    $shopifyData[$nk] = $row;
+                }
             }
             
             $ebayMetricDataRaw = EbayMetric::whereIn('sku', $skus)->get();
@@ -2095,7 +2105,7 @@ class EbayOverUtilizedBgtController extends Controller
                 
                 $shopify = $shopifyData[$normalizedSku] ?? null;
                 if (!$shopify) {
-                    $shopify = ShopifySku::where('sku', $pm->sku)->first();
+                    $shopify = ShopifySku::firstForProductSku($pm->sku);
                 }
                 
                 $ebay = $ebayMetricData[$normalizedSku] ?? null;
@@ -2570,7 +2580,7 @@ class EbayOverUtilizedBgtController extends Controller
                 ->get();
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
             $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 

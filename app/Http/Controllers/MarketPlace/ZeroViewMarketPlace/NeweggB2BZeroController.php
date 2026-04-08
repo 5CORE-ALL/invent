@@ -28,7 +28,7 @@ class NeweggB2BZeroController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $neweggB2BDataViews = NeweggB2BDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $result = [];
