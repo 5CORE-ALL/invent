@@ -59,7 +59,11 @@ class EbayController extends Controller
 
     public function ebayTabulatorView(Request $request)
     {
-        return view("market-places.ebay_tabulator_view");
+        $channelAdsPercent = app(ChannelMasterController::class)->getEbayMasterAdsPercent();
+
+        return view("market-places.ebay_tabulator_view", [
+            'channelAdsPercent' => $channelAdsPercent,
+        ]);
     }
 
        public function ebayViewData(Request $request)

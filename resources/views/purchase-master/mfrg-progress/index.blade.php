@@ -151,36 +151,49 @@
         color: #2a9a9d;
     }
 
-    /* Toolbar: uniform height, alignment, equal spread */
+    /* Toolbar: wrap instead of horizontal scroll */
     #columnControls .toolbar-row {
         display: flex;
-        flex-wrap: nowrap;
+        flex-wrap: wrap;
         align-items: center;
-        justify-content: space-between;
-        gap: 0;
+        justify-content: flex-start;
+        gap: 10px 14px;
         width: 100%;
         min-height: 44px;
+        overflow-x: visible;
     }
     #columnControls .toolbar-item {
         display: flex;
         align-items: center;
         justify-content: center;
-        flex: 1;
+        flex: 1 1 auto;
         min-width: 0;
     }
     #columnControls .toolbar-item.controls-group {
-        flex: 0 0 auto;
+        flex: 1 1 auto;
         justify-content: flex-start;
-        gap: 12px;
+        gap: 8px 12px;
+        min-width: min(100%, 200px);
     }
     #columnControls .toolbar-item.stats-group {
-        flex: 1;
+        flex: 1 1 auto;
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
-        gap: 0;
+        gap: 10px 16px;
+        min-width: min(100%, 260px);
+        max-width: 100%;
+        padding-left: 0;
+    }
+    #columnControls .mip-stats-metrics {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px 14px;
+        flex: 1 1 auto;
         min-width: 0;
-        padding-left: 24px;
     }
     #columnControls .toolbar-item .btn,
     #columnControls .toolbar-item .custom-select-box {
@@ -199,7 +212,9 @@
     }
     #columnControls .mip-toolbar-search-input {
         width: 150px;
-        min-width: 120px;
+        max-width: 100%;
+        min-width: 0;
+        flex: 1 1 120px;
         height: 38px;
         font-size: 13px;
     }
@@ -207,13 +222,37 @@
         margin-left: -1px; /* Center the play triangle - FA icon has slight right bias */
     }
     #columnControls .stat-panel {
-        flex: 1;
-        min-width: 60px;
+        flex: 0 1 auto;
+        min-width: 56px;
         text-align: center;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
+    }
+    #columnControls .mip-toolbar-export-cluster {
+        display: inline-flex !important;
+        flex-direction: row;
+        flex-wrap: nowrap !important;
+        align-items: center;
+        align-self: center;
+        gap: 8px;
+        flex: 0 0 auto;
+        margin-left: auto;
+    }
+    #columnControls #mip-export-supplier-select {
+        width: 168px;
+        max-width: min(168px, 42vw);
+        min-width: 120px;
+        flex: 0 0 auto;
+    }
+    #columnControls #mip-summary-export-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+    #columnControls .mip-toolbar-column-filters {
+        min-width: 0;
+        flex: 1 1 200px;
     }
 
     /* ── Fit MIP into one screen: flex column + scroll only the grid ── */
@@ -287,7 +326,9 @@
     #mip-page-root.mip-viewport-fit #columnControls .mip-toolbar-search-input {
         height: 38px;
         width: 140px;
-        min-width: 110px;
+        max-width: 100%;
+        min-width: 0;
+        flex: 1 1 100px;
         font-size: 13px;
     }
     #mip-page-root.mip-viewport-fit #columnControls .stat-panel .text-muted {
@@ -353,7 +394,9 @@
     #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .mip-toolbar-search-input {
         height: 34px;
         width: 128px;
-        min-width: 100px;
+        max-width: 100%;
+        min-width: 0;
+        flex: 1 1 90px;
         font-size: 12px;
     }
     #mip-page-root.mip-viewport-fit.mip-dense-layout #columnControls .stat-panel .text-muted {
@@ -389,10 +432,10 @@
         <div class="card shadow-sm mip-main-card mb-0 d-flex flex-column mip-minh-0">
             <div class="card-body mip-card-body d-flex flex-column mip-minh-0">
                 <!-- Filters Row - First Row -->
-                <div class="column-controls card mb-2 p-2 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 8px;">
-                    <div class="toolbar-row" style="overflow-x: auto;">
+                <div class="column-controls card mb-2 p-2 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 8px; overflow-x: visible; max-width: 100%;">
+                    <div class="toolbar-row">
                         <!-- Controls Group -->
-                        <div class="toolbar-item controls-group d-flex flex-nowrap">
+                        <div class="toolbar-item controls-group d-flex flex-wrap">
                             <div class="btn-group time-navigation-group d-flex align-items-center gap-1" role="group">
                                 <button id="play-backward" class="btn btn-light rounded-circle shadow-sm" title="Previous parent">
                                     <i class="fas fa-step-backward"></i>
@@ -421,7 +464,7 @@
                                 <i class="fas fa-text-height" aria-hidden="true"></i>
                                 <span class="mip-density-label text-nowrap">Dense view</span>
                             </button>
-                            <div class="d-flex align-items-center flex-nowrap gap-2 mip-toolbar-bulk-stage border-start ps-3 ms-1" title="Apply stage to rows checked in the first column">
+                            <div class="d-flex align-items-center flex-wrap gap-2 mip-toolbar-bulk-stage border-start ps-3 ms-1" title="Apply stage to rows checked in the first column">
                                 <label for="mip-bulk-stage-select" class="mb-0 small fw-semibold text-nowrap text-secondary">Bulk Stage</label>
                                 <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 128px; min-width: 110px;">
                                     <option value="">— Choose —</option>
@@ -434,14 +477,15 @@
                                 </select>
                                 <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
                             </div>
-                            <div class="d-flex align-items-center flex-nowrap gap-2 mip-toolbar-column-filters" role="search" aria-label="Filter table">
+                            <div class="d-flex align-items-center flex-wrap gap-2 mip-toolbar-column-filters" role="search" aria-label="Filter table">
                                 <input type="text" class="form-control form-control-sm column-search mip-toolbar-search-input" data-search-column="3" placeholder="Search SKU..." autocomplete="off" aria-label="Filter by SKU">
                                 <input type="text" class="form-control form-control-sm column-search mip-toolbar-search-input" data-search-column="6" placeholder="Search Supplier..." autocomplete="off" aria-label="Filter by supplier">
                             </div>
                         </div>
 
-                        <!-- Stats Section - Equal width, spread from left to right -->
+                        <!-- Stats row: metrics (left) + export (right, single line) -->
                         <div class="toolbar-item stats-group">
+                            <div class="mip-stats-metrics">
                             <div class="stat-panel">
                                 <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">👥 Suppliers</div>
                                 <div id="followSupplierCount" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">0</div>
@@ -463,9 +507,19 @@
                                 <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">🏭 Current Supplier</div>
                                 <div id="current-supplier" class="fw-bold text-white" style="font-size: 1rem; line-height: 1.2; background-color: #28a745; padding: 2px 8px; border-radius: 4px;">-</div>
                             </div>
-                            <button type="button" id="mip-summary-export-btn" class="btn btn-link p-0 border-0 bg-transparent flex-shrink-0" title="Export summary to Excel" style="margin-left: 12px;">
-                                <img src="{{ asset('assets/images/summary-icon.png') }}" alt="Summary" style="width: 36px; height: 36px; object-fit: contain; cursor: pointer;">
-                            </button>
+                            </div>
+                            <div class="mip-toolbar-export-cluster" title="Pick supplier (optional), then Export">
+                                <select id="mip-export-supplier-select" class="form-select form-select-sm" aria-label="Export filter by supplier" title="All suppliers = every visible row; or pick one supplier">
+                                    <option value="">All suppliers</option>
+                                    @foreach ($suppliers as $supplierName)
+                                        <option value="{{ e($supplierName) }}">{{ $supplierName }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" id="mip-summary-export-btn" class="btn btn-sm btn-success fw-semibold d-inline-flex align-items-center gap-1 flex-shrink-0 shadow-sm" title="Download MIP summary as CSV (UTF-8, opens in Excel). Optional HTML with image links if rows have images. Respects supplier dropdown and visible rows.">
+                                    <i class="fas fa-file-csv" aria-hidden="true"></i>
+                                    <span>Export</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1029,7 +1083,6 @@
 </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
     /** Lazy-load Tabulator when opening Archived History (saves initial parse on main MIP page). */
     var mipTabulatorLoadPromise = null;
@@ -1326,7 +1379,7 @@
 
         // Summary Export to Excel
         const summaryExportBtn = document.getElementById('mip-summary-export-btn');
-        if (summaryExportBtn) summaryExportBtn.addEventListener('click', exportMipSummaryToExcel);
+        if (summaryExportBtn) summaryExportBtn.addEventListener('click', exportMipSummaryToCsv);
 
         // ========= FUNCTIONS ========= //
 
@@ -3079,11 +3132,37 @@
         updateFollowSupplierCount();
     }
 
-    function exportMipSummaryToExcel() {
+    function mipCsvEscapeField(val) {
+        const s = val == null ? '' : String(val);
+        if (/[",\r\n]/.test(s)) {
+            return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+    }
+    function mipDownloadTextFile(filename, text, mimeType) {
+        const blob = new Blob([text], { type: mimeType || 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function exportMipSummaryToCsv() {
         const rows = document.querySelectorAll('table.wide-table tbody tr');
+        const exportSupplierSel = document.getElementById('mip-export-supplier-select');
+        const exportSupplierFilter = exportSupplierSel ? String(exportSupplierSel.value || '').trim() : '';
         const exportData = [];
         rows.forEach(row => {
             if (row.style.display === 'none') return;
+            let rowSupplier = '';
+            const supplierCell0 = row.querySelector('td[data-column="6"]');
+            const supplierSelect0 = supplierCell0 ? supplierCell0.querySelector('select[data-column="supplier"]') : null;
+            if (supplierSelect0) {
+                rowSupplier = String(supplierSelect0.value || '').trim();
+            }
+            if (exportSupplierFilter && rowSupplier !== exportSupplierFilter) return;
             const getCellText = (col) => {
                 const cell = row.querySelector(`td[data-column="${col}"]`);
                 if (!cell) return '';
@@ -3128,6 +3207,7 @@
                 orderDateFormatted = d + '-' + m + '-' + y;
             }
             exportData.push({
+                'Supplier': rowSupplier,
                 'SKU': getCellText('3'),
                 'Image': getImageUrl('1'),
                 'QTY': getCellVal('4'),
@@ -3136,42 +3216,54 @@
             });
         });
         if (exportData.length === 0) {
-            alert('No data to export.');
+            alert(exportSupplierFilter ? 'No rows to export for this supplier (check visible filters and supplier selection).' : 'No data to export.');
             return;
         }
         try {
             const supplierBadge = document.getElementById('supplier-badge-container');
             const supplierEl = document.getElementById('current-supplier');
-            const supplierName = (supplierBadge && supplierBadge.style.display !== 'none' && supplierEl) ? supplierEl.textContent.trim() : 'All supplier';
+            let supplierName = 'All suppliers (visible rows)';
+            if (exportSupplierFilter) {
+                supplierName = exportSupplierFilter;
+            } else if (supplierBadge && supplierBadge.style.display !== 'none' && supplierEl) {
+                supplierName = supplierEl.textContent.trim() || supplierName;
+            }
             const itemsCount = exportData.length;
-
-            const headerRows = [
-                ['Supplier', supplierName],
-                ['Items', itemsCount],
-                [],
-                ['SKU', 'Image', 'QTY', 'O Date', 'Days']
-            ];
-            const dataRows = exportData.map(r => [r['SKU'], r['Image'], r['QTY'], r['O Date'], r['Days']]);
-            const aoa = [...headerRows, ...dataRows];
-
-            const ws = XLSX.utils.aoa_to_sheet(aoa);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'MIP Summary');
             const dateStr = new Date().toISOString().split('T')[0];
+            const supplierFileSlug = exportSupplierFilter
+                ? '_' + exportSupplierFilter.replace(/[^\w\-.]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 48)
+                : '';
+
+            const csvCols = ['Supplier', 'SKU', 'Image', 'QTY', 'O Date', 'Days'];
+            const csvLines = [];
+            csvLines.push(csvCols.map(mipCsvEscapeField).join(','));
+            exportData.forEach(function(r) {
+                csvLines.push([
+                    r['Supplier'],
+                    r['SKU'],
+                    r['Image'],
+                    r['QTY'],
+                    r['O Date'],
+                    r['Days']
+                ].map(mipCsvEscapeField).join(','));
+            });
+            const bom = '\uFEFF';
+            mipDownloadTextFile(
+                'MIP_Summary_' + dateStr + supplierFileSlug + '.csv',
+                bom + csvLines.join('\r\n'),
+                'text/csv;charset=utf-8'
+            );
 
             const imageUrls = exportData.map(r => r['Image']).filter(url => url);
             if (imageUrls.length > 0) {
                 const urlsJson = JSON.stringify([...new Set(imageUrls)]);
-                const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MIP Summary ' + dateStr + '</title><style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#3bc0c3;color:#fff;}</style></head><body><h2>MIP Summary - ' + dateStr + '</h2><p><strong>Supplier:</strong> ' + supplierName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' | <strong>Items:</strong> ' + itemsCount + '</p><table><thead><tr><th>SKU</th><th>Image</th><th>QTY</th><th>O Date</th><th>Days</th></tr></thead><tbody>' + exportData.map(r => '<tr><td>' + (r['SKU']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['Image'] ? '<a href="' + r['Image'].replace(/"/g,'&quot;') + '" target="_blank">View</a>' : '') + '</td><td>' + (r['QTY']||'') + '</td><td>' + (r['O Date']||'') + '</td><td>' + (r['Days']||'') + '</td></tr>').join('') + '</tbody></table><script>var urls=' + urlsJson + ';var i=0;function openNext(){if(i<urls.length){window.open(urls[i],"_blank");i++;setTimeout(openNext,800);}}setTimeout(openNext,1000);<\/script></body></html>';
-                const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'MIP_Summary_' + dateStr + '.html';
-                a.click();
-                URL.revokeObjectURL(url);
+                const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MIP Summary ' + dateStr + '</title><style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#3bc0c3;color:#fff;}</style></head><body><h2>MIP Summary - ' + dateStr + '</h2><p><strong>Supplier:</strong> ' + supplierName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' | <strong>Items:</strong> ' + itemsCount + '</p><table><thead><tr><th>Supplier</th><th>SKU</th><th>Image</th><th>QTY</th><th>O Date</th><th>Days</th></tr></thead><tbody>' + exportData.map(r => '<tr><td>' + (r['Supplier']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['SKU']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['Image'] ? '<a href="' + r['Image'].replace(/"/g,'&quot;') + '" target="_blank">View</a>' : '') + '</td><td>' + (r['QTY']||'') + '</td><td>' + (r['O Date']||'') + '</td><td>' + (r['Days']||'') + '</td></tr>').join('') + '</tbody></table><script>var urls=' + urlsJson + ';var i=0;function openNext(){if(i<urls.length){window.open(urls[i],"_blank");i++;setTimeout(openNext,800);}}setTimeout(openNext,1000);<\/script></body></html>';
+                mipDownloadTextFile(
+                    'MIP_Summary_' + dateStr + supplierFileSlug + '_images.html',
+                    html,
+                    'text/html;charset=utf-8'
+                );
             }
-            XLSX.writeFile(wb, 'MIP_Summary_' + dateStr + '.xlsx');
         } catch (e) {
             alert('Export failed: ' + (e.message || e));
         }

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay Pricing Decrease', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'eBay Data', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -284,8 +284,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'eBay Pricing Decrease',
-        'sub_title' => 'eBay Pricing Decrease',
+        'page_title' => 'eBay Data',
+        'sub_title' => 'Tabulator view — pricing, ads, and inventory',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -1042,6 +1042,8 @@
     @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "ebay_tabulator_column_visibility";
+        /** Channel Ads% — getEbayMasterAdsPercent() / all-marketplace-master (same as AD% on each row) */
+        const EBAY_CHANNEL_ADS_PCT = {{ number_format((float) ($channelAdsPercent ?? 0), 4, '.', '') }};
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
         const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
         let skuMetricsChart = null;
@@ -1061,11 +1063,6 @@
             if (s.toUpperCase().startsWith('PARENT')) return s.replace(/^PARENT\s+/i, '').trim();
             return s;
         }
-
-        // Store AJAX-loaded spend totals (from reports - matches KW/PMP ads pages)
-        let ebaySpendTotals = { kw_spend: 0, pmt_spend: 0, total_spend: 0 };
-        // Reference so loadEbayKwPmtSpendTotals (called before table/updateSummary exist) can call it after fetch
-        let updateSummaryRef = null;
 
         // KW Ads range filter state
         let kwRangeFilters = {
@@ -1363,24 +1360,6 @@
         $(document).ready(function() {
             // Initialize SKU-specific chart
             initSkuMetricsChart();
-
-            // Load eBay KW and PMT spend totals from reports (defined inside ready so it can call updateSummaryRef)
-            function loadEbayKwPmtSpendTotals() {
-                fetch('/ebay-kw-pmt-spend-totals')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            ebaySpendTotals.kw_spend = parseFloat(data.kw_spend) || 0;
-                            ebaySpendTotals.pmt_spend = parseFloat(data.pmt_spend) || 0;
-                            ebaySpendTotals.total_spend = parseFloat(data.total_spend) || 0;
-                            if (table && updateSummaryRef) updateSummaryRef();
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error loading eBay KW/PMT spend totals:', error);
-                    });
-            }
-            loadEbayKwPmtSpendTotals();
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
@@ -5919,12 +5898,6 @@
                 const allData = table.getData("all");
                 const filteredData = table.getData("active");
                 
-                // Use AJAX-loaded spend totals from reports (matches KW/PMP ads pages exactly)
-                // These are loaded via loadEbayKwPmtSpendTotals() and avoid double-counting
-                const grandTotalKwSpend = ebaySpendTotals.kw_spend;
-                const grandTotalPmtSpend = ebaySpendTotals.pmt_spend;
-                const grandTotalSpend = ebaySpendTotals.total_spend;
-                
                 // Filtered data metrics (for other badges)
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
@@ -5987,8 +5960,8 @@
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
                 
-                // Calculate TACOS% = (Total Spend / Total Sales) * 100
-                const tacosPercent = totalSalesAmt > 0 ? ((grandTotalSpend / totalSalesAmt) * 100) : 0;
+                // TACOS badge = channel Ads% (all-marketplace-master), same as Ebay 2/3 and AD% column
+                const tacosPercent = EBAY_CHANNEL_ADS_PCT;
                 
                 // GROI% = (Total PFT / Total COGS) * 100
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
@@ -6019,7 +5992,6 @@
                 
                 $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
             }
-            updateSummaryRef = updateSummary;
 
             // Build Column Visibility Dropdown
             function buildColumnDropdown() {
