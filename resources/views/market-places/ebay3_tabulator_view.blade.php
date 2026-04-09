@@ -4473,14 +4473,113 @@
             }
         });
 
+        // Flatten one tree branch for export (parent row then all _children), without mutating source objects
+        function ebay3FlattenTreeBranchForExport(rowData, out) {
+            if (!rowData || typeof rowData !== 'object') {
+                return;
+            }
+            var kids = rowData._children;
+            var rowCopy = {};
+            Object.keys(rowData).forEach(function(k) {
+                if (k !== '_children') {
+                    rowCopy[k] = rowData[k];
+                }
+            });
+            out.push(rowCopy);
+            if (Array.isArray(kids) && kids.length) {
+                kids.forEach(function(child) {
+                    ebay3FlattenTreeBranchForExport(child, out);
+                });
+            }
+        }
+
+        function ebay3CsvEscapeCell(val) {
+            if (val === null || val === undefined) {
+                return '';
+            }
+            if (typeof val === 'object') {
+                try {
+                    val = JSON.stringify(val);
+                } catch (e) {
+                    val = String(val);
+                }
+            } else {
+                val = String(val);
+            }
+            if (/[",\r\n]/.test(val)) {
+                return '"' + val.replace(/"/g, '""') + '"';
+            }
+            return val;
+        }
+
+        function ebay3VisibleExportColumns() {
+            var cols = [];
+            table.getColumns().forEach(function(col) {
+                try {
+                    if (!col.isVisible()) {
+                        return;
+                    }
+                    var def = col.getDefinition();
+                    if (def.download === false) {
+                        return;
+                    }
+                    var f = def.field;
+                    if (f === undefined || f === null || f === '' || f === '_select') {
+                        return;
+                    }
+                    var t = def.title !== undefined && def.title !== null ? String(def.title) : String(f);
+                    cols.push({ field: f, title: t });
+                } catch (e) {}
+            });
+            return cols;
+        }
+
+        function ebay3DownloadManualCsv(filename, rows, cols) {
+            var lines = [];
+            lines.push(cols.map(function(c) {
+                return ebay3CsvEscapeCell(c.title);
+            }).join(','));
+            rows.forEach(function(row) {
+                lines.push(cols.map(function(c) {
+                    return ebay3CsvEscapeCell(row[c.field]);
+                }).join(','));
+            });
+            var blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        }
+
         // Export button: download CSV for current section (visible columns + filtered data)
         $('#export-section-btn').on('click', function() {
             var sectionVal = $('#section-filter').val() || 'all';
             var dateStr = new Date().toISOString().slice(0, 10);
             var filename = 'ebay3_' + sectionVal + '_export_' + dateStr + '.csv';
             try {
-                // Tabulator 6: downloadRowRange "active" = rows that pass filters; visible columns included by default
-                table.download('csv', filename, { downloadRowRange: 'active' });
+                var viewMode = $('#view-mode-filter').val();
+
+                // "Both (Parent + SKU)": Tabulator CSV only outputs displayed rows (collapsed tree = no SKUs).
+                // Also, parent rows use summed INV/metrics and pass filters while many child SKUs fail the same
+                // row-level filters — so filtering every descendant drops all SKU lines. Export from row data:
+                // one CSV row per parent, then all nested _children, for each table.getRows("active") root.
+                if (viewMode === 'both' && table) {
+                    var flatRows = [];
+                    table.getRows('active').forEach(function(rc) {
+                        ebay3FlattenTreeBranchForExport(rc.getData(), flatRows);
+                    });
+                    var exportCols = ebay3VisibleExportColumns();
+                    if (!exportCols.length) {
+                        throw new Error('No visible columns to export');
+                    }
+                    ebay3DownloadManualCsv(filename, flatRows, exportCols);
+                } else {
+                    table.download('csv', filename, { downloadRowRange: 'active' });
+                }
+
                 if (typeof showToast === 'function') {
                     showToast('success', 'Export started');
                 }
