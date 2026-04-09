@@ -517,6 +517,15 @@ function transitClinkLinkFormatter(cell) {
     }
 }
 
+function escapeHtmlTransit(s) {
+    if (s == null || s === "") return "";
+    return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
 Object.entries(groupedData).forEach(([tabName, data], index) => {
     let table = new Tabulator(`#tabulator-${index}`, {
         layout: "fitDataFill",
@@ -685,7 +694,6 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 `;
               }
             },
-            // { title: "Supplier", field: "supplier_name", editor: "input" },
             {
               title: "Status",
               field: "push_status",
@@ -819,6 +827,45 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 hozAlign: "center",
                 formatter: transitClinkLinkFormatter,
                 editor: "input",
+            },
+            {
+                title: "Supplier",
+                field: "supplier_name",
+                headerSort: false,
+                hozAlign: "center",
+                width: 220,
+                formatter: function (cell) {
+                    const row = cell.getRow().getData();
+                    const saved = String(row.supplier_name || "").trim();
+                    const related = row.supplier_names;
+                    const relatedStr = Array.isArray(related) ? related.filter(Boolean).join(", ") : "";
+                    const parts = [];
+                    if (saved) {
+                        parts.push('<div style="font-weight:600;">' + escapeHtmlTransit(saved) + "</div>");
+                    }
+                    if (relatedStr) {
+                        parts.push(
+                            '<div style="font-size:0.88rem;color:#475569;margin-top:2px;">Related: ' +
+                                escapeHtmlTransit(relatedStr) +
+                                "</div>"
+                        );
+                    }
+                    if (parts.length === 0) {
+                        return '<span class="text-muted">—</span>';
+                    }
+                    return '<div style="text-align:center;max-width:260px;margin:0 auto;">' + parts.join("") + "</div>";
+                },
+                editor: "input",
+                tooltip: function (cell) {
+                    const row = cell.getRow().getData();
+                    const saved = String(row.supplier_name || "").trim();
+                    const related = row.supplier_names;
+                    const relatedStr = Array.isArray(related) ? related.filter(Boolean).join(", ") : "";
+                    const lines = [];
+                    if (saved) lines.push("Saved: " + saved);
+                    if (relatedStr) lines.push("Related: " + relatedStr);
+                    return lines.join("\n") || "";
+                },
             },
             // {
             //   title: "Amt($)", 
@@ -1078,9 +1125,15 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
           .map(row => {
               const pcsQty = parseFloat(row.pcs_qty);
               const qty = (pcsQty > 0) ? pcsQty : (parseFloat(row.no_of_units || 0) * parseFloat(row.total_ctn || 0));
+              const savedSup = String(row.supplier_name || "").trim();
+              const relatedSup = Array.isArray(row.supplier_names) ? row.supplier_names.filter(Boolean).join(", ") : "";
+              let supplierCol = savedSup;
+              if (relatedSup) {
+                  supplierCol = savedSup ? savedSup + " | Related: " + relatedSup : "Related: " + relatedSup;
+              }
               return {
                   "SKU": row.our_sku,
-                  "Supplier": row.supplier_name,
+                  "Supplier": supplierCol,
                   "Qty / Ctns": row.no_of_units,
                   "Qty Ctns": row.total_ctn,
                   "Qty": qty,

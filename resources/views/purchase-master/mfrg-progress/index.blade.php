@@ -502,6 +502,10 @@
                                 <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">🔢 Items</div>
                                 <div id="total-order-items" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">0</div>
                             </div>
+                            <div class="stat-panel" title="Average days since O Date (column): sum of days for visible MIP rows ÷ number of those rows. Rows without O date count as 0 days.">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">TAT MIP</div>
+                                <div id="tat-mip-badge" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">—</div>
+                            </div>
                             <div class="flex-shrink-0" style="display: none; width: 1px; height: 32px; background: #dee2e6; margin: 0 8px;" id="supplier-badge-vr"></div>
                             <div class="stat-panel" style="display: none;" id="supplier-badge-container">
                                 <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">🏭 Current Supplier</div>
@@ -1197,6 +1201,62 @@
         if (el) el.textContent = String(Math.round(totalCBM));
     }
 
+    /** Calendar days from O Date (YYYY-MM-DD) to today; matches MIP O Date display. Future dates → 0. */
+    function mipDaysSinceODate(isoYmd) {
+        if (!isoYmd || typeof isoYmd !== 'string') {
+            return 0;
+        }
+        const t = isoYmd.trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) {
+            return 0;
+        }
+        const p = t.split('-');
+        const y = parseInt(p[0], 10);
+        const m = parseInt(p[1], 10) - 1;
+        const d = parseInt(p[2], 10);
+        if (isNaN(y) || isNaN(m) || isNaN(d)) {
+            return 0;
+        }
+        const o = new Date(y, m, d);
+        o.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diff = Math.round((today - o) / 86400000);
+        return diff > 0 ? diff : 0;
+    }
+
+    /** Sum of (days since O date) for visible MIP rows ÷ row count; missing O date = 0 days. */
+    function calculateTatMip() {
+        const el = document.getElementById('tat-mip-badge');
+        if (!el) {
+            return;
+        }
+        let sumDays = 0;
+        let n = 0;
+        document.querySelectorAll('table.wide-table tbody tr').forEach(function (row) {
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            if (rowStage !== 'mip') {
+                return;
+            }
+            if (row.style.display === 'none') {
+                return;
+            }
+            n++;
+            const inp = row.querySelector('input[data-column="created_at"]');
+            const v = inp && inp.value ? String(inp.value).trim() : '';
+            sumDays += mipDaysSinceODate(v);
+        });
+        if (n === 0) {
+            el.textContent = '—';
+            return;
+        }
+        const avg = sumDays / n;
+        el.textContent = (Math.round(avg * 10) / 10).toFixed(1) + ' d';
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         document.documentElement.setAttribute("data-sidenav-size", "condensed");
 
@@ -1604,6 +1664,10 @@
                             this.style.border = '2px solid green';
                             setTimeout(() => this.style.border = '', 1000);
 
+                            if (column === 'created_at' && typeof calculateTatMip === 'function') {
+                                calculateTatMip();
+                            }
+
                             if (column === 'supplier' && row) {
                                 const platCell = row.querySelector('td[data-column="26"]');
                                 if (platCell) {
@@ -1903,6 +1967,9 @@
                                 row.setAttribute('data-stage', value);
                             }
                             mipApplyStageSelectVisual(sel, value);
+                            if (typeof calculateTatMip === 'function') {
+                                calculateTatMip();
+                            }
                         },
                         function () {
                             alert('Failed to save Stage.');
@@ -1955,6 +2022,9 @@
                             if (row) row.style.display = 'none';
                         } else {
                             if (row) row.style.display = '';
+                        }
+                        if (typeof calculateTatMip === 'function') {
+                            calculateTatMip();
                         }
                     }, function() {
                         alert('Failed to save NRP.');
@@ -3053,6 +3123,9 @@
         });
 
         document.getElementById('total-order-items').textContent = totalItems;
+        if (typeof calculateTatMip === 'function') {
+            calculateTatMip();
+        }
     }
 
     // Function to update Follow Supplier count (defined globally)
