@@ -152,7 +152,7 @@ class ReverbController extends Controller
         $skus = $productMasterRows->pluck("sku")->toArray();
 
         // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch reverb data for these SKUs
         $reverbData = ReverbProduct::whereIn("sku", $skus)->get()->keyBy("sku");
@@ -744,7 +744,7 @@ class ReverbController extends Controller
         $skus = $productMasterRows->pluck("sku")->toArray();
 
         // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch reverb data for these SKUs
         $reverbData = ReverbProduct::whereIn("sku", $skus)->get()->keyBy("sku");

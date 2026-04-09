@@ -74,7 +74,7 @@ class InstagramController extends Controller
         $skus = $productMasterRows->pluck('sku')->toArray();
 
         // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch NR values for these SKUs from walmartDataView
         $walmartDataViews = InstagramShopDataView::whereIn('sku', $skus)->get()->keyBy('sku');

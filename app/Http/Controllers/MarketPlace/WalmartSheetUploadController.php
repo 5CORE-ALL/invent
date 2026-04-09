@@ -401,7 +401,7 @@ class WalmartSheetUploadController extends Controller
             ->get()
             ->keyBy('sku');
             
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             
             // Fetch Amazon pricing data
             $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');

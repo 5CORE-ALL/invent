@@ -8,6 +8,7 @@ use App\Models\ProductMaster;
 use App\Models\EbayTwoDataView;
 use App\Services\Ebay2ApiService;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
@@ -70,7 +71,16 @@ class EbayTwoController extends Controller
 
     public function ebay2TabulatorView(Request $request)
     {
-        return view("market-places.ebay2_tabulator_view");
+        $channelAdsPercent = app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+
+        return view('market-places.ebay2_tabulator_view', [
+            'channelAdsPercent' => $channelAdsPercent,
+        ]);
+    }
+
+    public function ebay2opTabulatorView(Request $request)
+    {
+        return view("market-places.ebay2op_tabulator_view");
     }
 
     public function getEbay2TotsalSaleDataSave(Request $request)
@@ -108,11 +118,6 @@ class EbayTwoController extends Controller
             ->unique()
             ->values()
             ->all();
-        
-        // 3. Related Models
-        $shopifyData = ShopifySku::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
 
         // Fetch ALL ebay2_metrics (including Open Box items not in product_masters)
         $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock')
@@ -155,6 +160,15 @@ class EbayTwoController extends Controller
             }
         }
 
+        // OPEN BOX / USED rows use listing SKUs; reload SKU list so EbayTwoDataView & listing status load for them
+        $skus = $productMasters->pluck('sku')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
+
         // Forecast Analysis NRP (forecast_analysis.nr) — same as Faire / TikTok pricing.
         $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
         $forecastNrpBySku = [];
@@ -179,7 +193,11 @@ class EbayTwoController extends Controller
             }
         }
 
-        $nrValues = EbayTwoDataView::whereIn("sku", $skus)->pluck("value", "sku");
+        $nrValues = EbayTwoDataView::whereIn("sku", $skus)
+            ->get(['sku', 'value'])
+            ->mapWithKeys(function ($row) {
+                return [strtoupper(trim((string) $row->sku)) => $row->value];
+            });
         
         // Fetch listing status data for nr_req field
         // Key listing status by lowercase SKU for case-insensitive lookup (UI sends upper/lower mixed)
@@ -359,11 +377,22 @@ class EbayTwoController extends Controller
         // 6. Build Result
         $result = [];
 
+        $resolveProductMasterKey = static function (string $candidate) use ($productMasters): ?string {
+            if ($productMasters->has($candidate)) {
+                return $candidate;
+            }
+            $found = $productMasters->keys()->first(function ($k) use ($candidate) {
+                return strcasecmp((string) $k, $candidate) === 0;
+            });
+
+            return $found !== null ? (string) $found : null;
+        };
+
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
             // Try both lowercase and original case for listing status lookup
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? $listingStatusData[$pm->sku] ?? null;
@@ -371,6 +400,19 @@ class EbayTwoController extends Controller
             $row = [];
             $row["Parent"] = $parent;
             $row["(Child) sku"] = $pm->sku;
+            $row['base_sku'] = '';
+            $row['base_inv'] = 0;
+            if (stripos((string) $pm->sku, 'OPEN BOX') !== false) {
+                $baseCandidate = trim(str_ireplace('OPEN BOX', '', (string) $pm->sku));
+                if ($baseCandidate !== '') {
+                    $pmKey = $resolveProductMasterKey($baseCandidate);
+                    if ($pmKey !== null) {
+                        $row['base_sku'] = (string) $productMasters[$pmKey]->sku;
+                        $baseShopify = $shopifyData->get($pmKey) ?? ShopifySku::firstForProductSku($pmKey);
+                        $row['base_inv'] = $baseShopify ? (float) ($baseShopify->inv ?? 0) : 0;
+                    }
+                }
+            }
             $row['fba'] = $pm->fba;
 
             // Shopify
@@ -401,8 +443,10 @@ class EbayTwoController extends Controller
             // Amazon Price for comparison
             $row['A Price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
 
-            $row["E Dil%"] = ($row["eBay L30"] && $row["INV"] > 0)
-                ? round(($row["eBay L30"] / $row["INV"]), 2)
+            $ebayL30ForDil = floatval($row["eBay L30"] ?? 0);
+            $viewsForDil = floatval($row['views'] ?? 0);
+            $row["E Dil%"] = $viewsForDil > 0
+                ? round(($ebayL30ForDil / $viewsForDil) * 100, 2)
                 : 0;
 
             // Ad Metrics (only GENERAL from ebay2_general_reports)
@@ -478,8 +522,9 @@ class EbayTwoController extends Controller
 
             // NRL from data view
             $row['NRL'] = '';
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
+            $dataViewSkuKey = strtoupper(trim((string) $pm->sku));
+            if ($nrValues->has($dataViewSkuKey)) {
+                $raw = $nrValues->get($dataViewSkuKey);
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
                 }
@@ -591,8 +636,8 @@ class EbayTwoController extends Controller
             $row['Listed'] = null;
             $row['Live'] = null;
             $row['APlus'] = null;
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
+            if ($nrValues->has($dataViewSkuKey)) {
+                $raw = $nrValues->get($dataViewSkuKey);
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
                 }
@@ -632,6 +677,19 @@ class EbayTwoController extends Controller
                 $row = [];
                 $row["Parent"] = "";
                 $row["(Child) sku"] = $metricSku;
+                $row['base_sku'] = '';
+                $row['base_inv'] = 0;
+                if (stripos((string) $metricSku, 'OPEN BOX') !== false) {
+                    $baseCandidate = trim(str_ireplace('OPEN BOX', '', (string) $metricSku));
+                    if ($baseCandidate !== '') {
+                        $pmKey = $resolveProductMasterKey($baseCandidate);
+                        if ($pmKey !== null) {
+                            $row['base_sku'] = (string) $productMasters[$pmKey]->sku;
+                            $baseShopify = $shopifyData->get($pmKey) ?? ShopifySku::firstForProductSku($pmKey);
+                            $row['base_inv'] = $baseShopify ? (float) ($baseShopify->inv ?? 0) : 0;
+                        }
+                    }
+                }
                 $row['fba'] = "";
                 $row["INV"] = 0;
                 $row["L30"] = 0;
@@ -646,7 +704,12 @@ class EbayTwoController extends Controller
                 $row['views'] = $metric->views ?? 0;
                 $row['l7_views'] = $metric->l7_views ?? 0;
                 $row['eBay_item_id'] = $metric->item_id ?? null;
-                $row["E Dil%"] = 0;
+                $row['E Stock'] = $metric->ebay_stock ?? 0;
+                $ebayL30ForDilM = floatval($row["eBay L30"] ?? 0);
+                $viewsForDilM = floatval($row['views'] ?? 0);
+                $row["E Dil%"] = $viewsForDilM > 0
+                    ? round(($ebayL30ForDilM / $viewsForDilM) * 100, 2)
+                    : 0;
                 
                 // Initialize ad metrics
                 foreach (['L60', 'L30', 'L7'] as $range) {
@@ -730,13 +793,60 @@ class EbayTwoController extends Controller
                     }
                 }
                 $row['nrp'] = $nrpOutOb;
+
+                $dvKeyOrphan = strtoupper(trim((string) $metricSku));
+                if ($nrValues->has($dvKeyOrphan)) {
+                    $rawOb = $nrValues->get($dvKeyOrphan);
+                    if (! is_array($rawOb)) {
+                        $rawOb = json_decode($rawOb, true);
+                    }
+                    if (is_array($rawOb)) {
+                        $row['NR'] = $rawOb['NR'] ?? $row['NR'];
+                        $row['SPRICE'] = $rawOb['SPRICE'] ?? null;
+                        $row['SGPFT'] = $rawOb['SGPFT'] ?? null;
+                        $row['SPFT'] = $rawOb['SPFT'] ?? null;
+                        $row['SROI'] = $rawOb['SROI'] ?? null;
+                        $row['Listed'] = isset($rawOb['Listed']) ? filter_var($rawOb['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
+                        $row['Live'] = isset($rawOb['Live']) ? filter_var($rawOb['Live'], FILTER_VALIDATE_BOOLEAN) : null;
+                        $row['APlus'] = isset($rawOb['APlus']) ? filter_var($rawOb['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
+                        if (! empty($rawOb['NRL'] ?? '')) {
+                            $row['NRL'] = $rawOb['NRL'];
+                        }
+                    }
+                }
                 
                 $result[] = (object) $row;
             }
         }
 
-        // Auto-save daily summary in background (non-blocking)
-        $this->saveDailySummaryIfNeeded($result);
+        // AD% = channel-level Ads% (same as /all-marketplace-master), every row identical
+        $channelAdsPct = app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+        foreach ($result as $row) {
+            if (! is_object($row)) {
+                continue;
+            }
+            $row->{'AD%'} = $channelAdsPct;
+            $gpft = (float) ($row->{'GPFT%'} ?? 0);
+            $row->{'PFT %'} = round($gpft - $channelAdsPct, 2);
+            if (isset($row->SGPFT) && $row->SGPFT !== null && $row->SGPFT !== '') {
+                $row->SPFT = round((float) $row->SGPFT - $channelAdsPct, 2);
+            }
+        }
+
+        // Auto-save daily summary in background (non-blocking); skip for filtered views
+        if (! $request->boolean('open_box_only')) {
+            $this->saveDailySummaryIfNeeded($result);
+        }
+
+        if ($request->boolean('open_box_only')) {
+            $result = array_values(array_filter($result, function ($row) {
+                $sku = is_object($row)
+                    ? ($row->{'(Child) sku'} ?? '')
+                    : ($row['(Child) sku'] ?? '');
+
+                return stripos((string) $sku, 'OPEN BOX') !== false;
+            }));
+        }
 
         return response()->json([
             "message" => "eBay2 Data Fetched Successfully",
@@ -848,22 +958,66 @@ class EbayTwoController extends Controller
         return floatval($value) ?? 0;
     }
 
+    /**
+     * Product master row for LP/ship when saving SPRICE. Listing SKUs (e.g. "… OPEN BOX") are not
+     * stored in product_master; use the base SKU's row like getViewEbayData does.
+     */
+    private function resolveProductMasterForEbayTwoListingSku(string $listingSku): ?ProductMaster
+    {
+        $listingSku = trim($listingSku);
+        if ($listingSku === '') {
+            return null;
+        }
+
+        $pm = ProductMaster::where('sku', $listingSku)->first();
+        if ($pm) {
+            return $pm;
+        }
+
+        $pm = ProductMaster::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($listingSku)])->first();
+        if ($pm) {
+            return $pm;
+        }
+
+        $base = '';
+        if (stripos($listingSku, 'OPEN BOX') !== false) {
+            $base = trim(str_ireplace('OPEN BOX', '', $listingSku));
+        } elseif (stripos($listingSku, 'USED') !== false) {
+            $base = trim(str_ireplace('USED', '', $listingSku));
+        }
+
+        if ($base === '') {
+            return null;
+        }
+
+        $pm = ProductMaster::where('sku', $base)->first();
+        if ($pm) {
+            return $pm;
+        }
+
+        return ProductMaster::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($base)])->first();
+    }
 
     public function saveSpriceToDatabase(Request $request)
     {
-        $sku = strtoupper($request->input('sku'));
-        $sprice = $request->input('sprice');
+        $sku = strtoupper(trim((string) $request->input('sku')));
 
-        if (!$sku || !$sprice) {
-            return response()->json(['error' => 'SKU and sprice are required.'], 400);
+        if ($sku === '') {
+            return response()->json(['error' => 'SKU is required.'], 400);
         }
+
+        if (! $request->exists('sprice')) {
+            return response()->json(['error' => 'sprice is required.'], 400);
+        }
+
+        $sprice = $request->input('sprice');
 
         // Use fixed 85% for EbayTwo
         $percentage = 0.85;
 
-        // Get ProductMaster for lp and ship
-        $pm = ProductMaster::where('sku', $sku)->first();
-        if (!$pm) {
+        // LP/ship from base product when listing SKU is OPEN BOX / USED / case variant
+        $pm = $this->resolveProductMasterForEbayTwoListingSku($sku);
+        if (! $pm) {
             return response()->json(['error' => 'SKU not found in ProductMaster.'], 404);
         }
 
@@ -1185,6 +1339,23 @@ class EbayTwoController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function getEbay2opColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "ebay2op_tabulator_column_visibility_{$userId}";
+
+        return response()->json(Cache::get($key, []));
+    }
+
+    public function setEbay2opColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "ebay2op_tabulator_column_visibility_{$userId}";
+        Cache::put($key, $request->input('visibility', []), now()->addDays(365));
+
+        return response()->json(['success' => true]);
+    }
+
     public function exportEbay2PricingData(Request $request)
     {
         try {
@@ -1202,11 +1373,15 @@ class EbayTwoController extends Controller
             // Column mapping: field => [header_name, data_extractor]
             $columnMap = [
                 'Parent' => ['Parent', function($item) { return $item['Parent'] ?? ''; }],
+                'base_sku' => ['Base SKU (PM)', function($item) { return $item['base_sku'] ?? ''; }],
+                'base_inv' => ['Base INV', function($item) { return $item['base_inv'] ?? 0; }],
                 '(Child) sku' => ['SKU', function($item) { return $item['(Child) sku'] ?? ''; }],
                 'INV' => ['INV', function($item) { return $item['INV'] ?? 0; }],
                 'L30' => ['L30', function($item) { return $item['L30'] ?? 0; }],
-                'E Dil%' => ['Dil%', function($item) { 
-                    return ($item['INV'] > 0) ? round(($item['L30'] / $item['INV']) * 100, 2) : 0; 
+                'E Dil%' => ['Dil%', function($item) {
+                    $views = (float) ($item['views'] ?? 0);
+                    $el30 = (float) ($item['eBay L30'] ?? 0);
+                    return $views > 0 ? round(($el30 / $views) * 100, 2) : 0;
                 }],
                 'eBay L30' => ['eBay L30', function($item) { return $item['eBay L30'] ?? 0; }],
                 'eBay L60' => ['eBay L60', function($item) { return $item['eBay L60'] ?? 0; }],
@@ -1692,10 +1867,7 @@ class EbayTwoController extends Controller
         }
         $itemId = $ebay2Metric && !empty($ebay2Metric->item_id) ? trim((string) $ebay2Metric->item_id) : null;
 
-        $shopify = ShopifySku::where('sku', $sku)->first();
-        if (!$shopify) {
-            $shopify = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$cleanSku])->first();
-        }
+        $shopify = ShopifySku::firstForProductSku($sku);
         $inv = $shopify ? (float) ($shopify->inv ?? 0) : 0.0;
 
         $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));

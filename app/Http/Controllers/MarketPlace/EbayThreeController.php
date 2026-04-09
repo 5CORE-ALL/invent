@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
@@ -50,10 +51,13 @@ class EbayThreeController extends Controller
             ->where('report_range', 'L30')
             ->selectRaw('SUM(CAST(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
             ->value('total_spend') ?? 0;
-        
-        return view("market-places.ebay3_tabulator_view", [
+
+        $channelAdsPercent = app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+
+        return view('market-places.ebay3_tabulator_view', [
             'kwSpent' => (float) $kwSpent,
             'pmtSpent' => (float) $pmtSpent,
+            'channelAdsPercent' => $channelAdsPercent,
         ]);
     }
 
@@ -91,16 +95,20 @@ class EbayThreeController extends Controller
 
         $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $allSkus)->get()->keyBy('sku');
 
-        // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
+        $shopifyForPmSku = static function (string $pmSku) use ($shopifyByNorm): ?ShopifySku {
+            $k = ShopifySku::normalizeSkuForShopifyLookup($pmSku);
+
+            return $k === '' ? null : ($shopifyByNorm[$k] ?? null);
+        };
 
         // Fetch Amazon data for price comparison
         $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch NR values for these SKUs from EbayThreeDataView
         $ebayDataViews = EbayThreeDataView::whereIn('sku', $skus)->get()->keyBy('sku');
-        
-        // Fetch NRL (nr_req) values from EbayThreeListingStatus - get most recent non-empty record
+
+        // NR/REQ (pricing column): listing status rows that include nr_req (same source as save-status)
         $ebayListingStatuses = EbayThreeListingStatus::whereIn('sku', $skus)
             ->orderBy('updated_at', 'desc')
             ->get()
@@ -141,23 +149,17 @@ class EbayThreeController extends Controller
                 $value['SPRICE_CLEARED'] === true || $value['SPRICE_CLEARED'] === 1 || $value['SPRICE_CLEARED'] === '1' || $value['SPRICE_CLEARED'] === 'true'
             );
             $hideValues[$sku] = isset($value['Hide']) ? filter_var($value['Hide'], FILTER_VALIDATE_BOOLEAN) : false;
-            // Get NRL value from EbayThreeDataView
-            $nrReqValues[$sku] = isset($value['NRL']) ? $value['NRL'] : 'REQ';
         }
-        
-        // Fallback: Fetch nr_req from EbayThreeListingStatus if not set
+
+        // NR/REQ column uses /listing_ebaythree/save-status → EbayThreeListingStatus.nr_req only.
+        // Do not mix EbayThreeDataView.NRL here (ads NRL/REQ); that caused saves to look ignored when NRL !== 'REQ'.
         foreach ($ebayListingStatuses as $sku => $listingStatus) {
-            if (!isset($nrReqValues[$sku]) || $nrReqValues[$sku] === 'REQ') {
-                $statusValue = is_array($listingStatus->value) ? $listingStatus->value : (json_decode($listingStatus->value, true) ?: []);
-                if (isset($statusValue['nr_req'])) {
-                    $nrReqValues[$sku] = $statusValue['nr_req'];
-                }
-            }
+            $statusValue = is_array($listingStatus->value) ? $listingStatus->value : (json_decode($listingStatus->value, true) ?: []);
+            $nrReqValues[$sku] = $statusValue['nr_req'] ?? 'REQ';
         }
-        
-        // Set default 'REQ' for SKUs not found
+
         foreach ($skus as $sku) {
-            if (!isset($nrReqValues[$sku])) {
+            if (! isset($nrReqValues[$sku])) {
                 $nrReqValues[$sku] = 'REQ';
             }
         }
@@ -349,9 +351,10 @@ class EbayThreeController extends Controller
                     }
                     
                     // Add INV and L30 from shopify
-                    if (isset($shopifyData[$sku])) {
-                        $parentSums[$parentValue]['INV'] += floatval($shopifyData[$sku]->inv ?? 0);
-                        $parentSums[$parentValue]['L30'] += floatval($shopifyData[$sku]->quantity ?? 0);
+                    $shopifyRow = $shopifyForPmSku($sku);
+                    if ($shopifyRow) {
+                        $parentSums[$parentValue]['INV'] += floatval($shopifyRow->inv ?? 0);
+                        $parentSums[$parentValue]['L30'] += floatval($shopifyRow->quantity ?? 0);
                     }
                     
                     // Add eBay L30, L60, Stock, views and price from metrics
@@ -659,8 +662,8 @@ class EbayThreeController extends Controller
                 
             } else {
                 // Shopify data for child SKUs
-                if (isset($shopifyData[$sku])) {
-                    $shopifyItem = $shopifyData[$sku];
+                $shopifyItem = $shopifyForPmSku($sku);
+                if ($shopifyItem) {
                     $row['INV'] = $shopifyItem->inv ?? 0;
                     $row['L30'] = $shopifyItem->quantity ?? 0;
                 } else {
@@ -991,7 +994,9 @@ class EbayThreeController extends Controller
                 }
 
                 // Image
-                $row['image_path'] = $shopifyData[$sku]->image_src ?? ($values['image_path'] ?? ($productMaster->image_path ?? null));
+                $row['image_path'] = $shopifyItem && isset($shopifyItem->image_src)
+                    ? $shopifyItem->image_src
+                    : ($values['image_path'] ?? ($productMaster->image_path ?? null));
                 
                 // Amazon Price
                 $row['A Price'] = isset($amazonData[$sku]) ? ($amazonData[$sku]->price ?? 0) : 0;
@@ -1178,11 +1183,64 @@ class EbayThreeController extends Controller
             $treeData[] = $orphan;
         }
 
+        $this->applyEbay3ChannelAdsPercentToTree($treeData);
+
         return response()->json([
             'message' => 'eBay3 Data Fetched Successfully',
             'data' => $treeData,
             'status' => 200
         ]);
+    }
+
+    /**
+     * Set AD% on every row to channel Ads% (same formula as /all-marketplace-master).
+     *
+     * @param  array<int, array<string, mixed>>  $treeData
+     */
+    private function applyEbay3ChannelAdsPercentToTree(array &$treeData): void
+    {
+        $channelAdsPct = app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+        $walk = function (&$row) use (&$walk, $channelAdsPct) {
+            if (! is_array($row)) {
+                return;
+            }
+            $gpft = (float) ($row['GPFT%'] ?? 0);
+            $row['AD%'] = $channelAdsPct;
+            $row['PFT %'] = round($gpft - $channelAdsPct, 2);
+            if (isset($row['SGPFT']) && $row['SGPFT'] !== null && $row['SGPFT'] !== '') {
+                $row['SPFT'] = round((float) $row['SGPFT'] - $channelAdsPct, 2);
+            }
+            if (! empty($row['_children']) && is_array($row['_children'])) {
+                foreach ($row['_children'] as &$child) {
+                    $walk($child);
+                }
+                unset($child);
+            }
+        };
+        foreach ($treeData as &$top) {
+            $walk($top);
+        }
+        unset($top);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function applyEbay3ChannelAdsPercentToFlatRows(array &$rows): void
+    {
+        $channelAdsPct = app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+        foreach ($rows as &$row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $gpft = (float) ($row['GPFT%'] ?? 0);
+            $row['AD%'] = $channelAdsPct;
+            $row['PFT %'] = round($gpft - $channelAdsPct, 2);
+            if (isset($row['SGPFT']) && $row['SGPFT'] !== null && $row['SGPFT'] !== '') {
+                $row['SPFT'] = round((float) $row['SGPFT'] - $channelAdsPct, 2);
+            }
+        }
+        unset($row);
     }
 
     public function getEbay3ColumnVisibility(Request $request)
@@ -1479,8 +1537,12 @@ class EbayThreeController extends Controller
         $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
 
 
-        // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
+        $shopifyForPmSku = static function (string $pmSku) use ($shopifyByNorm): ?ShopifySku {
+            $k = ShopifySku::normalizeSkuForShopifyLookup($pmSku);
+
+            return $k === '' ? null : ($shopifyByNorm[$k] ?? null);
+        };
 
         // Fetch Amazon data for price comparison
         $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -1570,8 +1632,8 @@ class EbayThreeController extends Controller
             $processedItem['COGS'] = $values['cogs'] ?? 0;
 
             // Add data from shopify_skus if available
-            if (isset($shopifyData[$sku])) {
-                $shopifyItem = $shopifyData[$sku];
+            $shopifyItem = $shopifyForPmSku($sku);
+            if ($shopifyItem) {
                 $processedItem['INV'] = $shopifyItem->inv ?? 0;
                 $processedItem['L30'] = $shopifyItem->quantity ?? 0;
             } else {
@@ -1581,8 +1643,8 @@ class EbayThreeController extends Controller
 
             // Add image_path - check shopify first, then product master values, then product master image_path
             $processedItem['image_path'] = null;
-            if (isset($shopifyData[$sku]) && isset($shopifyData[$sku]->image_src)) {
-                $processedItem['image_path'] = $shopifyData[$sku]->image_src;
+            if ($shopifyItem && isset($shopifyItem->image_src)) {
+                $processedItem['image_path'] = $shopifyItem->image_src;
             } elseif (isset($values['image_path'])) {
                 $processedItem['image_path'] = $values['image_path'];
             } elseif (isset($productMaster->image_path)) {
@@ -1686,6 +1748,8 @@ class EbayThreeController extends Controller
 
             $processedData[] = $processedItem;
         }
+
+        $this->applyEbay3ChannelAdsPercentToFlatRows($processedData);
 
         return response()->json([
             'message' => 'Data fetched successfully',

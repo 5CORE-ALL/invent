@@ -1,3 +1,7 @@
+@php
+    $__topbarBrand = config('app.name');
+    $__topbarBrandShort = \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr(preg_replace('/\s+/', '', $__topbarBrand), 0, 2));
+@endphp
 <!-- ========== Topbar Start ========== -->
 <div class="navbar-custom">
     <div class="topbar container-fluid">
@@ -8,20 +12,20 @@
                 <!-- Logo light -->
                 <a href="{{ route('any', 'index') }}" class="logo-light">
                     <span class="logo-lg">
-                        <span style="font-size: 34px; font-weight: 700; line-height: 1; color: #0b2545;">5 Core</span>
+                        <span style="font-size: 34px; font-weight: 700; line-height: 1; color: #0b2545;">{{ $__topbarBrand }}</span>
                     </span>
                     <span class="logo-sm">
-                        <span style="font-size: 20px; font-weight: 700; line-height: 1; color: #0b2545;">5C</span>
+                        <span style="font-size: 20px; font-weight: 700; line-height: 1; color: #0b2545;">{{ $__topbarBrandShort }}</span>
                     </span>
                 </a>
 
                 <!-- Logo Dark -->
                 <a href="{{ route('any', 'index') }}" class="logo-dark">
                     <span class="logo-lg">
-                        <span style="font-size: 34px; font-weight: 700; line-height: 1; color: #0b2545;">5 Core</span>
+                        <span style="font-size: 34px; font-weight: 700; line-height: 1; color: #0b2545;">{{ $__topbarBrand }}</span>
                     </span>
                     <span class="logo-sm">
-                        <span style="font-size: 20px; font-weight: 700; line-height: 1; color: #0b2545;">5C</span>
+                        <span style="font-size: 20px; font-weight: 700; line-height: 1; color: #0b2545;">{{ $__topbarBrandShort }}</span>
                     </span>
                 </a>
             </div>

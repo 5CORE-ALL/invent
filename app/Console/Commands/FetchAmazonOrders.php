@@ -15,6 +15,9 @@ use Carbon\Carbon;
 
 class FetchAmazonOrders extends Command
 {
+    /** Default rolling window (Pacific) for --last-days and --auto-sync-within-days */
+    private const DEFAULT_RECENT_DAYS = 35;
+
     /**
      * The name and signature of the console command.
      *
@@ -25,11 +28,12 @@ class FetchAmazonOrders extends Command
         {--fix-zero-prices : Fix items with $0 price by looking up from product_master or re-fetching}
         {--daily : Fetch orders for today only}
         {--yesterday : Fetch orders for yesterday only}
-        {--last-days=30 : Fetch orders for last N days (default: 30)}
+        {--last-days=35 : Fetch orders for last N days (default: 35)}
         {--from= : Fetch orders from this date (Y-m-d format)}
         {--to= : Fetch orders to this date (Y-m-d format)}
         {--with-items : Also fetch order items (line items) for each order}
-        {--auto-sync : Automatically sync pending/failed days}
+        {--auto-sync : Sync pending/failed days in the recent window + LastUpdated refresh}
+        {--auto-sync-within-days=35 : With --auto-sync, only sync_date >= today minus N (Pacific); 0 = full backlog}
         {--retry-failed : Retry all failed days automatically with backoff between attempts}
         {--retry-wait=60 : Seconds to wait between retries when quota exceeded (default: 60)}
         {--retry-attempts=5 : Max retry rounds for failed days (default: 5)}
@@ -38,14 +42,18 @@ class FetchAmazonOrders extends Command
         {--initialize-days= : Initialize sync tracking for last N days (default: 90)}
         {--status : Show sync status for all days}
         {--delay=3 : Delay in seconds between API requests (default: 3)}
-        {--max-retries=3 : Maximum retries for failed API calls (default: 3)}';
+        {--max-retries=3 : Maximum retries for failed API calls (default: 3)}
+        {--incremental-only : Only run LastUpdated-based order refresh}
+        {--no-incremental-refresh : Skip LastUpdated refresh after sync}
+        {--incremental-lookback-hours=840 : LastUpdated scan window (default 35 days)}
+        {--incremental-chunk-hours=24 : Hours per LastUpdated API chunk}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Fetch Amazon orders day-by-day with auto-resume on failure (uses California/Pacific Time)';
+    protected $description = 'Fetch Amazon orders (Pacific). Refreshes recently updated orders via LastUpdated so totals stay aligned with Seller Central.';
 
     /**
      * Execute the console command.
@@ -73,6 +81,17 @@ class FetchAmazonOrders extends Command
         // Retry all failed days with automatic backoff
         if ($this->option('retry-failed')) {
             $this->retryFailedDays();
+            return;
+        }
+
+        if ($this->option('incremental-only')) {
+            $accessToken = $this->getAccessToken();
+            if (!$accessToken) {
+                $this->error('Failed to get access token');
+                return;
+            }
+            $this->info('✅ Access Token obtained successfully');
+            $this->refreshOrdersUpdatedSince($accessToken);
             return;
         }
 
@@ -115,22 +134,20 @@ class FetchAmazonOrders extends Command
         $datesToSync = $this->determineDatesToSync();
 
         if (empty($datesToSync)) {
-            $this->warn('No dates to sync. All days are already completed.');
-            $this->info('Use --resync-date or --resync-last-days to re-fetch data.');
-            return;
-        }
+            $this->warn('No calendar days to sync (all completed in range).');
+        } else {
+            $this->info("📅 Syncing " . count($datesToSync) . " day(s)...\n");
 
-        $this->info("📅 Syncing " . count($datesToSync) . " day(s)...\n");
+            foreach ($datesToSync as $date) {
+                $this->syncSingleDay($accessToken, $date);
 
-        // Process each day sequentially
-        foreach ($datesToSync as $date) {
-            $this->syncSingleDay($accessToken, $date);
-            
-            // Small delay between days
-            if (count($datesToSync) > 1) {
-                sleep(2);
+                if (count($datesToSync) > 1) {
+                    sleep(2);
+                }
             }
         }
+
+        $this->maybeRunIncrementalOrderRefresh($accessToken);
 
         $this->info("\n🎉 All days processed!");
         $this->showSyncStatus();
@@ -173,7 +190,7 @@ class FetchAmazonOrders extends Command
         }
 
         // Default: last N days
-        $lastDays = (int) ($this->option('last-days') ?: 30);
+        $lastDays = (int) ($this->option('last-days') ?: self::DEFAULT_RECENT_DAYS);
         $this->info("Processing last {$lastDays} days (California Time)...");
         
         for ($i = $lastDays - 1; $i >= 0; $i--) {
@@ -205,6 +222,220 @@ class FetchAmazonOrders extends Command
         }
         
         return $endDate;
+    }
+
+    /**
+     * @return array{inserted:int, updated:int, items:int, skipped:int}
+     */
+    private function ingestOrdersFromApiPayload(string $accessToken, array $orders): array
+    {
+        $insertedCount = 0;
+        $updatedCount = 0;
+        $skippedCount = 0;
+        $totalItemsFetchedThisPage = 0;
+
+        foreach ($orders as $order) {
+            $orderId = $order['AmazonOrderId'] ?? null;
+            if (!$orderId) {
+                $skippedCount++;
+                continue;
+            }
+
+            $orderRecord = AmazonOrder::updateOrCreate(
+                ['amazon_order_id' => $orderId],
+                [
+                    'order_date' => Carbon::parse($order['PurchaseDate']),
+                    'status' => $order['OrderStatus'] ?? null,
+                    'total_amount' => $order['OrderTotal']['Amount'] ?? 0,
+                    'currency' => $order['OrderTotal']['CurrencyCode'] ?? 'USD',
+                    'raw_data' => json_encode($order),
+                ]
+            );
+
+            if ($orderRecord->wasRecentlyCreated) {
+                $insertedCount++;
+            } else {
+                $updatedCount++;
+            }
+
+            if ($this->option('with-items')) {
+                try {
+                    $items = $this->fetchOrderItemsWithRetry($accessToken, $orderId);
+                } catch (\Exception $e) {
+                    $this->warn("   ⚠️ Skipping items for order {$orderId}: " . $e->getMessage());
+                    Log::warning("Skipping items for order {$orderId}: " . $e->getMessage());
+                    $items = [];
+                }
+
+                foreach ($items as $item) {
+                    $itemPrice = 0;
+                    $itemCurrency = 'USD';
+
+                    if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
+                        $itemPrice += floatval($item['ItemPrice']['Amount'] ?? 0);
+                        $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
+                    }
+
+                    if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
+                        $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
+                    }
+
+                    if (isset($item['GiftWrapPrice']) && is_array($item['GiftWrapPrice'])) {
+                        $itemPrice += floatval($item['GiftWrapPrice']['Amount'] ?? 0);
+                    }
+
+                    if (isset($item['PromotionDiscount']) && is_array($item['PromotionDiscount'])) {
+                        $itemPrice -= floatval($item['PromotionDiscount']['Amount'] ?? 0);
+                    }
+
+                    AmazonOrderItem::updateOrCreate(
+                        [
+                            'amazon_order_id' => $orderRecord->id,
+                            'asin' => $item['ASIN'] ?? null,
+                            'sku' => $item['SellerSKU'] ?? null,
+                        ],
+                        [
+                            'quantity' => $item['QuantityOrdered'] ?? 1,
+                            'price' => $itemPrice,
+                            'currency' => $itemCurrency,
+                            'title' => $item['Title'] ?? null,
+                            'raw_data' => json_encode($item),
+                        ]
+                    );
+                    $totalItemsFetchedThisPage++;
+                }
+
+                if (count($items) > 0) {
+                    usleep(500000);
+                }
+            }
+        }
+
+        return [
+            'inserted' => $insertedCount,
+            'updated' => $updatedCount,
+            'items' => $totalItemsFetchedThisPage,
+            'skipped' => $skippedCount,
+        ];
+    }
+
+    private function refreshOrdersUpdatedSince(string $accessToken): void
+    {
+        $marketplaceId = config('services.amazon_sp.marketplace_id');
+        $delay = (int) ($this->option('delay') ?: 3);
+        $maxRetries = (int) ($this->option('max-retries') ?: 3);
+        $lookbackHours = max(1, (int) ($this->option('incremental-lookback-hours') ?: 840));
+        $chunkHours = max(1, min(168, (int) ($this->option('incremental-chunk-hours') ?: 24)));
+
+        $windowEnd = Carbon::now('America/Los_Angeles')->subMinutes(2);
+        $windowStart = $windowEnd->copy()->subHours($lookbackHours);
+
+        $this->info("\n🔄 Incremental refresh (LastUpdated), {$lookbackHours}h in {$chunkHours}h chunks — end PT " . $windowEnd->format('Y-m-d H:i'));
+
+        $grandInserted = 0;
+        $grandUpdated = 0;
+        $grandItems = 0;
+        $chunkIndex = 0;
+        $cursor = $windowStart->copy();
+        $abortAll = false;
+
+        while ($cursor->lt($windowEnd) && !$abortAll) {
+            $chunkEnd = $cursor->copy()->addHours($chunkHours);
+            if ($chunkEnd->gt($windowEnd)) {
+                $chunkEnd = $windowEnd->copy();
+            }
+            if ($cursor->gte($chunkEnd)) {
+                break;
+            }
+            $chunkIndex++;
+            $this->info("   Chunk {$chunkIndex}: {$cursor->format('Y-m-d H:i')} → {$chunkEnd->format('Y-m-d H:i')} PT");
+
+            $nextToken = null;
+            $page = 0;
+
+            do {
+                $params = [
+                    'MarketplaceIds' => $marketplaceId,
+                    'MaxResultsPerPage' => 100,
+                ];
+                if ($nextToken) {
+                    $params['NextToken'] = $nextToken;
+                } else {
+                    $params['LastUpdatedAfter'] = $cursor->toIso8601ZuluString();
+                    $params['LastUpdatedBefore'] = $chunkEnd->toIso8601ZuluString();
+                }
+
+                $attempt = 0;
+                $response = null;
+                $shouldStop = false;
+
+                while ($attempt < $maxRetries) {
+                    $response = Http::timeout(30)->withHeaders([
+                        'x-amz-access-token' => $accessToken,
+                    ])->get('https://sellingpartnerapi-na.amazon.com/orders/v0/orders', $params);
+
+                    if ($response->successful()) {
+                        break;
+                    }
+
+                    $statusCode = $response->status();
+                    $body = $response->json();
+                    $errorCode = $body['errors'][0]['code'] ?? '';
+                    $errorMessage = $body['errors'][0]['message'] ?? $response->body();
+
+                    if ($statusCode === 429 || $errorCode === 'QuotaExceeded') {
+                        $this->error('   ⚠️ Incremental: rate limit / quota. Stopping.');
+                        Log::error('Amazon incremental orders quota', ['error' => $errorMessage]);
+                        $shouldStop = true;
+                        break;
+                    }
+
+                    $attempt++;
+                    if ($attempt < $maxRetries) {
+                        sleep(pow(2, $attempt) * 5);
+                    } else {
+                        $shouldStop = true;
+                    }
+                }
+
+                if ($shouldStop || !$response || $response->failed()) {
+                    $abortAll = true;
+                    break;
+                }
+
+                $data = $response->json();
+                $orders = $data['payload']['Orders'] ?? [];
+                $nextToken = $data['payload']['NextToken'] ?? null;
+                $page++;
+
+                $this->info('      Page ' . $page . ': ' . count($orders) . ' order(s)');
+
+                $counts = $this->ingestOrdersFromApiPayload($accessToken, $orders);
+                $grandInserted += $counts['inserted'];
+                $grandUpdated += $counts['updated'];
+                $grandItems += $counts['items'];
+
+                if ($nextToken) {
+                    sleep($delay);
+                }
+            } while ($nextToken);
+
+            $cursor = $chunkEnd->copy();
+            if (!$abortAll && $cursor->lt($windowEnd)) {
+                sleep(min($delay, 2));
+            }
+        }
+
+        $suffix = $this->option('with-items') ? ", {$grandItems} item rows" : '';
+        $this->info("   ✅ Incremental done: +{$grandInserted} new, {$grandUpdated} updated{$suffix}");
+    }
+
+    private function maybeRunIncrementalOrderRefresh(?string $accessToken): void
+    {
+        if (!$accessToken || $this->option('no-incremental-refresh')) {
+            return;
+        }
+        $this->refreshOrdersUpdatedSince($accessToken);
     }
 
     /**
@@ -392,99 +623,12 @@ class FetchAmazonOrders extends Command
             $totalPagesFetched++;
             
             $this->info("   📄 Page {$totalPagesFetched}: {$pageOrderCount} orders");
-            
-            // INSERT orders immediately (no batching in memory)
-            $insertedCount = 0;
-            $updatedCount = 0;
-            $skippedCount = 0;
-            $totalItemsFetchedThisPage = 0;
-            
-            foreach ($orders as $order) {
-                $orderId = $order['AmazonOrderId'] ?? null;
-                if (!$orderId) {
-                    $skippedCount++;
-                    continue;
-                }
 
-                // Use updateOrCreate to ensure we have the latest data
-                $orderRecord = AmazonOrder::updateOrCreate(
-                    ['amazon_order_id' => $orderId],
-                    [
-                        'order_date' => Carbon::parse($order['PurchaseDate']),
-                        'status' => $order['OrderStatus'] ?? null,
-                        'total_amount' => $order['OrderTotal']['Amount'] ?? 0,
-                        'currency' => $order['OrderTotal']['CurrencyCode'] ?? 'USD',
-                        'raw_data' => json_encode($order),
-                    ]
-                );
+            $counts = $this->ingestOrdersFromApiPayload($accessToken, $orders);
+            $insertedCount = $counts['inserted'];
+            $updatedCount = $counts['updated'];
+            $totalItemsFetchedThisPage = $counts['items'];
 
-                // Check if it was just created
-                if ($orderRecord->wasRecentlyCreated) {
-                    $insertedCount++;
-                } else {
-                    $updatedCount++;
-                }
-
-                // Fetch order items if --with-items flag is set
-                if ($this->option('with-items')) {
-                    try {
-                        $items = $this->fetchOrderItemsWithRetry($accessToken, $orderId);
-                    } catch (\Exception $e) {
-                        $this->warn("   ⚠️ Skipping items for order {$orderId}: " . $e->getMessage());
-                        Log::warning("Skipping items for order {$orderId}: " . $e->getMessage());
-                        $items = [];
-                    }
-                    
-                    foreach ($items as $item) {
-                        // Calculate total price including all components (matches Amazon Seller Central "Ordered product sales")
-                        $itemPrice = 0;
-                        $itemCurrency = 'USD';
-                        
-                        // ItemPrice (base product price × quantity)
-                        if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
-                            $itemPrice += floatval($item['ItemPrice']['Amount'] ?? 0);
-                            $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
-                        }
-                        
-                        // ShippingPrice (shipping charged to customer)
-                        if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
-                            $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
-                        }
-                        
-                        // GiftWrapPrice (gift wrap fees)
-                        if (isset($item['GiftWrapPrice']) && is_array($item['GiftWrapPrice'])) {
-                            $itemPrice += floatval($item['GiftWrapPrice']['Amount'] ?? 0);
-                        }
-                        
-                        // Subtract PromotionDiscount (discounts reduce the total)
-                        if (isset($item['PromotionDiscount']) && is_array($item['PromotionDiscount'])) {
-                            $itemPrice -= floatval($item['PromotionDiscount']['Amount'] ?? 0);
-                        }
-                        
-                        AmazonOrderItem::updateOrCreate(
-                            [
-                                'amazon_order_id' => $orderRecord->id,
-                                'asin' => $item['ASIN'] ?? null,
-                                'sku' => $item['SellerSKU'] ?? null,
-                            ],
-                            [
-                                'quantity' => $item['QuantityOrdered'] ?? 1,
-                                'price' => $itemPrice,
-                                'currency' => $itemCurrency,
-                                'title' => $item['Title'] ?? null,
-                                'raw_data' => json_encode($item),
-                            ]
-                        );
-                        $totalItemsFetchedThisPage++;
-                    }
-
-                    // Small delay between item requests to respect rate limits
-                    if (count($items) > 0) {
-                        usleep(500000); // 500ms
-                    }
-                }
-            }
-            
             $totalOrdersFetched += $insertedCount;
             $totalItemsFetched += $totalItemsFetchedThisPage;
             
@@ -689,34 +833,41 @@ class FetchAmazonOrders extends Command
      */
     private function autoSyncPendingDays($accessToken)
     {
-        $pendingSyncs = AmazonDailySync::needsSync()
-            ->orderBy('sync_date', 'asc')
-            ->get();
+        $this->ensureDailySyncRecord(Carbon::today('America/Los_Angeles'));
+
+        $query = AmazonDailySync::needsSync()->orderBy('sync_date', 'asc');
+
+        $withinDays = (int) $this->option('auto-sync-within-days');
+        if ($withinDays > 0) {
+            $cutoff = Carbon::today('America/Los_Angeles')->subDays($withinDays);
+            $query->where('sync_date', '>=', $cutoff->toDateString());
+            $this->info("Auto-sync window: sync_date >= {$cutoff->toDateString()} ({$withinDays}d PT). Use --auto-sync-within-days=0 for full backlog.");
+        }
+
+        $pendingSyncs = $query->get();
 
         if ($pendingSyncs->isEmpty()) {
-            $this->info('✅ No pending or failed days to sync. All up to date!');
-            return;
-        }
+            $this->info('✅ No pending/failed days in this window.');
+        } else {
+            $this->info('Found ' . $pendingSyncs->count() . " day(s) needing sync.\n");
 
-        $this->info("Found " . $pendingSyncs->count() . " day(s) needing sync.\n");
+            foreach ($pendingSyncs as $sync) {
+                $date = Carbon::parse($sync->sync_date, 'America/Los_Angeles');
+                $this->syncSingleDay($accessToken, $date);
 
-        foreach ($pendingSyncs as $sync) {
-            $date = Carbon::parse($sync->sync_date, 'America/Los_Angeles');
-            $this->syncSingleDay($accessToken, $date);
-            
-            // Small delay between days
-            sleep(2);
+                sleep(2);
 
-            // Refresh the sync record
-            $sync->refresh();
-            
-            // If this day failed, stop auto-sync to prevent cascading failures
-            if ($sync->status === AmazonDailySync::STATUS_FAILED) {
-                $this->warn("\n⚠️ Day {$sync->sync_date} failed. Stopping auto-sync.");
-                $this->info("Fix the issue and run again to continue from this point.");
-                break;
+                $sync->refresh();
+
+                if ($sync->status === AmazonDailySync::STATUS_FAILED) {
+                    $this->warn("\n⚠️ Day {$sync->sync_date} failed. Stopping day sync.");
+                    $this->info('Fix the issue and run again to continue.');
+                    break;
+                }
             }
         }
+
+        $this->maybeRunIncrementalOrderRefresh($accessToken);
 
         $this->info("\n🎉 Auto-sync completed!");
         $this->showSyncStatus();
@@ -763,6 +914,7 @@ class FetchAmazonOrders extends Command
         }
 
         $this->syncSingleDay($accessToken, $date);
+        $this->maybeRunIncrementalOrderRefresh($accessToken);
     }
 
     /**
@@ -814,6 +966,8 @@ class FetchAmazonOrders extends Command
                 sleep(2);
             }
         }
+
+        $this->maybeRunIncrementalOrderRefresh($accessToken);
 
         $this->info("\n🎉 Re-sync completed!");
         $this->showSyncStatus();

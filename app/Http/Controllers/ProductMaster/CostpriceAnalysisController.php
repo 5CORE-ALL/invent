@@ -40,9 +40,7 @@ class CostpriceAnalysisController extends Controller
         ->toArray();
 
     // Fetch Shopify inventory data for non-PARENT SKUs
-    $shopifyData = ShopifySku::whereIn('sku', $skus)
-        ->get()
-        ->keyBy('sku');
+    $shopifyData = ShopifySku::mapByProductSkus($skus);
 
     // Filter out rows where both Parent and (Child) sku are empty and process data
     $filteredData = array_filter($data->data, function ($item) {

@@ -295,9 +295,7 @@ class PricingAnalysisController extends Controller
             ->toArray();
 
         // Fetch Shopify inventory data
-        $shopifyData = ShopifySku::whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Filter and process data
         $processedData = [];

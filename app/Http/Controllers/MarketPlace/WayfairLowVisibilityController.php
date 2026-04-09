@@ -65,7 +65,7 @@ class WayfairLowVisibilityController extends Controller
             $skus = $productMasters->pluck('sku')->unique()->toArray();
 
             // 4. Fetch related data
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             $nrValues = WayfairDataView::pluck('value', 'sku');
             $jungleScoutData = JungleScoutProductData::all()
                 ->groupBy('parent')

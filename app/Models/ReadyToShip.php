@@ -22,6 +22,7 @@ class ReadyToShip extends Model
         'rec_qty',
         'cbm',
         'area',
+        'zone_x',
         'shipd_cbm_in_cont',
         'payment',
         'payment_confirmation',

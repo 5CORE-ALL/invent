@@ -46,6 +46,7 @@ use App\Models\AliExpressSheetData;
 use App\Models\AliexpressListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\AmazonSpCampaignReport;
@@ -832,6 +833,46 @@ class ChannelMasterController extends Controller
         return view('channels.all-marketplace-master');
     }
 
+    /**
+     * EbayTwo channel-level Ads% — same formula as getViewChannelData (all-marketplace-master):
+     * Total Ad Spend from fetchAdMetricsFromTables('ebaytwo') over L30 total_sales from
+     * marketplace_daily_metrics (channel eBay 2).
+     */
+    public function getEbaytwoMasterAdsPercent(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebaytwo');
+        $totalAdSpend = (float) ($metrics['Total Ad Spend'] ?? 0);
+        $m = MarketplaceDailyMetric::where('channel', 'eBay 2')->latest('date')->first();
+        $l30SalesVal = (float) ($m->total_sales ?? 0);
+
+        return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 2) : 0.0;
+    }
+
+    /**
+     * eBay 1 channel Ads% — same as getViewChannelData / all-marketplace-master for channel eBay.
+     */
+    public function getEbayMasterAdsPercent(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebay');
+        $totalAdSpend = (float) ($metrics['Total Ad Spend'] ?? 0);
+        $m = MarketplaceDailyMetric::where('channel', 'eBay')->latest('date')->first();
+        $l30SalesVal = (float) ($m->total_sales ?? 0);
+
+        return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 4) : 0.0;
+    }
+
+    /**
+     * eBay 3 channel Ads% — same as getViewChannelData / all-marketplace-master for channel eBay 3.
+     */
+    public function getEbaythreeMasterAdsPercent(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebaythree');
+        $totalAdSpend = (float) ($metrics['Total Ad Spend'] ?? 0);
+        $m = MarketplaceDailyMetric::where('channel', 'eBay 3')->latest('date')->first();
+        $l30SalesVal = (float) ($m->total_sales ?? 0);
+
+        return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 4) : 0.0;
+    }
 
     public function getViewChannelData(Request $request)
     {
@@ -1243,10 +1284,11 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // 28 days ending yesterday (Pacific) — matches AmazonSalesController / Daily Sales page
+        // Same rolling window as Amazon daily sales (Pacific, through yesterday)
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endToday = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(27)->startOfDay(); // 28 calendar days
+        $amazonWindowDays = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
+        $startAmazonWindow = $yesterdayPacific->copy()->subDays($amazonWindowDays - 1)->startOfDay();
 
         $activeAmazonOrders = function ($q) {
             $q->where(function ($w) {
@@ -1254,18 +1296,20 @@ class ChannelMasterController extends Controller
             });
         };
 
-        // Sales + order count from order totals (matches Amazon Daily Sales badge)
+        $effectiveTotal = AmazonOrder::effectiveOrderTotalSql('o');
+
+        // Sales + order count (matches Amazon Daily Sales badge: OrderTotal or line-item fallback)
         $orderHead = DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $start35)
+            ->where('o.order_date', '>=', $startAmazonWindow)
             ->where('o.order_date', '<=', $endToday)
             ->where($activeAmazonOrders)
-            ->selectRaw('COUNT(DISTINCT o.amazon_order_id) as order_count, COALESCE(SUM(o.total_amount), 0) as total_sales')
+            ->selectRaw("COUNT(DISTINCT o.amazon_order_id) as order_count, COALESCE(SUM({$effectiveTotal}), 0) as total_sales")
             ->first();
 
         // Line quantities only (item join)
         $qtyAgg = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $start35)
+            ->where('o.order_date', '>=', $startAmazonWindow)
             ->where('o.order_date', '<=', $endToday)
             ->where($activeAmazonOrders)
             ->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
@@ -1282,7 +1326,7 @@ class ChannelMasterController extends Controller
         $l60Orders = 0;
         $l60Sales = 0;
         
-        // DISABLED: L60 data from ShipHub - Amazon limited to 30 days only
+        // DISABLED: L60 data from ShipHub - Amazon rolling window matches daily sales page
         /*
         $latestDate = null;
         try {
@@ -1556,7 +1600,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
         $amazonListed = \App\Models\ProductStockMapping::pluck('inventory_amazon_product', 'sku');
 
@@ -1610,7 +1654,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = \App\Models\EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $pendingCount = 0;
@@ -1910,7 +1954,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = EbayTwoListingStatus::whereIn('sku', $skus)
             ->orderBy('updated_at', 'desc')
             ->get()
@@ -2075,7 +2119,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = EbayThreeListingStatus::whereIn('sku', $skus)
             ->orderBy('updated_at', 'desc')
             ->get()
@@ -2194,7 +2238,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = MacysListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -2370,7 +2414,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = ReverbListingStatus::whereIn('sku', $skus)
             ->orderBy('updated_at', 'desc')
             ->get()
@@ -2492,7 +2536,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = DobaListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -2779,7 +2823,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = \App\Models\TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $pendingCount = 0;
@@ -3060,7 +3104,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = WalmartListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -3178,7 +3222,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = TiendamiaListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -3298,7 +3342,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = \App\Models\BestbuyUSAListingStatus::whereIn('sku', $skus)
             ->orderBy('updated_at', 'desc')
             ->get()
@@ -3478,7 +3522,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = PlsListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -3647,7 +3691,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = WayfairListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -3991,7 +4035,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = SheinListingStatus::whereIn('sku', $skus)
             ->orderBy('updated_at', 'desc')
             ->get()
@@ -4520,7 +4564,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = TiktokShopListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -4695,7 +4739,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = InstagramShopListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -4812,7 +4856,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = AliexpressListingStatus::whereIn('sku', $skus)
             ->orderBy('updated_at', 'desc')
             ->get()
@@ -4932,7 +4976,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = MercariWShipListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -5048,7 +5092,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = MercariWoShipListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -5225,7 +5269,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = FBMarketplaceListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingListingCount = 0;
@@ -5831,7 +5875,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = \App\Models\ShopifyB2CListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $pendingCount = 0;
@@ -6698,7 +6742,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = FaireListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingCount = 0;
@@ -6734,7 +6778,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = FBShopListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingCount = 0;
@@ -6770,7 +6814,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = Business5CoreListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $missingCount = 0;
@@ -6961,14 +7005,18 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Get channel history for modal (last 30 days)
+     * Channel history for modal: same inclusive Pacific dates as Amazon Daily Sales (through yesterday).
      */
     public function getChannelHistory($channel)
     {
         try {
-            // Use California/Pacific timezone for date calculations
+            $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
+            $windowDays = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
+            $start = $yesterdayPacific->copy()->subDays($windowDays - 1)->toDateString();
+            $end = $yesterdayPacific->toDateString();
+
             $history = \App\Models\ChannelMasterSummary::where('channel', $channel)
-                ->where('snapshot_date', '>=', now('America/Los_Angeles')->subDays(30)->toDateString())
+                ->whereBetween('snapshot_date', [$start, $end])
                 ->orderBy('snapshot_date', 'desc')
                 ->get();
             
@@ -6994,7 +7042,7 @@ class ChannelMasterController extends Controller
         try {
             $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim($request->input('channel', ''))));
             $metric = $request->input('metric', 'l30_sales');
-            $days = intval($request->input('days', 30));
+            $days = intval($request->input('days', 31));
 
             if (!$channel) {
                 return response()->json(['success' => false, 'message' => 'Channel is required'], 400);

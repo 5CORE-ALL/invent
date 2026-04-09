@@ -149,7 +149,7 @@ class AmazonFbmTargetingCheckController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
         $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn ($i) => strtoupper($i->sku));
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Prefer L30 then L90 (L30 is more commonly synced in this codebase)
         $dateRanges = ['L30', 'L90'];

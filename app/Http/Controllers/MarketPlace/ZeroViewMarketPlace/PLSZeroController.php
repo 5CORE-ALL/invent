@@ -30,7 +30,7 @@ class PLSZeroController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $plsDataViews = PLSDataView::whereIn('sku', $skus)->get()->keyBy('sku');
         $plsMetrics = PLSProduct::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -116,8 +116,7 @@ class PLSZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $plsListingStatus = PlsListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -135,7 +134,7 @@ class PLSZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

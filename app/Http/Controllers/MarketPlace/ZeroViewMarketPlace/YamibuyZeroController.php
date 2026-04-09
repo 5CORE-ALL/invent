@@ -28,7 +28,7 @@ class YamibuyZeroController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $yamibuyDataViews = YamibuyDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $result = [];

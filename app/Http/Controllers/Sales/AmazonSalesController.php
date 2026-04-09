@@ -14,6 +14,9 @@ use Carbon\Carbon;
 
 class AmazonSalesController extends Controller
 {
+    /** Inclusive calendar days ending yesterday (Pacific), same for badge + grid API */
+    public const DAILY_SALES_WINDOW_DAYS = 31;
+
     public function index()
     {
         // Calculate KW Spent - same logic as amazonKwAdsView
@@ -53,56 +56,65 @@ class AmazonSalesController extends Controller
         
         $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
 
-        // Last 28 days ending yesterday (California Pacific)
+        $windowDays = self::DAILY_SALES_WINDOW_DAYS;
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endDate = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(27)->startOfDay(); // 28 calendar days
-        
-        // Use order totals to match Amazon's "Ordered Product Sales" report
-        $sales35Days = (float) DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $start35)
+        $startWindow = $yesterdayPacific->copy()->subDays($windowDays - 1)->startOfDay();
+
+        $effectiveTotal = AmazonOrder::effectiveOrderTotalSql('o');
+
+        // OrderTotal when present; else sum of line items (Pending orders often lack OrderTotal in API)
+        $amazonSalesTotal = (float) (DB::table('amazon_orders as o')
+            ->where('o.order_date', '>=', $startWindow)
             ->where('o.order_date', '<=', $endDate)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
-            ->sum('o.total_amount');
+            ->selectRaw("SUM({$effectiveTotal}) as revenue")
+            ->value('revenue') ?? 0);
 
         // 8 Feb to today (separate badge, fixed start)
         $start8Feb = Carbon::createFromDate(now()->year, 2, 8)->startOfDay();
         $daysFrom8Feb = $start8Feb->isFuture() ? 0 : $start8Feb->diffInDays($endDate) + 1;
-        $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : (float) DB::table('amazon_orders as o')
+        $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : (float) (DB::table('amazon_orders as o')
             ->where('o.order_date', '>=', $start8Feb)
             ->where('o.order_date', '<=', $endDate)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
-            ->sum('o.total_amount');
+            ->selectRaw("SUM({$effectiveTotal}) as revenue")
+            ->value('revenue') ?? 0);
 
         return view('sales.amazon_daily_sales_data', [
-            'kwSpent'       => (float) $kwSpent,
-            'ptSpent'       => (float) $ptSpent,
-            'hlSpent'       => (float) $hlSpent,
-            'sales35Days'   => $sales35Days,
-            'salesFrom8Feb' => $salesFrom8Feb,
-            'daysFrom8Feb'  => $daysFrom8Feb,
+            'kwSpent'                 => (float) $kwSpent,
+            'ptSpent'                 => (float) $ptSpent,
+            'hlSpent'                 => (float) $hlSpent,
+            'amazonSalesTotal'        => $amazonSalesTotal,
+            'amazonSalesWindowDays'   => $windowDays,
+            'salesFrom8Feb'           => $salesFrom8Feb,
+            'daysFrom8Feb'            => $daysFrom8Feb,
+            'amazonSalesWindowStart'  => $startWindow->copy()->timezone('America/Los_Angeles')->format('M j, Y'),
+            'amazonSalesWindowEnd'    => $yesterdayPacific->format('M j, Y'),
         ]);
     }
 
     public function getData(Request $request)
     {
         // ============================================================
-        // Last 35 days ending yesterday (California Pacific) — same as main badge
+        // Rolling window ending yesterday (Pacific) — same as main badge
         // ============================================================
 
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endDate = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(27)->startOfDay(); // 28 days
-        $startDateStr = $start35->format('Y-m-d');
+        $startWindow = $yesterdayPacific->copy()->subDays(self::DAILY_SALES_WINDOW_DAYS - 1)->startOfDay();
+        $startDateStr = $startWindow->format('Y-m-d');
         $endDateStr = $endDate->format('Y-m-d');
+
+        $orderTotalExpr = AmazonOrder::effectiveOrderTotalSql('o');
 
         $orderRows = DB::table('amazon_orders as o')
             ->leftJoin('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $start35)
+            ->where('o.order_date', '>=', $startWindow)
             ->where('o.order_date', '<=', $endDate)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
@@ -111,7 +123,7 @@ class AmazonSalesController extends Controller
                 'o.amazon_order_id as order_id',
                 'o.order_date',
                 'o.status',
-                'o.total_amount as order_total_amount',
+                DB::raw("({$orderTotalExpr}) as order_total_amount"),
                 'o.currency',
                 'i.asin',
                 'i.sku',
@@ -139,7 +151,7 @@ class AmazonSalesController extends Controller
                 'order_total_amount' => (float) ($row->order_total_amount ?? 0),
                 'total_amount'       => $linePrice,
                 'currency'           => $row->currency ?? 'USD',
-                'period'             => 'L35',
+                'period'             => 'L31',
                 'asin'               => $row->asin ?? '',
                 'sku'                => $row->sku ?? '',
                 'title'              => $row->title ?? '',
@@ -271,7 +283,7 @@ class AmazonSalesController extends Controller
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,
                 'status' => $item->status,
-                'period' => 'L35',
+                'period' => 'L31',
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
                 't_weight' => round($tWeight, 2),
@@ -333,12 +345,10 @@ class AmazonSalesController extends Controller
      */
     public function debugData(Request $request)
     {
-        // Use the SAME date calculation as getData() method
-        // Amazon shows yesterday and previous 29 days (30 days total)
-        // FIXED: Use Pacific Time to match Amazon Seller Central
+        // Use the SAME date calculation as getData() method (Pacific, same window as badge)
         $yesterday = \Carbon\Carbon::yesterday('America/Los_Angeles');
         $endDateCarbon = $yesterday->endOfDay();
-        $startDateCarbon = $yesterday->copy()->subDays(29)->startOfDay(); // 30 days total
+        $startDateCarbon = $yesterday->copy()->subDays(self::DAILY_SALES_WINDOW_DAYS - 1)->startOfDay();
         
         $debug = [];
         

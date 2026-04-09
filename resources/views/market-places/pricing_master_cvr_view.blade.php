@@ -287,6 +287,22 @@
             cursor: default;
         }
 
+        /* SKU column — larger on hover for readability */
+        .pricing-master-sku-text {
+            display: inline-block;
+            transform-origin: left center;
+            transition: transform 0.18s ease;
+            cursor: default;
+        }
+        .pricing-master-sku-text:hover {
+            transform: scale(1.35);
+            position: relative;
+            z-index: 5;
+        }
+        .tabulator .tabulator-cell.pricing-master-sku-col {
+            overflow: visible;
+        }
+
         /* Row selection checkboxes */
         .row-select-cb, .select-all-cb {
             cursor: pointer;
@@ -864,6 +880,13 @@
                                     <span class="status-circle pink"></span> 60%+</a></li>
                         </ul>
                     </div>
+
+                    <!-- OV vs SW L30 (green = match, red = mismatch) -->
+                    <select id="sw-l30-match-filter" class="form-select form-select-sm" style="width: auto; min-width: 168px;"
+                        title="Show rows where OV L30 equals SW L30 (green), or only mismatches (red text)">
+                        <option value="all" selected>SW L30 — All</option>
+                        <option value="red">SW L30 — Red only</option>
+                    </select>
 
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
@@ -1771,13 +1794,13 @@
                     sorter: "string",
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
-                    cssClass: "text-primary fw-bold",
+                    cssClass: "text-primary fw-bold pricing-master-sku-col",
                     tooltip: true,
                     frozen: true,
                     minWidth: 120,
                     formatter: function(cell) {
                         const sku = cell.getValue();
-                        let html = `<span>${sku}</span>`;
+                        let html = `<span class="pricing-master-sku-text">${sku}</span>`;
                         html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
                                    style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
                                    data-sku="${sku}" title="Copy SKU"></i>`;
@@ -1805,6 +1828,18 @@
                     }
                 },
                 {
+                    title: "OV L30 + FBA",
+                    field: "ov_l30_plus_fba",
+                    hozAlign: "center",
+                    minWidth: 100,
+                    sorter: "number",
+                    headerTooltip: "Shopify OV L30 plus FBA L30: Product SKU is resolved to an FBA listing (FbaInventoryService, same as FBA Dispatch), then fba_monthly_sales.l30_units for that MSKU.",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return `<span style="font-weight: 600;">${value}</span>`;
+                    }
+                },
+                {
                     title: "OV L30",
                     field: "overall_l30",
                     hozAlign: "center",
@@ -1822,6 +1857,22 @@
                         }
                         return `<span style="font-weight: 600;">${value}</span>
                             <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="ov_l30" data-sku="${skuEsc}" style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;" title="View OV L30 graph (Rolling L30)"></i>`;
+                    }
+                },
+                {
+                    title: "SW L30",
+                    field: "m_l30",
+                    hozAlign: "center",
+                    minWidth: 80,
+                    sorter: "number",
+                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Walmart, Temu, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sw = parseFloat(cell.getValue() || 0);
+                        const ov = parseFloat(rowData.overall_l30 ?? 0);
+                        const match = Math.abs(sw - ov) < 0.01;
+                        const color = match ? '#28a745' : '#dc3545';
+                        return `<span style="font-weight: 600; color: ${color};">${sw}</span>`;
                     }
                 },
                 {
@@ -3400,6 +3451,14 @@ title: "Dil %",
                     return true;
                 });
             }
+            const swL30MatchFilter = ($('#sw-l30-match-filter').val() || 'all').toString();
+            if (swL30MatchFilter === 'red') {
+                displayData = displayData.filter(row => {
+                    const sw = parseFloat(row.m_l30 ?? 0);
+                    const ov = parseFloat(row.overall_l30 ?? 0);
+                    return Math.abs(sw - ov) >= 0.01;
+                });
+            }
             
             console.log('Final display data length:', displayData.length);
             console.log('Expected:', parentRows.length, '+ children if expanded');
@@ -3628,6 +3687,15 @@ title: "Dil %",
                     });
                 }
 
+                const swL30MatchFilter = ($('#sw-l30-match-filter').val() || 'all').toString();
+                if (swL30MatchFilter === 'red') {
+                    table.addFilter(function(data) {
+                        const sw = parseFloat(data.m_l30 ?? 0);
+                        const ov = parseFloat(data.overall_l30 ?? 0);
+                        return Math.abs(sw - ov) >= 0.01;
+                    });
+                }
+
                 // Apply SKU and Parent search filters
                 const skuVal = $('#sku-search').val();
                 if (skuVal) table.addFilter("sku", "like", skuVal);
@@ -3645,7 +3713,7 @@ title: "Dil %",
             }
         }
 
-        $('#inventory-filter, #sku-parent-filter').on('change', function() {
+        $('#inventory-filter, #sku-parent-filter, #sw-l30-match-filter').on('change', function() {
             applyFilters();
         });
 
@@ -3669,6 +3737,7 @@ title: "Dil %",
             $('.column-filter[data-column="avg_gpft"]').removeClass('active');
             $allGpft.addClass('active');
             $('#gpftFilterDropdown').html('').append($allGpft.find('.status-circle').clone()).append(' GPFT%');
+            $('#sw-l30-match-filter').val('all');
             applyFilters();
         });
 

@@ -76,7 +76,7 @@ class FacebookAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $result = [];
 
@@ -114,7 +114,7 @@ class FacebookAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $result = [];
 

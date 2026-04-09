@@ -27,7 +27,7 @@ class TrafficMasterController extends Controller
         $skus = $productMasterRows->pluck('sku')->toArray();
 
         // Shopify data
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Amazon Campaign data
         $amazonData = AmazonSpCampaignReport::where(function ($query) use ($skus) {

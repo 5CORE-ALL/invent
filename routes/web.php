@@ -2147,6 +2147,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-doba-pricing', [DobaController::class, 'updatePrice']);
     Route::get('/doba-pricing-cvr', [DobaController::class, 'dobaPricingCVR']);
     Route::get('/doba-tabulator', [DobaController::class, 'dobaTabulatorView']);
+    Route::get('/doba-data-view-withoutship', [DobaController::class, 'getViewDobaDataWithoutShip']);
+    Route::get('/doba-tabulator-withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship.tabulator');
+    Route::get('/doba_withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship');
     Route::get('/doba/summary-metrics', [DobaController::class, 'getDobaSummaryMetrics']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
     Route::post('/doba/push-price', [DobaController::class, 'pushPriceToDoba'])->name('doba.push-price');
@@ -2768,7 +2771,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay3-low-visibility-view', action: [Ebay3LowVisibilityController::class, 'ebay3LowVisibility'])->name('ebay3.low.visibility.view');
     // Listing Audit ebay2
     Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
+    Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
+    Route::get('/ebay2op-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2op.data');
+    Route::get('/get-ebay2op-column-visibility', [EbayTwoController::class, 'getEbay2opColumnVisibility'])->name('ebay2op.column.visibility.get');
+    Route::post('/set-ebay2op-column-visibility', [EbayTwoController::class, 'setEbay2opColumnVisibility'])->name('ebay2op.column.visibility.set');
     Route::get('/ebay2-metrics-history', [EbayTwoController::class, 'getMetricsHistory'])->name('ebay2.metrics.history');
     Route::get('/ebay2-ads-spend', [EbayTwoController::class, 'getEbay2AdsSpend'])->name('ebay2.ads.spend');
     Route::get('/get-ebay2-column-visibility', [EbayTwoController::class, 'getEbay2ColumnVisibility'])->name('ebay2.column.visibility.get');
@@ -3025,7 +3032,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/compliance-master', [CategoryController::class, 'complianceMaster'])->name('compliance.master');
     Route::get('/compliance-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('compliance.master.data');
     Route::post('/compliance-master/store', [CategoryController::class, 'storeComplianceMaster'])->name('compliance.master.store');
+    Route::post('/compliance-master/update', [CategoryController::class, 'updateComplianceMaster'])->name('compliance.master.update');
+    Route::post('/compliance-master/field-image', [CategoryController::class, 'uploadComplianceFieldImage'])->name('compliance.master.field.image');
+    Route::post('/compliance-master/field-pdf', [CategoryController::class, 'uploadComplianceFieldPdf'])->name('compliance.master.field.pdf');
     Route::post('/compliance-master/import', [CategoryController::class, 'importComplianceMaster'])->name('compliance.master.import');
+    Route::get('/packing-instructions-master', [CategoryController::class, 'packingInstructionsMaster'])->name('packing.instructions.master');
+    Route::get('/packing-instructions-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('packing.instructions.master.data');
+    Route::post('/packing-instructions-master/store', [CategoryController::class, 'storePackingInstructionsMaster'])->name('packing.instructions.master.store');
+    Route::post('/packing-instructions-master/update', [CategoryController::class, 'updatePackingInstructionsMaster'])->name('packing.instructions.master.update');
+    Route::post('/packing-instructions-master/clear', [CategoryController::class, 'clearPackingInstructionsMaster'])->name('packing.instructions.master.clear');
+    Route::get('/packing-instructions-master/images', [CategoryController::class, 'listPackingInstructionImages'])->name('packing.instructions.master.images');
+    Route::post('/packing-instructions-master/upload-image', [CategoryController::class, 'uploadPackingInstructionImage'])->name('packing.instructions.master.upload.image');
+    Route::post('/packing-instructions-master/delete-image', [CategoryController::class, 'deletePackingInstructionImage'])->name('packing.instructions.master.delete.image');
+    Route::post('/packing-instructions-master/ai-defect-scan', [CategoryController::class, 'aiDefectScanPackingImage'])->name('packing.instructions.master.ai.scan');
     Route::get('/extra-features-master', [CategoryController::class, 'extraFeaturesMaster'])->name('extra.features.master');
     Route::get('/extra-features-master-data-view', [CategoryController::class, 'getExtraFeaturesMasterData'])->name('extra.features.master.data');
     Route::post('/extra-features-master/store', [CategoryController::class, 'storeExtraFeaturesMaster'])->name('extra.features.master.store');

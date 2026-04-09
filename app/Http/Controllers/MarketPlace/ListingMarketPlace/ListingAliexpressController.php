@@ -32,7 +32,7 @@ class ListingAliexpressController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         
         // Get status data, handling duplicates by taking the most recent non-empty record
         $statusData = AliexpressListingStatus::whereIn('sku', $skus)
@@ -147,7 +147,7 @@ class ListingAliexpressController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = AliexpressListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $reqCount = 0;
@@ -391,7 +391,7 @@ class ListingAliexpressController extends Controller
             $skus = $productMasters->pluck('sku')->unique()->toArray();
 
             // Get Shopify inventory data
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             // Get all status data
             $statusData = AliexpressListingStatus::whereIn('sku', $skus)

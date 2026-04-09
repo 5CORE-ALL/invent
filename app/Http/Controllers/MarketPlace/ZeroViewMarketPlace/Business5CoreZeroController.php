@@ -34,7 +34,7 @@ class Business5CoreZeroController extends Controller
     //         ->get();
 
     //     $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $business5CoreDataViews = Business5CoreDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
     //     $result = [];
@@ -244,8 +244,7 @@ class Business5CoreZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $business5coreListingStatus = Business5CoreListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -263,7 +262,7 @@ class Business5CoreZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

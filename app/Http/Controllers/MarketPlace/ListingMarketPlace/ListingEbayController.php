@@ -35,7 +35,7 @@ class ListingEbayController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         
         // Fetch all data from ebay_data_view table
         $ebayDataView = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -159,7 +159,7 @@ class ListingEbayController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $reqCount = 0;

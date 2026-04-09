@@ -251,11 +251,7 @@ class AutoUpdateAmazonFbaOverPtBids extends Command
                 return [];
             }
 
-            $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
-                ->get()
-                ->keyBy(function ($item) {
-                    return strtoupper(trim((string) $item->sku));
-                });
+            $shopifyData = ShopifySku::mapByProductSkus($baseSkus);
 
             $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                 ->where('report_date_range', 'L7')

@@ -786,7 +786,7 @@ class Shopifyb2cController extends Controller
         $skus = $productMasterRows->pluck("sku")->toArray();
 
         // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch L30 orders from shopify_b2c_daily_data (period = 'l30')
         $shopifyB2COrders = ShopifyB2CDailyData::whereIn('sku', $skus)

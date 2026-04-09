@@ -66,7 +66,7 @@ class Neweggb2cLowVisibilityController extends Controller
         }
 
         // 5. Fetch ShopifySku data for all SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $allSkus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($allSkus);
 
         // 6. Fetch Neweegb2cDataView NR and A_Z fields for all SKUs
         $neweggDataViews = Neweegb2cDataView::whereIn('sku', $allSkus)->pluck('value', 'sku');

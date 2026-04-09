@@ -237,7 +237,7 @@ class EbayKwAdsController extends Controller
         // Merge both lists
         $skus = array_merge($productMasterSkus, $additionalRunningCampaigns);
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -260,7 +260,7 @@ class EbayKwAdsController extends Controller
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
 
             $row = [
                 'parent' => $parent,
@@ -339,7 +339,7 @@ class EbayKwAdsController extends Controller
         // Now process additional RUNNING campaigns that are not in ProductMaster
         foreach ($additionalRunningCampaigns as $campaignSku) {
             $sku = strtoupper($campaignSku);
-            $shopify = $shopifyData[$campaignSku] ?? null;
+            $shopify = $shopifyData->get($campaignSku);
 
             $row = [
                 'parent' => '',
@@ -517,7 +517,7 @@ class EbayKwAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
 
@@ -556,7 +556,7 @@ class EbayKwAdsController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
 
             $ebay = $ebayMetricData[$sku] ?? null;
 

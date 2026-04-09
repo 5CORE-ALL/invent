@@ -1413,7 +1413,7 @@ class ForecastAnalysisController extends Controller
             if ($columnKey === 'stage' && !empty($value)) {
                 $value = strtolower(trim($value));
                 // Ensure value is one of the valid options
-                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'to_order_analysis'];
+                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'to_order_analysis', 'all_good'];
                 if (!in_array($value, $validStages)) {
                     $value = ''; // Default to empty if invalid
                 }
@@ -1527,7 +1527,7 @@ class ForecastAnalysisController extends Controller
             if ($columnKey === 'stage' && !empty($value)) {
                 $value = strtolower(trim($value));
                 // Ensure value is one of the valid options
-                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'to_order_analysis'];
+                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'to_order_analysis', 'all_good'];
                 if (!in_array($value, $validStages)) {
                     $value = ''; // Default to empty if invalid
                 }

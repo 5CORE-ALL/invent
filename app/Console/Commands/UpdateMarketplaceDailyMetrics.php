@@ -28,6 +28,8 @@ use App\Models\PurchasingPowerSale;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
+use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Models\AmazonOrder;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\EbayPromotedListingReport;
 use Carbon\Carbon;
@@ -102,20 +104,21 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // Last 35 days ending on $date (California Pacific), from actual orders, non-cancelled
+        $windowDays = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
+        // Rolling window ending on $date (California Pacific), from actual orders, non-cancelled
         $datePacific = Carbon::parse($date->format('Y-m-d'), 'America/Los_Angeles');
         $endOfDay = $datePacific->copy()->endOfDay();
-        $startOfDay = $datePacific->copy()->subDays(34)->startOfDay();
+        $startOfDay = $datePacific->copy()->subDays($windowDays - 1)->startOfDay();
 
-        // Calculate total revenue from order totals (matches Amazon's "Ordered Product Sales" report)
-        // This ensures accuracy and matches the controller calculation
-        $totalRevenue = (float) DB::table('amazon_orders')
-            ->where('order_date', '>=', $startOfDay)
-            ->where('order_date', '<=', $endOfDay)
+        $effectiveTotal = AmazonOrder::effectiveOrderTotalSql('o');
+        $totalRevenue = (float) (DB::table('amazon_orders as o')
+            ->where('o.order_date', '>=', $startOfDay)
+            ->where('o.order_date', '<=', $endOfDay)
             ->where(function ($q) {
-                $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
+                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
-            ->sum('total_amount');
+            ->selectRaw("SUM({$effectiveTotal}) as revenue")
+            ->value('revenue') ?? 0);
 
         // Get order rows for item-level metrics (COGS, profit, etc.)
         $orderRows = DB::table('amazon_orders as o')

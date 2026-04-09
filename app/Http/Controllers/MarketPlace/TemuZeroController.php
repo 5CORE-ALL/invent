@@ -56,9 +56,8 @@ public function temuZeroView(Request $request)
         // Normalize SKUs
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        // Fetch related data
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        // Fetch related data (Shopify SKU string may use NBSP vs PM)
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->unique()->filter()->values()->all());
 
         $temuMetrics = TemuMetric::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -75,8 +74,9 @@ public function temuZeroView(Request $request)
             if ($isParent) continue;
 
             // Get inventory from ShopifySku
-            $inv = $shopifyData[$sku]->inv ?? 0;
-            $quantity = $shopifyData[$sku]->quantity ?? 0;
+            $sShopify = $shopifyData->get($productMaster->sku);
+            $inv = $sShopify->inv ?? 0;
+            $quantity = $sShopify->quantity ?? 0;
 
             // Skip items with no inventory
             if ($inv <= 0) {
@@ -176,8 +176,7 @@ public function temuZeroView(Request $request)
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->unique()->filter()->values()->all());
 
         $temuListingStatus = TemuListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -195,7 +194,7 @@ public function temuZeroView(Request $request)
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

@@ -10,18 +10,107 @@
             display: none !important;
         }
 
-        .parent-row {
-            background-color: #bde0ff !important;
-            font-weight: bold !important;
+        /* ── #doba-table: match /aliexpress-pricing spacing, headers, parent rows, footer ── */
+        #doba-table.tabulator {
+            border: 1px solid #dee2e6 !important;
+            border-radius: 8px !important;
+            font-size: 12px !important;
         }
-
-        .tabulator-row.parent-row {
-            background-color: #bde0ff !important;
-            font-weight: bold !important;
+        #doba-table .tabulator-header {
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
         }
-
-        .tabulator-row.nr-hide {
+        #doba-table .tabulator-row {
+            min-height: 50px;
+        }
+        #doba-table .tabulator-cell {
+            padding: 10px 12px !important;
+            vertical-align: middle !important;
+        }
+        #doba-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            transform: rotate(180deg);
+            height: 78px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        #doba-table .tabulator-header .tabulator-col {
+            height: 80px !important;
+        }
+        #doba-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+        #doba-table .tabulator-row.nr-hide {
             background-color: rgba(220, 53, 69, 0.1) !important;
+        }
+        #doba-table .tabulator-row.parent-row,
+        #doba-table .tabulator-row.parent-row .tabulator-cell {
+            background-color: #bde0ff !important;
+            font-weight: 700 !important;
+            min-height: 48px !important;
+        }
+        #doba-table .tabulator-row.parent-row .tabulator-cell {
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+            overflow: visible !important;
+            vertical-align: middle !important;
+            color: #1e3a5f;
+        }
+        #doba-table .tabulator-row.parent-row:hover,
+        #doba-table .tabulator-row.parent-row:hover .tabulator-cell {
+            background-color: #93c5fd !important;
+        }
+        #doba-table .tabulator-cell[tabulator-field="thumb_image"],
+        #doba-table .tabulator-cell.tabulator-field-thumb_image {
+            overflow: hidden;
+            padding: 8px 10px !important;
+        }
+        #doba-table .tabulator-footer {
+            background: #f8fafc !important;
+            border-top: 1px solid #e2e8f0 !important;
+            padding: 10px 16px !important;
+        }
+        #doba-table .tabulator-footer .tabulator-paginator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        #doba-table .tabulator-footer .tabulator-paginator .tabulator-page {
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            min-width: 36px !important;
+            height: 36px !important;
+            line-height: 36px !important;
+            padding: 0 10px !important;
+            border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important;
+            background: #fff !important;
+            color: #475569 !important;
+            cursor: pointer;
+            transition: all 0.15s ease !important;
+            text-align: center !important;
+        }
+        #doba-table .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+            background: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
+            color: #1e293b !important;
+        }
+        #doba-table .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #4361ee !important;
+            border-color: #4361ee !important;
+            color: #fff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
+        }
+        #doba-table .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+            opacity: 0.4 !important;
+            cursor: not-allowed !important;
         }
 
         /* Color coded cells */
@@ -133,27 +222,38 @@
             text-decoration: underline;
         }
 
-        /* Vertical column headers */
-        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            white-space: nowrap;
-            transform: rotate(180deg);
-            height: 80px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-            font-weight: 600;
+        .dws-img-hover-wrap {
+            display: inline-block;
+            width: fit-content;
+            max-width: 100%;
+            line-height: 0;
+            vertical-align: middle;
         }
-        
-        .tabulator .tabulator-header .tabulator-col {
-            height: 80px !important;
+        .dws-img-hover-wrap .dws-thumb-sm {
+            display: block;
+            cursor: zoom-in;
+        }
+        #dws-img-hover-preview {
+            position: fixed;
+            display: none;
+            z-index: 200050;
+            pointer-events: none;
+            width: min(480px, 92vw);
+            height: min(480px, 85vh);
+            object-fit: contain;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+        }
+        .dws-copy-sku {
+            color: #0d6efd !important;
+            vertical-align: middle;
+            line-height: 1;
+        }
+        .dws-copy-sku:hover {
+            color: #0a58ca !important;
         }
 
-        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
-            padding-right: 0px !important;
-        }
     </style>
 @endsection
 
@@ -185,8 +285,9 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 
-                <div class="d-flex align-items-center flex-wrap gap-2">
-                    <!-- Filters -->
+                {{-- Row 1: filters + Search SKU (/aliexpress-pricing style) --}}
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2 w-100">
+                    <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
                     <select id="inventory-filter" class="form-select form-select-sm" style="width: 120px;">
                         <option value="">All INV</option>
                         <option value="positive" selected>INV > 0</option>
@@ -225,14 +326,22 @@
                     </div>
 
                     <!-- Growth Filter -->
-                    <div class="d-flex align-items-center gap-1">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">Growth %:</label>
+                    <div class="d-flex align-items-center gap-1 flex-wrap">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">Growth:</label>
+                        <select id="growth-sign-filter" class="form-select form-select-sm" style="width: 130px;"
+                                title="Doba L30 vs L60: (L30 − L60) / L60 × 100; L60=0 and L30&gt;0 counts as +100%">
+                            <option value="all" selected>All</option>
+                            <option value="negative">Negative (&lt; 0)</option>
+                            <option value="zero">Zero (= 0)</option>
+                            <option value="positive">Positive (&gt; 0)</option>
+                        </select>
                         <input type="number" id="growth-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min" style="width: 70px;" step="1">
+                               placeholder="Min %" style="width: 64px;" step="1" title="Optional range on top of sign filter">
                         <span>-</span>
                         <input type="number" id="growth-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max" style="width: 70px;" step="1">
-                        <button id="clear-growth-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                               placeholder="Max %" style="width: 64px;" step="1">
+                        <button id="clear-growth-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;" type="button"
+                                title="Clear growth sign and min/max">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -313,8 +422,18 @@
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
+                    </div>
+                    <input type="text" id="sku-search" class="form-control form-control-sm" style="max-width:220px; min-width:180px;" placeholder="Search SKU..." autocomplete="off">
+                </div>
 
-                    <!-- Column Visibility -->
+                {{-- Row 2: actions --}}
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <button type="button" id="reload-data-btn" class="btn btn-sm btn-outline-primary">
+                        <i class="fa fa-refresh"></i> Reload
+                    </button>
+                    <button type="button" id="export-csv-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-file-csv"></i> Export CSV
+                    </button>
                     <div class="dropdown">
                         <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" 
                                 data-bs-toggle="dropdown" id="column-visibility-btn">
@@ -325,54 +444,31 @@
                             <div class="dropdown-divider"></div>
                         </div>
                     </div>
-
-                    <!-- Export -->
-                    <button id="export-csv-btn" class="btn btn-success btn-sm">
-                        <i class="fas fa-download"></i> Export CSV
+                    <button id="doba-price-mode-btn" type="button" class="btn btn-sm btn-secondary"
+                            title="Cycle: Off → Decrease → Increase → Same Price → Off">
+                        <i class="fas fa-exchange-alt"></i> Price %
                     </button>
-
-                    <!-- Reload -->
-                    <button id="reload-data-btn" class="btn btn-info btn-sm">
-                        <i class="fas fa-refresh"></i> Reload
-                    </button>
-                    
-                    <!-- Decrease/Increase Modes -->
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-percent"></i> Decrease
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-percent"></i> Increase
-                    </button>
-                    
-                    <!-- Push to Doba -->
                     <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;">
                         <i class="fas fa-upload"></i> Push to Doba
                     </button>
                 </div>
 
-                <!-- Summary Stats from marketplace_daily_metrics -->
-                <div id="summary-stats" class="mt-3 mb-2">
-                    <div class="d-flex flex-wrap justify-content-center gap-2">
-                        <span id="total-skus" class="badge bg-primary p-2 fw-bold fs-6" style="color: white !important;">Total SKUs: 0</span>
-                        <span id="l60-zero-sold-count" class="badge p-2 fw-bold fs-6" style="background-color: #d63384; color: white !important;">L60 0 Sold: 0</span>
-                        <span id="zero-sold-count" class="badge bg-danger p-2 fw-bold fs-6" style="color: white !important;">L30 0 Sold: 0</span>
-                        <span id="sold-count" class="badge bg-success p-2 fw-bold fs-6" style="color: white !important;">SOLD: 0</span>
-                        <span id="missing-count" class="badge p-2 fw-bold fs-6" style="background-color: #b02a37; color: white !important; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
-                        <span id="disc-vs-amz-count" class="badge p-2 fw-bold fs-6" style="background-color: #dc3545; color: white !important; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> DISC VS AMZ: 0</span>
-                        <span id="l60-sales-badge" class="badge fs-6 p-2" style="background-color: #495057; color: white; font-weight: bold;">L60 Sales: $0</span>
-                        <span id="l30-sales-badge" class="badge fs-6 p-2" style="background-color: #0d6efd; color: white; font-weight: bold;">L30 Sales: $0</span>
-                        <span id="growth-sales-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight: bold;">GROWTH: 0%</span>
-                        <span id="l60-gpft-badge" class="badge fs-6 p-2" style="background-color: #e67e22; color: white; font-weight: bold;">L60 GPFT %: 0%</span>
-                        <span id="l60-roi-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight: bold;">L60 ROI %: 0%</span>
-                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">L30 GPFT %: 0%</span>
-                        <span id="growth-gpft-percent-badge" class="badge fs-6 p-2" style="background-color: #198754; color: white; font-weight: bold;">GROWTH GPFT %: 0%</span>
-                        <span id="growth-aprice-percent-badge" class="badge fs-6 p-2" style="background-color: #0b5ed7; color: white; font-weight: bold;">GROWTH A PRICE %: 0%</span>
-                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight: bold;">L30 ROI %: 0%</span>
-                        <span id="l60-gpft-total-badge" class="badge fs-6 p-2" style="background-color: #495057; color: white; font-weight: bold;">L60 GPFT: $0</span>
-                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">L30 GPFT: $0</span>
-                        <span id="growth-gpft-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight: bold;">GROWTH GPFT: $0</span>
-                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;">Total COGS: $0</span>
+                {{-- Row 3: summary KPIs (/aliexpress-pricing style) --}}
+                <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
+                    <div class="d-flex flex-wrap gap-2">
+                        <span id="doba-total-sales-badge" class="badge bg-primary fs-6 p-2" style="font-weight:700; color: white !important;">Sales: $0</span>
+                        <span id="total-skus" class="badge bg-info fs-6 p-2" style="font-weight:700; color: #111 !important;">Total SKUs: 0</span>
+                        <span id="zero-sold-count" class="badge bg-danger fs-6 p-2" style="font-weight:700; color: white !important;">L30 0 Sold: 0</span>
+                        <span id="sold-count" class="badge bg-success fs-6 p-2" style="font-weight:700; color: white !important;">SOLD: 0</span>
+                        <span id="missing-count" class="badge fs-6 p-2" style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="disc-vs-amz-count" class="badge fs-6 p-2" style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> VS AMZ: 0</span>
+                        <span id="growth-sales-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight:700;">GROWTH: 0%</span>
+                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT %: 0%</span>
+                        <span id="growth-gpft-percent-badge" class="badge fs-6 p-2" style="background-color: #198754; color: white; font-weight:700;">GROWTH GPFT %: 0%</span>
+                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight:700;">L30 ROI %: 0%</span>
+                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight:700;">L30 GPFT: $0</span>
+                        <span id="growth-gpft-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight:700;">GROWTH GPFT: $0</span>
+                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight:700;">Total COGS: $0</span>
                     </div>
                 </div>
             </div>
@@ -380,12 +476,13 @@
                 <!-- Discount Input Box (shown when SKUs are selected) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2">
-                        <label class="mb-0 fw-bold">Type:</label>
-                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="percentage">Percentage</option>
-                            <option value="value">Value ($)</option>
-                        </select>
-                        
+                        <span id="doba-discount-type-block" class="d-flex align-items-center gap-2">
+                            <label class="mb-0 fw-bold">Type:</label>
+                            <select id="discount-type-select" class="form-select form-select-sm" style="width: 130px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                        </span>
                         <label class="mb-0 fw-bold" id="discount-input-label">Value:</label>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                             placeholder="Enter percentage" step="0.01" min="0"
@@ -406,11 +503,6 @@
                     </div>
                 </div>
                 <div id="doba-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
-                    </div>
-                    <!-- Table body (scrollable section) -->
                     <div id="doba-table" style="flex: 1;"></div>
                 </div>
             </div>
@@ -421,13 +513,112 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "doba_tabulator_column_visibility";
+        function dobaEscapeHtml(s) {
+            if (s == null || s === undefined) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+        function dobaAttrEscape(s) {
+            if (s == null || s === undefined) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
+        let samePriceModeActive = false;
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         let discVsAmzFilterActive = false; // Track DISC VS AMZ filter state
 
         $(document).ready(function() {
+
+            (function initDwsImageHoverPreview() {
+                const popup = document.createElement('img');
+                popup.id = 'dws-img-hover-preview';
+                popup.alt = '';
+                document.body.appendChild(popup);
+                let moveRaf = false;
+                let clientX = 0;
+                let clientY = 0;
+                function positionPopup() {
+                    popup.style.top = (clientY + 16) + 'px';
+                    popup.style.left = (clientX + 16) + 'px';
+                }
+                $(document).on('mouseenter', '#doba-table .dws-img-hover-wrap', function (e) {
+                    const sm = this.querySelector('.dws-thumb-sm');
+                    if (!sm || !sm.getAttribute('src')) return;
+                    popup.src = sm.src;
+                    popup.style.display = 'block';
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                    positionPopup();
+                });
+                $(document).on('mousemove', '#doba-table .dws-img-hover-wrap', function (e) {
+                    if (popup.style.display !== 'block') return;
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                    if (moveRaf) return;
+                    moveRaf = true;
+                    requestAnimationFrame(function () {
+                        moveRaf = false;
+                        positionPopup();
+                    });
+                });
+                $(document).on('mouseleave', '#doba-table .dws-img-hover-wrap', function () {
+                    popup.style.display = 'none';
+                });
+            })();
+
+            $(document).on('click', '.dws-copy-sku', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const text = $(this).attr('data-sku');
+                if (text == null || text === '') return;
+                const done = function() {
+                    showToast('success', 'Copied: ' + text);
+                };
+                const fail = function() {
+                    showToast('danger', 'Could not copy to clipboard');
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done).catch(function() {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        try {
+                            document.execCommand('copy');
+                            done();
+                        } catch (err) {
+                            fail();
+                        }
+                        document.body.removeChild(ta);
+                    });
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try {
+                        document.execCommand('copy');
+                        done();
+                    } catch (err) {
+                        fail();
+                    }
+                    document.body.removeChild(ta);
+                }
+            });
 
             // SKU Search functionality
             $('#sku-search').on('keyup', function() {
@@ -437,6 +628,9 @@
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
+                if (samePriceModeActive) {
+                    return;
+                }
                 const type = $(this).val();
                 const $input = $('#discount-percentage-input');
                 
@@ -449,58 +643,72 @@
                 }
             });
 
-            // Decrease Mode Toggle
-            $('#decrease-btn').on('click', function() {
-                decreaseModeActive = !decreaseModeActive;
-                const selectColumn = table.getColumn('_select');
-                
-                if (decreaseModeActive) {
-                    // Disable increase mode if active
-                    if (increaseModeActive) {
-                        increaseModeActive = false;
-                        $('#increase-btn').removeClass('btn-danger').addClass('btn-success');
-                        $('#increase-btn').html('<i class="fas fa-percent"></i> Increase');
-                    }
-                    selectColumn.show();
-                    $(this).removeClass('btn-warning').addClass('btn-danger');
-                    $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
+            function syncDobaDiscountBarForMode() {
+                const $inp = $('#discount-percentage-input');
+                if (samePriceModeActive) {
+                    $('#doba-discount-type-block').addClass('d-none');
+                    $('#discount-input-label').text('Price ($):');
+                    $inp.attr('placeholder', 'Enter SPRICE for all selected');
+                    $inp.removeAttr('max');
                 } else {
-                    selectColumn.hide();
-                    $(this).removeClass('btn-danger').addClass('btn-warning');
-                    $(this).html('<i class="fas fa-percent"></i> Decrease');
-                    // Clear all selections
-                    selectedSkus.clear();
-                    $('.sku-select-checkbox').prop('checked', false);
-                    $('#select-all-checkbox').prop('checked', false);
-                    $('#discount-input-container').hide();
+                    $('#doba-discount-type-block').removeClass('d-none');
+                    $('#discount-input-label').text('Value:');
+                    const type = $('#discount-type-select').val();
+                    if (type === 'percentage') {
+                        $inp.attr('placeholder', 'Enter percentage');
+                        $inp.attr('max', '100');
+                    } else {
+                        $inp.attr('placeholder', 'Enter value');
+                        $inp.removeAttr('max');
+                    }
                 }
-            });
+            }
 
-            // Increase Mode Toggle
-            $('#increase-btn').on('click', function() {
-                increaseModeActive = !increaseModeActive;
+            function syncDobaPriceModeUi() {
+                const $btn = $('#doba-price-mode-btn');
                 const selectColumn = table.getColumn('_select');
-                
-                if (increaseModeActive) {
-                    // Disable decrease mode if active
-                    if (decreaseModeActive) {
-                        decreaseModeActive = false;
-                        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning');
-                        $('#decrease-btn').html('<i class="fas fa-percent"></i> Decrease');
-                    }
+                syncDobaDiscountBarForMode();
+                if (decreaseModeActive) {
+                    $btn.removeClass('btn-secondary btn-success btn-outline-primary').addClass('btn-danger')
+                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                     selectColumn.show();
-                    $(this).removeClass('btn-success').addClass('btn-danger');
-                    $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                } else {
-                    selectColumn.hide();
-                    $(this).removeClass('btn-danger').addClass('btn-success');
-                    $(this).html('<i class="fas fa-percent"></i> Increase');
-                    // Clear all selections
-                    selectedSkus.clear();
-                    $('.sku-select-checkbox').prop('checked', false);
-                    $('#select-all-checkbox').prop('checked', false);
-                    $('#discount-input-container').hide();
+                    return;
                 }
+                if (increaseModeActive) {
+                    $btn.removeClass('btn-secondary btn-danger btn-outline-primary').addClass('btn-success')
+                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                    selectColumn.show();
+                    return;
+                }
+                if (samePriceModeActive) {
+                    $btn.removeClass('btn-secondary btn-danger btn-success').addClass('btn-outline-primary')
+                        .html('<i class="fas fa-equals"></i> Same Price ON');
+                    selectColumn.show();
+                    return;
+                }
+                $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
+                    .html('<i class="fas fa-exchange-alt"></i> Price %');
+                selectColumn.hide();
+                selectedSkus.clear();
+                $('.sku-select-checkbox').prop('checked', false);
+                $('#select-all-checkbox').prop('checked', false);
+                $('#discount-input-container').hide();
+                updateSelectedCount();
+            }
+
+            $('#doba-price-mode-btn').on('click', function() {
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    decreaseModeActive = true;
+                } else if (decreaseModeActive) {
+                    decreaseModeActive = false;
+                    increaseModeActive = true;
+                } else if (increaseModeActive) {
+                    increaseModeActive = false;
+                    samePriceModeActive = true;
+                } else {
+                    samePriceModeActive = false;
+                }
+                syncDobaPriceModeUi();
             });
 
             // Checkbox change handler - track selected SKUs
@@ -584,23 +792,111 @@
 
             // Apply Discount/Increase Button
             $('#apply-discount-btn').on('click', function() {
+                const $applyBtn = $(this);
+
+                if (selectedSkus.size === 0) {
+                    showToast('danger', 'Please select at least one SKU');
+                    return;
+                }
+
+                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                    showToast('danger', 'Turn on Price % (Decrease, Increase, or Same Price)');
+                    return;
+                }
+
+                if (samePriceModeActive) {
+                    const inputValue = parseFloat($('#discount-percentage-input').val());
+                    if (isNaN(inputValue) || inputValue < 0) {
+                        showToast('danger', 'Please enter a valid price');
+                        return;
+                    }
+                    const newPrice = parseFloat(inputValue.toFixed(2));
+                    const skusToProcess = Array.from(selectedSkus);
+                    let currentIndex = 0;
+                    let successCount = 0;
+                    let errorCount = 0;
+                    $applyBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                    function processNextSamePrice() {
+                        if (currentIndex >= skusToProcess.length) {
+                            $applyBtn.prop('disabled', false).html('<i class="fas fa-check"></i> Apply');
+                            if (successCount > 0) {
+                                showToast('success', `Same price $${newPrice.toFixed(2)} applied to ${successCount} SKU(s)`);
+                            }
+                            if (errorCount > 0) {
+                                showToast('warning', `${errorCount} SKU(s) could not be updated`);
+                            }
+                            updatePushButtonVisibility();
+                            return;
+                        }
+                        const sku = skusToProcess[currentIndex];
+                        let row = null;
+                        table.getRows().forEach(r => {
+                            if (r.getData()['(Child) sku'] === sku) {
+                                row = r;
+                            }
+                        });
+                        if (!row || row.getData().is_parent) {
+                            errorCount++;
+                            currentIndex++;
+                            setTimeout(processNextSamePrice, 50);
+                            return;
+                        }
+                        const rowData = row.getData();
+                        const ship = parseFloat(rowData.Ship_productmaster) || 0;
+                        const selfPickValue = parseFloat(Math.max(0, newPrice - ship).toFixed(2));
+                        row.update({ apply_status: 'applying' });
+                        const lp = parseFloat(rowData.LP_productmaster) || 0;
+                        let spftValue = 0;
+                        let sroiValue = 0;
+                        if (newPrice > 0 && lp > 0) {
+                            spftValue = ((newPrice * 0.95) - ship - lp) / newPrice * 100;
+                            sroiValue = ((newPrice * 0.95) - ship - lp) / lp * 100;
+                        }
+                        $.ajax({
+                            url: '/doba/save-sprice',
+                            method: 'POST',
+                            data: {
+                                _token: $('meta[name="csrf-token"]').attr('content'),
+                                sku: sku,
+                                sprice: newPrice,
+                                spft_percent: spftValue.toFixed(2),
+                                sroi_percent: sroiValue.toFixed(2),
+                                s_self_pick: selfPickValue
+                            },
+                            success: function() {
+                                row.update({
+                                    sprice: newPrice,
+                                    'doba Price': newPrice,
+                                    s_self_pick: selfPickValue,
+                                    spft: spftValue,
+                                    sroi: sroiValue,
+                                    apply_status: 'applied'
+                                });
+                                successCount++;
+                                currentIndex++;
+                                setTimeout(processNextSamePrice, 100);
+                            },
+                            error: function(xhr) {
+                                console.error('Same price save error:', sku, xhr.responseText);
+                                row.update({ apply_status: 'error' });
+                                errorCount++;
+                                currentIndex++;
+                                setTimeout(processNextSamePrice, 100);
+                            }
+                        });
+                    }
+                    processNextSamePrice();
+                    return;
+                }
+
                 const inputValue = parseFloat($('#discount-percentage-input').val());
                 
                 if (isNaN(inputValue) || inputValue < 0) {
                     showToast('danger', 'Please enter a valid positive number');
                     return;
                 }
-                
-                if (selectedSkus.size === 0) {
-                    showToast('danger', 'Please select at least one SKU');
-                    return;
-                }
-                
-                if (!decreaseModeActive && !increaseModeActive) {
-                    showToast('danger', 'Please activate Decrease or Increase mode first');
-                    return;
-                }
-                
+
                 const mode = increaseModeActive ? 'increase' : 'decrease';
                 const discountType = $('#discount-type-select').val();
                 let successCount = 0;
@@ -610,7 +906,7 @@
                 let currentIndex = 0;
                 
                 // Disable button during processing
-                $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+                $applyBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
                 
                 // Process SKUs sequentially (like Amazon)
                 function processNextSku() {
@@ -1282,6 +1578,7 @@
                             const l30 = Number(item.L30) || 0;
                             const dobaL30 = Number(item['doba L30']) || 0;
                             const dobaL60 = Number(item['doba L60']) || 0;
+                            const dobaL45 = Number(item['doba L45']) || 0;
                             const quantityL7 = Number(item.quantity_l7) || 0;
                             const quantityL7Prev = Number(item.quantity_l7_prev) || 0;
                             const ovDil = inv > 0 ? l30 / inv : 0;
@@ -1320,6 +1617,7 @@
                                 ov_dil: ovDil,
                                 'doba L30': dobaL30,
                                 'doba L60': dobaL60,
+                                'doba L45': dobaL45,
                                 quantity_l7: quantityL7,
                                 quantity_l7_prev: quantityL7Prev,
                                 growth_percent: 0, // Calculated in formatter
@@ -1334,6 +1632,7 @@
                                 PFT_percentage: item.PFT_percentage || 0,
                                 pickup_price: item['PICK UP PRICE '] || item.pickup_price || 0,
                                 is_parent: item['(Child) sku'] ? item['(Child) sku'].toUpperCase().includes("PARENT") : false,
+                                thumb_image: item.image_path || item.image || '',
                                 raw_data: item || {},
                                 NR: item.NR || '',
                                 NPFT_pct: npft_pct,
@@ -1367,32 +1666,56 @@
                 placeholder: "No Data Available",
                 selectable: false,
                 headerFilterPlaceholder: "",
+                columnDefaults: {
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                },
                 columns: [
+                    {
+                        title: "Img",
+                        field: "thumb_image",
+                        width: 58,
+                        frozen: true,
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                return '';
+                            }
+                            const url = cell.getValue();
+                            if (!url) {
+                                return '<span class="text-muted" style="font-size:11px;">—</span>';
+                            }
+                            const safe = String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                            return '<div class="dws-img-hover-wrap"><img class="dws-thumb-sm" src="' + safe + '" alt="" loading="lazy" style="max-width:48px;max-height:48px;object-fit:contain;"></div>';
+                        }
+                    },
                     {
                         title: "SKU",
                         field: "(Child) sku",
-                        width: 150,
+                        width: 175,
                         frozen: true,
+                        hozAlign: "left",
+                        headerHozAlign: "left",
                         formatter: function(cell, formatterParams) {
                             const value = cell.getValue();
                             const rawData = cell.getRow().getData().raw_data || {};
-                            const imageUrl = rawData.image || '';
                             const buyerLink = rawData['B Link'] || '';
                             const sellerLink = rawData['S Link'] || '';
+                            const copyBtn = '<button type="button" class="btn btn-link btn-sm py-0 px-1 dws-copy-sku" data-sku="' + dobaAttrEscape(value) + '" title="Copy SKU"><i class="fa-regular fa-copy"></i></button>';
                             
-                            if (buyerLink || sellerLink || imageUrl) {
-                                return `
-                                    <div class="sku-tooltip-container">
-                                        <span class="sku-text">${value}</span>
-                                        <div class="sku-tooltip">
-                                            ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
-                                            ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
-                                            ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
-                                        </div>
-                                    </div>
-                                `;
+                            if (buyerLink || sellerLink) {
+                                return (
+                                    '<div class="sku-tooltip-container d-flex align-items-center gap-1 flex-wrap">' +
+                                    '<span class="sku-text">' + dobaEscapeHtml(value) + '</span>' +
+                                    copyBtn +
+                                    '<div class="sku-tooltip">' +
+                                    (buyerLink ? '<div class="sku-link"><a href="' + dobaAttrEscape(buyerLink) + '" target="_blank" rel="noopener noreferrer">Buyer link</a></div>' : '') +
+                                    (sellerLink ? '<div class="sku-link"><a href="' + dobaAttrEscape(sellerLink) + '" target="_blank" rel="noopener noreferrer">Seller link</a></div>' : '') +
+                                    '</div></div>'
+                                );
                             }
-                            return value;
+                            return '<div class="d-flex align-items-center gap-1 flex-wrap"><span class="sku-text">' + dobaEscapeHtml(value) + '</span>' + copyBtn + '</div>';
                         }
                     },
                     
@@ -1440,6 +1763,15 @@
                         visible: true,
                         formatter: function(cell, formatterParams) {
                             return cell.getValue() || 0;
+                        }
+                    },
+                    {
+                        title: "L45",
+                        field: "doba L45",
+                        width: 70,
+                        sorter: "number",
+                        formatter: function(cell, formatterParams) {
+                            return parseInt(cell.getValue(), 10) || 0;
                         }
                     },
                     {
@@ -1614,64 +1946,6 @@
                         }
                     },
                     {
-                        title: "AMZ PRICE",
-                        field: "amazon_price",
-                        width: 90,
-                        sorter: "number",
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            if (value === 0) {
-                                return '<span style="color: #6c757d;">-</span>';
-                            }
-                            return `<span style="color: #FF9900; font-weight: bold;">$${value.toFixed(2)}</span>`;
-                        }
-                    },
-                    {
-                        title: "DISC VS AMZ",
-                        field: "disc_vs_amz",
-                        width: 100,
-                        sorter: "number",
-                        formatter: function(cell, formatterParams) {
-                            const rowData = cell.getRow().getData();
-                            const dobaPrice = parseFloat(rowData['doba Price']) || 0;
-                            const amazonPrice = parseFloat(rowData.amazon_price) || 0;
-                            
-                            if (amazonPrice === 0 || dobaPrice === 0) {
-                                return '<span style="color: #6c757d;">-</span>';
-                            }
-                            
-                            // Calculate discount percentage: (Price / AMZ PRICE * 100) - 100
-                            // Negative = Doba is cheaper than Amazon
-                            // Positive = Doba is more expensive than Amazon
-                            const discountPercent = (dobaPrice / amazonPrice * 100) - 100;
-                            const discountRounded = Math.round(discountPercent);
-                            
-                            let color = '#6c757d'; // Gray for zero
-                            // Green: Doba is 30% or more cheaper than Amazon (very competitive)
-                            if (discountRounded <= -30) {
-                                color = '#28a745'; // Green - significantly cheaper
-                            } 
-                            // Red: Doba is less than 30% cheaper, equal, or more expensive
-                            else if (discountRounded > -30) {
-                                color = '#dc3545'; // Red - not competitive enough
-                            }
-                            
-                            const sign = discountRounded > 0 ? '+' : '';
-                            return `<span style="color: ${color}; font-weight: bold;">${sign}${discountRounded}%</span>`;
-                        }
-                    },
-                    {
-                        title: "SHIP",
-                        field: "Ship_productmaster",
-                        width: 70,
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            return value > 0 ? `$${value.toFixed(2)}` : '';
-                        }
-                    },
-                    {
                         title: "Self Pick",
                         field: "self_pick_price",
                         width: 85,
@@ -1702,7 +1976,7 @@
                         }
                     },
                     {
-                        title: "ROI",
+                        title: "NROI%",
                         field: "Roi",
                         width: 70,
                         sorter: "number",
@@ -1761,13 +2035,14 @@
                         }
                     },
                     {
-                        title: "S (PP)",
-                        field: "s_self_pick",
+                        title: "LP",
+                        field: "LP_productmaster",
                         width: 70,
                         sorter: "number",
+                        visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
-                            return value > 0 ? `<span class="badge bg-secondary">$${value.toFixed(2)}</span>` : '';
+                            return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },
                     {
@@ -1808,7 +2083,7 @@
                         }
                     },
                     {
-                        title: "",
+                        title: "Push",
                         field: "_push",
                         width: 50,
                         hozAlign: "center",
@@ -1930,7 +2205,27 @@
                     });
                 }
 
-                // Growth Filter
+                // Growth: sign bucket (negative / zero / positive), same formula as Growth column
+                const growthSign = $('#growth-sign-filter').val();
+                if (growthSign && growthSign !== 'all') {
+                    table.addFilter(function(data) {
+                        const l30 = parseFloat(data['doba L30']) || 0;
+                        const l60 = parseFloat(data['doba L60']) || 0;
+                        let growth = 0;
+                        if (l60 > 0) {
+                            growth = ((l30 - l60) / l60) * 100;
+                        } else if (l30 > 0) {
+                            growth = 100;
+                        }
+                        const g = Math.round(growth);
+                        if (growthSign === 'negative') return g < 0;
+                        if (growthSign === 'zero') return g === 0;
+                        if (growthSign === 'positive') return g > 0;
+                        return true;
+                    });
+                }
+
+                // Growth Filter (optional min/max %, combined with sign filter when both set)
                 const growthMin = parseFloat($('#growth-min-filter').val());
                 const growthMax = parseFloat($('#growth-max-filter').val());
                 
@@ -2072,11 +2367,15 @@
             });
 
             // Growth filter handlers
+            $('#growth-sign-filter').on('change', function() {
+                applyFilters();
+            });
             $('#growth-min-filter, #growth-max-filter').on('keyup change', function() {
                 applyFilters();
             });
 
             $('#clear-growth-filter').on('click', function() {
+                $('#growth-sign-filter').val('all');
                 $('#growth-min-filter').val('');
                 $('#growth-max-filter').val('');
                 applyFilters();
@@ -2186,7 +2485,6 @@
                 
                 const totalSkus = filteredData.length;
                 let l30ZeroSold = 0;
-                let l60ZeroSold = 0;
                 let sold = 0;
                 let missing = 0;
                 let discVsAmzCount = 0;
@@ -2196,10 +2494,6 @@
                 let totalL30Shipping = 0;
                 let totalL60COGS = 0;
                 let totalL60Shipping = 0;
-                let totalL30ActualSales = 0;
-                let totalL30Quantity = 0;
-                let totalL60ActualSales = 0;
-                let totalL60Quantity = 0;
 
                 filteredData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
@@ -2208,31 +2502,18 @@
                     const dobaPrice = parseFloat(row['doba Price']) || 0;
                     const lp = parseFloat(row.LP_productmaster) || 0;
                     const ship = parseFloat(row.Ship_productmaster) || 0;
-                    const l30AvgPrice = parseFloat(row.l30_avg_price) || 0;
-                    const l60AvgPrice = parseFloat(row.l60_avg_price) || 0;
                     
                     // L30 0 SOLD: doba L30 == 0, INV > 0
                     if (dobaL30 === 0 && inv > 0) l30ZeroSold++;
-                    // L60 0 SOLD: doba L60 == 0, INV > 0
-                    if (dobaL60 === 0 && inv > 0) l60ZeroSold++;
                     // SOLD: count all SKUs with any doba L30
                     if (dobaL30 > 0) sold++;
                     
-                    // Calculate L30 and L60 Sales (quantity * price)
                     totalL30Sales += dobaL30 * dobaPrice;
                     totalL60Sales += dobaL60 * dobaPrice;
-                    
-                    // Calculate L30 and L60 COGS and Shipping for GPFT calculation
                     totalL30COGS += dobaL30 * lp;
                     totalL30Shipping += dobaL30 * ship;
                     totalL60COGS += dobaL60 * lp;
                     totalL60Shipping += dobaL60 * ship;
-                    
-                    // Calculate weighted average price data
-                    totalL30ActualSales += dobaL30 * l30AvgPrice;
-                    totalL30Quantity += dobaL30;
-                    totalL60ActualSales += dobaL60 * l60AvgPrice;
-                    totalL60Quantity += dobaL60;
                 });
 
                 // Calculate missing and disc vs amz from all data (not filtered)
@@ -2274,19 +2555,12 @@
                     l30GpftPercent = (l30Profit / totalL30Sales) * 100;
                 }
                 
-                // Calculate L60 GPFT % = ((Revenue - COGS - Shipping) / Revenue) * 100
                 let l60GpftPercent = 0;
-                let l60RoiPercent = 0;
                 let l60GpftTotal = 0;
                 if (totalL60Sales > 0) {
                     const l60Profit = totalL60Sales - totalL60COGS - totalL60Shipping;
                     l60GpftTotal = l60Profit;
                     l60GpftPercent = (l60Profit / totalL60Sales) * 100;
-                    
-                    // Calculate L60 ROI % = (Profit / COGS) * 100
-                    if (totalL60COGS > 0) {
-                        l60RoiPercent = (l60Profit / totalL60COGS) * 100;
-                    }
                 }
 
                 // Calculate GPFT % Growth (percentage point difference)
@@ -2298,24 +2572,6 @@
                     gpftPercentColor = '#dc3545'; // Red for negative
                 }
 
-                // Calculate Average Price Growth %
-                const l30AvgPrice = totalL30Quantity > 0 ? totalL30ActualSales / totalL30Quantity : 0;
-                const l60AvgPrice = totalL60Quantity > 0 ? totalL60ActualSales / totalL60Quantity : 0;
-                let aPriceGrowthPercent = 0;
-                let aPriceGrowthColor = '#6c757d'; // Gray for zero
-                
-                if (l60AvgPrice > 0) {
-                    aPriceGrowthPercent = ((l30AvgPrice - l60AvgPrice) / l60AvgPrice) * 100;
-                    if (aPriceGrowthPercent > 0) {
-                        aPriceGrowthColor = '#28a745'; // Green for positive
-                    } else if (aPriceGrowthPercent < 0) {
-                        aPriceGrowthColor = '#dc3545'; // Red for negative
-                    }
-                } else if (l30AvgPrice > 0) {
-                    aPriceGrowthPercent = 100;
-                    aPriceGrowthColor = '#28a745'; // Green
-                }
-
                 // Calculate GPFT Growth (in dollars)
                 const gpftGrowth = l30Profit - l60GpftTotal;
                 let gpftGrowthColor = '#6c757d'; // Gray for zero
@@ -2325,21 +2581,16 @@
                     gpftGrowthColor = '#dc3545'; // Red for negative
                 }
 
+                $('#doba-total-sales-badge').text('Sales: $' + Math.round(totalL30Sales).toLocaleString());
                 $('#total-skus').text('Total SKUs: ' + totalSkus);
-                $('#l60-zero-sold-count').text('L60 0 Sold: ' + l60ZeroSold);
                 $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
-                $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> DISC VS AMZ: ' + discVsAmzCount);
-                $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
-                $('#l60-sales-badge').text('L60 Sales: $' + Math.round(totalL60Sales).toLocaleString());
+                $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
                 
                 const growthSign = growthPercent > 0 ? '+' : '';
                 $('#growth-sales-badge').text('GROWTH: ' + growthSign + growthPercent + '%');
                 $('#growth-sales-badge').css('background-color', growthColor);
-                
-                $('#l60-gpft-badge').text('L60 GPFT %: ' + l60GpftPercent.toFixed(1) + '%');
-                $('#l60-roi-badge').text('L60 ROI %: ' + Math.round(l60RoiPercent) + '%');
                 
                 $('#pft-percentage-badge').text('L30 GPFT %: ' + l30GpftPercent.toFixed(1) + '%');
                 
@@ -2347,11 +2598,6 @@
                 $('#growth-gpft-percent-badge').text('GROWTH GPFT %: ' + gpftPercentSign + gpftPercentGrowth.toFixed(1) + '%');
                 $('#growth-gpft-percent-badge').css('background-color', gpftPercentColor);
                 
-                const aPriceGrowthSign = aPriceGrowthPercent > 0 ? '+' : '';
-                $('#growth-aprice-percent-badge').text('GROWTH A PRICE %: ' + aPriceGrowthSign + Math.round(aPriceGrowthPercent) + '%');
-                $('#growth-aprice-percent-badge').css('background-color', aPriceGrowthColor);
-                
-                $('#l60-gpft-total-badge').text('L60 GPFT: $' + Math.round(l60GpftTotal).toLocaleString());
                 $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
                 
                 const gpftGrowthSign = gpftGrowth > 0 ? '+$' : gpftGrowth < 0 ? '-$' : '$';

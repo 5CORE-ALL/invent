@@ -491,6 +491,9 @@
                             <a href="{{ route('compliance.master') }}">Compliance Masters</a>
                         </li>
                         <li>
+                            <a href="{{ route('packing.instructions.master') }}">Packing Instructions</a>
+                        </li>
+                        <li>
                             <a href="{{ route('extra.features.master') }}">Extra Features Masters</a>
                         </li>
                         <li>
@@ -2426,6 +2429,9 @@
                                         <a href="{{ url('doba-tabulator') }}">Doba pricing</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('doba.withoutship') }}">Doba without ship</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('listing.doba') }}">Listing Doba</a>
                                     </li>
 
@@ -2468,7 +2474,9 @@
                                             </ul>
                                         </div>
                                     </li>
-                                    <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Pricing </a>
+                                    <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Analytics</a>
+                                    </li>
+                                    <li> <a href="{{ url('ebay2op-tabulator-view') }}">Ebay 2 Open Box </a>
                                     </li>
 
                                     <li>
@@ -2523,7 +2531,7 @@
                                         </div>
                                     </li>
                                     <li>
-                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Pricing Decrease</a>
+                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.ebayThree') }}">Listing Ebay 3</a>

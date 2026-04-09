@@ -84,7 +84,7 @@ class GoogleNetworksController extends Controller
 
         // Fetch all needed data in bulk
         $amazonDatasheets = AmazonDatasheet::whereIn('asin', $asins)->get()->keyBy('asin');
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $percentage = Cache::remember('amazon_marketplace_percentage', now()->addDays(30), function () {
             return MarketplacePercentage::where('marketplace', 'Amazon')->value('percentage') ?? 100;
         });

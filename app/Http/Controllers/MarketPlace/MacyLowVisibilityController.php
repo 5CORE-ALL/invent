@@ -45,7 +45,7 @@ class MacyLowVisibilityController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku and MacyProduct records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
         $macyProducts = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch MacyDataView NR values for those SKUs

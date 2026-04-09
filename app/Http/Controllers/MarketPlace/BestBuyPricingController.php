@@ -72,9 +72,7 @@ class BestBuyPricingController extends Controller
             ->all();
 
         // 3. Related Models
-        $shopifyData = ShopifySku::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $bestbuyMetrics = BestbuyUsaProduct::whereIn('sku', $skus)
             ->get()
@@ -109,7 +107,7 @@ class BestBuyPricingController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $bestbuyMetric = $bestbuyMetrics[$pm->sku] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
             $priceData = $priceDataCollection[$pm->sku] ?? null;

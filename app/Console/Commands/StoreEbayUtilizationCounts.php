@@ -43,7 +43,7 @@ class StoreEbayUtilizationCounts extends Command
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -213,7 +213,7 @@ class StoreEbayUtilizationCounts extends Command
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $reports = Ebay3PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])

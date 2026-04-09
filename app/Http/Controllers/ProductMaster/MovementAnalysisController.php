@@ -56,7 +56,7 @@ class MovementAnalysisController extends Controller
             return !empty($item->sku);
         })->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $movementData = MovementAnalysis::all()->keyBy(function ($item) {
             return $item->parent . '||' . $item->sku;

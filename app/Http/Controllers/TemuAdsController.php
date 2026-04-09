@@ -68,7 +68,7 @@ class TemuAdsController extends Controller
 
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         
         // Fetch Temu L30 from TemuDailyData (sum of quantity_purchased grouped by contribution_sku)
         $temuSalesData = TemuDailyData::whereIn('contribution_sku', $skus)

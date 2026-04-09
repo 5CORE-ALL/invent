@@ -95,7 +95,7 @@ class Ebay3PmtAdsController extends Controller
 
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ebayMetrics = Ebay3Metric::whereIn("sku", $skus)->get();
         
         // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching

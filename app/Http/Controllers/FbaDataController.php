@@ -62,11 +62,13 @@ class FbaDataController extends Controller
          ->unique()
          ->toArray();
 
-      $shopifyData = ShopifySku::whereIn('sku', $skus)
-         ->get()
-         ->keyBy(function ($item) {
-            return trim(strtoupper($item->sku));
-         });
+      $shopifyData = collect();
+      foreach (ShopifySku::buildShopifySkuLookupByNormalizedSku($skus) as $row) {
+         $k = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+         if ($k !== '') {
+            $shopifyData[$k] = $row;
+         }
+      }
 
       $skus = array_map(function ($sku) {
          return strtoupper(trim($sku));

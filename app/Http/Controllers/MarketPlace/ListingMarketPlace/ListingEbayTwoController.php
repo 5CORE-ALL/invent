@@ -33,7 +33,7 @@ class ListingEbayTwoController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = EbayTwoListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
@@ -107,7 +107,7 @@ class ListingEbayTwoController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = EbayTwoListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $reqCount = 0;

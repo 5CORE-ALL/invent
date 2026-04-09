@@ -46,7 +46,7 @@ class MacyZeroController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku and MacyProduct records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
         $macyProducts = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch MacyDataView NR values for those SKUs
@@ -159,7 +159,7 @@ class MacyZeroController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku and MacyProduct records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
         $macyProducts = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch data from the Google Sheet using the ApiController method
@@ -198,7 +198,7 @@ class MacyZeroController extends Controller
     //     $productMasters = ProductMaster::whereNull('deleted_at')->get();
     //     $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $macyDataViews = MacysListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
     //     $macyMetrics = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -211,7 +211,7 @@ class MacyZeroController extends Controller
 
     //     foreach ($productMasters as $item) {
     //         $sku = trim($item->sku);
-    //         $inv = $shopifyData[$sku]->inv ?? 0;
+    //         $inv = $shopifyData->get($item->sku)?->inv ?? 0;
     //         $isParent = stripos($sku, 'PARENT') !== false;
     //         if ($isParent) continue;
 
@@ -266,8 +266,7 @@ class MacyZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $macysListingStatus = MacysListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -285,7 +284,7 @@ class MacyZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

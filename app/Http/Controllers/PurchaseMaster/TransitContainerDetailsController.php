@@ -88,9 +88,16 @@ class TransitContainerDetailsController extends Controller
         })
         ->toArray();
 
+        $clinkBySku = [];
+        foreach (DB::table('forecast_analysis')->orderBy('id')->get() as $fr) {
+            $k = strtoupper(trim(preg_replace('/\s+/', ' ', $fr->sku ?? '')));
+            if ($k !== '') {
+                $clinkBySku[$k] = (string) ($fr->clink ?? '');
+            }
+        }
 
         // Transform TransitContainerDetail Records
-        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap) {
+        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku) {
             $sku = strtoupper(trim(preg_replace('/\s+/', ' ', $record->our_sku ?? '')));
             $tabKey = strtoupper(trim(preg_replace('/\s+/', ' ', $record->tab_name ?? '')));
             // $rowId = $record->id; 
@@ -118,7 +125,8 @@ class TransitContainerDetailsController extends Controller
             }
             // $record->pushed = isset($pushedMap[$sku]) ? (int) $pushedMap[$sku] : 0;
             $record->created_by_name = $record->user->name ?? '—';
-            
+            $record->setAttribute('Clink', $clinkBySku[$sku] ?? '');
+
             return $record;
         });
 

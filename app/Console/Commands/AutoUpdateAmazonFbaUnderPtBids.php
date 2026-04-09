@@ -247,11 +247,7 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                 return [];
             }
 
-            $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
-                ->get()
-                ->keyBy(function ($item) {
-                    return strtoupper(trim((string) $item->sku));
-                });
+            $shopifyData = ShopifySku::mapByProductSkus($baseSkus);
 
             // Preload enabled PT campaign reports.
             $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')

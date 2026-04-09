@@ -42,7 +42,7 @@ class TiktokAdsManagerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -103,7 +103,7 @@ class TiktokAdsManagerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $result = [];
 
@@ -147,7 +147,7 @@ class TiktokAdsManagerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $tiktokGMVAdData = TiktokGmvAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -393,7 +393,7 @@ class TiktokAdsManagerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $result = [];
 
@@ -436,7 +436,7 @@ class TiktokAdsManagerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $result = [];
 

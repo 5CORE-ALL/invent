@@ -80,7 +80,7 @@ class UpdateSerpBudgetCronCommand extends Command
 
             $shopifyData = [];
             if (!empty($skus)) {
-                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+                $shopifyData = ShopifySku::mapByProductSkus($skus);
             }
             DB::connection()->disconnect();
 

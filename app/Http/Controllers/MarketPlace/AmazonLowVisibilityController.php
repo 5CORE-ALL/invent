@@ -63,7 +63,7 @@ class AmazonLowVisibilityController extends Controller
         $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->where('inv', '>', 0)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus)->filter(fn ($row) => (float) ($row->inv ?? 0) > 0);
 
         // 3. JungleScout Data (by parent)
         $parents = $productMasters->pluck('parent')->filter()->unique()->map('strtoupper')->values()->all();
@@ -85,7 +85,7 @@ class AmazonLowVisibilityController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
 
             if (!$shopify || $shopify->inv <= 0) {
                 continue;
@@ -223,10 +223,8 @@ class AmazonLowVisibilityController extends Controller
                 return strtoupper($item->sku);
             });
 
-        $shopifyData = ShopifySku::whereIn('sku', $fbaSkus)
-            ->where('inv', '>', 0)
-            ->get()
-            ->keyBy('sku');
+        $fbaSkuStrings = $amazonDataViews->pluck('sku')->unique()->filter()->values()->all();
+        $shopifyData = ShopifySku::mapByProductSkus($fbaSkuStrings);
 
         // 3. REMOVED Google Sheet fetch
 
@@ -263,7 +261,7 @@ class AmazonLowVisibilityController extends Controller
 
             $parent = $pm->parent;
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
 
             if (!$shopify || $shopify->inv <= 0) {
                 continue;
@@ -491,10 +489,8 @@ class AmazonLowVisibilityController extends Controller
                 return strtoupper($item->sku);
             });
 
-        $shopifyData = ShopifySku::whereIn('sku', $fbaSkus)
-            ->where('inv', '>', 0)
-            ->get()
-            ->keyBy('sku');
+        $fbaSkuStringsBoth = $amazonDataViews->pluck('sku')->unique()->filter()->values()->all();
+        $shopifyData = ShopifySku::mapByProductSkus($fbaSkuStringsBoth);
 
         // 3. JungleScout Data (by parent)
         $parents = $productMasters->whereIn('sku', $fbaSkus)
@@ -529,7 +525,7 @@ class AmazonLowVisibilityController extends Controller
 
             $parent = $pm->parent;
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
 
             if (!$shopify || $shopify->inv <= 0) {
                 continue;

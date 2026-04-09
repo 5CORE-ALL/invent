@@ -677,6 +677,16 @@
                         },
                     },
                     {
+                        title: "C link",
+                        field: "Clink",
+                        formatter: linkFormatter,
+                        editor: "input",
+                        hozAlign: "center",
+                        cellEdited: function(cell) {
+                            saveLinkUpdate(cell, cell.getValue());
+                        }
+                    },
+                    {
                         title: "RFQ Form",
                         field: "RFQ Form Link",
                         formatter: linkFormatter,
@@ -947,10 +957,11 @@
                 let url = cell.getValue() || "";
                 if (url && url.trim() !== "") {
                     return `
-                        <div style="align-items:center;">
-                            <a href="${url}" target="_blank" class="btn btn-sm btn-outline-primary" 
-                            title="Open Link">
-                                <i class="mdi mdi-link"></i> Open
+                        <div style="display:flex;align-items:center;justify-content:center;">
+                            <a href="${url}" target="_blank" rel="noopener noreferrer"
+                                class="btn btn-sm btn-outline-primary"
+                                title="Open link" aria-label="Open link">
+                                <i class="mdi mdi-link"></i>
                             </a>
                         </div>
                     `;

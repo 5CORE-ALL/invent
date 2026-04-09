@@ -29,7 +29,7 @@ class EbayVariationZeroController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $variationDataViews = EbayVariationDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $result = [];
@@ -112,7 +112,7 @@ class EbayVariationZeroController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ebayDataViews = EbayVariationListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $listedCount = 0;
@@ -122,7 +122,7 @@ class EbayVariationZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = trim($item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
             $isParent = stripos($sku, 'PARENT') !== false;
             if ($isParent) continue;
 

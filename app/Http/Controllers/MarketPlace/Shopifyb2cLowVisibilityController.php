@@ -45,7 +45,7 @@ class Shopifyb2cLowVisibilityController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku and ShopifyProduct records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
         $shopifyProducts = Shopifyb2cDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Attach matching ShopifySku and ShopifyProduct data to each ProductMaster record

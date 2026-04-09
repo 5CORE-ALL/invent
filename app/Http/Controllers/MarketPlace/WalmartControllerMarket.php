@@ -86,7 +86,7 @@ class WalmartControllerMarket extends Controller
         $skus = $productMasterRows->pluck('sku')->toArray();
 
         // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch NR values from WalmartListingStatus (same table as Listing Walmart)
         $walmartListingStatuses = WalmartListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -810,7 +810,7 @@ class WalmartControllerMarket extends Controller
             ->keyBy('sku');
 
         // Fetch shopify data
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch Walmart data view for Listed, Live
         $walmartDataViews = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');

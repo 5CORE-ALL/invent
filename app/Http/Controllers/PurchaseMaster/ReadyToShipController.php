@@ -4,7 +4,6 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\MfrgProgress;
-use App\Models\ProductMaster;
 use App\Models\ReadyToShip;
 use App\Services\ReadyToShipPackingListSheetService;
 use App\Models\Supplier;
@@ -18,15 +17,31 @@ class ReadyToShipController extends Controller
 {
     public function index()
     {
-        $supplierRows = Supplier::where('type', 'Supplier')->get();
+        $normalizeSku = static function ($sku) {
+            if (empty($sku)) {
+                return '';
+            }
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+
+            return trim($sku);
+        };
+
+        $supplierRows = Supplier::where('type', 'Supplier')->get(['id', 'name', 'parent', 'zone']);
 
         $supplierMapByParent = [];
+        $supplierZoneMap = [];
         foreach ($supplierRows as $row) {
             $parents = array_map('trim', explode(',', strtoupper($row->parent ?? '')));
             foreach ($parents as $parent) {
-                if (!empty($parent)) {
+                if (! empty($parent)) {
                     $supplierMapByParent[$parent][] = $row->name;
                 }
+            }
+            $z = trim((string) ($row->zone ?? ''));
+            if ($z !== '') {
+                $supplierZoneMap[trim((string) $row->name)] = $z;
             }
         }
 
@@ -34,36 +49,78 @@ class ReadyToShipController extends Controller
             $supplierMapByParent[$parent] = array_unique($suppliers);
         }
 
-        $shopifyImages = DB::table('shopify_skus')
+        // One streamed pass over product_master: lookup map + transit modal data (avoids loading the table twice)
+        $productMaster = [];
+        $transitProductValuesMap = [];
+        $transitSkusSeen = [];
+        foreach (DB::table('product_master')->select('sku', 'parent', 'Values')->cursor() as $pm) {
+            $norm = $normalizeSku($pm->sku ?? '');
+            if ($norm !== '') {
+                foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                    if ($k !== '' && ! isset($productMaster[$k])) {
+                        $productMaster[$k] = $pm;
+                    }
+                }
+            }
+            $normSkuTransit = strtoupper(trim(preg_replace('/\s+/', ' ', $pm->sku ?? '')));
+            if ($normSkuTransit !== '') {
+                $val = $pm->Values;
+                if (is_string($val) && $val !== '') {
+                    $decoded = json_decode($val, true);
+                    $transitProductValuesMap[$normSkuTransit] = is_array($decoded) ? $decoded : [];
+                } elseif (! isset($transitProductValuesMap[$normSkuTransit])) {
+                    $transitProductValuesMap[$normSkuTransit] = [];
+                }
+            }
+            $rawSku = trim((string) ($pm->sku ?? ''));
+            if ($rawSku !== '') {
+                $transitSkusSeen[$rawSku] = true;
+            }
+        }
+        $transitSkus = array_keys($transitSkusSeen);
+        sort($transitSkus);
+
+        // Same resolution as MFRG: Shopify image_src first, else product_master Values.image_path
+        $shopifyImageByKey = [];
+        foreach (DB::table('shopify_skus')
             ->select('sku', 'image_src')
-            ->get()
-            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
+            ->whereNotNull('image_src')
+            ->where('image_src', '!=', '')
+            ->cursor() as $shopRow) {
+            $norm = $normalizeSku($shopRow->sku ?? '');
+            if ($norm === '') {
+                continue;
+            }
+            $src = $shopRow->image_src;
+            foreach (array_unique([$norm, str_replace(' ', '', $norm)]) as $k) {
+                if ($k !== '' && ! isset($shopifyImageByKey[$k])) {
+                    $shopifyImageByKey[$k] = $src;
+                }
+            }
+        }
 
-        $productMaster = DB::table('product_master')
-            ->get()
-            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
-
-        // Improved normalization to handle multiple spaces and hidden whitespace
-        $normalizeSku = function ($sku) {
-            if (empty($sku)) return '';
-            $sku = strtoupper(trim($sku));
-            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
-            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
-            return trim($sku);
-        };
+        // Same source as Forecast Analysis "Supplier" column (mfrg_supplier): mfrg_progress.supplier
+        $mfrgSuppliersBySku = [];
+        foreach (MfrgProgress::query()->select('sku', 'supplier')->cursor() as $mfrgRow) {
+            $ns = $normalizeSku($mfrgRow->sku ?? '');
+            if ($ns !== '') {
+                $mfrgSuppliersBySku[$ns] = trim((string) ($mfrgRow->supplier ?? ''));
+            }
+        }
 
         // Get stage data from forecast_analysis table - match by SKU only, prefer record with stage value
         $forecastData = DB::table('forecast_analysis')
+            ->select('sku', 'stage', 'nr')
             ->get()
-            ->groupBy(function($item) use ($normalizeSku) {
+            ->groupBy(function ($item) use ($normalizeSku) {
                 return $normalizeSku($item->sku);
             })
-            ->map(function($group) {
-                // Prefer record with non-empty stage value
+            ->map(function ($group) {
                 $withStage = $group->firstWhere('stage', '!=', null);
-                if ($withStage && !empty(trim($withStage->stage))) {
+                if ($withStage && ! empty(trim((string) $withStage->stage))) {
                     return $withStage;
                 }
+
                 return $group->first();
             });
 
@@ -81,132 +138,55 @@ class ReadyToShipController extends Controller
             return false;
         });
 
-        $readyToShipData->transform(function ($item) use ($supplierMapByParent, $shopifyImages, $productMaster, $forecastData, $normalizeSku) {
+        $readyToShipData->transform(function ($item) use ($supplierMapByParent, $productMaster, $forecastData, $normalizeSku, $mfrgSuppliersBySku, $shopifyImageByKey) {
             $sku = $normalizeSku($item->sku);
             $parent = strtoupper(trim($item->parent ?? ''));
             $item->supplier_names = $supplierMapByParent[$parent] ?? [];
 
-            $image = null;
             $cbm = null;
             $cp = null;
+            $image = null;
 
-            // Try to get image from shopify_skus first
-            if (isset($shopifyImages[$sku]) && !empty($shopifyImages[$sku]->image_src)) {
-                $image = $shopifyImages[$sku]->image_src;
+            $skuVariations = [
+                $sku,
+                str_replace(' ', '', $sku),
+                preg_replace('/\s+/', ' ', $sku),
+            ];
+            if (! empty($item->sku)) {
+                $skuVariations[] = strtoupper(trim($item->sku));
+                $skuVariations[] = strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
             }
+            $skuVariations = array_unique(array_filter($skuVariations));
 
-            // If still no image, try direct database lookup with flexible matching
-            if (empty($image) && !empty($item->sku)) {
-                try {
-                    // Try exact match first
-                    $directImage = DB::table('shopify_skus')
-                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
-                        ->whereNotNull('image_src')
-                        ->where('image_src', '!=', '')
-                        ->value('image_src');
-                    
-                    // If no exact match, try pattern matching
-                    if (empty($directImage)) {
-                        $skuPattern = str_replace(' ', '%', $sku);
-                        $directImage = DB::table('shopify_skus')
-                            ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . $skuPattern . '%'])
-                            ->whereNotNull('image_src')
-                            ->where('image_src', '!=', '')
-                            ->value('image_src');
-                    }
-                    
-                    // If still no match, try without spaces
-                    if (empty($directImage)) {
-                        $skuNoSpaces = str_replace(' ', '', $sku);
-                        $directImage = DB::table('shopify_skus')
-                            ->whereRaw('UPPER(REPLACE(sku, " ", "")) = ?', [$skuNoSpaces])
-                            ->whereNotNull('image_src')
-                            ->where('image_src', '!=', '')
-                            ->value('image_src');
-                    }
-                    
-                    if (!empty($directImage)) {
-                        $image = $directImage;
-                    }
-                } catch (\Exception $e) {
-                    // Silently fail if database query has issues
-                    Log::warning('Image lookup query failed for SKU: ' . $item->sku, ['error' => $e->getMessage()]);
+            foreach ($skuVariations as $skuVar) {
+                if ($skuVar !== '' && isset($shopifyImageByKey[$skuVar])) {
+                    $image = $shopifyImageByKey[$skuVar];
+                    break;
                 }
             }
 
-            // Try to get image from product_master if still not found
-            if (empty($image)) {
-                // Try multiple SKU variations
-                $skuVariations = [
-                    $sku,
-                    str_replace(' ', '', $sku),
-                    str_replace(' ', ' ', $sku),
-                ];
-
-                $productRow = null;
-                foreach ($skuVariations as $skuVar) {
-                    if (isset($productMaster[$skuVar])) {
-                        $productRow = $productMaster[$skuVar];
-                        break;
-                    }
+            $productRow = null;
+            foreach ($skuVariations as $skuVar) {
+                if ($skuVar !== '' && isset($productMaster[$skuVar])) {
+                    $productRow = $productMaster[$skuVar];
+                    break;
                 }
-                
-                // If still no product master, try direct database lookup
-                if (!$productRow && !empty($item->sku)) {
-                    try {
-                        $directProduct = DB::table('product_master')
-                            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
-                            ->orWhereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . str_replace(' ', '%', $sku) . '%'])
-                            ->first();
-                        
-                        if ($directProduct) {
-                            $productRow = $directProduct;
-                        }
-                    } catch (\Exception $e) {
-                        Log::warning('Product master lookup query failed for SKU: ' . $item->sku, ['error' => $e->getMessage()]);
+            }
+
+            if ($productRow) {
+                $valuesRaw = $productRow->Values ?? '{}';
+                $values = json_decode($valuesRaw, true);
+
+                if (is_array($values)) {
+                    if (! empty($values['image_path']) && empty($image)) {
+                        $image = 'storage/'.ltrim($values['image_path'], '/');
                     }
-                }
-
-                if ($productRow) {
-                    $valuesRaw = $productRow->Values ?? '{}';
-                    $values = json_decode($valuesRaw, true);
-
-                    if (is_array($values)) {
-                        if (!empty($values['image_path']) && empty($image)) {
-                            $image = 'storage/' . ltrim($values['image_path'], '/');
-                        }
-
-                        if (isset($values['cbm'])) {
-                            $cbm = (float) $values['cbm'];
-                        } else {
-                            Log::warning("CBM missing in values for SKU: $sku");
-                        }
-
-                        if (isset($values['cp'])) {
-                            $cp = (float) $values['cp'];
-                        }
-                    } else {
-                        Log::warning("Values decode failed for SKU: $sku");
+                    if (isset($values['cbm'])) {
+                        $cbm = (float) $values['cbm'];
                     }
-                } else {
-                    Log::warning("SKU missing in product_master: [$sku] <- original: [{$item->sku}]");
-                }
-            } else {
-                // Image found from shopify_skus, but still need to get CBM from product_master
-                if (isset($productMaster[$sku])) {
-                    $valuesRaw = $productMaster[$sku]->Values ?? '{}';
-                    $values = json_decode($valuesRaw, true);
 
-                    if (is_array($values)) {
-                        if (isset($values['cbm'])) {
-                            $cbm = (float) $values['cbm'];
-                        } else {
-                            Log::warning("CBM missing in values for SKU: $sku");
-                        }
-
-                        if (isset($values['cp'])) {
-                            $cp = (float) $values['cp'];
-                        }
+                    if (isset($values['cp'])) {
+                        $cp = (float) $values['cp'];
                     }
                 }
             }
@@ -227,17 +207,24 @@ class ReadyToShipController extends Controller
             $item->nr = $nr;
             $item->order_qty = $item->qty; // Add order_qty field for validation
 
-            $item->Image = $image;
+            $item->mfrg_supplier = $mfrgSuppliersBySku[$sku] ?? '';
             $item->CBM = $cbm;
             $item->CP = $cp;
+            $item->Image = ! empty($image) ? $image : null;
+
             return $item;
         });
 
-        // Supplier name → default zone (trimmed); used to auto-fill Zone when empty or on supplier change
-        $supplierZoneMap = [];
-        foreach (Supplier::where('type', 'Supplier')->whereNotNull('zone')->where('zone', '!=', '')->get(['name', 'zone']) as $sz) {
-            $supplierZoneMap[trim((string) $sz->name)] = trim((string) $sz->zone);
-        }
+        // Distinct zones from supplier master (same source as supplier list Zone column / modals)
+        $standardSupplierZones = ['GHZ', 'Ningbo', 'Tianjin'];
+        $supplierZoneListOptions = $supplierRows->pluck('zone')
+            ->map(fn ($z) => trim((string) $z))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+        $supplierZoneListOptions = array_values(array_unique(array_merge($standardSupplierZones, $supplierZoneListOptions)));
 
         $resolveZoneForSupplier = static function (string $supplierName, array $map): ?string {
             $s = trim($supplierName);
@@ -258,7 +245,10 @@ class ReadyToShipController extends Controller
 
         foreach ($readyToShipData as $item) {
             $area = trim((string) ($item->area ?? ''));
-            $sup = trim((string) ($item->supplier ?? ''));
+            $sup = trim((string) ($item->mfrg_supplier ?? ''));
+            if ($sup === '') {
+                $sup = trim((string) ($item->supplier ?? ''));
+            }
             if ($area !== '' || $sup === '') {
                 continue;
             }
@@ -276,32 +266,17 @@ class ReadyToShipController extends Controller
         if (empty($transitTabs)) {
             $transitTabs = ['Container 1'];
         }
-        $transitSuppliers = Supplier::select('id', 'name')->get();
-        $transitSkus = ProductMaster::pluck('sku')->toArray();
-        $transitProductValuesMap = [];
-        foreach (ProductMaster::select('sku', 'Values')->get() as $p) {
-            $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $p->sku ?? '')));
-            $val = $p->Values;
-            if (is_array($val)) {
-                $transitProductValuesMap[$normSku] = $val;
-            } elseif (is_string($val) && $val !== '') {
-                $decoded = json_decode($val, true);
-                $transitProductValuesMap[$normSku] = is_array($decoded) ? $decoded : [];
-            } else {
-                $transitProductValuesMap[$normSku] = [];
-            }
-        }
-
         $packingListSheetService = app(ReadyToShipPackingListSheetService::class);
         $packingListCsvMap = $packingListSheetService->getSkuToLinkMap();
         $packingListLinks = $packingListSheetService->mergeDbLinksOverCsv($packingListCsvMap);
 
         return view('purchase-master.ready-to-ship.index', [
             'readyToShipList' => $readyToShipData,
-            'suppliers' => Supplier::pluck('name'),
+            'suppliers' => $supplierRows->pluck('name')->unique()->values(),
             'supplierZoneMap' => $supplierZoneMap,
+            'supplierZoneListOptions' => $supplierZoneListOptions,
             'transitTabs' => $transitTabs,
-            'transitSuppliers' => $transitSuppliers,
+            'transitSuppliers' => $supplierRows,
             'transitSkus' => $transitSkus,
             'transitProductValuesMap' => json_encode($transitProductValuesMap, JSON_UNESCAPED_UNICODE),
             'packingListLinks' => $packingListLinks,
@@ -423,6 +398,29 @@ class ReadyToShipController extends Controller
                 $item->qty = $qty - $value;
                 $item->save();
             }
+        }
+
+        if ($column === 'zone_x') {
+            $value = trim((string) $value);
+            if ($value === '') {
+                $item->zone_x = null;
+                $item->save();
+
+                return response()->json(['success' => true]);
+            }
+            $allowedStandard = ['GHZ', 'Ningbo', 'Tianjin'];
+            $valid = in_array($value, $allowedStandard, true)
+                || Supplier::query()
+                    ->where('type', 'Supplier')
+                    ->whereRaw('TRIM(zone) = ?', [$value])
+                    ->exists();
+            if (! $valid) {
+                return response()->json(['success' => false, 'message' => 'Zone must match a zone from the supplier master.']);
+            }
+            $item->zone_x = $value;
+            $item->save();
+
+            return response()->json(['success' => true]);
         }
 
         if ($column === 'packing_list_link') {

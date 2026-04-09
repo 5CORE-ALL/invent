@@ -15,6 +15,7 @@ use App\Models\ShopifySku;
 use App\Models\ProductMaster; // Add this at the top with other use statements
 use App\Models\AmazonDatasheet;
 use App\Services\DobaApiService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -24,6 +25,9 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 class DobaController extends Controller
 {
+    /** Normalized match for doba_daily_data.order_type (case-insensitive in SQL). */
+    private const DOBA_DAILY_ORDER_TYPE_PICKUP_PREPAID_LABEL = 'pickup with a prepaid label';
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -79,6 +83,20 @@ class DobaController extends Controller
 
     public function getViewdobaData(Request $request)
     {
+        return $this->buildViewDobaListingData($request, false);
+    }
+
+    /**
+     * Same grid as /doba-data-view but all doba_daily_data aggregates (S L30, L30/L60/L7 averages and sold quantities)
+     * are limited to order_type "Pickup with a prepaid label".
+     */
+    public function getViewDobaDataWithoutShip(Request $request)
+    {
+        return $this->buildViewDobaListingData($request, true);
+    }
+
+    private function buildViewDobaListingData(Request $request, bool $onlyPickupPrepaidLabelFromDaily): \Illuminate\Http\JsonResponse
+    {
         // 1. Get Doba-listed SKUs from DobaMetric table (populated from API)
         $dobaListedSkus = DobaMetric::pluck('sku')->filter()->unique()->values()->all();
         
@@ -98,9 +116,7 @@ class DobaController extends Controller
             ->all();
 
         // 4. Related Models
-        $shopifyData = ShopifySku::whereIn("sku", $skus)
-            ->get()
-            ->keyBy("sku");
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $dobaMetrics = dobaMetric::whereIn("sku", $skus)
             ->get()
             ->keyBy("sku");
@@ -108,6 +124,19 @@ class DobaController extends Controller
         
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
+
+        $applyDailyFilters = function ($query) use ($onlyPickupPrepaidLabelFromDaily) {
+            $query->where(function ($q) {
+                $q->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
+                    ->orWhereNull('order_status');
+            });
+            if ($onlyPickupPrepaidLabelFromDaily) {
+                $query->whereRaw(
+                    'LOWER(TRIM(COALESCE(order_type, ?))) = ?',
+                    ['', self::DOBA_DAILY_ORDER_TYPE_PICKUP_PREPAID_LABEL]
+                );
+            }
+        };
 
         // 5. Aggregate S L30 from doba_daily_data - sum quantity by SKU for L30 period, excluding cancelled orders
         $dobaDailyL30 = DB::table('doba_daily_data')
@@ -117,10 +146,7 @@ class DobaController extends Controller
             )
             ->whereIn('sku', $skus)
             ->whereRaw("LOWER(period) = 'l30'")
-            ->where(function($query) {
-                $query->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
-                      ->orWhereNull('order_status');
-            })
+            ->tap($applyDailyFilters)
             ->groupBy('sku')
             ->get()
             ->keyBy('sku');
@@ -134,10 +160,7 @@ class DobaController extends Controller
             )
             ->whereIn('sku', $skus)
             ->whereRaw("LOWER(period) = 'l30'")
-            ->where(function($query) {
-                $query->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
-                      ->orWhereNull('order_status');
-            })
+            ->tap($applyDailyFilters)
             ->groupBy('sku')
             ->get()
             ->keyBy('sku');
@@ -151,13 +174,51 @@ class DobaController extends Controller
             )
             ->whereIn('sku', $skus)
             ->whereRaw("LOWER(period) = 'l60'")
-            ->where(function($query) {
-                $query->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
-                      ->orWhereNull('order_status');
-            })
+            ->tap($applyDailyFilters)
             ->groupBy('sku')
             ->get()
             ->keyBy('sku');
+
+        // Sold qty with order_time from 45 days through 15 days before yesterday (excludes most recent 15 days)
+        $yesterday = Carbon::yesterday();
+        $l45End = $yesterday->copy()->subDays(15)->endOfDay();
+        $l45Start = $yesterday->copy()->subDays(45)->startOfDay();
+        $dobaDailyL45 = DB::table('doba_daily_data')
+            ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
+            ->whereIn('sku', $skus)
+            ->whereBetween('order_time', [$l45Start, $l45End])
+            ->tap($applyDailyFilters)
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+
+        $pickupDailyL7 = null;
+        $pickupDailyL7Prev = null;
+
+        if ($onlyPickupPrepaidLabelFromDaily) {
+            $l7End = $yesterday->copy()->endOfDay();
+            $l7Start = $yesterday->copy()->subDays(6)->startOfDay();
+            $l7prevEnd = $yesterday->copy()->subDays(7)->endOfDay();
+            $l7prevStart = $yesterday->copy()->subDays(13)->startOfDay();
+
+            $pickupDailyL7 = DB::table('doba_daily_data')
+                ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
+                ->whereIn('sku', $skus)
+                ->whereBetween('order_time', [$l7Start, $l7End])
+                ->tap($applyDailyFilters)
+                ->groupBy('sku')
+                ->get()
+                ->keyBy('sku');
+
+            $pickupDailyL7Prev = DB::table('doba_daily_data')
+                ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
+                ->whereIn('sku', $skus)
+                ->whereBetween('order_time', [$l7prevStart, $l7prevEnd])
+                ->tap($applyDailyFilters)
+                ->groupBy('sku')
+                ->get()
+                ->keyBy('sku');
+        }
 
         // 6. Get marketplace percentage (no cache)
         $percentage = (MarketplacePercentage::where("marketplace", "Doba")->value("percentage") ?? 100) / 100;
@@ -168,7 +229,7 @@ class DobaController extends Controller
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
             $dobaMetric = $dobaMetrics[$pm->sku] ?? null;
 
             $row = [];
@@ -179,14 +240,33 @@ class DobaController extends Controller
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
 
-            //Doba Metrics - using quantity instead of order count for SOLD column
-            $row["doba L30"] = $dobaMetric->quantity_l30 ?? 0;
-            $row["doba L60"] = $dobaMetric->quantity_l60 ?? 0;
-            $row["quantity_l7"] = $dobaMetric->quantity_l7 ?? 0;
-            $row["quantity_l7_prev"] = $dobaMetric->quantity_l7_prev ?? 0;
-            $row["doba Price"] = $dobaMetric->anticipated_income ?? 0;
+            // Doba sold quantities: from DobaMetric, or from doba_daily_data when filtering by pickup + prepaid label
+            if ($onlyPickupPrepaidLabelFromDaily) {
+                $l30Daily = $dobaDailyL30[$pm->sku] ?? null;
+                $l60Daily = $l60AvgPrice[$pm->sku] ?? null;
+                $row["doba L30"] = $l30Daily ? (int) $l30Daily->s_l30_count : 0;
+                $row["doba L60"] = (int) ($l60Daily?->total_quantity ?? 0);
+                $row["quantity_l7"] = (int) ($pickupDailyL7[$pm->sku]->total_quantity ?? 0);
+                $row["quantity_l7_prev"] = (int) ($pickupDailyL7Prev[$pm->sku]->total_quantity ?? 0);
+            } else {
+                $row["doba L30"] = $dobaMetric->quantity_l30 ?? 0;
+                $row["doba L60"] = $dobaMetric->quantity_l60 ?? 0;
+                $row["quantity_l7"] = $dobaMetric->quantity_l7 ?? 0;
+                $row["quantity_l7_prev"] = $dobaMetric->quantity_l7_prev ?? 0;
+            }
+            $row['doba L45'] = (int) ($dobaDailyL45[$pm->sku]->total_quantity ?? 0);
+            $listPrice = floatval($dobaMetric->anticipated_income ?? 0);
+            $selfPickMetric = floatval($dobaMetric->self_pick_price ?? 0);
             $row['doba_item_id'] = $dobaMetric->item_id ?? null;
-            $row['self_pick_price'] = $dobaMetric->self_pick_price ?? 0;
+            $row['self_pick_price'] = $selfPickMetric;
+
+            // Without-ship: main column + all margin math use self_pick only; listing (anticipated) is never used in formulas
+            if ($onlyPickupPrepaidLabelFromDaily) {
+                $row['doba_list_price'] = $listPrice;
+                $row['doba Price'] = $selfPickMetric;
+            } else {
+                $row['doba Price'] = $listPrice;
+            }
             $row['msrp'] = $dobaMetric->msrp ?? 0;
             $row['map'] = $dobaMetric->map ?? 0;
             
@@ -233,24 +313,29 @@ class DobaController extends Controller
                     ? floatval($pm->ship)
                     : 0);
 
-            // Price and units for calculations
-            $price = floatval($row["doba Price"] ?? 0);
+            // Without-ship page: still show product SHIP in the grid, but omit it from PFT/ROI totals
+            $shipInFormula = $onlyPickupPrepaidLabelFromDaily ? 0.0 : $ship;
+
+            // Price for PFT/ROI: without-ship = self pick only (never anticipated/list price)
+            $price = $onlyPickupPrepaidLabelFromDaily
+                ? $selfPickMetric
+                : floatval($row["doba Price"] ?? 0);
             $units_ordered_l30 = floatval($row["doba L30"] ?? 0);
 
             $row["Total_pft"] = round(
-                ($price * $percentage - $lp - $ship) * $units_ordered_l30,
+                ($price * $percentage - $lp - $shipInFormula) * $units_ordered_l30,
                 2
             );
             $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
             $row["PFT_percentage"] = round(
                 $price > 0
-                    ? (($price * $percentage - $lp - $ship) / $price) * 100
+                    ? (($price * $percentage - $lp - $shipInFormula) / $price) * 100
                     : 0,
                 2
             );
             $row["ROI_percentage"] = round(
                 $lp > 0
-                    ? (($price * $percentage - $lp - $ship) / $lp) * 100
+                    ? (($price * $percentage - $lp - $shipInFormula) / $lp) * 100
                     : 0,
                 2
             );
@@ -728,6 +813,21 @@ class DobaController extends Controller
         $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
 
         return view('market-places.doba_tabulator_view', [
+            'mode' => $mode,
+            'demo' => $demo,
+            'dobaPercentage' => $percentage,
+        ]);
+    }
+
+    public function dobaTabulatorViewWithoutShip(Request $request)
+    {
+        $mode = $request->query('mode');
+        $demo = $request->query('demo');
+
+        $marketplaceData = MarketplacePercentage::where("marketplace", "Doba")->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
+
+        return view('market-places.doba_withoutship_tabulator_view', [
             'mode' => $mode,
             'demo' => $demo,
             'dobaPercentage' => $percentage,

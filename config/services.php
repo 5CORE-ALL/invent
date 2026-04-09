@@ -486,6 +486,7 @@ return [
     */
     'openai' => [
         'key' => env('OPENAI_API_KEY'),
+        'packing_vision_model' => env('OPENAI_PACKING_VISION_MODEL', 'gpt-4o-mini'),
     ],
 
     'anthropic' => [

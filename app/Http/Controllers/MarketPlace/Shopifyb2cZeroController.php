@@ -46,7 +46,7 @@ class Shopifyb2cZeroController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku and ShopifyProduct records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
         $shopifyProducts = Shopifyb2cDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Attach matching ShopifySku and ShopifyProduct data to each ProductMaster record
@@ -130,7 +130,7 @@ class Shopifyb2cZeroController extends Controller
         $skus = $productMasters->pluck('sku')->toArray();
 
         // Fetch ShopifySku and ShopifyProduct records for those SKUs
-        $shopifySkus = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifySkus = ShopifySku::mapByProductSkus($skus);
         $shopifyProducts = Shopifyb2cDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch data from the Google Sheet using the ApiController method
@@ -172,16 +172,12 @@ class Shopifyb2cZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $shopifyb2cListingStatus = ShopifyB2CListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
         $shopifyb2cDataViews = Shopifyb2cDataView::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
-
-        $shopifyb2cMetrics = ShopifySku::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
         $listedCount = 0;
@@ -191,7 +187,7 @@ class Shopifyb2cZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;
@@ -228,7 +224,7 @@ class Shopifyb2cZeroController extends Controller
             }
 
             // --- Views / Zero-View logic ---
-            $metricRecord = $shopifyb2cMetrics[$sku] ?? null;
+            $metricRecord = $shopifyData->get($item->sku);
             $views = null;
 
             if ($metricRecord) {

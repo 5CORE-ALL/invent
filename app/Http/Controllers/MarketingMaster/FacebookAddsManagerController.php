@@ -321,7 +321,7 @@ class FacebookAddsManagerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -378,7 +378,7 @@ class FacebookAddsManagerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 

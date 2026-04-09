@@ -70,7 +70,7 @@ class AliexpressController extends Controller
         $skus = $productMasterRows->pluck('sku')->toArray();
 
         // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch NR values for these SKUs from AliexpressDataView
         $aliexpressDataViews = AliexpressDataView::whereIn('sku', $skus)->get()->keyBy('sku');

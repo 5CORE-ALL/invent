@@ -510,6 +510,7 @@
                         <button id="total_mip_value"    class="btn btn-sm btn-warning fw-semibold text-dark"> MIP Val: $<span id="total_mip_value_display">0</span></button>
                         <button id="total_r2s_value"    class="btn btn-sm btn-warning fw-semibold text-dark"> R2S Val: $<span id="total_r2s_value_display">0</span></button>
                         <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark"> Trn Val: $<span id="total_transit_value_display">0</span></button>
+                        <button type="button" id="zero-stock-badge-btn" class="btn btn-sm btn-danger fw-semibold text-white" style="cursor:pointer;" title="Child SKUs with INV ≤ 0 (zero or negative). Click to filter or clear." aria-pressed="false">0 Stock: <span id="zero-stock-count">0</span></button>
                     </div>
 
                     <!-- Bulk edit badge (shown when rows selected) -->
@@ -3169,6 +3170,8 @@
                         trn: transitCount,
                         moq: moqCount,
                     });
+                    updateZeroStockBadgeCount();
+                    syncZeroStockBadgeActiveState();
                 }, 0);
                 return sorted;
             },
@@ -3479,7 +3482,8 @@
                     apprReqFilter: currentColorFilter || '',
                     twoOrdFilter: currentTwoOrdColorFilter || '',
                     topQtyFilters: Object.assign({}, currentTopQtySignFilters || {}),
-                    nrpChecked: nrpChecked.length ? nrpChecked : ['REQ', 'NR', 'LATER']
+                    nrpChecked: nrpChecked.length ? nrpChecked : ['REQ', 'NR', 'LATER'],
+                    invFilter: currentInvFilter || ''
                 };
                 localStorage.setItem(FORECAST_FILTER_PREF_KEY, JSON.stringify(payload));
             } catch (e) {}
@@ -3521,6 +3525,16 @@
                 cb.checked = wantedNrp.has(cb.value);
             });
             updateNRPMultiselectLabel();
+
+            const invPref = prefs.invFilter != null ? String(prefs.invFilter).trim() : '';
+            currentInvFilter = invPref;
+            const tblInv = Tabulator.findTable("#forecast-table")[0];
+            if (tblInv && typeof tblInv.setHeaderFilterValue === 'function' && invPref) {
+                try {
+                    tblInv.setHeaderFilterValue('INV', invPref);
+                } catch (e) { /* column may have no header filter */ }
+            }
+            syncZeroStockBadgeActiveState();
         }
         function updateTopRowCounter() {
             const el = document.getElementById('top-row-counter');
@@ -3628,14 +3642,15 @@
                 }
             });
         }
-        /** INV header: empty=all, 0/zero=exactly 0, >0/gt0=positive */
+        /** INV header: empty=all, 0/zero=exactly 0, <=0/le0=zero or negative, >0/gt0=positive */
         let currentInvFilter = '';
         function invHeaderFilterMode(raw) {
             if (raw === undefined || raw === null) return '';
-            const s = String(raw).trim().toLowerCase();
+            const s = String(raw).trim().toLowerCase().replace(/\s+/g, '');
             if (s === '' || s === 'all') return '';
+            if (s === '<=0' || s === '≤0' || s === 'le0' || s === '0-' || s === 'zeroneg' || s === '0neg' || s === 'nonpos') return 'le0';
             if (s === '0' || s === 'zero' || s === '=0') return 'zero';
-            if (s === '>0' || s === '> 0' || s === 'gt0' || s === '+' || s === 'pos' || s === 'positive') return 'gt0';
+            if (s === '>0' || s === 'gt0' || s === '+' || s === 'pos' || s === 'positive') return 'gt0';
             return '';
         }
         function invHeaderMatchesRow(data) {
@@ -3646,14 +3661,35 @@
             const inv = parseFloat(invValue);
             const invNum = Number.isFinite(inv) ? inv : 0;
             if (mode === 'gt0') return invNum > 0;
+            if (mode === 'le0') return invNum <= 0;
             if (mode === 'zero') return invNum === 0;
             return true;
+        }
+        function syncZeroStockBadgeActiveState() {
+            const btn = document.getElementById('zero-stock-badge-btn');
+            if (!btn) return;
+            const on = invHeaderFilterMode(currentInvFilter) === 'le0';
+            btn.classList.toggle('active', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+        function updateZeroStockBadgeCount() {
+            const countEl = document.getElementById('zero-stock-count');
+            if (!countEl || !table || typeof table.getData !== 'function') return;
+            const n = table.getData().filter(function(d) {
+                if (!d || d.is_parent || d.isParent) return false;
+                const invValue = d.raw_data ? d.raw_data["INV"] : d["INV"];
+                const invNum = parseFloat(invValue);
+                const v = Number.isFinite(invNum) ? invNum : 0;
+                return v <= 0;
+            }).length;
+            countEl.textContent = String(n);
         }
         function syncInvFilterFromHeader() {
             const tbl = Tabulator.findTable("#forecast-table")[0];
             if (!tbl || typeof tbl.getHeaderFilterValue !== 'function') return;
             const v = tbl.getHeaderFilterValue("INV");
             currentInvFilter = v === undefined || v === null ? '' : String(v);
+            syncZeroStockBadgeActiveState();
             if (typeof setCombinedFilters === 'function') setCombinedFilters();
         }
         function normalizeStageValue(value) {
@@ -5939,6 +5975,24 @@
                     }
                 });
             }
+
+            document.getElementById('zero-stock-badge-btn')?.addEventListener('click', function() {
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (invHeaderFilterMode(currentInvFilter) === 'le0') {
+                    currentInvFilter = '';
+                    if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
+                        try { tbl.setHeaderFilterValue('INV', ''); } catch (e) {}
+                    }
+                } else {
+                    currentInvFilter = '<=0';
+                    if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
+                        try { tbl.setHeaderFilterValue('INV', '<=0'); } catch (e) {}
+                    }
+                }
+                syncZeroStockBadgeActiveState();
+                if (typeof setCombinedFilters === 'function') setCombinedFilters();
+                saveForecastFilterPrefs();
+            });
 
             // Keep R2S Val badge in sync with Ready to Ship blade (refresh on load, every 60s, and when tab becomes visible)
             function refreshR2sVal() {

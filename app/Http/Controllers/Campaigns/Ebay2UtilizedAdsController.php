@@ -570,13 +570,17 @@ class Ebay2UtilizedAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
         
-        // Fetch Shopify data with normalized SKU matching
-        $shopifyDataRaw = ShopifySku::whereIn('sku', $skus)->get();
+        $shopifyByPm = ShopifySku::mapByProductSkus($skus);
         $shopifyData = [];
-        foreach ($shopifyDataRaw as $shopify) {
-            // Store with normalized key for matching
-            $normalizedKey = $normalizeSku($shopify->sku);
-            $shopifyData[$normalizedKey] = $shopify;
+        foreach ($productMasters as $pm) {
+            $nk = $normalizeSku($pm->sku);
+            if ($nk === '') {
+                continue;
+            }
+            $row = $shopifyByPm->get($pm->sku);
+            if ($row !== null) {
+                $shopifyData[$nk] = $row;
+            }
         }
         
         // Fetch eBay metric data with normalized SKU matching
@@ -617,8 +621,7 @@ class Ebay2UtilizedAdsController extends Controller
             // Try to get Shopify data using normalized key
             $shopify = $shopifyData[$normalizedSku] ?? null;
             if (!$shopify) {
-                // Fallback: Direct database lookup for edge cases
-                $shopify = ShopifySku::where('sku', $pm->sku)->first();
+                $shopify = ShopifySku::firstForProductSku($pm->sku);
             }
             
             // Try to get eBay metric data using normalized key
@@ -1499,11 +1502,17 @@ class Ebay2UtilizedAdsController extends Controller
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
             
-            $shopifyDataRaw = ShopifySku::whereIn('sku', $skus)->get();
+            $shopifyByPm = ShopifySku::mapByProductSkus($skus);
             $shopifyData = [];
-            foreach ($shopifyDataRaw as $shopify) {
-                $normalizedKey = $normalizeSku($shopify->sku);
-                $shopifyData[$normalizedKey] = $shopify;
+            foreach ($productMasters as $pm) {
+                $nk = $normalizeSku($pm->sku);
+                if ($nk === '') {
+                    continue;
+                }
+                $row = $shopifyByPm->get($pm->sku);
+                if ($row !== null) {
+                    $shopifyData[$nk] = $row;
+                }
             }
             
             $ebayMetricDataRaw = Ebay2Metric::whereIn('sku', $skus)->get();
@@ -1541,7 +1550,7 @@ class Ebay2UtilizedAdsController extends Controller
                 
                 $shopify = $shopifyData[$normalizedSku] ?? null;
                 if (!$shopify) {
-                    $shopify = ShopifySku::where('sku', $pm->sku)->first();
+                    $shopify = ShopifySku::firstForProductSku($pm->sku);
                 }
                 
                 $ebay = $ebayMetricData[$normalizedSku] ?? null;
@@ -2187,7 +2196,7 @@ class Ebay2UtilizedAdsController extends Controller
                 ->get();
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
             $ebayMetricData = Ebay2Metric::whereIn('sku', $skus)->get()->keyBy('sku');
             $nrValues = EbayTwoDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -2243,7 +2252,7 @@ class Ebay2UtilizedAdsController extends Controller
 
             foreach ($productMasters as $pm) {
                 $sku = strtoupper(trim($pm->sku));
-                $shopify = $shopifyData[$pm->sku] ?? null;
+                $shopify = $shopifyData->get($pm->sku);
                 $ebay = $ebayMetricData[$pm->sku] ?? null;
 
                 $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {

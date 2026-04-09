@@ -441,7 +441,7 @@ class GoogleAdsController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Calculate date ranges
         $dateRanges = $this->calculateDateRanges();
@@ -554,7 +554,7 @@ class GoogleAdsController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Calculate date ranges
         $dateRanges = $this->calculateDateRanges();
@@ -660,7 +660,7 @@ class GoogleAdsController extends Controller
             ->count();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         
         // Get NRL, NRA from GoogleDataView (similar to AmazonDataView)
         $nrValues = GoogleDataView::whereIn('sku', $skus)->pluck('value', 'sku');
@@ -1092,7 +1092,7 @@ class GoogleAdsController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Calculate date ranges
         $dateRanges = $this->calculateDateRanges();
@@ -2070,7 +2070,7 @@ class GoogleAdsController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Get Google campaigns data
         $googleCampaigns = DB::table('google_ads_campaigns')
@@ -2186,7 +2186,7 @@ class GoogleAdsController extends Controller
                 ->get();
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             $dateRanges = $this->calculateDateRanges();
             

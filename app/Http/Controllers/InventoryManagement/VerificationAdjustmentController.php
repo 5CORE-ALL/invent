@@ -240,10 +240,8 @@ class VerificationAdjustmentController extends Controller
             return response()->json(['message' => 'Data fetched successfully', 'data' => [], 'status' => 200]);
         }
 
-        // Single query: Shopify data keyed by normalized SKU
-        $shopifyData = ShopifySku::whereIn('sku', $originalSkus)
-            ->get()
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+        // Shopify rows keyed by product_master.sku (NBSP / unicode space safe)
+        $shopifyData = ShopifySku::mapByProductSkus($originalSkus);
 
         // Latest inventory per SKU (one query for ids, one with eager load - avoids N+1)
         $latestInventoryIds = Inventory::whereIn('sku', $originalSkus)
@@ -275,36 +273,51 @@ class VerificationAdjustmentController extends Controller
             $item->IS_PARENT = stripos($sku, 'PARENT') === 0;
 
             if (!$item->IS_PARENT) {
-                $shopify = $shopifyData[$sku] ?? null;
+                $shopify = $shopifyData->get($item->sku);
                 $inv = $verifiedInventory[$sku] ?? null;
 
-                $item->INV = $shopify->inv ?? 0;
-                $item->L30 = $shopify->quantity ?? 0;
-                $item->ON_HAND = $shopify->on_hand ?? 0;
-                $item->COMMITTED = $shopify->committed ?? 0;
-                $item->AVAILABLE_TO_SELL = $shopify->available_to_sell ?? 0;
-                $item->IMAGE_URL = $shopify->image_src ?? null;
+                // Inventory figures come from syncLiveInventoryToDb() which uses Shopify Admin GraphQL
+                // quantity states at the Ohio location (available, committed, on_hand, unavailable, incoming).
+                if ($shopify) {
+                    $item->AVAILABLE_TO_SELL = (int) ($shopify->available_to_sell ?? 0);
+                    $item->COMMITTED = (int) ($shopify->committed ?? 0);
+                    $item->ON_HAND = (int) ($shopify->on_hand ?? 0);
+                    $item->UNAVAILABLE = (int) ($shopify->getAttribute('unavailable') ?? 0);
+                    $item->INCOMING = (int) ($shopify->getAttribute('incoming') ?? 0);
+                    $item->INV = $item->ON_HAND;
+                    $item->L30 = $shopify->quantity ?? 0;
+                    $item->IMAGE_URL = $shopify->image_src ?? null;
+                } else {
+                    $item->INV = 0;
+                    $item->L30 = 0;
+                    $item->ON_HAND = 0;
+                    $item->COMMITTED = 0;
+                    $item->AVAILABLE_TO_SELL = 0;
+                    $item->UNAVAILABLE = 0;
+                    $item->INCOMING = 0;
+                    $item->IMAGE_URL = null;
+                }
 
-                $item->VERIFIED_STOCK = $inv->verified_stock ?? null;
-                $item->TO_ADJUST = $inv->to_adjust ?? null;
-                $item->REASON = $inv->reason ?? null;
-                $item->REMARKS = $inv->remarks ?? null;
-                $item->APPROVED = (bool)($inv->is_approved ?? false);
-                $item->APPROVED_BY = $inv->approved_by ?? null;
-                $item->APPROVED_AT = $inv->approved_at ?? null;
+                $item->VERIFIED_STOCK = $inv?->verified_stock;
+                $item->TO_ADJUST = $inv?->to_adjust;
+                $item->REASON = $inv?->reason;
+                $item->REMARKS = $inv?->remarks;
+                $item->APPROVED = (bool) ($inv?->is_approved ?? false);
+                $item->APPROVED_BY = $inv?->approved_by;
+                $item->APPROVED_AT = $inv?->approved_at;
                 
                 // HISTORY column - Latest approved date from Adjustment History
                 $latestHistory = $latestApprovedHistory[$sku] ?? null;
                 $item->HISTORY = $latestHistory ? $latestHistory->approved_at : null;
                 
-                $item->is_verified = (bool)($inv->is_verified ?? false);
-                $item->is_doubtful = (bool)($inv->is_doubtful ?? false);
+                $item->is_verified = (bool) ($inv?->is_verified ?? false);
+                $item->is_doubtful = (bool) ($inv?->is_doubtful ?? false);
                 // Also set uppercase versions for compatibility
-                $item->IS_VERIFIED = (bool)($inv->is_verified ?? false);
-                $item->IS_DOUBTFUL = (bool)($inv->is_doubtful ?? false);
+                $item->IS_VERIFIED = (bool) ($inv?->is_verified ?? false);
+                $item->IS_DOUBTFUL = (bool) ($inv?->is_doubtful ?? false);
                 
                 // Get verified by user's first name
-                $verifiedByUser = $inv->verifiedByUser ?? null;
+                $verifiedByUser = $inv?->verifiedByUser;
                 if ($verifiedByUser && $verifiedByUser->name) {
                     // Extract first name from full name (assumes "First Last" format)
                     $nameParts = explode(' ', trim($verifiedByUser->name));

@@ -513,13 +513,36 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'SKU is required']);
         }
 
-        if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'order_qty', 'Adv date'])) {
+        if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'order_qty', 'Adv date', 'Clink'])) {
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
 
         // When user chooses "-- Select --" for Supplier, ensure we store empty string (not null) so refresh shows blank
         if ($column === 'Supplier') {
             $value = trim((string) $value);
+        }
+
+        if ($column === 'Clink') {
+            $value = trim((string) $value);
+            try {
+                $skuWhere = ['TRIM(UPPER(sku)) = ?', [$sku]];
+                if (DB::table('forecast_analysis')->whereRaw(...$skuWhere)->exists()) {
+                    DB::table('forecast_analysis')->whereRaw(...$skuWhere)->update(['clink' => $value, 'updated_at' => now()]);
+                } else {
+                    DB::table('forecast_analysis')->insert([
+                        'sku' => $sku,
+                        'clink' => $value,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                return response()->json(['success' => true]);
+            } catch (\Throwable $e) {
+                Log::error('ToOrderAnalysis updateLink Clink failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            }
         }
 
         $updateColumn = match ($column) {

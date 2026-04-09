@@ -35,7 +35,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = TiktokVideoAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -123,7 +123,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = FacebookVideoAd::with(['group', 'category'])->whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -453,7 +453,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = FacebookFeedAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -540,7 +540,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = FacebookReelAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -631,7 +631,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = InstagramVideoAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -718,7 +718,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = InstagramFeedAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -805,7 +805,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = InstagramReelAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -896,7 +896,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = YoutubeVideoAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
@@ -983,7 +983,7 @@ class VideoAdsMasterController extends Controller
 
         $skus = $productMasterRows->keys()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $videoPostedValues = YoutubeShortsAd::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];

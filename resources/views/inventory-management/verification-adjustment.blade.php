@@ -1790,6 +1790,12 @@
                                     <th data-field="COMMITTED" class="va-th-v">
                                         <div class="va-th-v-inner">COMMITTED <span class="sort-arrow">↓</span></div>
                                     </th>
+                                    <th data-field="UNAVAILABLE" class="va-th-v" title="Shopify: reserved + damaged + safety stock + quality control">
+                                        <div class="va-th-v-inner">UNAVAIL <span class="sort-arrow">↓</span></div>
+                                    </th>
+                                    <th data-field="INCOMING" class="va-th-v">
+                                        <div class="va-th-v-inner">INCOMING <span class="sort-arrow">↓</span></div>
+                                    </th>
                                     <th data-field="ON_HAND" class="va-th-v">
                                         <div class="va-th-v-inner">ON HAND <span class="sort-arrow">↓</span></div>
                                     </th>
@@ -2621,6 +2627,8 @@
                                     ON_HAND: item.ON_HAND || 0,
                                     COMMITTED: item.COMMITTED || 0,
                                     AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL || 0,
+                                    UNAVAILABLE: item.UNAVAILABLE ?? 0,
+                                    INCOMING: item.INCOMING ?? 0,
                                     VERIFIED_STOCK: item.verified_stock || '', // User input
                                     TO_ADJUST: item.to_adjust || '', // Auto-calculated
                                     REASON: item.reason || 'Count', // Dropdown - default to "Count"
@@ -2690,7 +2698,7 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="26" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
                     return;
                 }
 
@@ -2700,7 +2708,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="26" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
                     return;
                 }
 
@@ -2736,15 +2744,20 @@
                                 ON_HAND: 0,
                                 COMMITTED: 0,
                                 AVAILABLE_TO_SELL: 0,
+                                UNAVAILABLE: 0,
+                                INCOMING: 0,
                                 count: 0
                             };
                         }
 
-                        parentTotalsMap[parentName].INV += parseFloat(item.AVAILABLE_TO_SELL) || 0;
+                        // Sum same basis as child INV/ON HAND (was incorrectly summing AVAILABLE_TO_SELL).
+                        parentTotalsMap[parentName].INV += parseFloat(item.ON_HAND) || 0;
                         parentTotalsMap[parentName].L30 += parseFloat(item.L30) || 0;
                         parentTotalsMap[parentName].ON_HAND += parseFloat(item.ON_HAND) || 0;
                         parentTotalsMap[parentName].COMMITTED += parseFloat(item.COMMITTED) || 0;
                         parentTotalsMap[parentName].AVAILABLE_TO_SELL += parseFloat(item.AVAILABLE_TO_SELL) || 0;
+                        parentTotalsMap[parentName].UNAVAILABLE += parseFloat(item.UNAVAILABLE) || 0;
+                        parentTotalsMap[parentName].INCOMING += parseFloat(item.INCOMING) || 0;
                         parentTotalsMap[parentName].count += 1;
                     }
                 });
@@ -2796,6 +2809,8 @@
                             item.ON_HAND = totals.ON_HAND;
                             item.COMMITTED = totals.COMMITTED;
                             item.AVAILABLE_TO_SELL = totals.AVAILABLE_TO_SELL;
+                            item.UNAVAILABLE = totals.UNAVAILABLE;
+                            item.INCOMING = totals.INCOMING;
                             item.DIL = (totals.INV > 0 && totals.L30 === 0) ? 0 : (totals.INV > 0 ? (totals.L30 / totals.INV).toFixed(2) : 0);
                         }
                     }
@@ -2931,6 +2946,8 @@
 
                     $row.append($('<td>').text(item.AVAILABLE_TO_SELL));
                     $row.append($('<td>').text(item.COMMITTED));
+                    $row.append($('<td>').text(item.UNAVAILABLE ?? 0));
+                    $row.append($('<td>').text(item.INCOMING ?? 0));
                     $row.append($('<td>').addClass('on-hand').text(item.ON_HAND));
 
                     $row.append($('<td>').html(`
@@ -4121,6 +4138,8 @@
                         ON_HAND: item.ON_HAND,
                         COMMITTED: item.COMMITTED,
                         AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL,
+                        UNAVAILABLE: item.UNAVAILABLE ?? 0,
+                        INCOMING: item.INCOMING ?? 0,
                         VERIFIED: verifiedStatus,
                         'Last Verified By': lastVerifiedBy,
                         HISTORY: historyDate,
@@ -5221,7 +5240,7 @@
                         let valB = b[sortField] ?? '';
 
                         // Explicitly handle numeric fields (INV, L30, DIL, etc.)
-                        const numericFields = ['INV', 'L30', 'DIL', 'ON_HAND', 'COMMITTED', 'AVAILABLE_TO_SELL'];
+                        const numericFields = ['INV', 'L30', 'DIL', 'ON_HAND', 'COMMITTED', 'AVAILABLE_TO_SELL', 'UNAVAILABLE', 'INCOMING'];
                         if (numericFields.includes(sortField)) {
                             valA = parseFloat(valA) || 0;
                             valB = parseFloat(valB) || 0;

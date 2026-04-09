@@ -43,7 +43,7 @@ class AmazonFbaInvController extends Controller
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
         // 2. Fetch ShopifySku for those SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch AmazonDataView for all SKUs
         $amazonDataViews = AmazonDataView::whereIn('sku', $skus)->get()->keyBy(function ($item) {

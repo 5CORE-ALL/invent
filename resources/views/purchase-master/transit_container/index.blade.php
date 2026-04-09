@@ -502,6 +502,30 @@
 let tabCounter = {{ count($tabs) }};
 const groupedData = @json($groupedData);
 
+function transitClinkLinkFormatter(cell) {
+    let url = cell.getValue() || "";
+    if (url && url.trim() !== "") {
+        return `
+            <div style="display:flex;align-items:center;justify-content:center;">
+                <a href="${url}" target="_blank" rel="noopener noreferrer"
+                    class="btn btn-sm btn-outline-primary"
+                    title="Open link" aria-label="Open link">
+                    <i class="fas fa-link"></i>
+                </a>
+            </div>
+        `;
+    }
+}
+
+function escapeHtmlTransit(s) {
+    if (s == null || s === "") return "";
+    return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
 Object.entries(groupedData).forEach(([tabName, data], index) => {
     let table = new Tabulator(`#tabulator-${index}`, {
         layout: "fitDataFill",
@@ -670,7 +694,6 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 `;
               }
             },
-            // { title: "Supplier", field: "supplier_name", editor: "input" },
             {
               title: "Status",
               field: "push_status",
@@ -797,6 +820,53 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 cell.edit(true);
                 },
               },
+            {
+                title: "C link",
+                field: "Clink",
+                headerSort: false,
+                hozAlign: "center",
+                formatter: transitClinkLinkFormatter,
+                editor: "input",
+            },
+            {
+                title: "Supplier",
+                field: "supplier_name",
+                headerSort: false,
+                hozAlign: "center",
+                width: 220,
+                formatter: function (cell) {
+                    const row = cell.getRow().getData();
+                    const saved = String(row.supplier_name || "").trim();
+                    const related = row.supplier_names;
+                    const relatedStr = Array.isArray(related) ? related.filter(Boolean).join(", ") : "";
+                    const parts = [];
+                    if (saved) {
+                        parts.push('<div style="font-weight:600;">' + escapeHtmlTransit(saved) + "</div>");
+                    }
+                    if (relatedStr) {
+                        parts.push(
+                            '<div style="font-size:0.88rem;color:#475569;margin-top:2px;">Related: ' +
+                                escapeHtmlTransit(relatedStr) +
+                                "</div>"
+                        );
+                    }
+                    if (parts.length === 0) {
+                        return '<span class="text-muted">—</span>';
+                    }
+                    return '<div style="text-align:center;max-width:260px;margin:0 auto;">' + parts.join("") + "</div>";
+                },
+                editor: "input",
+                tooltip: function (cell) {
+                    const row = cell.getRow().getData();
+                    const saved = String(row.supplier_name || "").trim();
+                    const related = row.supplier_names;
+                    const relatedStr = Array.isArray(related) ? related.filter(Boolean).join(", ") : "";
+                    const lines = [];
+                    if (saved) lines.push("Saved: " + saved);
+                    if (relatedStr) lines.push("Related: " + relatedStr);
+                    return lines.join("\n") || "";
+                },
+            },
             // {
             //   title: "Amt($)", 
             //   field: "amount", 
@@ -920,6 +990,36 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
         data.tab_name = tabName;
         const field = cell.getField();
 
+        if (field === "Clink") {
+            const sku = String(data.our_sku || "").trim().toUpperCase().replace(/\s+/g, " ");
+            if (!sku) {
+                alert("SKU is required to save C link.");
+                updateActiveTabSummary(index, table);
+                return;
+            }
+            fetch("/update-link", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({
+                    sku: sku,
+                    column: "Clink",
+                    value: cell.getValue() || ""
+                })
+            })
+                .then((res) => res.json())
+                .then((res) => {
+                    if (!res.success) {
+                        alert("Error: " + (res.message || "Could not save C link"));
+                    }
+                })
+                .catch((err) => console.error(err));
+            updateActiveTabSummary(index, table);
+            return;
+        }
+
         if (["no_of_units", "total_ctn"].includes(field)) {
             const units = parseFloat(data.no_of_units) || 0;
             const ctn = parseFloat(data.total_ctn) || 0;
@@ -1025,9 +1125,15 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
           .map(row => {
               const pcsQty = parseFloat(row.pcs_qty);
               const qty = (pcsQty > 0) ? pcsQty : (parseFloat(row.no_of_units || 0) * parseFloat(row.total_ctn || 0));
+              const savedSup = String(row.supplier_name || "").trim();
+              const relatedSup = Array.isArray(row.supplier_names) ? row.supplier_names.filter(Boolean).join(", ") : "";
+              let supplierCol = savedSup;
+              if (relatedSup) {
+                  supplierCol = savedSup ? savedSup + " | Related: " + relatedSup : "Related: " + relatedSup;
+              }
               return {
                   "SKU": row.our_sku,
-                  "Supplier": row.supplier_name,
+                  "Supplier": supplierCol,
                   "Qty / Ctns": row.no_of_units,
                   "Qty Ctns": row.total_ctn,
                   "Qty": qty,
@@ -1035,6 +1141,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                   "Amt ($)": Math.round(qty * parseFloat(row.rate || 0)),
                   "CBM": typeof row.Values === "string" ? JSON.parse(row.Values)?.cbm || 0 : row.Values?.cbm || 0,
                   "Unit": row.unit,
+                  "C link": row.Clink || "",
                   "Changes": row.changes,
                   "Specifications": row.specification,
               };

@@ -65,7 +65,15 @@ class EbayZeroController extends Controller
             return [$skuKey => (object) ((array) $item)];
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($i) => $normalize($i->sku));
+        $shopifyByPm = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
+        $shopifyData = [];
+        foreach ($productMasters as $pm) {
+            $nk = $normalize($pm->sku);
+            $row = $shopifyByPm->get($pm->sku);
+            if ($row !== null) {
+                $shopifyData[$nk] = $row;
+            }
+        }
         $nrValuesRaw = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         $nrValues = [];
         foreach ($nrValuesRaw as $k => $v) {
@@ -100,7 +108,7 @@ class EbayZeroController extends Controller
             $parent = $pm->parent;
 
             $ebaySheet = $ebayDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData[$sku] ?? ShopifySku::firstForProductSku($pm->sku);
             // fallback: local EbayMetric if apicentral row missing
             $localEbayMetric = null;
             if (!$ebaySheet) {
@@ -379,7 +387,7 @@ class EbayZeroController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         // Fetch related data
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ebayMetrics = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
         // Fetch all EbayDataView rows for these SKUs
         $ebayDataViews = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -392,7 +400,7 @@ class EbayZeroController extends Controller
             $imagePath = null;
 
             // Try to get image from Shopify first
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($sku);
             if ($shopify && !empty($shopify->image_src)) {
                 $imagePath = $shopify->image_src;
             } else {
@@ -503,14 +511,14 @@ class EbayZeroController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->unique()->toArray();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ebayMetrics = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $zeroCount = 0;
         foreach ($productMasters as $pm) {
             $sku = $pm->sku;
             $isParent = stripos($sku, 'PARENT') !== false;
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($sku)?->inv ?? 0;
             $views = $ebayMetrics[$sku]->views ?? 0;
             if (!$isParent && $inv > 0 && intval($views) === 0) {
                 $zeroCount++;
@@ -524,7 +532,7 @@ class EbayZeroController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
         $statusData = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $reqCount = 0;
@@ -534,7 +542,7 @@ class EbayZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = trim($item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($sku)?->inv ?? 0;
             $isParent = stripos($sku, 'PARENT') !== false;
 
             if ($isParent || floatval($inv) <= 0) continue;
@@ -574,7 +582,7 @@ class EbayZeroController extends Controller
     //     $productMasters = ProductMaster::whereNull('deleted_at')->get();
     //     $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-    //     $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $ebayDataViews = EbayListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
     //     $ebayMetrics = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku'); 
 
@@ -639,8 +647,7 @@ class EbayZeroController extends Controller
         // Normalize SKUs (avoid case/space mismatch)
         $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
-            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $ebayListingStatus = EbayListingStatus::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
@@ -658,7 +665,7 @@ class EbayZeroController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = strtoupper(trim($item->sku));
-            $inv = $shopifyData[$sku]->inv ?? 0;
+            $inv = $shopifyData->get($item->sku)?->inv ?? 0;
 
             // Skip parent SKUs
             if (stripos($sku, 'PARENT') !== false) continue;

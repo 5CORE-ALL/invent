@@ -75,7 +75,7 @@ class TiktokController extends Controller
         $skus = $productMasterRows->pluck('sku')->toArray();
 
         // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // Fetch tiktok data for these SKUs
         $tiktokData = TiktokSheet::whereIn("sku", $skus)->get()->keyBy("sku");

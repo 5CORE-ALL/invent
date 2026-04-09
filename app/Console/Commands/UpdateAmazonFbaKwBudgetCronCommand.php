@@ -69,11 +69,7 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
 
             $shopifyData = [];
             if (!empty($baseSkus)) {
-                $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
-                    ->get()
-                    ->keyBy(function ($item) {
-                        return trim(strtoupper($item->sku));
-                    });
+                $shopifyData = ShopifySku::mapByProductSkus($baseSkus);
             }
             DB::connection()->disconnect();
 

@@ -22,7 +22,7 @@ class WalmartRunningAdsController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
         $walmartProductSheet = WalmartProductSheet::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $nrValues = WalmartDataView::whereIn('sku', $skus)->pluck('value', 'sku');
@@ -39,7 +39,7 @@ class WalmartRunningAdsController extends Controller
             $parent = $pm->parent;
 
             $amazonSheet = $walmartProductSheet[$sku] ?? null;
-            $shopify = $shopifyData[$sku] ?? null;
+            $shopify = $shopifyData->get($pm->sku);
 
             // Campaign name & budget without report_range
             $matchedCampaign = $walmartCampaignReportsAll[$sku] ?? null;
