@@ -502,6 +502,21 @@
 let tabCounter = {{ count($tabs) }};
 const groupedData = @json($groupedData);
 
+function transitClinkLinkFormatter(cell) {
+    let url = cell.getValue() || "";
+    if (url && url.trim() !== "") {
+        return `
+            <div style="display:flex;align-items:center;justify-content:center;">
+                <a href="${url}" target="_blank" rel="noopener noreferrer"
+                    class="btn btn-sm btn-outline-primary"
+                    title="Open link" aria-label="Open link">
+                    <i class="fas fa-link"></i>
+                </a>
+            </div>
+        `;
+    }
+}
+
 Object.entries(groupedData).forEach(([tabName, data], index) => {
     let table = new Tabulator(`#tabulator-${index}`, {
         layout: "fitDataFill",
@@ -797,6 +812,14 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 cell.edit(true);
                 },
               },
+            {
+                title: "C link",
+                field: "Clink",
+                headerSort: false,
+                hozAlign: "center",
+                formatter: transitClinkLinkFormatter,
+                editor: "input",
+            },
             // {
             //   title: "Amt($)", 
             //   field: "amount", 
@@ -920,6 +943,36 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
         data.tab_name = tabName;
         const field = cell.getField();
 
+        if (field === "Clink") {
+            const sku = String(data.our_sku || "").trim().toUpperCase().replace(/\s+/g, " ");
+            if (!sku) {
+                alert("SKU is required to save C link.");
+                updateActiveTabSummary(index, table);
+                return;
+            }
+            fetch("/update-link", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({
+                    sku: sku,
+                    column: "Clink",
+                    value: cell.getValue() || ""
+                })
+            })
+                .then((res) => res.json())
+                .then((res) => {
+                    if (!res.success) {
+                        alert("Error: " + (res.message || "Could not save C link"));
+                    }
+                })
+                .catch((err) => console.error(err));
+            updateActiveTabSummary(index, table);
+            return;
+        }
+
         if (["no_of_units", "total_ctn"].includes(field)) {
             const units = parseFloat(data.no_of_units) || 0;
             const ctn = parseFloat(data.total_ctn) || 0;
@@ -1035,6 +1088,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                   "Amt ($)": Math.round(qty * parseFloat(row.rate || 0)),
                   "CBM": typeof row.Values === "string" ? JSON.parse(row.Values)?.cbm || 0 : row.Values?.cbm || 0,
                   "Unit": row.unit,
+                  "C link": row.Clink || "",
                   "Changes": row.changes,
                   "Specifications": row.specification,
               };

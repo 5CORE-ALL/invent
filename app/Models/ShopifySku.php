@@ -29,6 +29,8 @@ class ShopifySku extends Model
         'available_to_sell',
         'committed',
         'on_hand',
+        'unavailable',
+        'incoming',
     ];
 
     protected $dates = [

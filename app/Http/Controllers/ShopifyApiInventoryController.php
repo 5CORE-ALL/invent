@@ -20,6 +20,11 @@ class ShopifyApiInventoryController extends Controller
     protected $shopifyStoreUrlName;
     protected $shopifyAccessToken;
 
+    /** @var array<int, array<string, mixed>> */
+    protected array $graphQlQuantitySamples = [];
+
+    protected int $graphQlQuantitySampleLimit = 0;
+
     public function __construct()
     {
         $this->shopifyApiKey = config('services.shopify.api_key');
@@ -150,11 +155,10 @@ class ShopifyApiInventoryController extends Controller
             
             $this->saveSkus($simplifiedData);
 
-            // NOTE: on_hand, available_to_sell, and committed are intentionally NOT updated here.
-            // The products API returns inventory_quantity as a total across ALL Shopify locations,
-            // which does not match the Ohio-warehouse-specific values the business tracks.
-            // These fields are exclusively managed by syncLiveInventoryToDb() via fetchInventoryWithCommitment(),
-            // which correctly filters inventory to the Ohio location only.
+            // NOTE: on_hand, available_to_sell, committed, unavailable, incoming are intentionally NOT updated here.
+            // The products API returns inventory_quantity as a total across ALL Shopify locations.
+            // Those fields are managed by syncLiveInventoryToDb() via fetchInventoryWithCommitment(), which uses
+            // Shopify Admin GraphQL InventoryLevel.quantities at the Ohio location (same states as the dashboard).
 
             $duration = round(microtime(true) - $startTime, 2);
             return true;
@@ -324,14 +328,341 @@ class ShopifyApiInventoryController extends Controller
         return $cleanUrl;
     }
 
+    /**
+     * Admin GraphQL (same quantity states as Shopify Admin product inventory for a location).
+     */
+    protected function shopifyGraphqlPost(string $query, array $variables = [], int $maxAttempts = 10): ?array
+    {
+        $graphqlUrl = 'https://' . $this->shopifyStoreUrl . '/admin/api/2025-01/graphql.json';
+        $delayMs = 2000;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                $response = Http::withHeaders([
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->shopifyAccessToken,
+                ])->timeout(120)->post($graphqlUrl, [
+                    'query' => $query,
+                    'variables' => $variables,
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('shopifyGraphqlPost exception', ['message' => $e->getMessage(), 'attempt' => $attempt]);
+                usleep(($delayMs + rand(100, 400)) * 1000);
+                $delayMs = min($delayMs * 2, 60000);
+                continue;
+            }
+
+            $status = $response->status();
+            if ($status === 429 || $status >= 500) {
+                $retryAfter = $response->header('Retry-After');
+                if ($retryAfter !== null && is_numeric($retryAfter)) {
+                    usleep((int) (((float) $retryAfter + 0.25) * 1000000));
+                } else {
+                    usleep(($delayMs + rand(100, 400)) * 1000);
+                    $delayMs = min($delayMs * 2, 60000);
+                }
+                continue;
+            }
+
+            if (! $response->successful()) {
+                Log::error('shopifyGraphqlPost HTTP error', ['status' => $status, 'body' => $response->body()]);
+
+                return null;
+            }
+
+            $json = $response->json();
+            if (! empty($json['errors'])) {
+                Log::error('shopifyGraphqlPost GraphQL errors', ['errors' => $json['errors']]);
+
+                return null;
+            }
+
+            return $json;
+        }
+
+        Log::error('shopifyGraphqlPost: exhausted retries');
+
+        return null;
+    }
+
+    /**
+     * Parse Shopify quantity fields safely (GraphQL/REST) and never persist negatives.
+     */
+    protected function sanitizeInventoryInt(mixed $value): int
+    {
+        if (is_array($value)) {
+            $value = $value['quantity'] ?? $value['value'] ?? 0;
+        }
+        if ($value === null || $value === '') {
+            return 0;
+        }
+        if (! is_numeric($value)) {
+            return 0;
+        }
+
+        $n = (int) round((float) $value);
+
+        return max(0, min($n, 2_000_000_000));
+    }
+
+    /**
+     * Per-location quantities matching Shopify Admin: available, committed, on_hand, incoming,
+     * and unavailable (reserved + damaged + safety_stock + quality_control per Shopify docs).
+     */
+    public function setGraphQlQuantitySampleLimit(int $limit): void
+    {
+        $this->graphQlQuantitySampleLimit = max(0, $limit);
+        if ($this->graphQlQuantitySampleLimit === 0) {
+            $this->graphQlQuantitySamples = [];
+        }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function getGraphQlQuantitySamples(): array
+    {
+        return $this->graphQlQuantitySamples;
+    }
+
+    protected function fetchDashboardInventoryViaGraphQl(array $skuMap, array $imageMap, int $locationNumericId): array
+    {
+        if ($skuMap === []) {
+            return [];
+        }
+
+        if ($this->graphQlQuantitySampleLimit > 0) {
+            $this->graphQlQuantitySamples = [];
+        }
+
+        $locationGid = 'gid://shopify/Location/'.$locationNumericId;
+
+        $iidToSkus = [];
+        foreach ($skuMap as $sku => $iid) {
+            if (empty($iid)) {
+                continue;
+            }
+            $iidToSkus[(string) $iid][] = $sku;
+        }
+
+        $uniqueIids = array_keys($iidToSkus);
+
+        $final = [];
+        foreach ($skuMap as $sku => $_iid) {
+            $final[$sku] = [
+                'available_to_sell' => 0,
+                'committed' => 0,
+                'on_hand' => 0,
+                'unavailable' => 0,
+                'incoming' => 0,
+                'image_url' => $imageMap[$sku] ?? null,
+            ];
+        }
+
+        $query = <<<'GQL'
+query InventoryDashboardQuantities($locationId: ID!, $itemIds: [ID!]!) {
+  nodes(ids: $itemIds) {
+    ... on InventoryItem {
+      id
+      inventoryLevel(locationId: $locationId) {
+        quantities(names: ["available", "committed", "on_hand", "incoming", "reserved", "damaged", "safety_stock", "quality_control"]) {
+          name
+          quantity
+        }
+      }
+    }
+  }
+}
+GQL;
+
+        $chunks = array_chunk($uniqueIids, 40);
+        $chunksOk = 0;
+
+        foreach ($chunks as $chunk) {
+            $gids = array_map(static fn ($id) => 'gid://shopify/InventoryItem/'.$id, $chunk);
+
+            $json = $this->shopifyGraphqlPost($query, [
+                'locationId' => $locationGid,
+                'itemIds' => $gids,
+            ]);
+
+            if ($json === null) {
+                continue;
+            }
+
+            $chunksOk++;
+            $nodes = $json['data']['nodes'] ?? [];
+
+            foreach ($nodes as $node) {
+                if (! is_array($node) || empty($node['id'])) {
+                    continue;
+                }
+
+                if (! preg_match('/InventoryItem\/(\d+)/', $node['id'], $m)) {
+                    continue;
+                }
+
+                $iidKey = $m[1];
+                $skusForIid = $iidToSkus[$iidKey] ?? [];
+                if ($skusForIid === []) {
+                    continue;
+                }
+
+                $qtyByName = [];
+                $level = $node['inventoryLevel'] ?? null;
+                $rawQuantities = is_array($level) ? ($level['quantities'] ?? null) : null;
+
+                if (is_array($level) && ! empty($level['quantities'])) {
+                    foreach ($level['quantities'] as $row) {
+                        if (! empty($row['name'])) {
+                            $qtyByName[$row['name']] = $this->sanitizeInventoryInt($row['quantity'] ?? 0);
+                        }
+                    }
+                }
+
+                if ($this->graphQlQuantitySampleLimit > 0
+                    && count($this->graphQlQuantitySamples) < $this->graphQlQuantitySampleLimit) {
+                    $sampleSku = $skusForIid[0] ?? '';
+                    $this->graphQlQuantitySamples[] = [
+                        'sku' => $sampleSku,
+                        'inventory_item_id' => $iidKey,
+                        'location_numeric_id' => $locationNumericId,
+                        'inventory_level_present' => is_array($level),
+                        'quantities_raw_from_api' => $rawQuantities,
+                        'quantities_after_sanitize' => $qtyByName,
+                    ];
+                }
+
+                $available = $qtyByName['available'] ?? 0;
+                $committed = $qtyByName['committed'] ?? 0;
+                $onHandGql = $qtyByName['on_hand'] ?? 0;
+                $incoming = $qtyByName['incoming'] ?? 0;
+
+                $unavailable = ($qtyByName['reserved'] ?? 0)
+                    + ($qtyByName['damaged'] ?? 0)
+                    + ($qtyByName['safety_stock'] ?? 0)
+                    + ($qtyByName['quality_control'] ?? 0);
+                $unavailable = $this->sanitizeInventoryInt($unavailable);
+
+                $payload = [
+                    'available_to_sell' => $available,
+                    'committed' => $committed,
+                    'on_hand' => $onHandGql,
+                    'unavailable' => $unavailable,
+                    'incoming' => $incoming,
+                ];
+
+                foreach ($skusForIid as $sku) {
+                    if (! isset($final[$sku])) {
+                        continue;
+                    }
+                    $merged = array_merge($final[$sku], $payload);
+                    $merged['image_url'] = $imageMap[$sku] ?? $final[$sku]['image_url'];
+                    $final[$sku] = $merged;
+                }
+            }
+
+            usleep(500000);
+        }
+
+        if ($chunksOk === 0) {
+            return [];
+        }
+
+        // Shopify Admin "Available" / "On hand" come from GraphQL InventoryLevel.quantities — use those.
+        // REST inventory_levels.available can differ (e.g. 50 vs 46) and will not match the dashboard.
+        foreach ($final as $sku => &$row) {
+            $row['available_to_sell'] = $this->sanitizeInventoryInt($row['available_to_sell'] ?? 0);
+            $row['committed'] = $this->sanitizeInventoryInt($row['committed'] ?? 0);
+            $row['unavailable'] = $this->sanitizeInventoryInt($row['unavailable'] ?? 0);
+            $row['incoming'] = $this->sanitizeInventoryInt($row['incoming'] ?? 0);
+            $gqlOh = $this->sanitizeInventoryInt($row['on_hand'] ?? 0);
+            $sumParts = $row['available_to_sell'] + $row['committed'] + $row['unavailable'];
+            $row['on_hand'] = $gqlOh > 0 ? $gqlOh : $sumParts;
+        }
+        unset($row);
+
+        return $final;
+    }
+
+    /**
+     * Legacy: REST inventory_levels "available" + open orders for committed (does not match Admin unavailable/on_hand).
+     */
+    protected function fetchInventoryWithCommitmentRestFallback(array $skuMap, array $imageMap, $locationId): array
+    {
+        $shopUrl = 'https://'.config('services.shopify.store_url');
+
+        $availableByIid = [];
+        $chunks = array_chunk(array_values($skuMap), 50);
+
+        foreach ($chunks as $chunk) {
+            $invResponse = $this->shopifyGet("$shopUrl/admin/api/2024-01/inventory_levels.json", [
+                'inventory_item_ids' => implode(',', $chunk),
+                'location_ids' => $locationId,
+            ]);
+
+            if (! $invResponse->successful()) {
+                Log::error('Failed to fetch inventory levels', ['body' => $invResponse->body()]);
+                continue;
+            }
+
+            foreach ($invResponse->json('inventory_levels') ?? [] as $level) {
+                $iid = $level['inventory_item_id'];
+                $availableByIid[$iid] = ($availableByIid[$iid] ?? 0)
+                    + $this->sanitizeInventoryInt($level['available'] ?? 0);
+            }
+
+            usleep(6000000);
+        }
+
+        $committedBySku = [];
+        $orderResponse = $this->shopifyGet("$shopUrl/admin/api/2024-01/orders.json", [
+            'status' => 'open',
+            'fulfillment_status' => 'unfulfilled',
+            'limit' => 250,
+        ]);
+
+        if ($orderResponse->successful()) {
+            foreach ($orderResponse->json('orders') ?? [] as $order) {
+                foreach ($order['line_items'] as $item) {
+                    $sku = $item['sku'] ?? '';
+                    $qty = (int) $item['quantity'];
+                    if (! empty($sku)) {
+                        $committedBySku[$sku] = ($committedBySku[$sku] ?? 0)
+                            + $this->sanitizeInventoryInt($qty);
+                    }
+                }
+            }
+        } else {
+            Log::error('Failed to fetch orders');
+        }
+
+        usleep(6000000);
+
+        $final = [];
+        foreach ($skuMap as $sku => $iid) {
+            $available = $this->sanitizeInventoryInt($availableByIid[$iid] ?? 0);
+            $committed = $this->sanitizeInventoryInt($committedBySku[$sku] ?? 0);
+            $onHand = $available + $committed;
+
+            $final[$sku] = [
+                'available_to_sell' => $available,
+                'committed' => $committed,
+                'on_hand' => $onHand,
+                'unavailable' => 0,
+                'incoming' => 0,
+                'image_url' => $imageMap[$sku] ?? null,
+            ];
+        }
+
+        return $final;
+    }
 
     public function fetchInventoryWithCommitment(): array
     {
-        set_time_limit(0); // Allow unlimited time — this sync paginates all SKUs with rate-limit delays
-        $shopUrl = 'https://' . config('services.shopify.store_url');
-        $token = config('services.shopify.password'); 
+        set_time_limit(0);
+        $shopUrl = 'https://'.config('services.shopify.store_url');
 
-        // Step 1: Get Ohio Location ID
         $locationId = null;
         $locationResponse = $this->shopifyGet("$shopUrl/admin/api/2025-01/locations.json");
 
@@ -345,56 +676,53 @@ class ShopifyApiInventoryController extends Controller
             }
         }
 
-        // Rate limiting delay
-        usleep(6000000); // 4s delay
+        usleep(6000000);
 
-        if (!$locationId) {
+        if (! $locationId) {
             Log::error('Ohio location not found.');
+
             return [];
         }
 
-        // Step 2: Fetch ALL Products (with pagination)
         $skuMap = [];
         $imageMap = [];
         $nextPageUrl = "$shopUrl/admin/api/2025-01/products.json?limit=250&fields=variants,image,title,handle,id";
         $pageCount = 0;
-        $maxPages = 500; // Safety limit
+        $maxPages = 500;
 
         do {
             $pageCount++;
-            
+
             if ($pageCount > $maxPages) {
                 Log::error('fetchInventoryWithCommitment: Exceeded max pages', ['pages' => $pageCount]);
                 break;
             }
-            
+
             $response = $this->shopifyGet($nextPageUrl);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Failed to fetch products', ['url' => $nextPageUrl, 'page' => $pageCount]);
                 break;
             }
 
             $products = $response->json('products');
-            
+
             if (empty($products)) {
                 Log::info('No more products to fetch', ['page' => $pageCount]);
                 break;
             }
-            
+
             foreach ($products as $product) {
                 $mainImage = $product['image']['src'] ?? null;
 
                 foreach ($product['variants'] as $variant) {
-                    // Store SKU exactly as it comes from Shopify - no normalization
                     $sku = $variant['sku'] ?? '';
                     $iid = $variant['inventory_item_id'];
 
-                    if (!empty($sku)) {
+                    if (! empty($sku)) {
                         $skuMap[$sku] = $iid;
                         $imageMap[$sku] = $mainImage;
 
-                        // Log specific SKU for debugging
                         if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
                             Log::info('=== fetchInventoryWithCommitment: Found SKU ===', [
                                 'sku' => $sku,
@@ -414,90 +742,21 @@ class ShopifyApiInventoryController extends Controller
                 $nextPageUrl = $matches[1];
             }
 
-            // Rate limiting delay between product pages
             if ($nextPageUrl) {
-                usleep(6000000); // 4s delay
+                usleep(6000000);
             }
         } while ($nextPageUrl);
 
-        // Step 3: Fetch Inventory Levels (only from Ohio)
-        $availableByIid = [];
-        $chunks = array_chunk(array_values($skuMap), 50);
+        $graphQl = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, (int) $locationId);
+        if ($graphQl !== []) {
+            Log::info('fetchInventoryWithCommitment: using Shopify Admin GraphQL quantities', ['sku_count' => count($graphQl)]);
 
-        foreach ($chunks as $chunk) {
-            $invResponse = $this->shopifyGet("$shopUrl/admin/api/2024-01/inventory_levels.json", [
-                'inventory_item_ids' => implode(',', $chunk),
-                'location_ids' => $locationId,
-            ]);
-
-            if (!$invResponse->successful()) {
-                Log::error('Failed to fetch inventory levels', ['body' => $invResponse->body()]);
-                continue;
-            }
-
-            foreach ($invResponse->json('inventory_levels') ?? [] as $level) {
-                $iid = $level['inventory_item_id'];
-                $availableByIid[$iid] = ($availableByIid[$iid] ?? 0) + $level['available'];
-            }
-
-            // Rate limiting delay between inventory chunks
-            usleep(6000000); // 4s delay
+            return $graphQl;
         }
 
-        // Step 4: Fetch Committed Quantities from Orders
-        $committedBySku = [];
-        $orderResponse = $this->shopifyGet("$shopUrl/admin/api/2024-01/orders.json", [
-            'status' => 'open',
-            'fulfillment_status' => 'unfulfilled',
-            'limit' => 250,
-        ]);
+        Log::warning('fetchInventoryWithCommitment: GraphQL returned no data; using REST + orders fallback');
 
-        if ($orderResponse->successful()) {
-            foreach ($orderResponse->json('orders') ?? [] as $order) {
-                foreach ($order['line_items'] as $item) {
-                    // Store SKU exactly as it comes from Shopify - no normalization
-                    $sku = $item['sku'] ?? '';
-                    $qty = (int) $item['quantity'];
-                    if (!empty($sku)) {
-                        $committedBySku[$sku] = ($committedBySku[$sku] ?? 0) + $qty;
-                    }
-                }
-            }
-        } else {
-            Log::error('Failed to fetch orders');
-        }
-
-        // Rate limiting delay before final processing
-        usleep(6000000); // 6s delay
-
-        // Step 5: Merge Final Inventory
-        $final = [];
-        foreach ($skuMap as $sku => $iid) {
-            $available = $availableByIid[$iid] ?? 0;
-            $committed = $committedBySku[$sku] ?? 0;
-            $onHand = $available + $committed;
-
-            $final[$sku] = [
-                'available_to_sell' => $available,
-                'committed' => $committed,
-                'on_hand' => $onHand,
-                'image_url' => $imageMap[$sku] ?? null,
-            ];
-
-            if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
-                Log::info('=== fetchInventoryWithCommitment: Final inventory for SKU ===', [
-                    'sku' => $sku,
-                    'inventory_item_id' => $iid,
-                    'available_from_levels' => $available,
-                    'committed_from_orders' => $committed,
-                    'calculated_on_hand' => $onHand,
-                    'image_url' => $imageMap[$sku] ?? null,
-                ]);
-            }
-        }
-
-
-        return $final;
+        return $this->fetchInventoryWithCommitmentRestFallback($skuMap, $imageMap, $locationId);
     }
 
 
@@ -737,14 +996,178 @@ class ShopifyApiInventoryController extends Controller
     }
 
     /**
+     * Same GraphQL quantity states as Shopify Admin, for one SKU (matches bulk sync).
+     */
+    public function syncLiveInventoryForSku(string $skuInput, int $graphQlSampleLimit = 1): bool
+    {
+        $this->setGraphQlQuantitySampleLimit(max(0, $graphQlSampleLimit));
+
+        try {
+            $normalized = strtoupper(trim((string) $skuInput));
+            $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+            if (! $row || ! $row->variant_id) {
+                Log::warning('syncLiveInventoryForSku: row or variant_id missing', ['sku' => $skuInput]);
+
+                return false;
+            }
+
+            $shopUrl = 'https://'.config('services.shopify.store_url');
+            $variantRes = $this->shopifyGet("$shopUrl/admin/api/2025-01/variants/{$row->variant_id}.json");
+            if (! $variantRes->successful()) {
+                Log::error('syncLiveInventoryForSku: variant fetch failed', ['body' => substr((string) $variantRes->body(), 0, 300)]);
+
+                return false;
+            }
+
+            $inventoryItemId = $variantRes->json('variant.inventory_item_id');
+            if (! $inventoryItemId) {
+                return false;
+            }
+
+            $locationId = null;
+            $locationResponse = $this->shopifyGet("$shopUrl/admin/api/2025-01/locations.json");
+            if ($locationResponse->successful()) {
+                foreach ($locationResponse->json('locations') ?? [] as $loc) {
+                    if (stripos($loc['name'], 'Ohio') !== false) {
+                        $locationId = (int) $loc['id'];
+                        break;
+                    }
+                }
+            }
+
+            if (! $locationId) {
+                return false;
+            }
+
+            $exactSku = $row->sku;
+            $skuMap = [$exactSku => $inventoryItemId];
+            $imageMap = [$exactSku => $row->image_src];
+
+            $final = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, $locationId);
+            $data = $final[$exactSku] ?? null;
+            if ($data === null) {
+                return false;
+            }
+
+            ShopifySku::where('sku', $exactSku)->update([
+                'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
+                'committed' => max(0, (int) ($data['committed'] ?? 0)),
+                'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
+                'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
+                'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
+                'updated_at' => now(),
+            ]);
+
+            return true;
+        } finally {
+            $this->graphQlQuantitySampleLimit = 0;
+        }
+    }
+
+    /**
+     * Fast path for debugging: no full product catalog pagination — only listed SKUs
+     * (variant lookups + one GraphQL batch + DB updates).
+     *
+     * @param  array<int, string>  $skuInputs
+     */
+    public function syncLiveInventoryForSkuList(array $skuInputs, int $graphQlSampleLimit = 0): bool
+    {
+        $skuInputs = array_values(array_unique(array_filter(array_map('trim', $skuInputs))));
+        if ($skuInputs === []) {
+            return false;
+        }
+
+        $this->setGraphQlQuantitySampleLimit(max(0, $graphQlSampleLimit));
+
+        try {
+            $shopUrl = 'https://'.config('services.shopify.store_url');
+
+            $locationId = null;
+            $locationResponse = $this->shopifyGet("$shopUrl/admin/api/2025-01/locations.json");
+            if ($locationResponse->successful()) {
+                foreach ($locationResponse->json('locations') ?? [] as $loc) {
+                    if (stripos($loc['name'], 'Ohio') !== false) {
+                        $locationId = (int) $loc['id'];
+                        break;
+                    }
+                }
+            }
+
+            if (! $locationId) {
+                return false;
+            }
+
+            $skuMap = [];
+            $imageMap = [];
+
+            foreach ($skuInputs as $skuInput) {
+                $normalized = strtoupper(trim((string) $skuInput));
+                $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+                if (! $row || ! $row->variant_id) {
+                    Log::warning('syncLiveInventoryForSkuList: missing shopify_skus row or variant_id', ['sku' => $skuInput]);
+
+                    continue;
+                }
+
+                $variantRes = $this->shopifyGet("$shopUrl/admin/api/2025-01/variants/{$row->variant_id}.json");
+                if (! $variantRes->successful()) {
+                    Log::warning('syncLiveInventoryForSkuList: variant API failed', ['sku' => $row->sku]);
+
+                    continue;
+                }
+
+                $inventoryItemId = $variantRes->json('variant.inventory_item_id');
+                if (! $inventoryItemId) {
+                    continue;
+                }
+
+                $exactSku = $row->sku;
+                $skuMap[$exactSku] = $inventoryItemId;
+                $imageMap[$exactSku] = $row->image_src;
+            }
+
+            if ($skuMap === []) {
+                return false;
+            }
+
+            $final = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, $locationId);
+            if ($final === []) {
+                return false;
+            }
+
+            foreach (array_keys($skuMap) as $exactSku) {
+                $data = $final[$exactSku] ?? null;
+                if ($data === null) {
+                    continue;
+                }
+
+                ShopifySku::where('sku', $exactSku)->update([
+                    'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
+                    'committed' => max(0, (int) ($data['committed'] ?? 0)),
+                    'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
+                    'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
+                    'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return true;
+        } finally {
+            $this->graphQlQuantitySampleLimit = 0;
+        }
+    }
+
+    /**
      * Fetch live inventory (available_to_sell, committed, on_hand) from Shopify
      * and persist those values into `shopify_skus` table.
      *
      * This uses the existing fetchInventoryWithCommitment() which returns
      * an array keyed by normalized SKU.
      */
-    public function syncLiveInventoryToDb(): bool
+    public function syncLiveInventoryToDb(int $graphQlSampleLimit = 0): bool
     {
+        $this->setGraphQlQuantitySampleLimit($graphQlSampleLimit);
+
         try {
             $live = $this->fetchInventoryWithCommitment();
 
@@ -776,9 +1199,11 @@ class ShopifyApiInventoryController extends Controller
                         ShopifySku::updateOrCreate(
                             ['sku' => $sku],
                             [
-                                'available_to_sell' => $data['available_to_sell'] ?? 0,
-                                'committed' => $data['committed'] ?? 0,
-                                'on_hand' => $data['on_hand'] ?? 0,
+                                'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
+                                'committed' => max(0, (int) ($data['committed'] ?? 0)),
+                                'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
+                                'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
+                                'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
                                 'image_src' => $data['image_url'] ?? null,
                                 'updated_at' => now(),
                             ]
@@ -797,6 +1222,8 @@ class ShopifyApiInventoryController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to sync live inventory to DB: ' . $e->getMessage());
             return false;
+        } finally {
+            $this->graphQlQuantitySampleLimit = 0;
         }
     }
 
