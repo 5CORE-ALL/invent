@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('temu_product_sheets') || Schema::hasColumn('temu_product_sheets', 'l60')) {
+            return;
+        }
+
         Schema::table('temu_product_sheets', function (Blueprint $table) {
             $table->integer('l60')->nullable()->after('l30');
         });
@@ -21,6 +25,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('temu_product_sheets') || ! Schema::hasColumn('temu_product_sheets', 'l60')) {
+            return;
+        }
+
         Schema::table('temu_product_sheets', function (Blueprint $table) {
             $table->dropColumn('l60');
         });

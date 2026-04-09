@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('amazon_datsheets')) {
+            return;
+        }
+        if (Schema::hasColumn('amazon_datsheets', 'listing_status')) {
+            return;
+        }
+
         Schema::table('amazon_datsheets', function (Blueprint $table) {
             $table->string('listing_status')->nullable()->after('sold');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('amazon_datsheets')) {
+            return;
+        }
+        if (! Schema::hasColumn('amazon_datsheets', 'listing_status')) {
+            return;
+        }
+
         Schema::table('amazon_datsheets', function (Blueprint $table) {
             $table->dropColumn('listing_status');
         });

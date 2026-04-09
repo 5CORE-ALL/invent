@@ -11,17 +11,22 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Add discount columns to Shopify B2C daily data
-        Schema::table('shopify_b2c_daily_data', function (Blueprint $table) {
-            $table->decimal('original_price', 10, 2)->default(0)->after('price');
-            $table->decimal('discount_amount', 10, 2)->default(0)->after('original_price');
-        });
+        foreach (['shopify_b2c_daily_data', 'shopify_b2b_daily_data'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
 
-        // Add discount columns to Shopify B2B daily data
-        Schema::table('shopify_b2b_daily_data', function (Blueprint $table) {
-            $table->decimal('original_price', 10, 2)->default(0)->after('price');
-            $table->decimal('discount_amount', 10, 2)->default(0)->after('original_price');
-        });
+            if (! Schema::hasColumn($tableName, 'original_price')) {
+                Schema::table($tableName, function (Blueprint $table) {
+                    $table->decimal('original_price', 10, 2)->default(0)->after('price');
+                });
+            }
+            if (! Schema::hasColumn($tableName, 'discount_amount')) {
+                Schema::table($tableName, function (Blueprint $table) {
+                    $table->decimal('discount_amount', 10, 2)->default(0)->after('original_price');
+                });
+            }
+        }
     }
 
     /**
@@ -29,12 +34,20 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('shopify_b2c_daily_data', function (Blueprint $table) {
-            $table->dropColumn(['original_price', 'discount_amount']);
-        });
+        foreach (['shopify_b2c_daily_data', 'shopify_b2b_daily_data'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
 
-        Schema::table('shopify_b2b_daily_data', function (Blueprint $table) {
-            $table->dropColumn(['original_price', 'discount_amount']);
-        });
+            $columns = ['original_price', 'discount_amount'];
+            $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn($tableName, $col)));
+            if ($toDrop === []) {
+                continue;
+            }
+
+            Schema::table($tableName, function (Blueprint $table) use ($toDrop) {
+                $table->dropColumn($toDrop);
+            });
+        }
     }
 };

@@ -9,42 +9,46 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-      public function up(): void
+    public function up(): void
     {
-        // amazon_sb_campaign_reports
-        Schema::table('amazon_sb_campaign_reports', function (Blueprint $table) {
-            $table->text('note')->nullable()->after('id');
-            $table->string('sbid')->nullable()->after('note');
-            $table->string('yes_sbid')->nullable()->after('sbid');
-        });
+        foreach (['amazon_sb_campaign_reports', 'amazon_sd_campaign_reports', 'amazon_sp_campaign_reports'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
 
-        // amazon_sd_campaign_reports
-        Schema::table('amazon_sd_campaign_reports', function (Blueprint $table) {
-            $table->text('note')->nullable()->after('id');
-            $table->string('sbid')->nullable()->after('note');
-            $table->string('yes_sbid')->nullable()->after('sbid');
-        });
-
-        // amazon_sp_campaign_reports
-        Schema::table('amazon_sp_campaign_reports', function (Blueprint $table) {
-            $table->text('note')->nullable()->after('id');
-            $table->string('sbid')->nullable()->after('note');
-            $table->string('yes_sbid')->nullable()->after('sbid');
-        });
+            Schema::table($tableName, function (Blueprint $table) use ($tableName): void {
+                if (! Schema::hasColumn($tableName, 'note')) {
+                    $table->text('note')->nullable()->after('id');
+                }
+                if (! Schema::hasColumn($tableName, 'sbid')) {
+                    $table->string('sbid')->nullable()->after('note');
+                }
+                if (! Schema::hasColumn($tableName, 'yes_sbid')) {
+                    $table->string('yes_sbid')->nullable()->after('sbid');
+                }
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('amazon_sb_campaign_reports', function (Blueprint $table) {
-            $table->dropColumn(['note', 'sbid', 'yes_sbid']);
-        });
+        foreach (['amazon_sb_campaign_reports', 'amazon_sd_campaign_reports', 'amazon_sp_campaign_reports'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
 
-        Schema::table('amazon_sd_campaign_reports', function (Blueprint $table) {
-            $table->dropColumn(['note', 'sbid', 'yes_sbid']);
-        });
+            $cols = array_values(array_filter(
+                ['note', 'sbid', 'yes_sbid'],
+                fn (string $col): bool => Schema::hasColumn($tableName, $col)
+            ));
 
-        Schema::table('amazon_sp_campaign_reports', function (Blueprint $table) {
-            $table->dropColumn(['note', 'sbid', 'yes_sbid']);
-        });
+            if ($cols === []) {
+                continue;
+            }
+
+            Schema::table($tableName, function (Blueprint $table) use ($cols): void {
+                $table->dropColumn($cols);
+            });
+        }
     }
 };

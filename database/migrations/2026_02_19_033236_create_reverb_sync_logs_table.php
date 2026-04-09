@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('reverb_sync_logs')) {
+            return;
+        }
+
         Schema::create('reverb_sync_logs', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

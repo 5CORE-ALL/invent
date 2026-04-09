@@ -11,7 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('ebay2_metrics', function (Blueprint $table) {
+        $tableName = Schema::hasTable('ebay_2_metrics') ? 'ebay_2_metrics' : 'ebay2_metrics';
+        if (! Schema::hasTable($tableName)) {
+            return;
+        }
+        if (Schema::hasColumn($tableName, 'ebay_stock')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) {
             $table->integer('ebay_stock')->nullable()->after('ebay_price');
         });
     }
@@ -21,7 +29,15 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('ebay2_metrics', function (Blueprint $table) {
+        $tableName = Schema::hasTable('ebay_2_metrics') ? 'ebay_2_metrics' : 'ebay2_metrics';
+        if (! Schema::hasTable($tableName)) {
+            return;
+        }
+        if (! Schema::hasColumn($tableName, 'ebay_stock')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) {
             $table->dropColumn('ebay_stock');
         });
     }

@@ -11,8 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('amazon_daily_badge_stats')) {
+            return;
+        }
+        if (Schema::hasColumn('amazon_daily_badge_stats', 'total_spend')) {
+            return;
+        }
+
         Schema::table('amazon_daily_badge_stats', function (Blueprint $table) {
-            $table->decimal('total_spend', 12, 2)->default(0)->after('total_sales');
+            $col = $table->decimal('total_spend', 12, 2)->default(0);
+            if (Schema::hasColumn('amazon_daily_badge_stats', 'total_sales')) {
+                $col->after('total_sales');
+            } elseif (Schema::hasColumn('amazon_daily_badge_stats', 'total_pft')) {
+                $col->after('total_pft');
+            }
         });
     }
 
@@ -21,6 +33,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('amazon_daily_badge_stats')) {
+            return;
+        }
+        if (! Schema::hasColumn('amazon_daily_badge_stats', 'total_spend')) {
+            return;
+        }
+
         Schema::table('amazon_daily_badge_stats', function (Blueprint $table) {
             $table->dropColumn('total_spend');
         });

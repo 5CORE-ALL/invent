@@ -11,6 +11,10 @@ class CreateAppscenicListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('appscenic_listing_statuses')) {
+            return;
+        }
+
         Schema::create('appscenic_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

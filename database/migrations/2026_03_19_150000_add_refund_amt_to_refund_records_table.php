@@ -8,14 +8,30 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('refund_records', function (Blueprint $table) {
-            $table->decimal('refund_amt', 12, 2)->default(0)->after('qty');
+        $tableName = 'refund_records';
+
+        if (! Schema::hasTable($tableName) || Schema::hasColumn($tableName, 'refund_amt')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+            if (Schema::hasColumn($tableName, 'qty')) {
+                $table->decimal('refund_amt', 12, 2)->default(0)->after('qty');
+            } else {
+                $table->decimal('refund_amt', 12, 2)->default(0);
+            }
         });
     }
 
     public function down(): void
     {
-        Schema::table('refund_records', function (Blueprint $table) {
+        $tableName = 'refund_records';
+
+        if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'refund_amt')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) {
             $table->dropColumn('refund_amt');
         });
     }

@@ -8,14 +8,30 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('shipping_report_issues', function (Blueprint $table) {
-            $table->boolean('hidden_from_report')->default(false)->after('reason');
+        $tableName = 'shipping_report_issues';
+
+        if (! Schema::hasTable($tableName) || Schema::hasColumn($tableName, 'hidden_from_report')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+            if (Schema::hasColumn($tableName, 'reason')) {
+                $table->boolean('hidden_from_report')->default(false)->after('reason');
+            } else {
+                $table->boolean('hidden_from_report')->default(false);
+            }
         });
     }
 
     public function down(): void
     {
-        Schema::table('shipping_report_issues', function (Blueprint $table) {
+        $tableName = 'shipping_report_issues';
+
+        if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'hidden_from_report')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) {
             $table->dropColumn('hidden_from_report');
         });
     }

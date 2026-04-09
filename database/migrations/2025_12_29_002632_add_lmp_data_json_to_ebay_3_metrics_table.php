@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('ebay_3_metrics')) {
+            return;
+        }
+        if (Schema::hasColumn('ebay_3_metrics', 'lmp_data')) {
+            return;
+        }
+
         Schema::table('ebay_3_metrics', function (Blueprint $table) {
             $table->json('lmp_data')->nullable()->after('lmp_link')->comment('All competitor prices [{price, link, title, seller}]');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('ebay_3_metrics')) {
+            return;
+        }
+        if (! Schema::hasColumn('ebay_3_metrics', 'lmp_data')) {
+            return;
+        }
+
         Schema::table('ebay_3_metrics', function (Blueprint $table) {
             $table->dropColumn('lmp_data');
         });

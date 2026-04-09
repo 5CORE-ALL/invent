@@ -11,6 +11,10 @@ class CreateSynceeListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('syncee_listing_statuses')) {
+            return;
+        }
+
         Schema::create('syncee_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

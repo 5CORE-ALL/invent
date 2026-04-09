@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('inventory_warehouse')) {
+            return;
+        }
+        if (Schema::hasColumn('inventory_warehouse', 'created_by')) {
+            return;
+        }
+
         Schema::table('inventory_warehouse', function (Blueprint $table) {
             $table->unsignedBigInteger('created_by')->nullable()->after('supplier_names');
 
@@ -25,6 +32,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('inventory_warehouse')) {
+            return;
+        }
+        if (! Schema::hasColumn('inventory_warehouse', 'created_by')) {
+            return;
+        }
+
         Schema::table('inventory_warehouse', function (Blueprint $table) {
             $table->dropForeign(['created_by']);
             $table->dropColumn('created_by');

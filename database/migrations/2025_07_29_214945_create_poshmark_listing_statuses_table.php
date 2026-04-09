@@ -11,6 +11,10 @@ class CreatePoshmarkListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('poshmark_listing_statuses')) {
+            return;
+        }
+
         Schema::create('poshmark_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

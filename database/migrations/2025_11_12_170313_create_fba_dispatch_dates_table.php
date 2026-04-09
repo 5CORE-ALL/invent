@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('fba_dispatch_dates')) {
+            return;
+        }
+
         Schema::create('fba_dispatch_dates', function (Blueprint $table) {
             $table->id();
             $table->string('sku');

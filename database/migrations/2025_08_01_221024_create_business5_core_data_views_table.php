@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('business5core_data_views')) {
+            return;
+        }
+
         Schema::create('business5core_data_views', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

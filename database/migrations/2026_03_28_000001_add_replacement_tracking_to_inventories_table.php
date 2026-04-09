@@ -13,7 +13,11 @@ return new class extends Migration
         }
 
         Schema::table('inventories', function (Blueprint $table) {
-            $table->string('replacement_tracking', 22)->nullable()->after('comment');
+            if (Schema::hasColumn('inventories', 'comment')) {
+                $table->string('replacement_tracking', 22)->nullable()->after('comment');
+            } else {
+                $table->string('replacement_tracking', 22)->nullable();
+            }
         });
     }
 

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('shopify_instagram_campaigns')) {
+            return;
+        }
+
         Schema::create('shopify_instagram_campaigns', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

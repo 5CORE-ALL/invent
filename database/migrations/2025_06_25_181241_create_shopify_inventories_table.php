@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('shopify_inventories')) {
+            return;
+        }
+
         Schema::create('shopify_inventories', function (Blueprint $table) {
             $table->id();
             $table->string('parent')->nullable();

@@ -11,10 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('ready_to_ship', function (Blueprint $table) {
-            $table->string('auth_user')->nullable()->after('transit_inv_status'); 
-            $table->softDeletes();
-        });
+        if (! Schema::hasTable('ready_to_ship')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('ready_to_ship', 'auth_user')) {
+            Schema::table('ready_to_ship', function (Blueprint $table) {
+                $table->string('auth_user')->nullable()->after('transit_inv_status');
+            });
+        }
+        if (! Schema::hasColumn('ready_to_ship', 'deleted_at')) {
+            Schema::table('ready_to_ship', function (Blueprint $table) {
+                $table->softDeletes();
+            });
+        }
     }
 
     /**
@@ -22,9 +32,19 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('ready_to_ship', function (Blueprint $table) {
-            $table->dropColumn('auth_user');
-            $table->dropSoftDeletes();
-        });
+        if (! Schema::hasTable('ready_to_ship')) {
+            return;
+        }
+
+        if (Schema::hasColumn('ready_to_ship', 'auth_user')) {
+            Schema::table('ready_to_ship', function (Blueprint $table) {
+                $table->dropColumn('auth_user');
+            });
+        }
+        if (Schema::hasColumn('ready_to_ship', 'deleted_at')) {
+            Schema::table('ready_to_ship', function (Blueprint $table) {
+                $table->dropSoftDeletes();
+            });
+        }
     }
 };

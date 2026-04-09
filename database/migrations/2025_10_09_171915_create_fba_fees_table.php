@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('fba_fees')) {
+            return;
+        }
+
         Schema::create('fba_fees', function (Blueprint $table) {
             $table->id();
             $table->string('seller_sku')->index();

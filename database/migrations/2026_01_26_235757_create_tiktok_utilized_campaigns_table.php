@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('tiktok_campaign_reports')) {
+            return;
+        }
+
         Schema::create('tiktok_campaign_reports', function (Blueprint $table) {
             $table->id();
             

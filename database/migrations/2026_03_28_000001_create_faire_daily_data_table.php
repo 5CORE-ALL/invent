@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('faire_daily_data')) {
+            return;
+        }
+
         Schema::create('faire_daily_data', function (Blueprint $table) {
             $table->id();
             $table->timestamp('order_date')->nullable()->index();

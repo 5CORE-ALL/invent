@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('ebay_priority_reports')) {
+            return;
+        }
+        if (Schema::hasColumn('ebay_priority_reports', 'apprSbid')) {
+            return;
+        }
+
         Schema::table('ebay_priority_reports', function (Blueprint $table) {
             $table->string('apprSbid')->nullable()->after('sbid_m');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('ebay_priority_reports')) {
+            return;
+        }
+        if (! Schema::hasColumn('ebay_priority_reports', 'apprSbid')) {
+            return;
+        }
+
         Schema::table('ebay_priority_reports', function (Blueprint $table) {
             $table->dropColumn('apprSbid');
         });

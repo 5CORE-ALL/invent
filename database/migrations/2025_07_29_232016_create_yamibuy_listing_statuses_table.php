@@ -11,6 +11,10 @@ class CreateYamibuyListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('yamibuy_listing_statuses')) {
+            return;
+        }
+
         Schema::create('yamibuy_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

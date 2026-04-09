@@ -11,8 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('amazon_listings_raw', function (Blueprint $table) {
-            $table->string('brand')->nullable()->after('manufacturer');
+        $tableName = 'amazon_listings_raw';
+
+        if (! Schema::hasTable($tableName) || Schema::hasColumn($tableName, 'brand')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+            if (Schema::hasColumn($tableName, 'manufacturer')) {
+                $table->string('brand')->nullable()->after('manufacturer');
+            } else {
+                $table->string('brand')->nullable();
+            }
         });
     }
 
@@ -21,7 +31,13 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('amazon_listings_raw', function (Blueprint $table) {
+        $tableName = 'amazon_listings_raw';
+
+        if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'brand')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) {
             $table->dropColumn('brand');
         });
     }

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('channels_reviews_data')) {
+            return;
+        }
+
         Schema::create('channels_reviews_data', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('marketplace_daily_metrics')) {
+            return;
+        }
+        if (Schema::hasColumn('marketplace_daily_metrics', 'n_roi')) {
+            return;
+        }
+
         Schema::table('marketplace_daily_metrics', function (Blueprint $table) {
             $table->decimal('n_roi', 8, 2)->nullable()->after('n_pft'); // Net ROI = Net Profit / COGS * 100
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('marketplace_daily_metrics')) {
+            return;
+        }
+        if (! Schema::hasColumn('marketplace_daily_metrics', 'n_roi')) {
+            return;
+        }
+
         Schema::table('marketplace_daily_metrics', function (Blueprint $table) {
             $table->dropColumn('n_roi');
         });

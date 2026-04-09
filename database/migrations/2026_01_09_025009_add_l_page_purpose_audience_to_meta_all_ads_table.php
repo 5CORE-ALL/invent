@@ -11,11 +11,25 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('meta_all_ads', function (Blueprint $table) {
-            $table->string('l_page', 255)->nullable()->after('group_id');
-            $table->string('purpose', 255)->nullable()->after('l_page');
-            $table->string('audience', 255)->nullable()->after('purpose');
-        });
+        if (! Schema::hasTable('meta_all_ads')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('meta_all_ads', 'l_page')) {
+            Schema::table('meta_all_ads', function (Blueprint $table) {
+                $table->string('l_page', 255)->nullable()->after('group_id');
+            });
+        }
+        if (! Schema::hasColumn('meta_all_ads', 'purpose')) {
+            Schema::table('meta_all_ads', function (Blueprint $table) {
+                $table->string('purpose', 255)->nullable()->after('l_page');
+            });
+        }
+        if (! Schema::hasColumn('meta_all_ads', 'audience')) {
+            Schema::table('meta_all_ads', function (Blueprint $table) {
+                $table->string('audience', 255)->nullable()->after('purpose');
+            });
+        }
     }
 
     /**
@@ -23,8 +37,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('meta_all_ads', function (Blueprint $table) {
-            $table->dropColumn(['l_page', 'purpose', 'audience']);
+        if (! Schema::hasTable('meta_all_ads')) {
+            return;
+        }
+
+        $columns = ['l_page', 'purpose', 'audience'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('meta_all_ads', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('meta_all_ads', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

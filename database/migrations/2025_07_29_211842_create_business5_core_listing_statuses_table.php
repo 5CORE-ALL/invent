@@ -11,6 +11,10 @@ class CreateBusiness5CoreListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('business5core_listing_statuses')) {
+            return;
+        }
+
         Schema::create('business5core_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

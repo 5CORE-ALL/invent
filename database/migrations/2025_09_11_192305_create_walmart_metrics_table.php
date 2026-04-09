@@ -11,6 +11,10 @@ return new class extends Migration
      */
      public function up(): void
     {
+        if (Schema::hasTable('walmart_metrics')) {
+            return;
+        }
+
         Schema::create('walmart_metrics', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

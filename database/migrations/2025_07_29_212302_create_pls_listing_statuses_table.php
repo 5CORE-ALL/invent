@@ -11,6 +11,10 @@ class CreatePlsListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('pls_listing_statuses')) {
+            return;
+        }
+
         Schema::create('pls_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('shopify_inventory_logs')) {
+            return;
+        }
+
         Schema::create('shopify_inventory_logs', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

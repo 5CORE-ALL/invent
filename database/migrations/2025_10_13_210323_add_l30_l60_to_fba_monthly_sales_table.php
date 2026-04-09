@@ -11,12 +11,30 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('fba_monthly_sales', function (Blueprint $table) {
-            $table->integer('l30_units')->default(0);
-            $table->decimal('l30_revenue', 10, 2)->nullable();
-            $table->integer('l60_units')->default(0);
-            $table->decimal('l60_revenue', 10, 2)->nullable();
-        });
+        if (! Schema::hasTable('fba_monthly_sales')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('fba_monthly_sales', 'l30_units')) {
+            Schema::table('fba_monthly_sales', function (Blueprint $table) {
+                $table->integer('l30_units')->default(0);
+            });
+        }
+        if (! Schema::hasColumn('fba_monthly_sales', 'l30_revenue')) {
+            Schema::table('fba_monthly_sales', function (Blueprint $table) {
+                $table->decimal('l30_revenue', 10, 2)->nullable();
+            });
+        }
+        if (! Schema::hasColumn('fba_monthly_sales', 'l60_units')) {
+            Schema::table('fba_monthly_sales', function (Blueprint $table) {
+                $table->integer('l60_units')->default(0);
+            });
+        }
+        if (! Schema::hasColumn('fba_monthly_sales', 'l60_revenue')) {
+            Schema::table('fba_monthly_sales', function (Blueprint $table) {
+                $table->decimal('l60_revenue', 10, 2)->nullable();
+            });
+        }
     }
 
     /**
@@ -24,8 +42,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('fba_monthly_sales', function (Blueprint $table) {
-            $table->dropColumn(['l30_units', 'l30_revenue', 'l60_units', 'l60_revenue']);
+        if (! Schema::hasTable('fba_monthly_sales')) {
+            return;
+        }
+
+        $columns = ['l30_units', 'l30_revenue', 'l60_units', 'l60_revenue'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('fba_monthly_sales', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('fba_monthly_sales', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

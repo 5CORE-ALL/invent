@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('wayfair_products')) {
+            return;
+        }
+
         Schema::create('wayfair_products', function (Blueprint $table) {
             $table->id();
             $table->json('supplier_data')->nullable();         // For users response

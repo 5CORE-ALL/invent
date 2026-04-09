@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('google_ads_campaigns')) {
+            return;
+        }
+
         Schema::create('google_ads_campaigns', function (Blueprint $table) {
             $table->id();
             

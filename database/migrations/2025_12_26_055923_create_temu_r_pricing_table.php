@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('temu_r_pricing')) {
+            return;
+        }
+
         Schema::create('temu_r_pricing', function (Blueprint $table) {
             $table->id();
             $table->string('pricing_opportunity_type')->nullable();

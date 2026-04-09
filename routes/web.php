@@ -1917,6 +1917,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'update'])->name('customer.care.followups.update');
     Route::delete('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'destroy'])->name('customer.care.followups.destroy');
 
+    require __DIR__.'/crm-web.php';
+
     Route::get('/dar', [DARController::class, 'index'])->name('dar.index');
     Route::post('/dar', [DARController::class, 'store'])->name('dar.store');
     Route::get('/dar/window-status', [DARController::class, 'windowStatus'])->name('dar.window');

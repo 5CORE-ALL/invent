@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_channel_summary_data')) {
+            return;
+        }
+
         Schema::create('amazon_channel_summary_data', function (Blueprint $table) {
             $table->id();
             $table->string('channel', 50)->default('amazon'); // amazon, ebay, walmart, etc.

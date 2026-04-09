@@ -11,7 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('amazon_datasheets', function (Blueprint $table) {
+        if (! Schema::hasTable('amazon_datsheets')) {
+            return;
+        }
+
+        Schema::table('amazon_datsheets', function (Blueprint $table) {
             //
         });
     }
@@ -21,7 +25,11 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('amazon_datasheets', function (Blueprint $table) {
+        if (! Schema::hasTable('amazon_datsheets')) {
+            return;
+        }
+
+        Schema::table('amazon_datsheets', function (Blueprint $table) {
             //
         });
     }

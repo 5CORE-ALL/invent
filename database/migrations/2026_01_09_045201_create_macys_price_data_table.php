@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('macys_price_data')) {
+            return;
+        }
+
         Schema::create('macys_price_data', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

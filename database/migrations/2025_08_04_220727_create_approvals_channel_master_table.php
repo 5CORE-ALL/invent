@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('approvals_channel_master')) {
+            return;
+        }
+
         Schema::create('approvals_channel_master', function (Blueprint $table) {
             $table->id();
             $table->string('type')->nullable();

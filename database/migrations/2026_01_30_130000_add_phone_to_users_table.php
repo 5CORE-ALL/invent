@@ -8,6 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('users')) {
+            return;
+        }
+        if (Schema::hasColumn('users', 'phone')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->string('phone', 20)->nullable()->after('email');
         });
@@ -15,6 +22,13 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('users')) {
+            return;
+        }
+        if (! Schema::hasColumn('users', 'phone')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->dropColumn('phone');
         });

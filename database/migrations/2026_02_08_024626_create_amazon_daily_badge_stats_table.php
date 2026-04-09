@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('amazon_daily_badge_stats')) {
+            return;
+        }
+
         Schema::create('amazon_daily_badge_stats', function (Blueprint $table) {
             $table->id();
             $table->date('snapshot_date');

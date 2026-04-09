@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('amazon_daily_syncs')) {
+            return;
+        }
+        if (Schema::hasColumn('amazon_daily_syncs', 'items_fetched')) {
+            return;
+        }
+
         Schema::table('amazon_daily_syncs', function (Blueprint $table) {
             $table->integer('items_fetched')->default(0)->after('pages_fetched')->comment('Number of order items (line items) fetched');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('amazon_daily_syncs')) {
+            return;
+        }
+        if (! Schema::hasColumn('amazon_daily_syncs', 'items_fetched')) {
+            return;
+        }
+
         Schema::table('amazon_daily_syncs', function (Blueprint $table) {
             $table->dropColumn('items_fetched');
         });

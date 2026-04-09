@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('spocket_data_views')) {
+            return;
+        }
+
         Schema::create('spocket_data_views', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

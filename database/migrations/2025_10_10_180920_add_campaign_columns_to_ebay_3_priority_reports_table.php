@@ -11,19 +11,51 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
-            $table->date('start_date')->nullable()->after('report_range');
-            $table->date('end_date')->nullable()->after('start_date');
-            $table->string('campaign_name')->nullable()->after('end_date');
-            $table->decimal('campaignBudgetAmount', 15, 2)->nullable()->after('campaign_name');
-            $table->string('campaignStatus')->nullable()->after('campaignBudgetAmount');
-        });
+        if (! Schema::hasTable('ebay_3_priority_reports')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('ebay_3_priority_reports', 'start_date')) {
+            Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
+                $table->date('start_date')->nullable()->after('report_range');
+            });
+        }
+        if (! Schema::hasColumn('ebay_3_priority_reports', 'end_date')) {
+            Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
+                $table->date('end_date')->nullable()->after('start_date');
+            });
+        }
+        if (! Schema::hasColumn('ebay_3_priority_reports', 'campaign_name')) {
+            Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
+                $table->string('campaign_name')->nullable()->after('end_date');
+            });
+        }
+        if (! Schema::hasColumn('ebay_3_priority_reports', 'campaignBudgetAmount')) {
+            Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
+                $table->decimal('campaignBudgetAmount', 15, 2)->nullable()->after('campaign_name');
+            });
+        }
+        if (! Schema::hasColumn('ebay_3_priority_reports', 'campaignStatus')) {
+            Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
+                $table->string('campaignStatus')->nullable()->after('campaignBudgetAmount');
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
-            $table->dropColumn(['start_date', 'end_date', 'campaign_name', 'campaignBudgetAmount', 'campaignStatus']);
+        if (! Schema::hasTable('ebay_3_priority_reports')) {
+            return;
+        }
+
+        $columns = ['start_date', 'end_date', 'campaign_name', 'campaignBudgetAmount', 'campaignStatus'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('ebay_3_priority_reports', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('ebay_3_priority_reports', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

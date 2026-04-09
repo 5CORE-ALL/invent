@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('amazon_fbm_manual')) {
+            return;
+        }
+        if (Schema::hasColumn('amazon_fbm_manual', 'data')) {
+            return;
+        }
+
         Schema::table('amazon_fbm_manual', function (Blueprint $table) {
             $table->json('data')->nullable();
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('amazon_fbm_manual')) {
+            return;
+        }
+        if (! Schema::hasColumn('amazon_fbm_manual', 'data')) {
+            return;
+        }
+
         Schema::table('amazon_fbm_manual', function (Blueprint $table) {
             $table->dropColumn('data');
         });

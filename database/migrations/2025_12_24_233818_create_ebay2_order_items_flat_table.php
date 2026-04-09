@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay2_order_items_flat')) {
+            return;
+        }
+
         Schema::create('ebay2_order_items_flat', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

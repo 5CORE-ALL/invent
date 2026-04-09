@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_seo_audit_history')) {
+            return;
+        }
+
         Schema::create('amazon_seo_audit_history', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 100)->index()->comment('Amazon SKU');

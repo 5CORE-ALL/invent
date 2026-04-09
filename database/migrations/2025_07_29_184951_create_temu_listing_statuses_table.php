@@ -11,6 +11,10 @@ class CreateTemuListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('temu_listing_statuses')) {
+            return;
+        }
+
         Schema::create('temu_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

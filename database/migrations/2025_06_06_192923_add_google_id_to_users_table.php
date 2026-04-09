@@ -10,6 +10,10 @@ return new class extends Migration {
      */
     public function up()
     {
+        if (! Schema::hasTable('users') || Schema::hasColumn('users', 'google_id')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->string('google_id')->nullable();
         });
@@ -17,6 +21,10 @@ return new class extends Migration {
 
     public function down()
     {
+        if (! Schema::hasTable('users') || ! Schema::hasColumn('users', 'google_id')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->dropColumn('google_id');
         });

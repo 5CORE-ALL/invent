@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('product_master')) {
+            return;
+        }
+
         Schema::create('product_master', function (Blueprint $table) {
             $table->id();
             $table->string('image')->nullable();;

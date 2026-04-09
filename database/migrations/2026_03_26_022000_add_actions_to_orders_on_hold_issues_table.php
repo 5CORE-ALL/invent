@@ -8,19 +8,49 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('orders_on_hold_issues', function (Blueprint $table) {
-            $table->string('action_1')->nullable()->after('issue');
-            $table->string('action_2')->nullable()->after('action_1');
-            $table->string('c_action_1')->nullable()->after('action_2');
-            $table->string('c_action_2')->nullable()->after('c_action_1');
-            $table->string('close_note')->nullable()->after('c_action_2');
-        });
+        $tableName = 'orders_on_hold_issues';
+
+        if (! Schema::hasTable($tableName)) {
+            return;
+        }
+
+        $specs = [
+            ['action_1', 'issue', fn (Blueprint $t) => $t->string('action_1')->nullable()],
+            ['action_2', 'action_1', fn (Blueprint $t) => $t->string('action_2')->nullable()],
+            ['c_action_1', 'action_2', fn (Blueprint $t) => $t->string('c_action_1')->nullable()],
+            ['c_action_2', 'c_action_1', fn (Blueprint $t) => $t->string('c_action_2')->nullable()],
+            ['close_note', 'c_action_2', fn (Blueprint $t) => $t->string('close_note')->nullable()],
+        ];
+
+        foreach ($specs as [$column, $after, $add]) {
+            if (Schema::hasColumn($tableName, $column)) {
+                continue;
+            }
+
+            Schema::table($tableName, function (Blueprint $table) use ($tableName, $after, $add) {
+                $col = $add($table);
+                if ($after !== null && Schema::hasColumn($tableName, $after)) {
+                    $col->after($after);
+                }
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('orders_on_hold_issues', function (Blueprint $table) {
-            $table->dropColumn(['action_1', 'action_2', 'c_action_1', 'c_action_2', 'close_note']);
-        });
+        $tableName = 'orders_on_hold_issues';
+
+        if (! Schema::hasTable($tableName)) {
+            return;
+        }
+
+        $names = ['close_note', 'c_action_2', 'c_action_1', 'action_2', 'action_1'];
+        $toDrop = array_values(array_filter($names, fn (string $n) => Schema::hasColumn($tableName, $n)));
+
+        if ($toDrop !== []) {
+            Schema::table($tableName, function (Blueprint $table) use ($toDrop) {
+                $table->dropColumn($toDrop);
+            });
+        }
     }
 };

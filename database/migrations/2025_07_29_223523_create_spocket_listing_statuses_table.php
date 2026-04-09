@@ -11,6 +11,10 @@ class CreateSpocketListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('spocket_listing_statuses')) {
+            return;
+        }
+
         Schema::create('spocket_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

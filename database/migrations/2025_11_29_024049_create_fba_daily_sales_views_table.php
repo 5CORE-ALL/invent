@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('fba_daily_sales_views')) {
+            return;
+        }
+
         Schema::create('fba_daily_sales_views', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

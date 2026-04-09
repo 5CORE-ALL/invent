@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('junglescout_product_data')) {
+            return;
+        }
+
         Schema::create('junglescout_product_data', function (Blueprint $table) {
             $table->id();
             $table->string('parent')->nullable();

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('aliexpress_metric')) {
+            return;
+        }
+
         Schema::create('aliexpress_metric', function (Blueprint $table) {
             $table->id();
             $table->string('product_id');

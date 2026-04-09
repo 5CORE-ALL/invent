@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('marketplace_daily_metrics')) {
+            return;
+        }
+
         Schema::create('marketplace_daily_metrics', function (Blueprint $table) {
             $table->id();
             $table->string('channel', 50); // Amazon, eBay, Temu, Shein, Mercari, AliExpress

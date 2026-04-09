@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('fba_daily_metrics')) {
+            return;
+        }
+
         Schema::create('fba_daily_metrics', function (Blueprint $table) {
             $table->id();
             $table->date('record_date')->unique();

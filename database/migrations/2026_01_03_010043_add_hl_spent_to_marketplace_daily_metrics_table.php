@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('marketplace_daily_metrics')) {
+            return;
+        }
+        if (Schema::hasColumn('marketplace_daily_metrics', 'hl_spent')) {
+            return;
+        }
+
         Schema::table('marketplace_daily_metrics', function (Blueprint $table) {
             $table->decimal('hl_spent', 10, 2)->default(0)->after('pmt_spent');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('marketplace_daily_metrics')) {
+            return;
+        }
+        if (! Schema::hasColumn('marketplace_daily_metrics', 'hl_spent')) {
+            return;
+        }
+
         Schema::table('marketplace_daily_metrics', function (Blueprint $table) {
             $table->dropColumn('hl_spent');
         });

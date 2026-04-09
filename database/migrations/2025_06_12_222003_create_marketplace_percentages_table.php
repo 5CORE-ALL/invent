@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('marketplace_percentages')) {
+            return;
+        }
+
         Schema::create('marketplace_percentages', function (Blueprint $table) {
             $table->id();
             $table->string('marketplace');

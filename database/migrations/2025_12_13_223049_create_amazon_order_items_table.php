@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_order_items')) {
+            return;
+        }
+
         Schema::create('amazon_order_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('amazon_order_id')->constrained('amazon_orders')->onDelete('cascade');

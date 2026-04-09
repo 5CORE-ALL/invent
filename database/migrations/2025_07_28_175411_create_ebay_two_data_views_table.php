@@ -11,6 +11,10 @@ return new class extends Migration
      */
    public function up(): void
 {
+        if (Schema::hasTable('ebay_two_data_views')) {
+            return;
+        }
+
     Schema::create('ebay_two_data_views', function (Blueprint $table) {
         $table->id();
         $table->string('sku')->index();

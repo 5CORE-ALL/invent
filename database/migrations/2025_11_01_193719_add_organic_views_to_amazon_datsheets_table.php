@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('amazon_datsheets')) {
+            return;
+        }
+        if (Schema::hasColumn('amazon_datsheets', 'organic_views')) {
+            return;
+        }
+
         Schema::table('amazon_datsheets', function (Blueprint $table) {
             $table->integer('organic_views')->nullable()->after('price_lmpa');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('amazon_datsheets')) {
+            return;
+        }
+        if (! Schema::hasColumn('amazon_datsheets', 'organic_views')) {
+            return;
+        }
+
         Schema::table('amazon_datsheets', function (Blueprint $table) {
             $table->dropColumn('organic_views');
         });

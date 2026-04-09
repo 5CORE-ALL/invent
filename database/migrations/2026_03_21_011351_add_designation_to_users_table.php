@@ -11,8 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('designation')->nullable()->after('role');
+        $tableName = 'users';
+
+        if (! Schema::hasTable($tableName) || Schema::hasColumn($tableName, 'designation')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+            if (Schema::hasColumn($tableName, 'role')) {
+                $table->string('designation')->nullable()->after('role');
+            } else {
+                $table->string('designation')->nullable();
+            }
         });
     }
 
@@ -21,7 +31,13 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
+        $tableName = 'users';
+
+        if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'designation')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) {
             $table->dropColumn('designation');
         });
     }

@@ -11,8 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('inventories')) {
+            return;
+        }
+
+        if (Schema::hasColumn('inventories', 'is_archived')) {
+            return;
+        }
+
         Schema::table('inventories', function (Blueprint $table) {
-            $table->boolean('is_archived')->default(false)->after('type');
+            if (Schema::hasColumn('inventories', 'type')) {
+                $table->boolean('is_archived')->default(false)->after('type');
+            } else {
+                $table->boolean('is_archived')->default(false);
+            }
         });
     }
 
@@ -21,6 +33,14 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('inventories')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('inventories', 'is_archived')) {
+            return;
+        }
+
         Schema::table('inventories', function (Blueprint $table) {
             $table->dropColumn('is_archived');
         });

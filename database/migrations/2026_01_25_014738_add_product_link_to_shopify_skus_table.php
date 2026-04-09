@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('shopify_skus')) {
+            return;
+        }
+        if (Schema::hasColumn('shopify_skus', 'product_link')) {
+            return;
+        }
+
         Schema::table('shopify_skus', function (Blueprint $table) {
             $table->text('product_link')->nullable()->after('variant_title');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('shopify_skus')) {
+            return;
+        }
+        if (! Schema::hasColumn('shopify_skus', 'product_link')) {
+            return;
+        }
+
         Schema::table('shopify_skus', function (Blueprint $table) {
             $table->dropColumn('product_link');
         });

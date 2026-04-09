@@ -9,6 +9,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('refund_reasons')) {
+            return;
+        }
+
         Schema::create('refund_reasons', function (Blueprint $table) {
             $table->id();
             $table->string('name');

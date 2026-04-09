@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('tiktok_gmv_ads')) {
+            return;
+        }
+
         Schema::create('tiktok_gmv_ads', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 191)->index();

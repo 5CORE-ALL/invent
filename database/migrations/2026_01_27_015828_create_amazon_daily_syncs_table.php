@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_daily_syncs')) {
+            return;
+        }
+
         Schema::create('amazon_daily_syncs', function (Blueprint $table) {
             $table->id();
             $table->date('sync_date')->unique()->comment('The date to sync orders for (California/Pacific Time)');

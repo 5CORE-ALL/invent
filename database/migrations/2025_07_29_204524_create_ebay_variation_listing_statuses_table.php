@@ -11,6 +11,10 @@ class CreateEbayVariationListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay_variation_listing_statuses')) {
+            return;
+        }
+
         Schema::create('ebay_variation_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

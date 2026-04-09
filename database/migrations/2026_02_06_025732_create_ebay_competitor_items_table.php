@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay_competitor_items')) {
+            return;
+        }
+
         Schema::create('ebay_competitor_items', function (Blueprint $table) {
             $table->id();
             $table->string('marketplace', 50)->default('ebay');

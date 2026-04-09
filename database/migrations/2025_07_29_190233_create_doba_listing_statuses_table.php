@@ -11,6 +11,10 @@ class CreateDobaListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('doba_listing_statuses')) {
+            return;
+        }
+
         Schema::create('doba_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

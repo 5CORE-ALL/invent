@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('temu_ad_data')) {
+            return;
+        }
+
         Schema::create('temu_ad_data', function (Blueprint $table) {
             $table->id();
             $table->text('goods_name')->nullable();

@@ -11,8 +11,23 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->text('remark')->nullable()->after('Values');
+        if (! Schema::hasTable('product_master') || Schema::hasColumn('product_master', 'remark')) {
+            return;
+        }
+
+        $afterColumn = null;
+        if (Schema::hasColumn('product_master', 'Values')) {
+            $afterColumn = 'Values';
+        } elseif (Schema::hasColumn('product_master', 'values')) {
+            $afterColumn = 'values';
+        }
+
+        Schema::table('product_master', function (Blueprint $table) use ($afterColumn): void {
+            if ($afterColumn !== null) {
+                $table->text('remark')->nullable()->after($afterColumn);
+            } else {
+                $table->text('remark')->nullable();
+            }
         });
     }
 
@@ -21,6 +36,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'remark')) {
+            return;
+        }
+
         Schema::table('product_master', function (Blueprint $table) {
             $table->dropColumn('remark');
         });

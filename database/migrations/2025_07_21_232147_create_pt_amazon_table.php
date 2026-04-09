@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('pt_amazon')) {
+            return;
+        }
+
         Schema::create('pt_amazon', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique()->index();

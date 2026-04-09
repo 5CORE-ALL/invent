@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_order_cursors')) {
+            return;
+        }
+
         Schema::create('amazon_order_cursors', function (Blueprint $table) {
             $table->id();
             $table->string('cursor_key')->unique()->comment('Unique key based on date range');

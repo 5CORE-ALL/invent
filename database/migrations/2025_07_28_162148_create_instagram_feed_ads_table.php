@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('instagram_feed_ads')) {
+            return;
+        }
+
         Schema::create('instagram_feed_ads', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

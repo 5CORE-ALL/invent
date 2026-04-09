@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('meta_action_logs')) {
+            return;
+        }
+
         Schema::create('meta_action_logs', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('user_id')->index();

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('combo_trf_actions')) {
+            return;
+        }
+
         Schema::create('combo_trf_actions', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

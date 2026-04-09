@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('temu_data_view')) {
+            return;
+        }
+
         Schema::create('temu_data_view', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

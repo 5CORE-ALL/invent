@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('kw_ebay')) {
+            return;
+        }
+
         Schema::create('kw_ebay', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique()->index();

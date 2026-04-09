@@ -7,6 +7,10 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
+        if (Schema::hasTable('channel_master')) {
+            return;
+        }
+
         Schema::create('channel_master', function (Blueprint $table) {
             $table->id();
             $table->string('channel');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('tiktok_products')) {
+            return;
+        }
+
         Schema::create('tiktok_products', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 191)->unique();

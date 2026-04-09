@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('meta_all_ads')) {
+            return;
+        }
+        if (Schema::hasColumn('meta_all_ads', 'ad_type')) {
+            return;
+        }
+
         Schema::table('meta_all_ads', function (Blueprint $table) {
             $table->string('ad_type')->nullable()->after('audience');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('meta_all_ads')) {
+            return;
+        }
+        if (! Schema::hasColumn('meta_all_ads', 'ad_type')) {
+            return;
+        }
+
         Schema::table('meta_all_ads', function (Blueprint $table) {
             $table->dropColumn('ad_type');
         });

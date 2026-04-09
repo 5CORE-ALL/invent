@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('walmart_7ub_daily_counts')) {
+            return;
+        }
+
         Schema::create('walmart_7ub_daily_counts', function (Blueprint $table) {
             $table->id();
             $table->date('date')->unique();

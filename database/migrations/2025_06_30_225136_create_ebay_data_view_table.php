@@ -11,6 +11,10 @@ class CreateEbayDataViewTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay_data_view')) {
+            return;
+        }
+
         Schema::create('ebay_data_view', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

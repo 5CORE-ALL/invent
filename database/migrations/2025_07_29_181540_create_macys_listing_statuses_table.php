@@ -11,6 +11,10 @@ class CreateMacysListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('macys_listing_statuses')) {
+            return;
+        }
+
         Schema::create('macys_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

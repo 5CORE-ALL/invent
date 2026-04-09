@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('pending_shopify_orders')) {
+            return;
+        }
+
         Schema::create('pending_shopify_orders', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('reverb_order_metric_id')->nullable()->index();

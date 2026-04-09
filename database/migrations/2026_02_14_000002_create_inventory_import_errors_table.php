@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('inventory_import_errors')) {
+            return;
+        }
+
         Schema::create('inventory_import_errors', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('batch_id');

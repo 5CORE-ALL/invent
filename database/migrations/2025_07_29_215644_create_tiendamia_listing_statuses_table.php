@@ -11,6 +11,10 @@ class CreateTiendamiaListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('tiendamia_listing_statuses')) {
+            return;
+        }
+
         Schema::create('tiendamia_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

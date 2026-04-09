@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('walmart_pricing')) {
+            return;
+        }
+
         // Drop table if exists (fresh start)
         Schema::dropIfExists('walmart_pricing');
         

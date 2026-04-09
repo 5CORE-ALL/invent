@@ -11,15 +11,28 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->string('video_product_overview_status', 50)->nullable()->after('video_product_overview');
-            $table->string('video_unboxing_status', 50)->nullable()->after('video_unboxing');
-            $table->string('video_how_to_status', 50)->nullable()->after('video_how_to');
-            $table->string('video_setup_status', 50)->nullable()->after('video_setup');
-            $table->string('video_troubleshooting_status', 50)->nullable()->after('video_troubleshooting');
-            $table->string('video_brand_story_status', 50)->nullable()->after('video_brand_story');
-            $table->string('video_product_benefits_status', 50)->nullable()->after('video_product_benefits');
-        });
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $after = [
+            'video_product_overview_status' => 'video_product_overview',
+            'video_unboxing_status' => 'video_unboxing',
+            'video_how_to_status' => 'video_how_to',
+            'video_setup_status' => 'video_setup',
+            'video_troubleshooting_status' => 'video_troubleshooting',
+            'video_brand_story_status' => 'video_brand_story',
+            'video_product_benefits_status' => 'video_product_benefits',
+        ];
+        foreach (array_keys($after) as $col) {
+            if (Schema::hasColumn('product_master', $col)) {
+                continue;
+            }
+            $prev = $after[$col];
+            Schema::table('product_master', function (Blueprint $table) use ($col, $prev) {
+                $table->string($col, 50)->nullable()->after($prev);
+            });
+        }
     }
 
     /**
@@ -27,16 +40,26 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->dropColumn([
-                'video_product_overview_status',
-                'video_unboxing_status',
-                'video_how_to_status',
-                'video_setup_status',
-                'video_troubleshooting_status',
-                'video_brand_story_status',
-                'video_product_benefits_status',
-            ]);
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $columns = [
+            'video_product_overview_status',
+            'video_unboxing_status',
+            'video_how_to_status',
+            'video_setup_status',
+            'video_troubleshooting_status',
+            'video_brand_story_status',
+            'video_product_benefits_status',
+        ];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('product_master', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('product_master', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

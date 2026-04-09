@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('depop_sales_data')) {
+            return;
+        }
+
         Schema::create('depop_sales_data', function (Blueprint $table) {
             $table->id();
             $table->date('sale_date')->nullable()->index();

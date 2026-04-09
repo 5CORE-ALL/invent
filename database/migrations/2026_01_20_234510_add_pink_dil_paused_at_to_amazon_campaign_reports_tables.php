@@ -11,13 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('amazon_sp_campaign_reports', function (Blueprint $table) {
-            $table->timestamp('pink_dil_paused_at')->nullable()->after('campaignStatus');
-        });
+        foreach (['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+            if (Schema::hasColumn($tableName, 'pink_dil_paused_at')) {
+                continue;
+            }
 
-        Schema::table('amazon_sb_campaign_reports', function (Blueprint $table) {
-            $table->timestamp('pink_dil_paused_at')->nullable()->after('campaignStatus');
-        });
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->timestamp('pink_dil_paused_at')->nullable()->after('campaignStatus');
+            });
+        }
     }
 
     /**
@@ -25,12 +30,17 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('amazon_sp_campaign_reports', function (Blueprint $table) {
-            $table->dropColumn('pink_dil_paused_at');
-        });
+        foreach (['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+            if (! Schema::hasColumn($tableName, 'pink_dil_paused_at')) {
+                continue;
+            }
 
-        Schema::table('amazon_sb_campaign_reports', function (Blueprint $table) {
-            $table->dropColumn('pink_dil_paused_at');
-        });
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->dropColumn('pink_dil_paused_at');
+            });
+        }
     }
 };

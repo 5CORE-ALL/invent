@@ -11,6 +11,10 @@ class CreateEbayThreeListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay_three_listing_statuses')) {
+            return;
+        }
+
         Schema::create('ebay_three_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

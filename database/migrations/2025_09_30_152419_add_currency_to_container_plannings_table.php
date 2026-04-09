@@ -11,8 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('container_plannings', function (Blueprint $table) {
-            $table->string('currency', 10)->default('USD')->after('packing_list_link');
+        if (! Schema::hasTable('container_plannings') || Schema::hasColumn('container_plannings', 'currency')) {
+            return;
+        }
+
+        $after = Schema::hasColumn('container_plannings', 'packing_list_link');
+
+        Schema::table('container_plannings', function (Blueprint $table) use ($after): void {
+            if ($after) {
+                $table->string('currency', 10)->default('USD')->after('packing_list_link');
+            } else {
+                $table->string('currency', 10)->default('USD');
+            }
         });
     }
 
@@ -21,6 +31,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('container_plannings') || ! Schema::hasColumn('container_plannings', 'currency')) {
+            return;
+        }
+
         Schema::table('container_plannings', function (Blueprint $table) {
             $table->dropColumn('currency');
         });

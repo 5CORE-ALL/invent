@@ -10,6 +10,10 @@ return new class extends Migration {
      */
     public function up(): void
     {
+        if (Schema::hasTable('pricing_master_daily_snapshots')) {
+            return;
+        }
+
         Schema::create('pricing_master_daily_snapshots', function (Blueprint $table) {
             $table->id();
             $table->date('snapshot_date')->unique();

@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+        if (Schema::hasColumn('product_master', 'deleted_by')) {
+            return;
+        }
+
         Schema::table('product_master', function (Blueprint $table) {
             $table->unsignedBigInteger('deleted_by')->nullable()->after('deleted_at');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+        if (! Schema::hasColumn('product_master', 'deleted_by')) {
+            return;
+        }
+
         Schema::table('product_master', function (Blueprint $table) {
             $table->dropColumn('deleted_by');
         });

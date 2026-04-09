@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('topdawg_sync_states')) {
+            return;
+        }
+
         Schema::create('topdawg_sync_states', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique()->index();

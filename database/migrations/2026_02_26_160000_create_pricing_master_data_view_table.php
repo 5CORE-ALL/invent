@@ -10,6 +10,10 @@ return new class extends Migration {
      */
     public function up(): void
     {
+        if (Schema::hasTable('pricing_master_data_view')) {
+            return;
+        }
+
         Schema::create('pricing_master_data_view', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

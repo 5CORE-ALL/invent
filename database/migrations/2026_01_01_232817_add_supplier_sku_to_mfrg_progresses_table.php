@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('mfrg_progress')) {
+            return;
+        }
+        if (Schema::hasColumn('mfrg_progress', 'supplier_sku')) {
+            return;
+        }
+
         Schema::table('mfrg_progress', function (Blueprint $table) {
             $table->string('supplier_sku')->nullable()->after('supplier');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('mfrg_progress')) {
+            return;
+        }
+        if (! Schema::hasColumn('mfrg_progress', 'supplier_sku')) {
+            return;
+        }
+
         Schema::table('mfrg_progress', function (Blueprint $table) {
             $table->dropColumn('supplier_sku');
         });

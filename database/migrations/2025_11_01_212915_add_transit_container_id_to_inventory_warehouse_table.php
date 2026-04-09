@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('inventory_warehouse')) {
+            return;
+        }
+        if (Schema::hasColumn('inventory_warehouse', 'transit_container_id')) {
+            return;
+        }
+
         Schema::table('inventory_warehouse', function (Blueprint $table) {
             $table->unsignedBigInteger('transit_container_id')->nullable()->after('tab_name');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('inventory_warehouse')) {
+            return;
+        }
+        if (! Schema::hasColumn('inventory_warehouse', 'transit_container_id')) {
+            return;
+        }
+
         Schema::table('inventory_warehouse', function (Blueprint $table) {
             $table->dropColumn('transit_container_id');
         });

@@ -11,20 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // amazon_sb_campaign_reports
-        Schema::table('amazon_sb_campaign_reports', function (Blueprint $table) {
-            $table->string('last_sbid')->nullable()->after('yes_sbid');
-        });
+        foreach (['amazon_sb_campaign_reports', 'amazon_sd_campaign_reports', 'amazon_sp_campaign_reports'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+            if (Schema::hasColumn($tableName, 'last_sbid')) {
+                continue;
+            }
 
-        // amazon_sd_campaign_reports
-        Schema::table('amazon_sd_campaign_reports', function (Blueprint $table) {
-            $table->string('last_sbid')->nullable()->after('yes_sbid');
-        });
-
-        // amazon_sp_campaign_reports
-        Schema::table('amazon_sp_campaign_reports', function (Blueprint $table) {
-            $table->string('last_sbid')->nullable()->after('yes_sbid');
-        });
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->string('last_sbid')->nullable()->after('yes_sbid');
+            });
+        }
     }
 
     /**
@@ -32,16 +30,17 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('amazon_sb_campaign_reports', function (Blueprint $table) {
-            $table->dropColumn('last_sbid');
-        });
+        foreach (['amazon_sb_campaign_reports', 'amazon_sd_campaign_reports', 'amazon_sp_campaign_reports'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+            if (! Schema::hasColumn($tableName, 'last_sbid')) {
+                continue;
+            }
 
-        Schema::table('amazon_sd_campaign_reports', function (Blueprint $table) {
-            $table->dropColumn('last_sbid');
-        });
-
-        Schema::table('amazon_sp_campaign_reports', function (Blueprint $table) {
-            $table->dropColumn('last_sbid');
-        });
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->dropColumn('last_sbid');
+            });
+        }
     }
 };

@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('lost_gain_aq_histories')) {
+            return;
+        }
+
         Schema::create('lost_gain_aq_histories', function (Blueprint $table) {
             $table->id();
             $table->uuid('batch_uuid')->index();

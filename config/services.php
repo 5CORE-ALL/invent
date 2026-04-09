@@ -45,10 +45,42 @@ return [
     'shopify' => [
         'api_key' => env('SHOPIFY_API_KEY'),
         'password' => env('SHOPIFY_PASSWORD'),
+        /** Store hostname only, e.g. your-store.myshopify.com (no https://) */
         'store_url' => env('SHOPIFY_STORE_URL'),
+        /** Admin API access token (private app or custom app) */
         'access_token' => env('SHOPIFY_ACCESS_TOKEN', env('SHOPIFY_PASSWORD')),
+        /** Admin REST API version path segment, e.g. 2025-01 */
+        'api_version' => env('SHOPIFY_API_VERSION', '2025-01'),
         'inventory_location_id' => env('SHOPIFY_INVENTORY_LOCATION_ID'),
         'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET'),
+        /** Guzzle timeouts (seconds) */
+        'http_timeout' => env('SHOPIFY_HTTP_TIMEOUT', 120),
+        'connect_timeout' => env('SHOPIFY_CONNECT_TIMEOUT', 15),
+        /** When X-Shopify-Shop-Api-Call-Limit used/max reaches this fraction of max, pause (leaky bucket) */
+        'rate_limit_threshold' => env('SHOPIFY_RATE_LIMIT_THRESHOLD', 0.85),
+        'rate_limit_pause_seconds' => env('SHOPIFY_RATE_LIMIT_PAUSE', 2),
+        /** Retries for 429 / 5xx / connection errors */
+        'max_retries' => env('SHOPIFY_MAX_RETRIES', 5),
+        /**
+         * Shopify sync paginates (orders/customers/products). PHP default max_execution_time is often 30s.
+         * After each REST page we call set_time_limit() so the full sync can finish. 0 = unlimited (use with care).
+         */
+        'sync_page_time_limit_seconds' => (int) env('SHOPIFY_SYNC_PAGE_TIME_LIMIT', 180),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | CRM automation & activity
+    |--------------------------------------------------------------------------
+    */
+    'crm' => [
+        /** User id to assign auto follow-ups from new Shopify orders (falls back to first active user) */
+        'shopify_new_order_followup_assignee_id' => env('CRM_SHOPIFY_NEW_ORDER_ASSIGNEE_ID'),
+        /**
+         * When syncing from Shopify Admin REST (SHOPIFY_STORE_URL + SHOPIFY_ACCESS_TOKEN),
+         * create a `customers` row for each synced Shopify customer that has an email and no CRM match.
+         */
+        'shopify_auto_create_customers' => env('CRM_SHOPIFY_AUTO_CREATE_CUSTOMERS', true),
     ],
 
     /*

@@ -11,10 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('ebay_priority_reports', function (Blueprint $table) {
-            $table->string('last_sbid')->nullable()->after('cost_per_click');
-            $table->string('sbid_m')->nullable()->after('last_sbid');
-        });
+        if (! Schema::hasTable('ebay_priority_reports')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('ebay_priority_reports', 'last_sbid')) {
+            Schema::table('ebay_priority_reports', function (Blueprint $table) {
+                $table->string('last_sbid')->nullable()->after('cost_per_click');
+            });
+        }
+        if (! Schema::hasColumn('ebay_priority_reports', 'sbid_m')) {
+            Schema::table('ebay_priority_reports', function (Blueprint $table) {
+                $table->string('sbid_m')->nullable()->after('last_sbid');
+            });
+        }
     }
 
     /**
@@ -22,8 +32,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('ebay_priority_reports', function (Blueprint $table) {
-            $table->dropColumn(['last_sbid', 'sbid_m']);
+        if (! Schema::hasTable('ebay_priority_reports')) {
+            return;
+        }
+
+        $columns = ['last_sbid', 'sbid_m'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('ebay_priority_reports', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('ebay_priority_reports', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

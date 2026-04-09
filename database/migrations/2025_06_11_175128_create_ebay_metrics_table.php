@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay_metrics')) {
+            return;
+        }
+
         Schema::create('ebay_metrics', function (Blueprint $table) {
             $table->id();
 

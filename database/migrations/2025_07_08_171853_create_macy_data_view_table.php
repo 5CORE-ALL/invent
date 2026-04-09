@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('macy_data_view')) {
+            return;
+        }
+
         Schema::create('macy_data_view', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

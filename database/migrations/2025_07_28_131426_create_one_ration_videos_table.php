@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('one_ration_videos')) {
+            return;
+        }
+
         Schema::create('one_ration_videos', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

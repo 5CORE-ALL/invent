@@ -11,6 +11,10 @@ class CreateReverbListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('reverb_listing_statuses')) {
+            return;
+        }
+
         Schema::create('reverb_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('topdawg_products')) {
+            return;
+        }
+
         Schema::create('topdawg_products', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 255)->nullable()->index();

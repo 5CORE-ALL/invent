@@ -11,16 +11,36 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('fba_orders', function (Blueprint $table) {
-            $table->string('status')->nullable();
-            $table->string('seller_sku')->nullable();
-        });
+        if (! Schema::hasTable('fba_orders')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('fba_orders', 'status')) {
+            Schema::table('fba_orders', function (Blueprint $table) {
+                $table->string('status')->nullable();
+            });
+        }
+        if (! Schema::hasColumn('fba_orders', 'seller_sku')) {
+            Schema::table('fba_orders', function (Blueprint $table) {
+                $table->string('seller_sku')->nullable();
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('fba_orders', function (Blueprint $table) {
-            $table->dropColumn(['status', 'seller_sku']);
+        if (! Schema::hasTable('fba_orders')) {
+            return;
+        }
+
+        $columns = ['status', 'seller_sku'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('fba_orders', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('fba_orders', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

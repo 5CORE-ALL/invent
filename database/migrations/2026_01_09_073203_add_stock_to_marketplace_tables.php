@@ -11,17 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('macy_products', function (Blueprint $table) {
-            $table->integer('stock')->nullable()->after('price');
-        });
+        foreach (['macy_products', 'bestbuy_usa_products', 'tiendamia_products'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+            if (Schema::hasColumn($tableName, 'stock')) {
+                continue;
+            }
 
-        Schema::table('bestbuy_usa_products', function (Blueprint $table) {
-            $table->integer('stock')->nullable()->after('price');
-        });
-
-        Schema::table('tiendamia_products', function (Blueprint $table) {
-            $table->integer('stock')->nullable()->after('price');
-        });
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->integer('stock')->nullable()->after('price');
+            });
+        }
     }
 
     /**
@@ -29,16 +30,17 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('macy_products', function (Blueprint $table) {
-            $table->dropColumn('stock');
-        });
+        foreach (['macy_products', 'bestbuy_usa_products', 'tiendamia_products'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+            if (! Schema::hasColumn($tableName, 'stock')) {
+                continue;
+            }
 
-        Schema::table('bestbuy_usa_products', function (Blueprint $table) {
-            $table->dropColumn('stock');
-        });
-
-        Schema::table('tiendamia_products', function (Blueprint $table) {
-            $table->dropColumn('stock');
-        });
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->dropColumn('stock');
+            });
+        }
     }
 };
