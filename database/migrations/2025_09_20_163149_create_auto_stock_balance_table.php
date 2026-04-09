@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('auto_stock_balance')) {
+            return;
+        }
+
         Schema::create('auto_stock_balance', function (Blueprint $table) {
             $table->id();
               // From SKU details

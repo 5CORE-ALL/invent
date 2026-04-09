@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up()
     {
+        if (Schema::hasTable('zero_visibility_daily_totals')) {
+            return;
+        }
+
         Schema::create('zero_visibility_daily_totals', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->date('date')->index();

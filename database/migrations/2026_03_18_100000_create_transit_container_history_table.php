@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('transit_container_history')) {
+            return;
+        }
+
         Schema::create('transit_container_history', function (Blueprint $table) {
             $table->id();
             $table->string('action_type', 50); // row_created, row_updated, row_moved, row_deleted, purchase_added, tab_added, push_inventory, push_arrived

@@ -10,10 +10,31 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::table('pricing_master_daily_snapshots_sku', function (Blueprint $table) {
-            $table->decimal('rating', 4, 2)->nullable()->after('amazon_price');
-            $table->unsignedBigInteger('total_views')->default(0)->after('rating');
-        });
+        $tableName = 'pricing_master_daily_snapshots_sku';
+
+        if (! Schema::hasTable($tableName)) {
+            return;
+        }
+
+        if (! Schema::hasColumn($tableName, 'rating')) {
+            Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+                if (Schema::hasColumn($tableName, 'amazon_price')) {
+                    $table->decimal('rating', 4, 2)->nullable()->after('amazon_price');
+                } else {
+                    $table->decimal('rating', 4, 2)->nullable();
+                }
+            });
+        }
+
+        if (! Schema::hasColumn($tableName, 'total_views')) {
+            Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+                if (Schema::hasColumn($tableName, 'rating')) {
+                    $table->unsignedBigInteger('total_views')->default(0)->after('rating');
+                } else {
+                    $table->unsignedBigInteger('total_views')->default(0);
+                }
+            });
+        }
     }
 
     /**
@@ -21,8 +42,21 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::table('pricing_master_daily_snapshots_sku', function (Blueprint $table) {
-            $table->dropColumn(['rating', 'total_views']);
-        });
+        $tableName = 'pricing_master_daily_snapshots_sku';
+
+        if (! Schema::hasTable($tableName)) {
+            return;
+        }
+
+        $columns = array_values(array_filter([
+            Schema::hasColumn($tableName, 'rating') ? 'rating' : null,
+            Schema::hasColumn($tableName, 'total_views') ? 'total_views' : null,
+        ]));
+
+        if ($columns !== []) {
+            Schema::table($tableName, function (Blueprint $table) use ($columns) {
+                $table->dropColumn($columns);
+            });
+        }
     }
 };

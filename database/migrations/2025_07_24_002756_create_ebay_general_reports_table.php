@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay_general_reports')) {
+            return;
+        }
+
         Schema::create('ebay_general_reports', function (Blueprint $table) {
             $table->id();
             $table->string('report_range'); // L30 / L60

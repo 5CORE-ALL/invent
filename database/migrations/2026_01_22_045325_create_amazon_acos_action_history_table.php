@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_acos_action_history')) {
+            return;
+        }
+
         Schema::create('amazon_acos_action_history', function (Blueprint $table) {
             $table->id();
             $table->string('campaign_id')->nullable();

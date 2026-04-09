@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('wmp_mark_as_dones')) {
+            return;
+        }
+
         Schema::create('wmp_mark_as_dones', function (Blueprint $table) {
             $table->id();
             $table->string('parent')->nullable();

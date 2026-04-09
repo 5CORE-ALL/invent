@@ -11,8 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('inventories')) {
+            return;
+        }
+
+        if (Schema::hasColumn('inventories', 'comment')) {
+            return;
+        }
+
         Schema::table('inventories', function (Blueprint $table) {
-            $table->string('comment', 80)->nullable()->after('remarks');
+            if (Schema::hasColumn('inventories', 'remarks')) {
+                $table->string('comment', 80)->nullable()->after('remarks');
+            } else {
+                $table->string('comment', 80)->nullable();
+            }
         });
     }
 
@@ -21,6 +33,14 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('inventories')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('inventories', 'comment')) {
+            return;
+        }
+
         Schema::table('inventories', function (Blueprint $table) {
             $table->dropColumn('comment');
         });

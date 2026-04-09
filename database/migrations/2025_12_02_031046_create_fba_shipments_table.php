@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('fba_shipments')) {
+            return;
+        }
+
         Schema::create('fba_shipments', function (Blueprint $table) {
             $table->id();
             $table->string('shipment_id')->unique();

@@ -11,6 +11,10 @@ class CreateZendropListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('zendrop_listing_statuses')) {
+            return;
+        }
+
         Schema::create('zendrop_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

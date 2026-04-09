@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('inventory_warehouse')) {
+            return;
+        }
+        if (Schema::hasColumn('inventory_warehouse', 'pushed')) {
+            return;
+        }
+
         Schema::table('inventory_warehouse', function (Blueprint $table) {
             $table->boolean('pushed')->default(false)->after('our_sku');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('inventory_warehouse')) {
+            return;
+        }
+        if (! Schema::hasColumn('inventory_warehouse', 'pushed')) {
+            return;
+        }
+
         Schema::table('inventory_warehouse', function (Blueprint $table) {
             $table->dropColumn('pushed');
         });

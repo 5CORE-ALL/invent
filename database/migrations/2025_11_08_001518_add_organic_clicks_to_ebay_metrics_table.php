@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('ebay_metrics')) {
+            return;
+        }
+        if (Schema::hasColumn('ebay_metrics', 'organic_clicks')) {
+            return;
+        }
+
         Schema::table('ebay_metrics', function (Blueprint $table) {
             $table->integer('organic_clicks')->default(0)->after('views');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('ebay_metrics')) {
+            return;
+        }
+        if (! Schema::hasColumn('ebay_metrics', 'organic_clicks')) {
+            return;
+        }
+
         Schema::table('ebay_metrics', function (Blueprint $table) {
             $table->dropColumn('organic_clicks');
         });

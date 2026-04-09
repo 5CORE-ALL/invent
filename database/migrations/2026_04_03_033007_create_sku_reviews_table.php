@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('sku_reviews')) {
+            return;
+        }
+
         Schema::create('sku_reviews', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 100)->index();

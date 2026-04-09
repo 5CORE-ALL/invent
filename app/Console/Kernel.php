@@ -33,6 +33,8 @@ use App\Console\Commands\FetchWayfairDailyData;
 use App\Console\Commands\FetchShopifyB2BMetrics;
 use App\Console\Commands\FetchShopifyB2CMetrics;
 use App\Console\Commands\SyncShopifyLiveInventory;
+use App\Jobs\Crm\SendFollowUpReminderJob;
+use App\Models\Crm\FollowUp;
 
 class Kernel extends ConsoleKernel
 {
@@ -143,6 +145,26 @@ class Kernel extends ConsoleKernel
                 'app_tz' => config('app.timezone'),
             ]);
         })->everyMinute()->name('scheduler-heartbeat');
+
+        /*
+        |--------------------------------------------------------------------------
+        | CRM — FOLLOW-UP REMINDERS
+        |--------------------------------------------------------------------------
+        */
+        $schedule->call(function () {
+            FollowUp::query()
+                ->reminderDue()
+                ->orderBy('id')
+                ->pluck('id')
+                ->each(static function (int $followUpId): void {
+                    SendFollowUpReminderJob::dispatch($followUpId);
+                });
+        })
+            ->everyMinute()
+            ->name('crm-follow-up-reminders')
+            ->withoutOverlapping(5)
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         /*
         |--------------------------------------------------------------------------

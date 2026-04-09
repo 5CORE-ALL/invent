@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Crm\CommunicationController;
+use App\Http\Controllers\Crm\FollowUpController;
+use App\Http\Controllers\Crm\ShopifyController;
 use App\Http\Controllers\GoogleSheetsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -91,6 +94,29 @@ Route::post('/webhooks/reverb', [App\Http\Controllers\ReverbWebhookController::c
 
 // Shopify Inventory Webhook - sync updated inventory to Reverb when Shopify fires
 Route::post('/webhooks/shopify/inventory-update', [App\Http\Controllers\ShopifyWebhookController::class, 'inventoryUpdate'])->name('webhooks.shopify.inventory-update');
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::prefix('follow-ups')->name('api.follow-ups.')->group(function () {
+        Route::get('/', [FollowUpController::class, 'index'])->name('index');
+        Route::get('/export', [FollowUpController::class, 'exportCsv'])->name('export');
+        Route::post('/', [FollowUpController::class, 'store'])->name('store');
+        Route::get('/{follow_up}', [FollowUpController::class, 'show'])->name('show');
+        Route::put('/{follow_up}', [FollowUpController::class, 'update'])->name('update');
+        Route::delete('/{follow_up}', [FollowUpController::class, 'destroy'])->name('destroy');
+        Route::post('/{follow_up}/status', [FollowUpController::class, 'changeStatus'])->name('change-status');
+    });
+
+    Route::prefix('communications')->name('api.communications.')->group(function () {
+        Route::post('/', [CommunicationController::class, 'store'])->name('store');
+        Route::get('/customers/{customer}', [CommunicationController::class, 'index'])->name('customer-index');
+    });
+
+    Route::prefix('shopify/sync')->name('api.shopify.sync.')->group(function () {
+        Route::post('/customers', [ShopifyController::class, 'syncCustomers'])->name('customers');
+        Route::post('/orders', [ShopifyController::class, 'syncOrders'])->name('orders');
+        Route::post('/products', [ShopifyController::class, 'syncProducts'])->name('products');
+    });
+});
 
 /*
 |--------------------------------------------------------------------------

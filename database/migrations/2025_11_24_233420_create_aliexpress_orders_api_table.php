@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('aliexpress_orders_api')) {
+            return;
+        }
+
         Schema::create('aliexpress_orders_api', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

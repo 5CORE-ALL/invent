@@ -11,6 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('amazon_sp_campaign_reports')) {
+            return;
+        }
+
+        if (Schema::hasColumn('amazon_sp_campaign_reports', 'campaignStatus')) {
+            return;
+        }
+
         Schema::table('amazon_sp_campaign_reports', function (Blueprint $table) {
             $table->string('campaignStatus', 50)->nullable()->after('endDate');
         });
@@ -21,8 +29,12 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('amazon_sp_campaign_reports') || ! Schema::hasColumn('amazon_sp_campaign_reports', 'campaignStatus')) {
+            return;
+        }
+
         Schema::table('amazon_sp_campaign_reports', function (Blueprint $table) {
-            //
+            $table->dropColumn('campaignStatus');
         });
     }
 };

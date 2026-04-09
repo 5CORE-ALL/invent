@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('supplier_ledgers')) {
+            return;
+        }
+
         Schema::create('supplier_ledgers', function (Blueprint $table) {
             $table->id();
             $table->integer('supplier_id');

@@ -11,12 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->string('feature1', 100)->nullable()->after('product_description');
-            $table->string('feature2', 100)->nullable()->after('feature1');
-            $table->string('feature3', 100)->nullable()->after('feature2');
-            $table->string('feature4', 100)->nullable()->after('feature3');
-        });
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $after = ['feature1' => 'product_description', 'feature2' => 'feature1', 'feature3' => 'feature2', 'feature4' => 'feature3'];
+        foreach (['feature1', 'feature2', 'feature3', 'feature4'] as $col) {
+            if (Schema::hasColumn('product_master', $col)) {
+                continue;
+            }
+            $prev = $after[$col];
+            Schema::table('product_master', function (Blueprint $table) use ($col, $prev) {
+                $table->string($col, 100)->nullable()->after($prev);
+            });
+        }
     }
 
     /**
@@ -24,8 +32,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->dropColumn(['feature1', 'feature2', 'feature3', 'feature4']);
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $columns = ['feature1', 'feature2', 'feature3', 'feature4'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('product_master', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('product_master', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

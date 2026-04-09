@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('tiktok_sales_two')) {
+            return;
+        }
+
         Schema::create('tiktok_sales_two', function (Blueprint $table) {
             $table->id();
             $table->string('order_id')->nullable()->index();

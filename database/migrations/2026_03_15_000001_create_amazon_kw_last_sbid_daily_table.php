@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_kw_last_sbid_daily')) {
+            return;
+        }
+
         Schema::create('amazon_kw_last_sbid_daily', function (Blueprint $table) {
             $table->id();
             $table->string('campaign_id');

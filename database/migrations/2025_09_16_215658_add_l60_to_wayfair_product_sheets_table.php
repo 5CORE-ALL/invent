@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('wayfair_product_sheets') || Schema::hasColumn('wayfair_product_sheets', 'l60')) {
+            return;
+        }
+
         Schema::table('wayfair_product_sheets', function (Blueprint $table) {
             $table->integer('l60')->nullable()->after('l30');
         });
@@ -21,6 +25,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('wayfair_product_sheets') || ! Schema::hasColumn('wayfair_product_sheets', 'l60')) {
+            return;
+        }
+
         Schema::table('wayfair_product_sheets', function (Blueprint $table) {
             $table->dropColumn('l60');
         });

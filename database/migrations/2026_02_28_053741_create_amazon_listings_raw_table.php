@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_listings_raw')) {
+            return;
+        }
+
         Schema::create('amazon_listings_raw', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

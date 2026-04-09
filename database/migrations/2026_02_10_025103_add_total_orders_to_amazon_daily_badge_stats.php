@@ -11,8 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('amazon_daily_badge_stats')) {
+            return;
+        }
+        if (Schema::hasColumn('amazon_daily_badge_stats', 'total_l30_orders')) {
+            return;
+        }
+
         Schema::table('amazon_daily_badge_stats', function (Blueprint $table) {
-            $table->integer('total_l30_orders')->default(0)->after('tcos_pct');
+            $col = $table->integer('total_l30_orders')->default(0);
+            if (Schema::hasColumn('amazon_daily_badge_stats', 'tcos_pct')) {
+                $col->after('tcos_pct');
+            } elseif (Schema::hasColumn('amazon_daily_badge_stats', 'total_spend')) {
+                $col->after('total_spend');
+            }
         });
     }
 
@@ -21,6 +33,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('amazon_daily_badge_stats')) {
+            return;
+        }
+        if (! Schema::hasColumn('amazon_daily_badge_stats', 'total_l30_orders')) {
+            return;
+        }
+
         Schema::table('amazon_daily_badge_stats', function (Blueprint $table) {
             $table->dropColumn('total_l30_orders');
         });

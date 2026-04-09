@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+        if (Schema::hasColumn('product_master', 'group_id')) {
+            return;
+        }
+
         Schema::table('product_master', function (Blueprint $table) {
             $table->unsignedBigInteger('group_id')->nullable()->index()->after('sku');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+        if (! Schema::hasColumn('product_master', 'group_id')) {
+            return;
+        }
+
         Schema::table('product_master', function (Blueprint $table) {
             $table->dropColumn('group_id');
         });

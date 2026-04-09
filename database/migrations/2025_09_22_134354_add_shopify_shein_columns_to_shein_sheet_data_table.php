@@ -11,10 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('shein_sheet_data', function (Blueprint $table) {
-            $table->integer('shopify_sheinl30')->nullable();
-            $table->integer('shopify_sheinl60')->nullable();
-        });
+        if (! Schema::hasTable('shein_sheet_data')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('shein_sheet_data', 'shopify_sheinl30')) {
+            Schema::table('shein_sheet_data', function (Blueprint $table) {
+                $table->integer('shopify_sheinl30')->nullable();
+            });
+        }
+        if (! Schema::hasColumn('shein_sheet_data', 'shopify_sheinl60')) {
+            Schema::table('shein_sheet_data', function (Blueprint $table) {
+                $table->integer('shopify_sheinl60')->nullable();
+            });
+        }
     }
 
     /**
@@ -22,8 +32,21 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('shein_sheet_data', function (Blueprint $table) {
-            $table->dropColumn(['shopify_sheinl30', 'shopify_sheinl60']);
+        if (! Schema::hasTable('shein_sheet_data')) {
+            return;
+        }
+
+        $cols = array_values(array_filter(
+            ['shopify_sheinl30', 'shopify_sheinl60'],
+            fn (string $c): bool => Schema::hasColumn('shein_sheet_data', $c)
+        ));
+
+        if ($cols === []) {
+            return;
+        }
+
+        Schema::table('shein_sheet_data', function (Blueprint $table) use ($cols): void {
+            $table->dropColumn($cols);
         });
     }
 };

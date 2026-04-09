@@ -11,6 +11,10 @@ class CreateSheinListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('shein_listing_statuses')) {
+            return;
+        }
+
         Schema::create('shein_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

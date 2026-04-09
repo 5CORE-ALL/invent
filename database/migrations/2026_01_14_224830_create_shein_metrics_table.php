@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('shein_metrics')) {
+            return;
+        }
+
         Schema::create('shein_metrics', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique()->index();

@@ -10,6 +10,10 @@ return new class extends Migration {
      */
     public function up()
     {
+        if (! Schema::hasTable('users') || Schema::hasColumn('users', 'role')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->string('role')->default('user');
         });
@@ -20,6 +24,10 @@ return new class extends Migration {
      */
     public function down()
     {
+        if (! Schema::hasTable('users') || ! Schema::hasColumn('users', 'role')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->dropColumn('role');
         });

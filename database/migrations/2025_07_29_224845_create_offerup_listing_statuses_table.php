@@ -11,6 +11,10 @@ class CreateOfferupListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('offerup_listing_statuses')) {
+            return;
+        }
+
         Schema::create('offerup_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

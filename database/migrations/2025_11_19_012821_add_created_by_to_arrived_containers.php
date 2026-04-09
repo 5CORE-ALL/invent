@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('arrived_containers')) {
+            return;
+        }
+        if (Schema::hasColumn('arrived_containers', 'created_by')) {
+            return;
+        }
+
         Schema::table('arrived_containers', function (Blueprint $table) {
             $table->unsignedBigInteger('created_by')->nullable()->after('specification');
 
@@ -25,6 +32,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('arrived_containers')) {
+            return;
+        }
+        if (! Schema::hasColumn('arrived_containers', 'created_by')) {
+            return;
+        }
+
         Schema::table('arrived_containers', function (Blueprint $table) {
             $table->dropForeign(['created_by']);
             $table->dropColumn('created_by');

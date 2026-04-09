@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('wayfair_product_sheets')) {
+            return;
+        }
+        if (Schema::hasColumn('wayfair_product_sheets', 'views')) {
+            return;
+        }
+
         Schema::table('wayfair_product_sheets', function (Blueprint $table) {
             $table->integer('views')->nullable()->after('l60');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('wayfair_product_sheets')) {
+            return;
+        }
+        if (! Schema::hasColumn('wayfair_product_sheets', 'views')) {
+            return;
+        }
+
         Schema::table('wayfair_product_sheets', function (Blueprint $table) {
             $table->dropColumn('views');
         });

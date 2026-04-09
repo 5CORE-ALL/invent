@@ -11,6 +11,10 @@ class CreateWalmartListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('walmart_listing_statuses')) {
+            return;
+        }
+
         Schema::create('walmart_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

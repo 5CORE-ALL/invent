@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('tiktok_campaign_reports')) {
+            return;
+        }
+        if (Schema::hasColumn('tiktok_campaign_reports', 'custom_status')) {
+            return;
+        }
+
         Schema::table('tiktok_campaign_reports', function (Blueprint $table) {
             $table->string('custom_status')->nullable()->after('status');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('tiktok_campaign_reports')) {
+            return;
+        }
+        if (! Schema::hasColumn('tiktok_campaign_reports', 'custom_status')) {
+            return;
+        }
+
         Schema::table('tiktok_campaign_reports', function (Blueprint $table) {
             $table->dropColumn('custom_status');
         });

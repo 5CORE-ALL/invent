@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_listing_daily_metrics')) {
+            return;
+        }
+
         Schema::create('amazon_listing_daily_metrics', function (Blueprint $table) {
             $table->id();
             $table->date('date')->unique()->index();

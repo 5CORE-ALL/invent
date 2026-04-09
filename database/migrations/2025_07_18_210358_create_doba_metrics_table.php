@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('doba_metrics')) {
+            return;
+        }
+
         Schema::create('doba_metrics', function (Blueprint $table) {
             $table->id();
             $table->string('sku');

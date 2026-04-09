@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('arrived_containers')) {
+            return;
+        }
+        if (Schema::hasColumn('arrived_containers', 'transit_container_id')) {
+            return;
+        }
+
         Schema::table('arrived_containers', function (Blueprint $table) {
             $table->unsignedBigInteger('transit_container_id')->nullable()->after('id'); // or after any other column
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('arrived_containers')) {
+            return;
+        }
+        if (! Schema::hasColumn('arrived_containers', 'transit_container_id')) {
+            return;
+        }
+
         Schema::table('arrived_containers', function (Blueprint $table) {
             $table->dropColumn('transit_container_id');
         });

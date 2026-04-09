@@ -11,6 +11,10 @@ class CreateFBShopListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('fb_shop_listing_statuses')) {
+            return;
+        }
+
         Schema::create('fb_shop_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

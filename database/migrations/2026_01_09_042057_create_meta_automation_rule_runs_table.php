@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('meta_automation_rule_runs')) {
+            return;
+        }
+
         Schema::create('meta_automation_rule_runs', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('rule_id')->index();

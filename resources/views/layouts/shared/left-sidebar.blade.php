@@ -290,6 +290,74 @@
                 </div>
             </li>
 
+            {{-- CRM --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#crmNav" aria-expanded="false" aria-controls="crmNav"
+                    class="side-nav-link">
+                    <i class="ri-customer-service-2-line"></i>
+                    <span>CRM</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="crmNav">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('crm.dashboard') }}">
+                                <i class="ri-dashboard-line me-2"></i>Dashboard
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('crm.follow-ups.index') }}">
+                                <i class="ri-calendar-check-line me-2"></i>Follow-ups
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('crm.shopify.customers.index') }}">
+                                <i class="ri-store-2-line me-2"></i>Shopify customers
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('crm.shopify.orders.index') }}">
+                                <i class="ri-shopping-bag-3-line me-2"></i>Shopify orders
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            {{-- CRM --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#crmNav" aria-expanded="false" aria-controls="crmNav"
+                    class="side-nav-link">
+                    <i class="ri-customer-service-2-line"></i>
+                    <span>CRM</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="crmNav">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('crm.dashboard') }}">
+                                <i class="ri-dashboard-line me-2"></i>Dashboard
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('crm.follow-ups.index') }}">
+                                <i class="ri-calendar-check-line me-2"></i>Follow-ups
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('crm.shopify.customers.index') }}">
+                                <i class="ri-store-2-line me-2"></i>Shopify customers
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('crm.shopify.orders.index') }}">
+                                <i class="ri-shopping-bag-3-line me-2"></i>Shopify orders
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             {{-- Team Management --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#userManagement" aria-expanded="false" aria-controls="userManagement"

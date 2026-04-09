@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('meta_campaign_groups')) {
+            return;
+        }
+
         Schema::create('meta_campaign_groups', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('user_id')->nullable();

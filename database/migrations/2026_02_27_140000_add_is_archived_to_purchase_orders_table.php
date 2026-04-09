@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('purchase_orders') || Schema::hasColumn('purchase_orders', 'is_archived')) {
+            return;
+        }
+
         Schema::table('purchase_orders', function (Blueprint $table) {
             $table->boolean('is_archived')->default(false);
         });
@@ -21,6 +25,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('purchase_orders') || ! Schema::hasColumn('purchase_orders', 'is_archived')) {
+            return;
+        }
+
         Schema::table('purchase_orders', function (Blueprint $table) {
             $table->dropColumn('is_archived');
         });

@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('wayfair_pricing_prices')) {
+            return;
+        }
+
         Schema::create('wayfair_pricing_prices', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

@@ -11,22 +11,35 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->text('main_image')->nullable()->after('feature4');
-            $table->text('main_image_brand')->nullable()->after('main_image');
-            $table->text('image1')->nullable()->after('main_image_brand');
-            $table->text('image2')->nullable()->after('image1');
-            $table->text('image3')->nullable()->after('image2');
-            $table->text('image4')->nullable()->after('image3');
-            $table->text('image5')->nullable()->after('image4');
-            $table->text('image6')->nullable()->after('image5');
-            $table->text('image7')->nullable()->after('image6');
-            $table->text('image8')->nullable()->after('image7');
-            $table->text('image9')->nullable()->after('image8');
-            $table->text('image10')->nullable()->after('image9');
-            $table->text('image11')->nullable()->after('image10');
-            $table->text('image12')->nullable()->after('image11');
-        });
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $after = [
+            'main_image' => 'feature4',
+            'main_image_brand' => 'main_image',
+            'image1' => 'main_image_brand',
+            'image2' => 'image1',
+            'image3' => 'image2',
+            'image4' => 'image3',
+            'image5' => 'image4',
+            'image6' => 'image5',
+            'image7' => 'image6',
+            'image8' => 'image7',
+            'image9' => 'image8',
+            'image10' => 'image9',
+            'image11' => 'image10',
+            'image12' => 'image11',
+        ];
+        foreach (array_keys($after) as $col) {
+            if (Schema::hasColumn('product_master', $col)) {
+                continue;
+            }
+            $prev = $after[$col];
+            Schema::table('product_master', function (Blueprint $table) use ($col, $prev) {
+                $table->text($col)->nullable()->after($prev);
+            });
+        }
     }
 
     /**
@@ -34,12 +47,22 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->dropColumn([
-                'main_image', 'main_image_brand',
-                'image1', 'image2', 'image3', 'image4', 'image5', 'image6',
-                'image7', 'image8', 'image9', 'image10', 'image11', 'image12'
-            ]);
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $columns = [
+            'main_image', 'main_image_brand',
+            'image1', 'image2', 'image3', 'image4', 'image5', 'image6',
+            'image7', 'image8', 'image9', 'image10', 'image11', 'image12',
+        ];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('product_master', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('product_master', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

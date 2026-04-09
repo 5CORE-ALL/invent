@@ -11,6 +11,10 @@ class CreateInstagramShopListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('instagram_shop_listing_statuses')) {
+            return;
+        }
+
         Schema::create('instagram_shop_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

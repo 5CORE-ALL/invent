@@ -11,6 +11,10 @@ class CreateFBMarketplaceListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('fb_marketplace_listing_statuses')) {
+            return;
+        }
+
         Schema::create('fb_marketplace_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

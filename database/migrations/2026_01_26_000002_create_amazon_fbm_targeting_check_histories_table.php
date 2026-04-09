@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_fbm_targeting_check_histories')) {
+            return;
+        }
+
         Schema::create('amazon_fbm_targeting_check_histories', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('cvr_remarks')) {
+            return;
+        }
+
         Schema::create('cvr_remarks', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

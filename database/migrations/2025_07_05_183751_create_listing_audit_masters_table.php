@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('listing_audit_masters')) {
+            return;
+        }
+
         Schema::create('listing_audit_masters', function (Blueprint $table) {
             $table->id();
             $table->string('channel');

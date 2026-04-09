@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('facebook_reel_ads')) {
+            return;
+        }
+
         Schema::create('facebook_reel_ads', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

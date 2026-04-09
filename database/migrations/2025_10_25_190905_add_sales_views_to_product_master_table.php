@@ -11,10 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->json('sales')->nullable()->after('Values');
-            $table->json('views')->nullable()->after('sales');
-        });
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('product_master', 'sales')) {
+            Schema::table('product_master', function (Blueprint $table) {
+                $table->json('sales')->nullable()->after('Values');
+            });
+        }
+        if (! Schema::hasColumn('product_master', 'views')) {
+            Schema::table('product_master', function (Blueprint $table) {
+                $table->json('views')->nullable()->after('sales');
+            });
+        }
     }
 
     /**
@@ -22,8 +32,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->dropColumn(['sales', 'views']);
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $columns = ['sales', 'views'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('product_master', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('product_master', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

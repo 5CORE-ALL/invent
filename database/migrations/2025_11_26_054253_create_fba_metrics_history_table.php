@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('fba_metrics_history')) {
+            return;
+        }
+
         Schema::create('fba_metrics_history', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 255);

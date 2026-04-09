@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('shoppable_video_uploads')) {
+            return;
+        }
+
         if(!Schema::hasTable('benefit_video_uploads')) {
             Schema::create('shoppable_video_uploads', function (Blueprint $table) {
                 $table->id();

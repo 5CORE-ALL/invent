@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay_metrics_history')) {
+            return;
+        }
+
         Schema::create('ebay_metrics_history', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

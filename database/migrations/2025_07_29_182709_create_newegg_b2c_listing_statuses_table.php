@@ -11,6 +11,10 @@ class CreateNeweggB2CListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('newegg_b2c_listing_statuses')) {
+            return;
+        }
+
         Schema::create('newegg_b2c_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

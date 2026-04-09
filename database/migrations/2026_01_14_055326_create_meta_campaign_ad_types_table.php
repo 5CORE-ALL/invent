@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('meta_campaign_ad_types')) {
+            return;
+        }
+
         Schema::create('meta_campaign_ad_types', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('user_id')->nullable();

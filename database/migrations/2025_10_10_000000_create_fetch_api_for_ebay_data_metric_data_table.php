@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('fetch_api_for_ebay_data_metric_data')) {
+            return;
+        }
+
         Schema::create('fetch_api_for_ebay_data_metric_data', function (Blueprint $table) {
             $table->id();
             

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('channel_margins')) {
+            return;
+        }
+
         Schema::create('channel_margins', function (Blueprint $table) {
             $table->id();
             $table->string('channel');

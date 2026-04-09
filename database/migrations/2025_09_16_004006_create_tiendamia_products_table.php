@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('tiendamia_products')) {
+            return;
+        }
+
         Schema::create('tiendamia_products', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique()->nullable();

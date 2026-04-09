@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('ebay_2_priority_reports')) {
+            return;
+        }
+        if (Schema::hasColumn('ebay_2_priority_reports', 'pink_dil_paused_at')) {
+            return;
+        }
+
         Schema::table('ebay_2_priority_reports', function (Blueprint $table) {
             $table->timestamp('pink_dil_paused_at')->nullable()->after('campaignStatus')->comment('Timestamp when campaign was paused by pink DIL cron');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('ebay_2_priority_reports')) {
+            return;
+        }
+        if (! Schema::hasColumn('ebay_2_priority_reports', 'pink_dil_paused_at')) {
+            return;
+        }
+
         Schema::table('ebay_2_priority_reports', function (Blueprint $table) {
             $table->dropColumn('pink_dil_paused_at');
         });

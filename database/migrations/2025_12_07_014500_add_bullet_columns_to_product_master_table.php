@@ -11,13 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->text('bullet1')->nullable()->after('title60');
-            $table->text('bullet2')->nullable()->after('bullet1');
-            $table->text('bullet3')->nullable()->after('bullet2');
-            $table->text('bullet4')->nullable()->after('bullet3');
-            $table->text('bullet5')->nullable()->after('bullet4');
-        });
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $after = ['bullet1' => 'title60', 'bullet2' => 'bullet1', 'bullet3' => 'bullet2', 'bullet4' => 'bullet3', 'bullet5' => 'bullet4'];
+        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
+            if (Schema::hasColumn('product_master', $col)) {
+                continue;
+            }
+            $prev = $after[$col];
+            Schema::table('product_master', function (Blueprint $table) use ($col, $prev) {
+                $table->text($col)->nullable()->after($prev);
+            });
+        }
     }
 
     /**
@@ -25,8 +32,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('product_master', function (Blueprint $table) {
-            $table->dropColumn(['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5']);
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $columns = ['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('product_master', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('product_master', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

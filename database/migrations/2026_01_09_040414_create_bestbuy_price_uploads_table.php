@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('bestbuy_price_uploads')) {
+            return;
+        }
+
         Schema::create('bestbuy_price_uploads', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

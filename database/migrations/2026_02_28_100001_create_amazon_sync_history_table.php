@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_sync_history')) {
+            return;
+        }
+
         Schema::create('amazon_sync_history', function (Blueprint $table) {
             $table->id();
             $table->timestamp('started_at');

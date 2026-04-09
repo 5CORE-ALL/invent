@@ -8,14 +8,30 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('orders_on_hold_issue_histories', function (Blueprint $table) {
-            $table->unsignedInteger('revision_no')->nullable()->after('event_type');
+        $tableName = 'orders_on_hold_issue_histories';
+
+        if (! Schema::hasTable($tableName) || Schema::hasColumn($tableName, 'revision_no')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+            if (Schema::hasColumn($tableName, 'event_type')) {
+                $table->unsignedInteger('revision_no')->nullable()->after('event_type');
+            } else {
+                $table->unsignedInteger('revision_no')->nullable();
+            }
         });
     }
 
     public function down(): void
     {
-        Schema::table('orders_on_hold_issue_histories', function (Blueprint $table) {
+        $tableName = 'orders_on_hold_issue_histories';
+
+        if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'revision_no')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) {
             $table->dropColumn('revision_no');
         });
     }

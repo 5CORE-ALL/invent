@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('mirakl_daily_data')) {
+            return;
+        }
+
         Schema::create('mirakl_daily_data', function (Blueprint $table) {
             $table->id();
             

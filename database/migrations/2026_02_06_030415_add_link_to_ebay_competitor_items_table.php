@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('ebay_competitor_items')) {
+            return;
+        }
+        if (Schema::hasColumn('ebay_competitor_items', 'link')) {
+            return;
+        }
+
         Schema::table('ebay_competitor_items', function (Blueprint $table) {
             $table->text('link')->nullable()->after('item_id');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('ebay_competitor_items')) {
+            return;
+        }
+        if (! Schema::hasColumn('ebay_competitor_items', 'link')) {
+            return;
+        }
+
         Schema::table('ebay_competitor_items', function (Blueprint $table) {
             $table->dropColumn('link');
         });

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('purchasing_power_products')) {
+            return;
+        }
+
         Schema::create('purchasing_power_products', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique()->nullable();

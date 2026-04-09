@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('shopify_facebook_campaigns')) {
+            return;
+        }
+
         Schema::create('shopify_facebook_campaigns', function (Blueprint $table) {
             $table->id();
             $table->string('campaign_id', 100)->nullable();

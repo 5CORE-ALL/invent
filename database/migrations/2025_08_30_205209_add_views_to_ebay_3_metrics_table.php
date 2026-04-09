@@ -11,8 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('ebay_3_metrics', function (Blueprint $table) {
-            $table->unsignedBigInteger('views')->nullable()->after('ebay_price');   
+        if (! Schema::hasTable('ebay_3_metrics') || Schema::hasColumn('ebay_3_metrics', 'views')) {
+            return;
+        }
+
+        $afterEbayPrice = Schema::hasColumn('ebay_3_metrics', 'ebay_price');
+
+        Schema::table('ebay_3_metrics', function (Blueprint $table) use ($afterEbayPrice): void {
+            if ($afterEbayPrice) {
+                $table->unsignedBigInteger('views')->nullable()->after('ebay_price');
+            } else {
+                $table->unsignedBigInteger('views')->nullable();
+            }
         });
     }
 
@@ -21,6 +31,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('ebay_3_metrics') || ! Schema::hasColumn('ebay_3_metrics', 'views')) {
+            return;
+        }
+
         Schema::table('ebay_3_metrics', function (Blueprint $table) {
             $table->dropColumn('views');
         });

@@ -11,6 +11,10 @@ class CreateAutoDSListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('auto_ds_listing_statuses')) {
+            return;
+        }
+
         Schema::create('auto_ds_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

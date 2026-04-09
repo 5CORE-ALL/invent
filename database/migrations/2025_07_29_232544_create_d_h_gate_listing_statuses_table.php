@@ -11,6 +11,10 @@ class CreateDHGateListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('dhgate_listing_statuses')) {
+            return;
+        }
+
         Schema::create('dhgate_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

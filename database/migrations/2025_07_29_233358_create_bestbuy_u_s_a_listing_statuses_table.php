@@ -11,6 +11,10 @@ class CreateBestbuyUSAListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('bestbuy_usa_listing_statuses')) {
+            return;
+        }
+
         Schema::create('bestbuy_usa_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

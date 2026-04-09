@@ -11,9 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('inventories') || Schema::hasColumn('inventories', 'incoming_images')) {
+            return;
+        }
+
         Schema::table('inventories', function (Blueprint $table) {
-            if (! Schema::hasColumn('inventories', 'incoming_images')) {
+            if (Schema::hasColumn('inventories', 'warehouse_id')) {
                 $table->json('incoming_images')->nullable()->after('warehouse_id');
+            } else {
+                $table->json('incoming_images')->nullable();
             }
         });
     }
@@ -23,10 +29,12 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('inventories') || ! Schema::hasColumn('inventories', 'incoming_images')) {
+            return;
+        }
+
         Schema::table('inventories', function (Blueprint $table) {
-            if (Schema::hasColumn('inventories', 'incoming_images')) {
-                $table->dropColumn('incoming_images');
-            }
+            $table->dropColumn('incoming_images');
         });
     }
 };

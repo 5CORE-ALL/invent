@@ -11,8 +11,19 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('tasks', function (Blueprint $table) {
-            $table->string('image')->nullable()->after('link9');
+        if (! Schema::hasTable('tasks')) {
+            return;
+        }
+        if (Schema::hasColumn('tasks', 'image')) {
+            return;
+        }
+
+        $afterLink9 = Schema::hasColumn('tasks', 'link9');
+        Schema::table('tasks', function (Blueprint $table) use ($afterLink9) {
+            $column = $table->string('image')->nullable();
+            if ($afterLink9) {
+                $column->after('link9');
+            }
         });
     }
 
@@ -21,6 +32,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('tasks')) {
+            return;
+        }
+        if (! Schema::hasColumn('tasks', 'image')) {
+            return;
+        }
+
         Schema::table('tasks', function (Blueprint $table) {
             $table->dropColumn('image');
         });

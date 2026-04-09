@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('marketplace_push_logs')) {
+            return;
+        }
+
         Schema::create('marketplace_push_logs', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 255)->index();

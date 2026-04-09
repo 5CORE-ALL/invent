@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('users')) {
+            return;
+        }
+        if (Schema::hasColumn('users', 'logined')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->tinyInteger('logined')->default(0)->after('password')->comment('0=logged out, 1=logged in');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('users')) {
+            return;
+        }
+        if (! Schema::hasColumn('users', 'logined')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->dropColumn('logined');
         });

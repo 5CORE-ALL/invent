@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('meta_ads_raw_data')) {
+            return;
+        }
+
         Schema::create('meta_ads_raw_data', function (Blueprint $table) {
             $table->id();
             $table->string('ad_id', 191)->comment('Facebook Ad ID');

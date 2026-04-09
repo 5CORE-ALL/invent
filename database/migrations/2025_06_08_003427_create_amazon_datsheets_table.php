@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_datsheets')) {
+            return;
+        }
+
         Schema::create('amazon_datsheets', function (Blueprint $table) {
             $table->id();
             $table->integer('units_ordered_l30')->nullable();

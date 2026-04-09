@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('payment_vouchers')) {
+            return;
+        }
+
         Schema::create('payment_vouchers', function (Blueprint $table) {
             $table->id();
             $table->timestamps();

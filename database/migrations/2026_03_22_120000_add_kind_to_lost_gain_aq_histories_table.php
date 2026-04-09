@@ -8,14 +8,30 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('lost_gain_aq_histories', function (Blueprint $table) {
-            $table->string('kind', 8)->default('aq')->after('batch_uuid')->index();
+        $tableName = 'lost_gain_aq_histories';
+
+        if (! Schema::hasTable($tableName) || Schema::hasColumn($tableName, 'kind')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+            if (Schema::hasColumn($tableName, 'batch_uuid')) {
+                $table->string('kind', 8)->default('aq')->after('batch_uuid')->index();
+            } else {
+                $table->string('kind', 8)->default('aq')->index();
+            }
         });
     }
 
     public function down(): void
     {
-        Schema::table('lost_gain_aq_histories', function (Blueprint $table) {
+        $tableName = 'lost_gain_aq_histories';
+
+        if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'kind')) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) {
             $table->dropColumn('kind');
         });
     }

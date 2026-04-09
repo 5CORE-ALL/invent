@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_competitor_asins')) {
+            return;
+        }
+
         Schema::create('amazon_competitor_asins', function (Blueprint $table) {
             $table->id();
             $table->string('marketplace')->default('amazon');

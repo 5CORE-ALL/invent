@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay2_order_items')) {
+            return;
+        }
+
         Schema::create('ebay2_order_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('ebay2_order_id')->constrained('ebay2_orders')->onDelete('cascade');

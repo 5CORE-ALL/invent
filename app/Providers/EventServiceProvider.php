@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Events\Crm\ShopifyOrderImported;
+use App\Listeners\Crm\CrmActivitySubscriber;
+use App\Listeners\Crm\CreateFollowUpForNewShopifyOrder;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
@@ -19,6 +22,16 @@ class EventServiceProvider extends ServiceProvider
         Registered::class => [
             SendEmailVerificationNotification::class,
         ],
+        ShopifyOrderImported::class => [
+            CreateFollowUpForNewShopifyOrder::class,
+        ],
+    ];
+
+    /**
+     * @var array<int, class-string>
+     */
+    protected $subscribe = [
+        CrmActivitySubscriber::class,
     ];
 
     public function boot(): void

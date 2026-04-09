@@ -11,15 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Add apprSbid column to ebay_2_priority_reports table
-        Schema::table('ebay_2_priority_reports', function (Blueprint $table) {
-            $table->string('apprSbid')->nullable()->after('sbid_m');
-        });
+        foreach (['ebay_2_priority_reports', 'ebay_3_priority_reports'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+            if (Schema::hasColumn($tableName, 'apprSbid')) {
+                continue;
+            }
 
-        // Add apprSbid column to ebay_3_priority_reports table
-        Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
-            $table->string('apprSbid')->nullable()->after('sbid_m');
-        });
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->string('apprSbid')->nullable()->after('sbid_m');
+            });
+        }
     }
 
     /**
@@ -27,12 +30,17 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('ebay_2_priority_reports', function (Blueprint $table) {
-            $table->dropColumn('apprSbid');
-        });
+        foreach (['ebay_2_priority_reports', 'ebay_3_priority_reports'] as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+            if (! Schema::hasColumn($tableName, 'apprSbid')) {
+                continue;
+            }
 
-        Schema::table('ebay_3_priority_reports', function (Blueprint $table) {
-            $table->dropColumn('apprSbid');
-        });
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->dropColumn('apprSbid');
+            });
+        }
     }
 };

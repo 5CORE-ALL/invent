@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('meta_ad_groups')) {
+            return;
+        }
+
         Schema::create('meta_ad_groups', function (Blueprint $table) {
             $table->id();
             $table->string('group_name', 191)->unique();

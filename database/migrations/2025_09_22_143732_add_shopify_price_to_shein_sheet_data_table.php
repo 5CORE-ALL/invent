@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('shein_sheet_data') || Schema::hasColumn('shein_sheet_data', 'shopify_price')) {
+            return;
+        }
+
         Schema::table('shein_sheet_data', function (Blueprint $table) {
             $table->decimal('shopify_price', 8, 2)->nullable();
         });
@@ -21,6 +25,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('shein_sheet_data') || ! Schema::hasColumn('shein_sheet_data', 'shopify_price')) {
+            return;
+        }
+
         Schema::table('shein_sheet_data', function (Blueprint $table) {
             $table->dropColumn('shopify_price');
         });

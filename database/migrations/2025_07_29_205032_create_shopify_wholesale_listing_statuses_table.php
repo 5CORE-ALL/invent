@@ -11,6 +11,10 @@ class CreateShopifyWholesaleListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('shopify_wholesale_listing_statuses')) {
+            return;
+        }
+
         Schema::create('shopify_wholesale_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

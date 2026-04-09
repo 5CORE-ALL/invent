@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('sku_monthly_orders')) {
+            return;
+        }
+
         Schema::create('sku_monthly_orders', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 100)->index();

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('neweegg_sheet_datas')) {
+            return;
+        }
+
         Schema::create('neweegg_sheet_datas', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

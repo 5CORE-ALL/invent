@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('meta_all_ads')) {
+            return;
+        }
+        if (Schema::hasColumn('meta_all_ads', 'platform')) {
+            return;
+        }
+
         Schema::table('meta_all_ads', function (Blueprint $table) {
             $table->string('platform', 50)->nullable()->after('campaign_id')->comment('Facebook, Instagram, or Facebook/Instagram');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('meta_all_ads')) {
+            return;
+        }
+        if (! Schema::hasColumn('meta_all_ads', 'platform')) {
+            return;
+        }
+
         Schema::table('meta_all_ads', function (Blueprint $table) {
             $table->dropColumn('platform');
         });

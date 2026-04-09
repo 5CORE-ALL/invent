@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_fbm_manual')) {
+            return;
+        }
+
         Schema::create('amazon_fbm_manual', function (Blueprint $table) {
             $table->id();
             $table->string('sku');

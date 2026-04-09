@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Services\Crm\Contracts\FollowUpServiceInterface;
+use App\Services\Crm\Contracts\ShopifyServiceInterface;
+use App\Services\Crm\FollowUpService;
+use App\Services\Crm\ShopifyService;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use App\Models\Permission;
@@ -17,7 +21,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(FollowUpServiceInterface::class, FollowUpService::class);
+        $this->app->singleton(ShopifyServiceInterface::class, ShopifyService::class);
     }
 
     /**

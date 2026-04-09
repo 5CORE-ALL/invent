@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('ebay_metrics')) {
+            return;
+        }
+        if (Schema::hasColumn('ebay_metrics', 'listing_status')) {
+            return;
+        }
+
         Schema::table('ebay_metrics', function (Blueprint $table) {
             $table->string('listing_status')->nullable()->after('report_date');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('ebay_metrics')) {
+            return;
+        }
+        if (! Schema::hasColumn('ebay_metrics', 'listing_status')) {
+            return;
+        }
+
         Schema::table('ebay_metrics', function (Blueprint $table) {
             $table->dropColumn('listing_status');
         });

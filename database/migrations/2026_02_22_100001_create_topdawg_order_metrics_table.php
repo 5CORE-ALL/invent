@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('topdawg_order_metrics')) {
+            return;
+        }
+
         Schema::create('topdawg_order_metrics', function (Blueprint $table) {
             $table->id();
             $table->date('order_date')->nullable();

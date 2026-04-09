@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('aliexpress_lmp_data_sheet')) {
+            return;
+        }
+
         Schema::create('aliexpress_lmp_data_sheet', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

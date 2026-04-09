@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('amazon_orders')) {
+            return;
+        }
+
         Schema::create('amazon_orders', function (Blueprint $table) {
             $table->id();
             $table->string('amazon_order_id')->unique();

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('channel_master') || Schema::hasColumn('channel_master', 'nr')) {
+            return;
+        }
+
         Schema::table('channel_master', function (Blueprint $table) {
 
             $table->boolean('nr')->default(0)->after('sheet_link');

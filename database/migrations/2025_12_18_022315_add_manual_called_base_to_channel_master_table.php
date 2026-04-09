@@ -11,10 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('channel_master', function (Blueprint $table) {
-            $table->decimal('base', 10, 2)->nullable()->default(0)->after('channel_percentage');
-            $table->decimal('target', 10, 2)->nullable()->default(0)->after('base');
-        });
+        if (! Schema::hasTable('channel_master')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('channel_master', 'base')) {
+            Schema::table('channel_master', function (Blueprint $table) {
+                $table->decimal('base', 10, 2)->nullable()->default(0)->after('channel_percentage');
+            });
+        }
+        if (! Schema::hasColumn('channel_master', 'target')) {
+            Schema::table('channel_master', function (Blueprint $table) {
+                $table->decimal('target', 10, 2)->nullable()->default(0)->after('base');
+            });
+        }
     }
 
     /**
@@ -22,8 +32,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('channel_master', function (Blueprint $table) {
-            $table->dropColumn(['base', 'target']);
+        if (! Schema::hasTable('channel_master')) {
+            return;
+        }
+
+        $columns = ['base', 'target'];
+        $toDrop = array_values(array_filter($columns, fn (string $col) => Schema::hasColumn('channel_master', $col)));
+        if ($toDrop === []) {
+            return;
+        }
+
+        Schema::table('channel_master', function (Blueprint $table) use ($toDrop) {
+            $table->dropColumn($toDrop);
         });
     }
 };

@@ -11,8 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('inventories')) {
+            return;
+        }
+
+        if (Schema::hasColumn('inventories', 'combo_action')) {
+            return;
+        }
+
         Schema::table('inventories', function (Blueprint $table) {
-            $table->string('combo_action')->nullable()->after('action');
+            if (Schema::hasColumn('inventories', 'action')) {
+                $table->string('combo_action')->nullable()->after('action');
+            } else {
+                $table->string('combo_action')->nullable();
+            }
         });
     }
 
@@ -21,6 +33,14 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('inventories')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('inventories', 'combo_action')) {
+            return;
+        }
+
         Schema::table('inventories', function (Blueprint $table) {
             $table->dropColumn('combo_action');
         });

@@ -10,6 +10,10 @@ return new class extends Migration {
      */
     public function up(): void
     {
+        if (Schema::hasTable('cvr_lqs')) {
+            return;
+        }
+
         Schema::create('cvr_lqs', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->unique();

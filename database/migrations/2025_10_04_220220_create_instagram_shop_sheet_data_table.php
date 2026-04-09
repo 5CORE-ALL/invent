@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('instagram_shop_sheet_data')) {
+            return;
+        }
+
         Schema::create('instagram_shop_sheet_data', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();

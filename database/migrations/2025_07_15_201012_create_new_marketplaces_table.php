@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('new_marketplaces')) {
+            return;
+        }
+
         Schema::create('new_marketplaces', function (Blueprint $table) {
             $table->id();
             $table->string('channel_name')->nullable();

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('listing_mirror_syncs')) {
+            return;
+        }
+
         Schema::create('listing_mirror_syncs', function (Blueprint $table) {
             $table->id();
             $table->string('sku', 100); // Limit length for indexing

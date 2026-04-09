@@ -11,7 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasColumn('channel_master', 'addition_sheet')) {
+        if (! Schema::hasTable('channel_master')) {
+            return;
+        }
+        if (! Schema::hasColumn('channel_master', 'addition_sheet')) {
             Schema::table('channel_master', function (Blueprint $table) {
                 $table->text('addition_sheet')->nullable()->after('missing_link');
             });
@@ -23,6 +26,9 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('channel_master')) {
+            return;
+        }
         if (Schema::hasColumn('channel_master', 'addition_sheet')) {
             Schema::table('channel_master', function (Blueprint $table) {
                 $table->dropColumn('addition_sheet');

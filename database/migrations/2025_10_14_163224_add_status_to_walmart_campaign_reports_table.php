@@ -11,6 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('walmart_campaign_reports')) {
+            return;
+        }
+        if (Schema::hasColumn('walmart_campaign_reports', 'status')) {
+            return;
+        }
+
         Schema::table('walmart_campaign_reports', function (Blueprint $table) {
             $table->string('status')->nullable()->after('clicks');
         });
@@ -21,6 +28,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('walmart_campaign_reports')) {
+            return;
+        }
+        if (! Schema::hasColumn('walmart_campaign_reports', 'status')) {
+            return;
+        }
+
         Schema::table('walmart_campaign_reports', function (Blueprint $table) {
             $table->dropColumn('status');
         });

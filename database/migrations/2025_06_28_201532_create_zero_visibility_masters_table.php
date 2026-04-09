@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('zero_visibility_masters')) {
+            return;
+        }
+
         Schema::create('zero_visibility_masters', function (Blueprint $table) {
             $table->id();
             $table->string('channel_name');

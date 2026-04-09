@@ -11,6 +11,10 @@ class CreateMercariWoShipListingStatusesTable extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('mercari_wo_ship_listing_statuses')) {
+            return;
+        }
+
         Schema::create('mercari_wo_ship_listing_statuses', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();
