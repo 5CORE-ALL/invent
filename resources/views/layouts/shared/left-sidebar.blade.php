@@ -44,6 +44,37 @@
                 </a>
             </li>
 
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarResourcesMaster" aria-expanded="{{ request()->routeIs('resources-master.*') ? 'true' : 'false' }}" aria-controls="sidebarResourcesMaster"
+                    class="side-nav-link {{ request()->routeIs('resources-master.*') ? 'active' : '' }}">
+                    <i class="ri-folder-shield-2-line"></i>
+                    <span> Resources Master </span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse {{ request()->routeIs('resources-master.*') ? 'show' : '' }}" id="sidebarResourcesMaster">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('resources-master.section', 'rr_files') }}" class="{{ request()->is('resources-master/section/rr_files') ? 'active' : '' }}">R&amp;R Files</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.section', 'training_resources') }}" class="{{ request()->is('resources-master/section/training_resources') ? 'active' : '' }}">Training Resources</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.section', 'checklist_forms') }}" class="{{ request()->is('resources-master/section/checklist_forms') ? 'active' : '' }}">Checklist Forms</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.section', 'media_gallery') }}" class="{{ request()->is('resources-master/section/media_gallery') ? 'active' : '' }}">Media Gallery</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.section', 'links_videos') }}" class="{{ request()->is('resources-master/section/links_videos') ? 'active' : '' }}">Links / Videos</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.dashboard') }}" class="{{ request()->routeIs('resources-master.dashboard') ? 'active' : '' }}">Overview</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
                 <li class="side-nav-item">
                  <a href="{{ route('all.marketplace.master') }}" class="side-nav-link">
                     <i class="ri-file-line"></i>
@@ -246,6 +277,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('tasks.summary') }}">
+                                <i class="ri-file-list-3-line me-2"></i>Task Summary
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ url('tasks/deleted') }}">
                                 <i class="ri-delete-bin-line me-2"></i>Archived Tasks
                             </a>
@@ -254,12 +290,12 @@
                 </div>
             </li>
 
-            {{-- User Management --}}
+            {{-- Team Management --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#userManagement" aria-expanded="false" aria-controls="userManagement"
                     class="side-nav-link">
                     <i class="ri-user-settings-line"></i>
-                    <span>User Management</span>
+                    <span>Team Management</span>
                     <span class="menu-arrow"></span>
                 </a>
                 <div class="collapse" id="userManagement">

@@ -3,10 +3,11 @@
 @section('css')
 <!-- task dashboard css -->
 <style>
+        /* Menu cards ~30% smaller than original (0.7 scale on spacing/type) */
         .dashboard-card {
             background: #ffffff !important;
-            border-radius: 12px !important;
-            padding: 20px !important;
+            border-radius: 8px !important;
+            padding: 14px !important;
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06) !important;
             transition: all 0.2s ease !important;
             position: relative !important;
@@ -58,27 +59,27 @@
             top: 0 !important;
             left: 0 !important;
             right: 0 !important;
-            height: 4px !important;
+            height: 3px !important;
             background: #3b82f6 !important;
-            border-radius: 12px 12px 0 0 !important;
+            border-radius: 8px 8px 0 0 !important;
         }
 
         .card-header {
             display: flex !important;
             justify-content: space-between !important;
             align-items: flex-start !important;
-            margin-bottom: 12px !important;
-            margin-top: 8px !important;
+            margin-bottom: 8px !important;
+            margin-top: 6px !important;
         }
 
         .card-icon {
-            width: 52px !important;
-            height: 52px !important;
-            border-radius: 10px !important;
+            width: 36px !important;
+            height: 36px !important;
+            border-radius: 7px !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            font-size: 1.6em !important;
+            font-size: 1.12em !important;
             margin-bottom: 0 !important;
             box-shadow: none !important;
             transition: all 0.2s ease !important;
@@ -89,25 +90,25 @@
         }
 
         .card-title {
-            font-size: 1.125rem !important;
+            font-size: 0.875rem !important;
             font-weight: 600 !important;
             color: #111827 !important;
-            margin-bottom: 4px !important;
+            margin-bottom: 3px !important;
             letter-spacing: -0.01em !important;
-            line-height: 1.4 !important;
+            line-height: 1.35 !important;
         }
 
         .card-description {
             color: #6b7280 !important;
-            font-size: 0.875rem !important;
-            line-height: 1.5 !important;
+            font-size: 0.75rem !important;
+            line-height: 1.45 !important;
             margin-bottom: 0 !important;
         }
 
         .card-badge {
-            padding: 4px 12px !important;
-            border-radius: 20px !important;
-            font-size: 0.8125rem !important;
+            padding: 3px 8px !important;
+            border-radius: 14px !important;
+            font-size: 0.7rem !important;
             font-weight: 600 !important;
             box-shadow: none !important;
             white-space: nowrap !important;
@@ -176,18 +177,18 @@
 
         .subcards-preview {
             display: flex !important;
-            gap: 8px !important;
-            margin-top: 14px !important;
-            padding-top: 14px !important;
+            gap: 6px !important;
+            margin-top: 10px !important;
+            padding-top: 10px !important;
             border-top: 1px solid #e5e7eb !important;
             flex-wrap: wrap !important;
         }
 
         .subcard-item {
-            padding: 5px 10px !important;
-            border-radius: 6px !important;
+            padding: 4px 7px !important;
+            border-radius: 4px !important;
             background: #f9fafb !important;
-            font-size: 0.8125rem !important;
+            font-size: 0.7rem !important;
             color: #6b7280 !important;
             display: flex !important;
             align-items: center !important;
@@ -620,14 +621,85 @@
             flex: 1;
             position: relative;
             min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Fullscreen pie: pie + single-column legend with figures (no Chart.js multi-column wrap) */
+        .chart-modal-pie-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: stretch;
+            gap: 1rem;
+            flex: 1;
+            min-height: 0;
+            height: 100%;
+        }
+        .chart-modal-canvas-wrap {
+            flex: 1 1 45%;
+            min-width: 260px;
+            min-height: min(72vh, 560px);
+            height: min(72vh, 560px);
+            position: relative;
+        }
+        .chart-modal-legend-col {
+            flex: 1 1 280px;
+            max-width: 100%;
+            max-height: min(75vh, 620px);
+            overflow-x: hidden;
+            overflow-y: auto;
+            padding: 4px 8px 8px 8px;
+            margin: 0;
+            border-left: 1px solid #e5e7eb;
+            list-style: none;
+        }
+        .pie-legend-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 12px;
+            line-height: 1.25;
+            color: #374151;
+        }
+        .pie-legend-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            border: 1px solid rgba(0,0,0,0.08);
+        }
+        .pie-legend-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .pie-legend-val {
+            flex: 0 0 auto;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            white-space: nowrap;
+            color: #111827;
+            font-weight: 600;
+        }
+        @media (max-width: 700px) {
+            .chart-modal-legend-col {
+                border-left: none;
+                border-top: 1px solid #e5e7eb;
+                padding-left: 4px;
+                max-height: 40vh;
+            }
         }
 
         .dashboard-grid {
             display: grid !important;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) !important;
-            gap: 20px !important;
-            margin-top: 30px !important;
-            margin-bottom: 30px !important;
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;
+            gap: 14px !important;
+            margin-top: 21px !important;
+            margin-bottom: 21px !important;
             padding: 0 !important;
         }
 
@@ -667,177 +739,354 @@
                 grid-template-columns: repeat(4, 1fr) !important;
             }
         }
+
+        /* Top KPI cards: single row, equal width, centered text */
+        .dashboard-kpi-strip {
+            flex-wrap: nowrap;
+        }
+        .dashboard-kpi-strip > .col {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        .dashboard-kpi-strip .kpi-card-link {
+            display: block;
+            height: 100%;
+            text-decoration: none;
+        }
+        .dashboard-kpi-strip .card.widget-flat .card-body {
+            text-align: center;
+        }
+        .dashboard-kpi-strip .card.widget-flat .kpi-icon {
+            font-size: 1.35rem;
+            opacity: 0.95;
+            margin-bottom: 0.35rem;
+            line-height: 1;
+        }
+        .dashboard-kpi-strip .card.widget-flat h2 {
+            font-size: clamp(1.25rem, 3.5vw, 1.75rem);
+        }
+
+        /* Match All Marketplace Master summary pills; ~30% smaller than default fs-6 p-2 */
+        #dashboard-summary-stats .badge {
+            font-size: 0.8125rem !important;
+            padding: 0.4rem 0.65rem !important;
+            line-height: 1.25 !important;
+        }
+        #dashboard-summary-stats h6 {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        /* Chart cards: ~50% smaller footprint than previous (height + chrome) */
+        .dashboard-charts-row {
+            --dashboard-chart-h: clamp(130px, 19vh, 240px);
+        }
+        .dashboard-charts-row .dashboard-chart-card {
+            position: relative;
+            border: 1px solid #e8ecf1 !important;
+            border-radius: 10px !important;
+            overflow: hidden;
+            background: linear-gradient(165deg, #ffffff 0%, #f8fafc 55%, #ffffff 100%);
+            box-shadow:
+                0 1px 2px rgba(15, 23, 42, 0.04),
+                0 8px 24px -4px rgba(15, 23, 42, 0.08) !important;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .dashboard-charts-row .dashboard-chart-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            border-radius: 10px 10px 0 0;
+            z-index: 1;
+        }
+        .dashboard-charts-row .dashboard-chart-card:hover {
+            box-shadow:
+                0 4px 6px rgba(15, 23, 42, 0.05),
+                0 14px 32px -6px rgba(15, 23, 42, 0.12) !important;
+        }
+        .dashboard-charts-row .dashboard-chart-card--pie::before {
+            background: linear-gradient(90deg, #0d9488, #14b8a6) !important;
+        }
+        .dashboard-charts-row .dashboard-chart-card--bar::before {
+            background: linear-gradient(90deg, #4f46e5, #6366f1) !important;
+        }
+        .dashboard-charts-row .dashboard-chart-badge-teal {
+            background: linear-gradient(135deg, #0d9488, #0f766e) !important;
+            color: #fff !important;
+        }
+        .dashboard-charts-row .dashboard-chart-badge-indigo {
+            background: linear-gradient(135deg, #4f46e5, #4338ca) !important;
+            color: #fff !important;
+        }
+        .dashboard-charts-row .dashboard-chart-card .card-body {
+            padding: 0.5rem 0.6rem 0.55rem;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .dashboard-charts-row .dashboard-chart-head {
+            margin-bottom: 0.2rem;
+        }
+        .dashboard-charts-row .dashboard-chart-head .header-title {
+            font-size: 0.8125rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+        .dashboard-charts-row .dashboard-chart-sub {
+            font-size: 0.65rem;
+            color: #64748b;
+            margin-top: 0.08rem;
+            line-height: 1.3;
+        }
+        .dashboard-charts-row .dashboard-chart-sub .dashboard-chart-total-amount {
+            font-size: 2em;
+            font-weight: 600;
+            color: #0f172a;
+            letter-spacing: -0.02em;
+        }
+        .dashboard-charts-row .dashboard-chart-canvas-wrap {
+            position: relative;
+            width: 100%;
+            min-height: var(--dashboard-chart-h);
+            height: var(--dashboard-chart-h);
+            max-width: 100%;
+            margin: 0 auto;
+            flex: 1 1 auto;
+        }
+        .dashboard-charts-row .dashboard-chart-badge {
+            font-size: 0.5rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.12rem 0.35rem;
+            border-radius: 4px;
+        }
+        /* Chart cards: icon-only actions (top right) */
+        .dashboard-charts-row .dashboard-chart-head-actions .btn-chart-icon {
+            width: 1.65rem;
+            height: 1.65rem;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 7px;
+            line-height: 1;
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        }
+        .dashboard-charts-row .dashboard-chart-card--pie .dashboard-chart-head-actions .btn-chart-icon {
+            border: 1px solid rgba(13, 148, 136, 0.35);
+            background: linear-gradient(180deg, #f0fdfa 0%, #ecfdf5 100%);
+            color: #0f766e;
+        }
+        .dashboard-charts-row .dashboard-chart-card--pie .dashboard-chart-head-actions .btn-chart-icon:hover {
+            background: #ccfbf1;
+            border-color: #0d9488;
+            color: #115e59;
+        }
+        .dashboard-charts-row .dashboard-chart-card--bar .dashboard-chart-head-actions .btn-chart-icon {
+            border: 1px solid rgba(79, 70, 229, 0.4);
+            background: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
+            color: #4338ca;
+        }
+        .dashboard-charts-row .dashboard-chart-card--bar .dashboard-chart-head-actions .btn-chart-icon:hover {
+            background: #c7d2fe;
+            border-color: #6366f1;
+            color: #312e81;
+        }
+        .dashboard-charts-row .dashboard-chart-head-actions .btn-chart-icon i {
+            font-size: 0.95rem;
+        }
+        .dashboard-charts-row .dashboard-chart-head-actions {
+            position: relative;
+            z-index: 2;
+        }
+        @media (max-width: 991.98px) {
+            .dashboard-charts-row {
+                --dashboard-chart-h: clamp(110px, 21vw, 170px);
+            }
+        }
 </style>
 @endsection
 
 @section('content')
 @include('layouts.shared/page-title', ['sub_title' => 'Menu', 'page_title' => 'Dashboard'])
 
-    <div class="row">
-         <div class="col-xxl-3 col-sm-6">
-        <a href="https://inventory.5coremanagement.com/channel/channels/channel-masters" target="_blank" style="text-decoration: none;">       
-            <div class="card widget-flat text-bg-pink">
-                <div class="card-body">
-                    <div class="float-end">
-                        <i class="ri-shopping-cart-line widget-icon"></i>
-                    </div>
-                    <h6 class="text-uppercase mt-0" title="Total Sales L30">L30 Total Sales</h6>
-                    <h2 class="my-2" id="l30-sales-value">--</h2>
-                    <p class="mb-0 text-dark small" style="font-weight: 600;">
-                        <i class="ri-time-line"></i> Last 30 Days
-                    </p>
-                </div>
-            </div>
-            </a>
-        </div> 
-        <!-- end col-->
-
-        <div class="col-xxl-3 col-sm-6">
-            <a href="https://inventory.5coremanagement.com/channel/channels/channel-masters" target="_blank" style="text-decoration: none;">       
-            <div class="card widget-flat text-bg-success">
-                <div class="card-body">
-                    <div class="float-end">
-                        <i class="ri-percent-line widget-icon"></i>
-                    </div>
-                    <h6 class="text-uppercase mt-0" title="Profit Margin">Profit Margin %</h6>
-                    <h2 class="my-2" id="profit-margin-value">--</h2>
-                    <p class="mb-0 text-dark small" style="font-weight: 600;">
-                        <i class="ri-calculator-line"></i> Calculated from L30
-                    </p>
-                </div>
-            </div>
-            </a>
-        </div> <!-- end col-->
-
-        <div class="col-xxl-3 col-sm-6">
-            <a href="https://inventory.5coremanagement.com/channel/channels/channel-masters" target="_blank" style="text-decoration: none;">       
-            <div class="card widget-flat text-bg-warning">
-                <div class="card-body">
-                    <div class="float-end">
-                        <i class="ri-arrow-up-circle-line widget-icon"></i>
-                    </div>
-                    <h6 class="text-uppercase mt-0" title="Return on Investment">ROI %</h6>
-                    <h2 class="my-2" id="roi-value">--</h2>
-                    <p class="mb-0 text-dark small" style="font-weight: 600;">
-                        <i class="ri-line-chart-line"></i> Return on COGS
-                    </p>
-                </div>
-            </div>
-            </a>
-        </div> <!-- end col-->
-
-        <div class="col-xxl-3 col-sm-6" style="display:none">
-            <div class="card widget-flat text-bg-info">
-                <div class="card-body">
-                    <div class="float-end">
-                        <i class="ri-currency-line widget-icon"></i>
-                    </div>
-                    <h6 class="text-uppercase mt-0" title="Total Profit">Total Profit $</h6>
-                    <h2 class="my-2" id="total-profit-value">--</h2>
-                    <p class="mb-0 text-dark small" style="font-weight: 600;">
-                        <i class="ri-bank-card-line"></i> Absolute amount
-                    </p>
-                </div>
-            </div>
-        </div> 
-
+    <div id="dashboard-summary-stats" class="mt-2 mb-3 p-3 bg-light rounded">
+        <h6 class="mb-1">Summary Statistics</h6>
+        <div class="d-flex flex-wrap gap-2">
+            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+                Channels: <span id="total-channels">0</span>
+            </span>
+            <span class="badge bg-success fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of Sales column">
+                Sales: <span id="total-l30-sales">$0</span>
+            </span>
+            <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of Orders column">
+                Orders: <span id="total-l30-orders">0</span>
+            </span>
+            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+                Qty items: <span id="total-qty">0</span>
+            </span>
+            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;" title="Blended Gprofit%">
+                GPFT%: <span id="avg-gprofit">0%</span>
+            </span>
+            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $">
+                GPFT: <span id="total-gross-pft">$0</span>
+            </span>
+            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+                G ROI: <span id="avg-groi">0%</span>
+            </span>
+            <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;">
+                Ads Spend: <span id="total-ad-spend">$0</span>
+            </span>
+            <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
+                Total Views: <span id="total-views-badge">0</span>
+            </span>
+            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+                CVR %: <span id="cvr-pct-badge">0%</span>
+            </span>
+            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
+                NPFT: <span id="total-pft">$0</span>
+            </span>
+            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
+                NPFT: <span id="avg-npft">0%</span>
+            </span>
+            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+                NROI: <span id="avg-nroi">0%</span>
+            </span>
+            <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
+                Clicks: <span id="total-clicks">0</span>
+            </span>
+            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+                Missing M: <span id="total-nmap">0</span>
+            </span>
+            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+                Missing L : <span id="total-miss">0</span>
+            </span>
+            <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
+                INV Val: $<span id="inventory-value-amazon">0</span>
+            </span>
+            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Shopify inventory × LP)">
+                Inv@LP: $<span id="inv-at-lp">0</span>
+            </span>
+            <span class="badge bg-success fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of shopify_skus.inv">
+                Shopify Inv: <span id="dashboard-shopify-inv-sum">0</span>
+            </span>
+            <span class="badge bg-success fs-6 p-2" style="color: black; font-weight: bold;" title="product_master.Values → lp (JSON), inv-weighted">
+                LP: <span id="dashboard-shopify-lp-avg">$0</span>
+            </span>
+            <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;" title="INV Val ÷ Sales">
+                TAT: <span id="tat-badge">0</span>
+            </span>
+            <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
+                Ratings &amp; Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
+            </span>
+            <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">
+                Seller Rating &amp; Reviews: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
+            </span>
+        </div>
     </div>
 
-    <div class="row">
-        <div class="col-lg-4">
-            <div class="card">
+    <div class="row g-2 dashboard-charts-row align-items-stretch mb-1">
+        <div class="col-12 col-md-6 col-lg-3 d-flex">
+            <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
-                    <div class="card-widgets">
-                        <a href="https://inventory.5coremanagement.com/channel/channels/channel-masters" target="_blank" title="View Channel Masters"><i class="ri-eye-line"></i></a>
-                        <a href="javascript:;" data-bs-toggle="reload"><i class="ri-refresh-line"></i></a>
-                        <a data-bs-toggle="collapse" href="#weeklysales-collapse" role="button" aria-expanded="false"
-                            aria-controls="weeklysales-collapse"><i class="ri-subtract-line"></i></a>
-                        <a href="#" data-bs-toggle="remove"><i class="ri-close-line"></i></a>
+                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
+                        <div class="min-w-0 flex-grow-1">
+                            <h5 class="header-title mb-0">Sales by Channels</h5>
+                            <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-l30-total" class="dashboard-chart-total-amount">—</span></p>
+                        </div>
+                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-pie-refresh-btn" title="Refresh L30 charts" aria-label="Refresh">
+                                <i class="ri-refresh-line" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-pie-fullscreen-btn" title="L30 fullscreen legend" aria-label="Fullscreen">
+                                <i class="ri-fullscreen-line" aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </div>
-                    <h5 class="header-title mb-0">Sales by Channel's</h5>
-
-                    <div id="weeklysales-collapse" class="collapse pt-3 show">
-                        <div dir="ltr" style="position: relative; height: 300px;">
+                    <div class="pt-1">
+                        <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-chart-wrap">
                             <canvas id="channelSalesChart"></canvas>
                         </div>
-
-                        <div class="row text-center mt-4">
-                            <div class="col-12">
-                                <p class="text-muted small"><strong>L30 Sales by Channel</strong></p>
-                            </div>
-                        </div>
-                        
-                        <div class="row mt-2">
-                            <div class="col text-center">
-                                <button type="button" class="btn btn-sm btn-primary" onclick="loadChannelSalesChart();">
-                                    <i class="ri-refresh-line"></i> Refresh Channels
-                                </button>
-                                <button type="button" class="btn btn-sm btn-info ms-2" onclick="openChartModal();">
-                                    <i class="ri-fullscreen-line"></i> View Fullscreen
-                                </button>
-                            </div>
-                        </div>
                     </div>
-
-                </div> <!-- end card-body-->
-            </div> <!-- end card-->
-        </div> <!-- end col-->
-        <div class="col-lg-8">
-            <div class="card">
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3 d-flex">
+            <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
-                    <div class="card-widgets">
-                        <a href="javascript:;" data-bs-toggle="reload"><i class="ri-refresh-line"></i></a>
-                        <a data-bs-toggle="collapse" href="#yearly-sales-collapse" role="button" aria-expanded="false"
-                            aria-controls="yearly-sales-collapse"><i class="ri-subtract-line"></i></a>
-                        <a href="#" data-bs-toggle="remove"><i class="ri-close-line"></i></a>
+                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
+                        <div class="min-w-0 flex-grow-1">
+                            <h5 class="header-title mb-0">Sales by Channels</h5>
+                            <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-l30-bar-total" class="dashboard-chart-total-amount">—</span></p>
+                        </div>
+                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-l30-bar-refresh-btn" title="Refresh L30 charts" aria-label="Refresh">
+                                <i class="ri-refresh-line" aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </div>
-                    <h5 class="header-title mb-0">Revenue - Daily Sales</h5>
-
-                    <div id="yearly-sales-collapse" class="collapse pt-3 show">
-                        <div dir="ltr" style="position: relative; height: 300px;">
+                    <div class="pt-1">
+                        <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-bar-chart-wrap">
+                            <canvas id="channelSalesBarChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3 d-flex">
+            <div class="card dashboard-chart-card dashboard-chart-card--bar w-100 h-100 border-0">
+                <div class="card-body">
+                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
+                        <div class="min-w-0 flex-grow-1">
+                            <h5 class="header-title mb-0">Y Sales by Channel</h5>
+                            <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-y-total" class="dashboard-chart-total-amount">—</span></p>
+                        </div>
+                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-y-refresh-btn" title="Refresh Y charts" aria-label="Refresh">
+                                <i class="ri-refresh-line" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-y-fullscreen-btn" title="Y Sales fullscreen legend" aria-label="Fullscreen">
+                                <i class="ri-fullscreen-line" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pt-1">
+                        <div dir="ltr" id="daily-sales-chart-wrap" class="dashboard-chart-canvas-wrap">
                             <canvas id="dailySalesChart"></canvas>
                         </div>
-                        
-                        <!-- Metrics Summary Below Chart -->
-                        <div class="row text-center mt-4">
-                            <div class="col-md-6">
-                                <p class="text-muted mb-2"><small>L30 Sales</small></p>
-                                <h5 class="mb-0" id="chart-l30-sales">--</h5>
-                            </div>
-                            <div class="col-md-6">
-                                <p class="text-muted mb-2"><small>Profit Margin</small></p>
-                                <h5 class="mb-0" id="chart-profit-margin">--</h5>
-                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3 d-flex">
+            <div class="card dashboard-chart-card dashboard-chart-card--bar w-100 h-100 border-0">
+                <div class="card-body">
+                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
+                        <div class="min-w-0 flex-grow-1">
+                            <h5 class="header-title mb-0">Y Sales by Channel</h5>
+                            <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-y-bar-total" class="dashboard-chart-total-amount">—</span></p>
                         </div>
-                        
-                        <div class="row text-center mt-3">
-                            <div class="col-md-6">
-                                <p class="text-muted mb-2"><small>ROI</small></p>
-                                <h5 class="mb-0" id="chart-roi">--</h5>
-                            </div>
-                            <div class="col-md-6">
-                                <p class="text-muted mb-2"><small>Total Profit</small></p>
-                                <h5 class="mb-0" id="chart-total-profit">--</h5>
-                            </div>
-                        </div>
-                        
-                        <div class="row mt-3">
-                            <div class="col text-center">
-                                <button type="button" class="btn btn-sm btn-info" onclick="reloadDashboardMetrics();">
-                                    <i class="ri-refresh-line"></i> Reload Metrics
-                                </button>
-                            </div>
+                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-y-bar-refresh-btn" title="Refresh Y charts" aria-label="Refresh">
+                                <i class="ri-refresh-line" aria-hidden="true"></i>
+                            </button>
                         </div>
                     </div>
-
-                </div> <!-- end card-body-->
-            </div> <!-- end card-->
-
-           
-        </div> <!-- end col-->
-
+                    <div class="pt-1">
+                        <div dir="ltr" class="dashboard-chart-canvas-wrap daily-sales-bar-chart-wrap">
+                            <canvas id="dailySalesBarChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    <!-- end row -->
 
     <!-- task dashboard -->
       <div class="dashboard-grid">
@@ -852,7 +1101,7 @@
             </div>
             <div class="subcards-preview">
                 <span class="subcard-item">📋 My Tasks</span>
-                <span class="subcard-item">👥 Team Tasks</span>
+                <span class="subcard-item">📊 Task Summary</span>
                 <span class="subcard-item">✓ Completed</span>
             </div>
         </div>
@@ -1116,13 +1365,38 @@
     <div class="chart-modal" id="chartModal">
         <div class="chart-modal-content">
             <div class="chart-modal-header">
-                <h3 class="chart-modal-title">Sales by Channel's - Fullscreen View</h3>
-                <button class="close-btn" onclick="closeChartModal();">
+                <h3 class="chart-modal-title">Sales by Channels — Fullscreen (L30)</h3>
+                <button type="button" class="close-btn" onclick="closeChartModal();">
                     <i class="ri-close-line"></i>
                 </button>
             </div>
             <div class="chart-modal-body">
-                <canvas id="channelSalesChartModal"></canvas>
+                <div class="chart-modal-pie-wrap">
+                    <div class="chart-modal-canvas-wrap">
+                        <canvas id="channelSalesChartModal"></canvas>
+                    </div>
+                    <ul class="chart-modal-legend-col" id="channelPieLegendList" aria-label="L30 sales by channel"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Y Sales fullscreen: pie share of total Y revenue + same legend layout as L30 -->
+    <div class="chart-modal" id="ySalesChartModal">
+        <div class="chart-modal-content">
+            <div class="chart-modal-header">
+                <h3 class="chart-modal-title">Y Sales by Channel — Fullscreen View</h3>
+                <button type="button" class="close-btn" onclick="closeYSalesChartModal();">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+            <div class="chart-modal-body">
+                <div class="chart-modal-pie-wrap">
+                    <div class="chart-modal-canvas-wrap">
+                        <canvas id="ySalesChartModalCanvas"></canvas>
+                    </div>
+                    <ul class="chart-modal-legend-col" id="ySalesPieLegendList" aria-label="Y sales by channel"></ul>
+                </div>
             </div>
         </div>
     </div>
@@ -1135,450 +1409,737 @@
         // DASHBOARD METRICS - Complete Fresh Implementation
         // ============================================
         
-        let dailySalesChartInstance = null;
+        let l30SalesPieChartInstance = null;
+        let l30SalesBarChartInstance = null;
+        let ySalesPieChartInstance = null;
+        let ySalesBarChartInstance = null;
+
+        function pieSliceColors(count) {
+            const colors = [];
+            for (let i = 0; i < count; i++) {
+                const hue = (i * 360 / Math.max(count, 1)) % 360;
+                colors.push('hsla(' + hue + ', 62%, 52%, 0.92)');
+            }
+            return colors;
+        }
+
+        function pieSliceBorderColors(count) {
+            const colors = [];
+            for (let i = 0; i < count; i++) {
+                const hue = (i * 360 / Math.max(count, 1)) % 360;
+                colors.push('hsla(' + hue + ', 62%, 38%, 1)');
+            }
+            return colors;
+        }
+
+        function setDashboardChartTotals(ids, values) {
+            var text;
+            if (!values || values.length === 0) {
+                text = '—';
+            } else {
+                var sum = values.reduce(function (a, b) {
+                    return a + b;
+                }, 0);
+                text = '$' + Number(sum).toLocaleString('en-US', { maximumFractionDigits: 0 });
+            }
+            ids.forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.textContent = text;
+                }
+            });
+        }
         
-        // Function to create line graph with sales trend data
-        function createSalesLineChart() {
-            console.log('[Dashboard] Fetching sales trend data...');
-            
-            fetch('/sales-trend-data')
-                .then(response => {
-                    console.log('[Dashboard] Trend data response status:', response.status);
-                    return response.json();
-                })
-                .then(result => {
-                    console.log('[Dashboard] Trend data received:', result);
-                    
-                    if (!result.chartData || result.chartData.length === 0) {
-                        console.warn('[Dashboard] No chart data available');
-                        return;
-                    }
-                    
-                    // Get only last 30 days of data
-                    const chartData = result.chartData.slice(-30);
-                    console.log('[Dashboard] Chart data - Total records: ' + result.chartData.length + ', Showing last 30 days: ' + chartData.length);
-                    
-                    const dates = [];
-                    const l30Sales = [];
-                    
-                    // Extract dates and L30 sales from the data
-                    chartData.forEach(row => {
-                        dates.push(row.date);
-                        l30Sales.push(parseFloat(row.l30_sales) || 0);
-                    });
-                    
-                    console.log('[Dashboard] Chart data extracted - dates:', dates.length, 'records');
-                    
-                    // Destroy existing chart if it exists
-                    if (dailySalesChartInstance) {
-                        dailySalesChartInstance.destroy();
-                    }
-                    
-                    // Create line chart
-                    const ctx = document.getElementById('dailySalesChart');
-                    if (!ctx) {
-                        console.warn('[Dashboard] Chart canvas not found');
-                        return;
-                    }
-                    
-                    dailySalesChartInstance = new Chart(ctx, {
-                        type: 'line',
+        /**
+         * Y Sales: compact pie + bar (same API name as before for callers).
+         * Source: GET /channels-master-data → row['Y Sales'].
+         */
+        function createYSalesBarChart(prefetchedResult) {
+            console.log('[Dashboard] Y Sales pie + bar charts...');
+
+            function renderYSalesCharts(result) {
+                if (!result.data || result.data.length === 0) {
+                    console.warn('[Dashboard] No channel data for Y Sales charts');
+                    setDashboardChartTotals(['dashboard-chart-y-total', 'dashboard-chart-y-bar-total'], []);
+                    return;
+                }
+
+                const rows = [];
+                result.data.forEach(function (row) {
+                    const name = row['Channel '] || row['Channel'] || row.channel || row.name || row.Name || 'Unknown';
+                    const y = parseFloat(row['Y Sales']);
+                    const ySales = Number.isFinite(y) ? y : 0;
+                    rows.push({ name: String(name).trim(), ySales: ySales });
+                });
+                rows.sort(function (a, b) {
+                    return b.ySales - a.ySales;
+                });
+
+                const channels = rows.map(function (r) {
+                    return r.name;
+                });
+                const ySalesValues = rows.map(function (r) {
+                    return r.ySales;
+                });
+                const n = channels.length;
+
+                setDashboardChartTotals(['dashboard-chart-y-total', 'dashboard-chart-y-bar-total'], ySalesValues);
+
+                if (ySalesPieChartInstance) {
+                    ySalesPieChartInstance.destroy();
+                }
+                const pieCtx = document.getElementById('dailySalesChart');
+                if (pieCtx) {
+                    ySalesPieChartInstance = new Chart(pieCtx, {
+                        type: 'pie',
                         data: {
-                            labels: dates,
-                            datasets: [
-                                {
-                                    label: 'L30 Daily Sales',
-                                    data: l30Sales,
-                                    borderColor: 'rgba(54, 162, 235, 1)',
-                                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                                    borderWidth: 3,
-                                    pointRadius: 4,
-                                    pointBackgroundColor: 'rgba(54, 162, 235, 1)',
-                                    pointBorderColor: '#fff',
-                                    pointBorderWidth: 2,
-                                    tension: 0.4,
-                                    fill: true
-                                }
-                            ]
+                            labels: channels,
+                            datasets: [{
+                                label: 'Y Sales ($)',
+                                data: ySalesValues,
+                                backgroundColor: pieSliceColors(n),
+                                borderColor: pieSliceBorderColors(n),
+                                borderWidth: 1,
+                                hoverOffset: 2
+                            }]
                         },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            interaction: {
-                                mode: 'index',
-                                intersect: false
+                            layout: {
+                                padding: { top: 4, bottom: 4, left: 2, right: 2 }
                             },
                             plugins: {
-                                legend: {
-                                    display: true,
-                                    position: 'top',
-                                    labels: {
-                                        font: { size: 13, weight: 'bold' },
-                                        padding: 15,
-                                        usePointStyle: true
-                                    }
-                                },
+                                legend: { display: false },
                                 tooltip: {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                    padding: 12,
-                                    titleFont: { size: 12, weight: 'bold' },
-                                    bodyFont: { size: 11 },
+                                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                                    padding: 6,
+                                    titleFont: { size: 9, weight: 'bold' },
+                                    bodyFont: { size: 8 },
                                     callbacks: {
-                                        label: function(context) {
-                                            return 'Sales: $' + context.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                                        label: function (context) {
+                                            return channelPieTooltipLabel(context, ySalesValues);
                                         }
-                                    }
-                                }
-                            },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: {
-                                        callback: function(value) {
-                                            return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
-                                        },
-                                        font: { size: 11 }
-                                    },
-                                    grid: {
-                                        color: 'rgba(0, 0, 0, 0.05)',
-                                        drawBorder: false
-                                    },
-                                    title: {
-                                        display: true,
-                                        text: 'Sales ($)',
-                                        font: { size: 12, weight: 'bold' }
-                                    }
-                                },
-                                x: {
-                                    ticks: {
-                                        font: { size: 10 },
-                                        maxRotation: 45,
-                                        minRotation: 0
-                                    },
-                                    grid: {
-                                        display: false
-                                    },
-                                    title: {
-                                        display: true,
-                                        text: 'Date',
-                                        font: { size: 12, weight: 'bold' }
                                     }
                                 }
                             }
                         }
                     });
-                    
-                    console.log('[Dashboard] ✅ Line chart created successfully');
-                })
-                .catch(error => {
-                    console.error('[Dashboard] ❌ Error fetching chart data:', error);
-                });
-        }
-        
-        // Function to create bar graph for channel sales comparison
-        function loadChannelSalesChart() {
-            console.log('[Dashboard] Fetching channel sales data...');
-            
-            fetch('/channels-master-data')
-                .then(response => {
-                    console.log('[Dashboard] Channel data response status:', response.status);
-                    return response.json();
-                })
-                .then(result => {
-                    console.log('[Dashboard] Channel data received:', result);
-                    
-                    if (!result.data || result.data.length === 0) {
-                        console.warn('[Dashboard] No channel data available');
-                        return;
-                    }
-                    
-                    const channelData = [];
-                    
-                    // Extract channel names and L30 sales from the data
-                    result.data.forEach(row => {
-                        // The API returns 'Channel ' with a trailing space (check ChannelMasterController line 162)
-                        const channelName = row['Channel '] || row['Channel'] || row.channel || row.name || row.Name || 'Unknown';
-                        const sales = parseFloat(row['L30 Sales'] || row.l30_sales || row.L30Sales || 0);
-                        
-                        console.log('[Dashboard] Channel:', channelName, 'Sales:', sales);
-                        
-                        channelData.push({ name: channelName, sales: sales });
-                    });
-                    
-                    // Sort by sales (highest to lowest)
-                    channelData.sort((a, b) => b.sales - a.sales);
-                    
-                    // Separate into arrays for Chart.js
-                    const channels = channelData.map(item => item.name);
-                    const l30Sales = channelData.map(item => item.sales);
-                    
-                    console.log('[Dashboard] Channels extracted and sorted:', channels.length, 'channels');
-                    
-                    // Destroy existing chart if it exists
-                    if (window.channelSalesChartInstance) {
-                        window.channelSalesChartInstance.destroy();
-                    }
-                    
-                    // Create bar chart for channel comparison
-                    const ctx = document.getElementById('channelSalesChart');
-                    if (!ctx) {
-                        console.warn('[Dashboard] Channel chart canvas not found');
-                        return;
-                    }
-                    
-                    window.channelSalesChartInstance = new Chart(ctx, {
+                }
+
+                if (ySalesBarChartInstance) {
+                    ySalesBarChartInstance.destroy();
+                }
+                const barCtx = document.getElementById('dailySalesBarChart');
+                if (barCtx) {
+                    ySalesBarChartInstance = new Chart(barCtx, {
                         type: 'bar',
                         data: {
                             labels: channels,
-                            datasets: [
-                                {
-                                    label: 'L30 Sales ($)',
-                                    data: l30Sales,
-                                    backgroundColor: [
-                                        'rgba(54, 162, 235, 0.7)',
-                                        'rgba(75, 192, 75, 0.7)',
-                                        'rgba(255, 193, 7, 0.7)',
-                                        'rgba(255, 87, 34, 0.7)',
-                                        'rgba(156, 39, 176, 0.7)',
-                                        'rgba(233, 30, 99, 0.7)',
-                                        'rgba(0, 188, 212, 0.7)',
-                                        'rgba(76, 175, 80, 0.7)',
-                                        'rgba(255, 152, 0, 0.7)',
-                                        'rgba(63, 81, 181, 0.7)'
-                                    ],
-                                    borderColor: [
-                                        'rgba(54, 162, 235, 1)',
-                                        'rgba(75, 192, 75, 1)',
-                                        'rgba(255, 193, 7, 1)',
-                                        'rgba(255, 87, 34, 1)',
-                                        'rgba(156, 39, 176, 1)',
-                                        'rgba(233, 30, 99, 1)',
-                                        'rgba(0, 188, 212, 1)',
-                                        'rgba(76, 175, 80, 1)',
-                                        'rgba(255, 152, 0, 1)',
-                                        'rgba(63, 81, 181, 1)'
-                                    ],
-                                    borderWidth: 2,
-                                    borderRadius: 4
-                                }
-                            ]
+                            datasets: [{
+                                label: 'Y Sales',
+                                data: ySalesValues,
+                                backgroundColor: pieSliceColors(n),
+                                borderColor: pieSliceBorderColors(n),
+                                borderWidth: 1,
+                                borderRadius: 3
+                            }]
                         },
                         options: {
-                            indexAxis: 'y',
                             responsive: true,
                             maintainAspectRatio: false,
+                            layout: {
+                                padding: { top: 2, bottom: 0, left: 0, right: 2 }
+                            },
                             plugins: {
-                                legend: {
-                                    display: true,
-                                    position: 'top',
-                                    labels: {
-                                        font: { size: 12, weight: 'bold' },
-                                        padding: 15
-                                    }
-                                },
+                                legend: { display: false },
                                 tooltip: {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                    padding: 12,
-                                    titleFont: { size: 12, weight: 'bold' },
-                                    bodyFont: { size: 11 },
+                                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                                    padding: 6,
+                                    titleFont: { size: 9, weight: 'bold' },
+                                    bodyFont: { size: 8 },
                                     callbacks: {
-                                        label: function(context) {
-                                            return 'Sales: $' + context.parsed.x.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                                        label: function (context) {
+                                            return '$' + context.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 2 });
                                         }
                                     }
                                 }
                             },
                             scales: {
                                 x: {
-                                    beginAtZero: true,
                                     ticks: {
-                                        callback: function(value) {
-                                            return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
-                                        },
-                                        font: { size: 10 }
+                                        font: { size: 7 },
+                                        maxRotation: 52,
+                                        minRotation: 38,
+                                        autoSkip: false,
+                                        color: '#475569'
                                     },
-                                    grid: {
-                                        color: 'rgba(0, 0, 0, 0.05)',
-                                        drawBorder: false
-                                    }
+                                    grid: { display: false },
+                                    title: { display: false }
                                 },
                                 y: {
+                                    beginAtZero: true,
                                     ticks: {
-                                        font: { size: 11 },
-                                        autoSkip: false,
-                                        maxRotation: 0,
-                                        minRotation: 0
+                                        callback: function (value) {
+                                            return '$' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                                        },
+                                        font: { size: 8 },
+                                        color: '#475569'
                                     },
                                     grid: {
-                                        display: false
+                                        color: 'rgba(0, 0, 0, 0.06)',
+                                        drawBorder: false
+                                    },
+                                    title: { display: false }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                console.log('[Dashboard] ✅ Y Sales pie + bar created (' + n + ' channels)');
+            }
+
+            if (prefetchedResult && prefetchedResult.data !== undefined) {
+                renderYSalesCharts(prefetchedResult);
+                return;
+            }
+
+            fetch('/channels-master-data')
+                .then(function (response) {
+                    console.log('[Dashboard] channels-master-data status:', response.status);
+                    return response.json();
+                })
+                .then(renderYSalesCharts)
+                .catch(function (error) {
+                    console.error('[Dashboard] ❌ Error loading Y Sales charts:', error);
+                });
+        }
+
+        function channelPieTooltipLabel(context, dataValues) {
+            const value = context.parsed;
+            const total = dataValues.reduce(function (a, b) { return a + b; }, 0);
+            const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+            return ' $' + value.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' (' + pct + '%)';
+        }
+
+        function formatPieLegendUsd(n) {
+            return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        }
+
+        /** Single-column HTML legend with amounts (replaces Chart.js legend to avoid multi-column wrap). */
+        function fillChannelPieLegendList(channels, values, backgroundColors, legendListId) {
+            const ul = document.getElementById(legendListId || 'channelPieLegendList');
+            if (!ul) {
+                return;
+            }
+            ul.innerHTML = '';
+            const total = values.reduce(function (a, b) { return a + b; }, 0);
+            const frag = document.createDocumentFragment();
+            for (let i = 0; i < channels.length; i++) {
+                const li = document.createElement('li');
+                li.className = 'pie-legend-row';
+                const val = values[i];
+                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0.0';
+                const swatch = document.createElement('span');
+                swatch.className = 'pie-legend-swatch';
+                swatch.style.backgroundColor = backgroundColors[i];
+                swatch.setAttribute('aria-hidden', 'true');
+                const name = document.createElement('span');
+                name.className = 'pie-legend-name';
+                name.textContent = channels[i];
+                name.title = channels[i];
+                const fig = document.createElement('span');
+                fig.className = 'pie-legend-val';
+                fig.textContent = formatPieLegendUsd(val) + ' (' + pct + '%)';
+                li.appendChild(swatch);
+                li.appendChild(name);
+                li.appendChild(fig);
+                frag.appendChild(li);
+            }
+            ul.appendChild(frag);
+        }
+
+        /** L30 Sales: compact pie + bar. Fullscreen modal = pie + legend. */
+        function loadChannelSalesChart(prefetchedResult) {
+            console.log('[Dashboard] L30 Sales pie + bar charts...');
+
+            function renderL30Charts(result) {
+                if (!result.data || result.data.length === 0) {
+                    console.warn('[Dashboard] No channel data for L30 charts');
+                    setDashboardChartTotals(['dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total'], []);
+                    return;
+                }
+
+                const rows = [];
+                result.data.forEach(function (row) {
+                    const name = row['Channel '] || row['Channel'] || row.channel || row.name || row.Name || 'Unknown';
+                    const sales = parseFloat(row['L30 Sales'] || row.l30_sales || row.L30Sales || 0);
+                    rows.push({ name: String(name).trim(), sales: sales });
+                });
+                rows.sort(function (a, b) {
+                    return b.sales - a.sales;
+                });
+
+                const channels = rows.map(function (r) {
+                    return r.name;
+                });
+                const l30Values = rows.map(function (r) {
+                    return r.sales;
+                });
+                const n = channels.length;
+
+                setDashboardChartTotals(['dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total'], l30Values);
+
+                if (l30SalesPieChartInstance) {
+                    l30SalesPieChartInstance.destroy();
+                }
+                const pieCtx = document.getElementById('channelSalesChart');
+                if (pieCtx) {
+                    l30SalesPieChartInstance = new Chart(pieCtx, {
+                        type: 'pie',
+                        data: {
+                            labels: channels,
+                            datasets: [{
+                                label: 'L30 Sales ($)',
+                                data: l30Values,
+                                backgroundColor: pieSliceColors(n),
+                                borderColor: pieSliceBorderColors(n),
+                                borderWidth: 1,
+                                hoverOffset: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: { top: 4, bottom: 4, left: 2, right: 2 }
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                                    padding: 6,
+                                    titleFont: { size: 9, weight: 'bold' },
+                                    bodyFont: { size: 8 },
+                                    callbacks: {
+                                        label: function (context) {
+                                            return channelPieTooltipLabel(context, l30Values);
+                                        }
                                     }
                                 }
                             }
                         }
                     });
-                    
-                    console.log('[Dashboard] ✅ Channel sales chart created successfully');
-                })
-                .catch(error => {
-                    console.error('[Dashboard] ❌ Error fetching channel data:', error);
-                });
-        }
-        // ============================================
-        // DASHBOARD METRICS - Complete Fresh Implementation
-        // ============================================
-        
-        // Function to fetch and display dashboard metrics
-        function loadDashboardMetrics() {
-            console.log('[Dashboard] Fetching metrics...');
-            
-            // Show loading state
-            document.getElementById('l30-sales-value').textContent = 'Loading...';
-            document.getElementById('profit-margin-value').textContent = 'Loading...';
-            document.getElementById('roi-value').textContent = 'Loading...';
-            document.getElementById('total-profit-value').textContent = 'Loading...';
-            
-            // Fetch the API
-            fetch('/dashboard-metrics')
-                .then(response => {
-                    console.log('[Dashboard] Response status:', response.status);
-                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                }
+
+                if (l30SalesBarChartInstance) {
+                    l30SalesBarChartInstance.destroy();
+                }
+                const barCtx = document.getElementById('channelSalesBarChart');
+                if (barCtx) {
+                    l30SalesBarChartInstance = new Chart(barCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: channels,
+                            datasets: [{
+                                label: 'L30 Sales',
+                                data: l30Values,
+                                backgroundColor: pieSliceColors(n),
+                                borderColor: pieSliceBorderColors(n),
+                                borderWidth: 1,
+                                borderRadius: 3
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: { top: 2, bottom: 0, left: 0, right: 2 }
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                                    padding: 6,
+                                    titleFont: { size: 9, weight: 'bold' },
+                                    bodyFont: { size: 8 },
+                                    callbacks: {
+                                        label: function (context) {
+                                            return '$' + context.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 2 });
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    ticks: {
+                                        font: { size: 7 },
+                                        maxRotation: 52,
+                                        minRotation: 38,
+                                        autoSkip: false,
+                                        color: '#475569'
+                                    },
+                                    grid: { display: false },
+                                    title: { display: false }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function (value) {
+                                            return '$' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                                        },
+                                        font: { size: 8 },
+                                        color: '#475569'
+                                    },
+                                    grid: {
+                                        color: 'rgba(0, 0, 0, 0.06)',
+                                        drawBorder: false
+                                    },
+                                    title: { display: false }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                console.log('[Dashboard] ✅ L30 Sales pie + bar created (' + n + ' channels)');
+            }
+
+            if (prefetchedResult && prefetchedResult.data !== undefined) {
+                renderL30Charts(prefetchedResult);
+                return;
+            }
+
+            fetch('/channels-master-data')
+                .then(function (response) {
+                    console.log('[Dashboard] Channel data response status:', response.status);
                     return response.json();
                 })
-                .then(result => {
-                    console.log('[Dashboard] API Response:', result);
-                    
-                    if (result.status === 200 && result.data) {
-                        const data = result.data;
-                        console.log('[Dashboard] ✅ Data received:', data);
-                        
-                        // Format and display L30 Sales - FULL AMOUNT (no 'k' formatting, no .00)
-                        const salesValue = parseFloat(data.total_sales);
-                        const salesDisplay = '$' + salesValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-                        document.getElementById('l30-sales-value').textContent = salesDisplay;
-                        console.log('[Dashboard] ✅ L30 Sales updated:', salesDisplay);
-                        
-                        // Format and display Profit Margin
-                        const marginValue = parseFloat(data.profit_margin);
-                        const marginDisplay = marginValue.toFixed(1) + '%';
-                        document.getElementById('profit-margin-value').textContent = marginDisplay;
-                        console.log('[Dashboard] ✅ Profit Margin updated:', marginDisplay);
-                        
-                        // Format and display ROI
-                        const roiValue = parseFloat(data.roi);
-                        const roiDisplay = roiValue.toFixed(1) + '%';
-                        document.getElementById('roi-value').textContent = roiDisplay;
-                        console.log('[Dashboard] ✅ ROI updated:', roiDisplay);
-                        
-                        // Format and display Total Profit
-                        const profitValue = parseFloat(data.total_profit);
-                        let profitDisplay;
-                        if (profitValue >= 1000) {
-                            profitDisplay = '$' + (profitValue / 1000).toFixed(1) + 'k';
-                        } else {
-                            profitDisplay = '$' + profitValue.toLocaleString('en-US');
-                        }
-                        document.getElementById('total-profit-value').textContent = profitDisplay;
-                        console.log('[Dashboard] ✅ Total Profit updated:', profitDisplay);
-                        
-                        // Also populate the chart section metrics (if they exist)
-                        const chartSalesEl = document.getElementById('chart-l30-sales');
-                        const chartMarginEl = document.getElementById('chart-profit-margin');
-                        const chartRoiEl = document.getElementById('chart-roi');
-                        const chartProfitEl = document.getElementById('chart-total-profit');
-                        
-                        if (chartSalesEl) chartSalesEl.textContent = '$' + salesValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-                        if (chartMarginEl) chartMarginEl.textContent = marginDisplay;
-                        if (chartRoiEl) chartRoiEl.textContent = roiDisplay;
-                        if (chartProfitEl) chartProfitEl.textContent = profitDisplay;
-                        
-                        // Create the line chart showing daily sales trend
-                        createSalesLineChart();
-                        
-                        // Log summary
-                        console.log('[Dashboard] 📊 Summary:', {
-                            channels: data.channels_count,
-                            period: data.period,
-                            data_found: data.data_found,
-                            l30_sales: '$' + salesValue.toLocaleString('en-US'),
-                            profit_margin: marginValue.toFixed(2) + '%',
-                            roi: roiValue.toFixed(2) + '%',
-                            total_profit: '$' + profitValue.toLocaleString('en-US')
-                        });
-                        
-                        console.log('[Dashboard] ✅ All metrics loaded successfully!');
-                    } else {
-                        console.error('[Dashboard] ❌ Invalid response format:', result);
-                        showErrorState();
-                    }
+                .then(renderL30Charts)
+                .catch(function (error) {
+                    console.error('[Dashboard] ❌ Error fetching L30 charts:', error);
+                });
+        }
+
+        window.loadChannelSalesChart = loadChannelSalesChart;
+
+        // ============================================
+        // DASHBOARD: same Summary Statistics logic as All Marketplace Master
+        // ============================================
+
+        function dashboardParseNumber(value) {
+            if (value === null || value === undefined) return 0;
+            if (typeof value === 'number' && !isNaN(value)) return value;
+            const cleaned = String(value).replace(/[^0-9.-]/g, '');
+            const n = parseFloat(cleaned);
+            return isNaN(n) ? 0 : n;
+        }
+
+        function setDashText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        }
+
+        function updateDashboardSummaryStats(data) {
+            if (!data || !data.length) return;
+
+            let totalChannels = data.length;
+            let totalL30Sales = 0;
+            let totalL30Orders = 0;
+            let totalQty = 0;
+            let totalClicks = 0;
+            let totalPft = 0;
+            let totalCogs = 0;
+            let totalAdSpend = 0;
+            let totalViews = 0;
+            let totalMiss = 0;
+            let totalNMap = 0;
+            let totalMap = 0;
+
+            data.forEach(function (row) {
+                const l30Sales = dashboardParseNumber(row['L30 Sales'] || 0);
+                const l30Orders = dashboardParseNumber(row['L30 Orders'] || 0);
+                const qty = dashboardParseNumber(row['Qty'] || 0);
+                const clicks = dashboardParseNumber(row['clicks'] || 0);
+                const gprofitPercent = dashboardParseNumber(row['Gprofit%'] || 0);
+                const groi = dashboardParseNumber(row['G Roi'] || 0);
+                const npft = dashboardParseNumber(row['N PFT'] || 0);
+                const nroi = dashboardParseNumber(row['N ROI'] || 0);
+                const cogs = dashboardParseNumber(row['cogs'] || 0);
+                const mapCount = dashboardParseNumber(row['Map'] || 0);
+                const missCount = dashboardParseNumber(row['Miss'] || 0);
+                const nmapCount = dashboardParseNumber(row['NMap'] || 0);
+                const adSpend = dashboardParseNumber(row['Total Ad Spend'] || 0);
+                const views = dashboardParseNumber(row['Total Views'] || 0);
+
+                totalL30Sales += l30Sales;
+                totalL30Orders += l30Orders;
+                totalQty += qty;
+                totalClicks += clicks;
+                totalAdSpend += adSpend;
+                totalViews += views;
+                totalCogs += cogs;
+                totalMap += mapCount;
+                totalMiss += missCount;
+                totalNMap += nmapCount;
+
+                const profitAmount = (gprofitPercent / 100) * l30Sales;
+                totalPft += profitAmount;
+            });
+
+            const avgGprofit = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
+            const avgGroi = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            const avgAdsPercent = totalL30Sales > 0 ? (totalAdSpend / totalL30Sales) * 100 : 0;
+            const avgNpft = avgGprofit - avgAdsPercent;
+            const netProfit = totalPft - totalAdSpend;
+            const avgNroi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
+
+            setDashText('total-channels', String(totalChannels));
+            setDashText('total-l30-sales', '$' + Math.round(totalL30Sales).toLocaleString('en-US'));
+            setDashText('total-l30-orders', Math.round(totalL30Orders).toLocaleString('en-US'));
+            setDashText('total-qty', Math.round(totalQty).toLocaleString('en-US'));
+            setDashText('total-clicks', Math.round(totalClicks).toLocaleString('en-US'));
+            setDashText('avg-gprofit', avgGprofit.toFixed(1) + '%');
+            setDashText('total-gross-pft', '$' + Math.round(totalPft).toLocaleString('en-US'));
+            setDashText('avg-groi', Math.round(avgGroi) + '%');
+            setDashText('total-ad-spend', '$' + Math.round(totalAdSpend).toLocaleString('en-US'));
+            setDashText('total-views-badge', Math.round(totalViews).toLocaleString('en-US'));
+            const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
+            setDashText('cvr-pct-badge', cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
+            setDashText('total-pft', '$' + Math.round(netProfit).toLocaleString('en-US'));
+            setDashText('avg-npft', avgNpft.toFixed(1) + '%');
+            setDashText('avg-nroi', avgNroi.toFixed(1) + '%');
+            setDashText('total-nmap', Math.round(totalNMap).toLocaleString('en-US'));
+            setDashText('total-miss', Math.round(totalMiss).toLocaleString('en-US'));
+
+            let ratingSum = 0, reviewsSum = 0, sellerRatingSum = 0, sellerReviewsSum = 0;
+            data.forEach(function (row) {
+                const r = dashboardParseNumber(row['Avg Rating'] || 0);
+                const rev = dashboardParseNumber(row['Total Reviews'] || 0);
+                const sr = dashboardParseNumber(row['Seller Avg Rating'] || 0);
+                const srev = dashboardParseNumber(row['Seller Total Reviews'] || 0);
+                if (!isNaN(r) && !isNaN(rev) && rev > 0) { ratingSum += r * rev; reviewsSum += rev; }
+                if (!isNaN(sr) && !isNaN(srev) && srev > 0) { sellerRatingSum += sr * srev; sellerReviewsSum += srev; }
+            });
+            const weightedAvgRating = reviewsSum > 0 ? (ratingSum / reviewsSum).toFixed(1) : '0';
+            const totalReviews = Math.round(reviewsSum).toLocaleString('en-US');
+            const sellerWeightedAvg = sellerReviewsSum > 0 ? (sellerRatingSum / sellerReviewsSum).toFixed(1) : '0';
+            const sellerTotalRev = Math.round(sellerReviewsSum).toLocaleString('en-US');
+            setDashText('ratings-reviews-badge', weightedAvgRating + ' ★ | ' + totalReviews);
+            setDashText('seller-ratings-reviews-badge', sellerWeightedAvg + ' ★ | ' + sellerTotalRev);
+        }
+
+        function applyChannelsMasterToDashboard(response) {
+            if (!response || response.status !== 200 || !response.data) return;
+            const rows = response.data;
+            updateDashboardSummaryStats(rows);
+
+            if (response.inventory_value_amazon != null) {
+                const val = parseFloat(response.inventory_value_amazon) || 0;
+                setDashText('inventory-value-amazon', Math.round(val).toLocaleString('en-US'));
+            }
+            if (response.inv_at_lp != null) {
+                const val = parseFloat(response.inv_at_lp) || 0;
+                setDashText('inv-at-lp', Math.round(val).toLocaleString('en-US'));
+            }
+            if (response.shopify_inv_sum != null) {
+                const v = parseFloat(response.shopify_inv_sum) || 0;
+                setDashText('dashboard-shopify-inv-sum', Math.round(v).toLocaleString('en-US'));
+            }
+            if (response.shopify_weighted_avg_lp != null) {
+                const v = parseFloat(response.shopify_weighted_avg_lp) || 0;
+                setDashText('dashboard-shopify-lp-avg', '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            }
+            const tatEl = document.getElementById('tat-badge');
+            if (tatEl && response.inventory_value_amazon != null && rows.length) {
+                const invVal = parseFloat(response.inventory_value_amazon) || 0;
+                let totalSales = 0;
+                rows.forEach(function (row) {
+                    totalSales += dashboardParseNumber(row['L30 Sales'] || 0);
+                });
+                const tat = totalSales > 0 ? invVal / totalSales : 0;
+                tatEl.textContent = tat > 0 ? tat.toFixed(2) : '0';
+            }
+        }
+
+        function loadDashboardFromChannels() {
+            console.log('[Dashboard] Loading channels-master-data (summary + charts)...');
+            fetch('/channels-master-data')
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
                 })
-                .catch(error => {
-                    console.error('[Dashboard] ❌ Error:', error);
+                .then(function (response) {
+                    if (response.status !== 200 || !response.data) {
+                        showErrorState();
+                        return;
+                    }
+                    applyChannelsMasterToDashboard(response);
+                    loadChannelSalesChart(response);
+                    createYSalesBarChart(response);
+                })
+                .catch(function (error) {
+                    console.error('[Dashboard] ❌ channels-master-data:', error);
                     showErrorState();
                 });
         }
-        
-        // Show error state on all cards
-        function showErrorState() {
-            document.getElementById('l30-sales-value').textContent = 'Error';
-            document.getElementById('profit-margin-value').textContent = 'Error';
-            document.getElementById('roi-value').textContent = 'Error';
-            document.getElementById('total-profit-value').textContent = 'Error';
+
+        function loadDashboardMetrics() {
+            loadDashboardFromChannels();
         }
-        
-        // Load metrics when page is ready
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('[Dashboard] DOM Content Loaded - Starting initialization');
-            
-            // Verify elements exist
-            const salesEl = document.getElementById('l30-sales-value');
-            const marginEl = document.getElementById('profit-margin-value');
-            const roiEl = document.getElementById('roi-value');
-            const profitEl = document.getElementById('total-profit-value');
-            
-            console.log('[Dashboard] Element verification:');
-            console.log('  - L30 Sales element:', !!salesEl);
-            console.log('  - Profit Margin element:', !!marginEl);
-            console.log('  - ROI element:', !!roiEl);
-            console.log('  - Total Profit element:', !!profitEl);
-            
-            if (salesEl && marginEl && roiEl && profitEl) {
-                console.log('[Dashboard] ✅ All elements found, loading metrics...');
-                loadDashboardMetrics();
-            } else {
-                console.error('[Dashboard] ❌ Some elements not found!');
-            }
-            
-            // Load channel sales chart
-            loadChannelSalesChart();
-        });
-        
-        // Expose function globally for manual reload button
-        window.reloadDashboardMetrics = function() {
-            console.log('[Dashboard] Manual reload requested');
-            loadDashboardMetrics();
+
+        function showErrorState() {
+            var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total', 'dashboard-chart-y-total', 'dashboard-chart-y-bar-total'];
+            ids.forEach(function (id) { setDashText(id, '—'); });
+        }
+
+        window.reloadDashboardMetrics = function () {
+            loadDashboardFromChannels();
         };
 
         // Fullscreen chart modal functions
         let modalChartInstance = null;
+        let ySalesModalChartInstance = null;
 
-        window.openChartModal = function() {
-            const modal = document.getElementById('chartModal');
+        window.closeYSalesChartModal = function () {
+            const yModal = document.getElementById('ySalesChartModal');
+            if (yModal) {
+                yModal.classList.remove('active');
+            }
+            document.body.style.overflow = '';
+            if (ySalesModalChartInstance) {
+                ySalesModalChartInstance.destroy();
+                ySalesModalChartInstance = null;
+            }
+            const yLeg = document.getElementById('ySalesPieLegendList');
+            if (yLeg) {
+                yLeg.innerHTML = '';
+            }
+        };
+
+        window.openYSalesChartModal = function () {
+            window.closeChartModal();
+            const modal = document.getElementById('ySalesChartModal');
+            if (!modal) {
+                return;
+            }
             modal.classList.add('active');
             document.body.style.overflow = 'hidden';
-            
-            // Load chart data in modal
+            loadYSalesChartModal();
+        };
+
+        function loadYSalesChartModal() {
+            fetch('/channels-master-data')
+                .then(function (response) {
+                    return response.json();
+                })
+                .then(function (result) {
+                    if (!result.data || result.data.length === 0) {
+                        console.warn('[Dashboard] No channel data for Y Sales modal');
+                        return;
+                    }
+                    const rows = [];
+                    result.data.forEach(function (row) {
+                        const channelName = row['Channel '] || row['Channel'] || row.channel || row.name || row.Name || 'Unknown';
+                        const y = parseFloat(row['Y Sales']);
+                        const ySales = Number.isFinite(y) ? y : 0;
+                        rows.push({ name: String(channelName).trim(), ySales: ySales });
+                    });
+                    rows.sort(function (a, b) {
+                        return b.ySales - a.ySales;
+                    });
+                    const channels = rows.map(function (r) {
+                        return r.name;
+                    });
+                    const ySalesValues = rows.map(function (r) {
+                        return r.ySales;
+                    });
+                    if (ySalesModalChartInstance) {
+                        ySalesModalChartInstance.destroy();
+                    }
+                    const ctx = document.getElementById('ySalesChartModalCanvas');
+                    if (!ctx) {
+                        return;
+                    }
+                    const n = channels.length;
+                    const bgColors = pieSliceColors(n);
+                    ySalesModalChartInstance = new Chart(ctx, {
+                        type: 'pie',
+                        data: {
+                            labels: channels,
+                            datasets: [{
+                                label: 'Y Sales ($)',
+                                data: ySalesValues,
+                                backgroundColor: bgColors,
+                                borderColor: pieSliceBorderColors(n),
+                                borderWidth: 1,
+                                hoverOffset: 6
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: 12
+                            },
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                                    padding: 15,
+                                    titleFont: { size: 14, weight: 'bold' },
+                                    bodyFont: { size: 13 },
+                                    callbacks: {
+                                        label: function (context) {
+                                            return channelPieTooltipLabel(context, ySalesValues);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    fillChannelPieLegendList(channels, ySalesValues, bgColors, 'ySalesPieLegendList');
+                    console.log('[Dashboard] ✅ Y Sales fullscreen chart created');
+                })
+                .catch(function (error) {
+                    console.error('[Dashboard] ❌ Y Sales modal:', error);
+                    const yLeg = document.getElementById('ySalesPieLegendList');
+                    if (yLeg) {
+                        yLeg.innerHTML = '';
+                    }
+                });
+        }
+
+        window.openChartModal = function() {
+            window.closeYSalesChartModal();
+            const modal = document.getElementById('chartModal');
+            if (!modal) {
+                return;
+            }
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+
             loadChannelSalesChartModal();
         };
 
         window.closeChartModal = function() {
             const modal = document.getElementById('chartModal');
-            modal.classList.remove('active');
+            if (modal) {
+                modal.classList.remove('active');
+            }
             document.body.style.overflow = '';
             
             // Destroy modal chart instance
             if (modalChartInstance) {
                 modalChartInstance.destroy();
                 modalChartInstance = null;
+            }
+            const legendUl = document.getElementById('channelPieLegendList');
+            if (legendUl) {
+                legendUl.innerHTML = '';
             }
         };
 
@@ -1615,106 +2176,113 @@
                     const ctx = document.getElementById('channelSalesChartModal');
                     if (!ctx) return;
                     
+                    const modalN = channels.length;
+                    const bgColors = pieSliceColors(modalN);
                     modalChartInstance = new Chart(ctx, {
-                        type: 'bar',
+                        type: 'pie',
                         data: {
                             labels: channels,
                             datasets: [{
                                 label: 'L30 Sales ($)',
                                 data: l30Sales,
-                                backgroundColor: [
-                                    'rgba(54, 162, 235, 0.7)',
-                                    'rgba(75, 192, 75, 0.7)',
-                                    'rgba(255, 193, 7, 0.7)',
-                                    'rgba(255, 87, 34, 0.7)',
-                                    'rgba(156, 39, 176, 0.7)',
-                                    'rgba(233, 30, 99, 0.7)',
-                                    'rgba(0, 188, 212, 0.7)',
-                                    'rgba(76, 175, 80, 0.7)',
-                                    'rgba(255, 152, 0, 0.7)',
-                                    'rgba(63, 81, 181, 0.7)'
-                                ],
-                                borderColor: [
-                                    'rgba(54, 162, 235, 1)',
-                                    'rgba(75, 192, 75, 1)',
-                                    'rgba(255, 193, 7, 1)',
-                                    'rgba(255, 87, 34, 1)',
-                                    'rgba(156, 39, 176, 1)',
-                                    'rgba(233, 30, 99, 1)',
-                                    'rgba(0, 188, 212, 1)',
-                                    'rgba(76, 175, 80, 1)',
-                                    'rgba(255, 152, 0, 1)',
-                                    'rgba(63, 81, 181, 1)'
-                                ],
-                                borderWidth: 2,
-                                borderRadius: 6
+                                backgroundColor: bgColors,
+                                borderColor: pieSliceBorderColors(modalN),
+                                borderWidth: 1,
+                                hoverOffset: 6
                             }]
                         },
                         options: {
-                            indexAxis: 'y',
                             responsive: true,
                             maintainAspectRatio: false,
+                            layout: {
+                                padding: 12
+                            },
                             plugins: {
                                 legend: {
-                                    display: true,
-                                    position: 'top',
-                                    labels: {
-                                        font: { size: 14, weight: 'bold' },
-                                        padding: 20
-                                    }
+                                    display: false
                                 },
                                 tooltip: {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
                                     padding: 15,
                                     titleFont: { size: 14, weight: 'bold' },
                                     bodyFont: { size: 13 },
                                     callbacks: {
-                                        label: function(context) {
-                                            return 'Sales: $' + context.parsed.x.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                                        label: function (context) {
+                                            return channelPieTooltipLabel(context, l30Sales);
                                         }
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    beginAtZero: true,
-                                    ticks: {
-                                        callback: function(value) {
-                                            return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
-                                        },
-                                        font: { size: 12 }
-                                    },
-                                    grid: {
-                                        color: 'rgba(0, 0, 0, 0.05)',
-                                        drawBorder: false
-                                    }
-                                },
-                                y: {
-                                    ticks: {
-                                        font: { size: 13, weight: '500' },
-                                        autoSkip: false,
-                                        maxRotation: 0,
-                                        minRotation: 0
-                                    },
-                                    grid: {
-                                        display: false
                                     }
                                 }
                             }
                         }
                     });
+
+                    fillChannelPieLegendList(channels, l30Sales, bgColors);
                     
                     console.log('[Dashboard] ✅ Fullscreen chart created');
                 })
                 .catch(error => {
                     console.error('[Dashboard] ❌ Error loading fullscreen chart:', error);
+                    const legendUl = document.getElementById('channelPieLegendList');
+                    if (legendUl) {
+                        legendUl.innerHTML = '';
+                    }
                 });
+        }
+
+        function initDashboardPage() {
+            if (document.getElementById('dashboard-summary-stats')) {
+                loadDashboardFromChannels();
+            }
+            var pieRefresh = document.getElementById('dashboard-pie-refresh-btn');
+            if (pieRefresh) {
+                pieRefresh.addEventListener('click', function () {
+                    loadChannelSalesChart();
+                });
+            }
+            var pieFs = document.getElementById('dashboard-pie-fullscreen-btn');
+            if (pieFs) {
+                pieFs.addEventListener('click', function () {
+                    window.openChartModal();
+                });
+            }
+            var yRefresh = document.getElementById('dashboard-y-refresh-btn');
+            if (yRefresh) {
+                yRefresh.addEventListener('click', function () {
+                    createYSalesBarChart();
+                });
+            }
+            var yFs = document.getElementById('dashboard-y-fullscreen-btn');
+            if (yFs) {
+                yFs.addEventListener('click', function () {
+                    window.openYSalesChartModal();
+                });
+            }
+            var l30BarRef = document.getElementById('dashboard-l30-bar-refresh-btn');
+            if (l30BarRef) {
+                l30BarRef.addEventListener('click', function () {
+                    loadChannelSalesChart();
+                });
+            }
+            var yBarRef = document.getElementById('dashboard-y-bar-refresh-btn');
+            if (yBarRef) {
+                yBarRef.addEventListener('click', function () {
+                    createYSalesBarChart();
+                });
+            }
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initDashboardPage);
+        } else {
+            initDashboardPage();
         }
 
         // Close modal on ESC key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeChartModal();
+                if (typeof window.closeYSalesChartModal === 'function') {
+                    window.closeYSalesChartModal();
+                }
                 closeMenuModal();
             }
         });
@@ -1738,7 +2306,8 @@
                 icon: '✓',
                 color: '#0891b2',
                 items: [
-                    { name: 'My Tasks', icon: '📋', route: '/tasks/my-tasks' },
+                    { name: 'My Tasks', icon: '📋', route: '{{ url('tasks') }}' },
+                    { name: 'Task Summary', icon: '📊', route: '{{ route('tasks.summary') }}' },
                     { name: 'Team Tasks', icon: '👥', route: '/tasks/team-tasks' },
                     { name: 'Completed Tasks', icon: '✅', route: '/tasks/completed' }
                 ]

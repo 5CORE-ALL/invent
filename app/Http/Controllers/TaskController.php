@@ -277,6 +277,110 @@ class TaskController extends Controller
         ));
     }
 
+    /**
+     * Per–team-member task counts (assignee-based), matching Task Manager visibility and session user filter.
+     */
+    public function taskSummary()
+    {
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        $tasksQuery = Task::query();
+        if (!$isAdmin) {
+            $tasksQuery->where(function ($query) use ($user) {
+                $query->where('is_automate_task', 1)
+                    ->orWhere(function ($q) use ($user) {
+                        $q->where('assignor', $user->email)
+                            ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+                    });
+            });
+        }
+
+        $selectedUserName = Session::get('selected_user_name', '');
+        $selectedUserEmail = null;
+        if ($selectedUserName) {
+            $selectedUser = User::where('name', $selectedUserName)->first();
+            $selectedUserEmail = $selectedUser ? $selectedUser->email : null;
+        }
+        if ($selectedUserEmail) {
+            $tasksQuery->where(function ($query) use ($selectedUserEmail) {
+                $query->where('assignor', $selectedUserEmail)
+                    ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
+            });
+        }
+
+        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date']);
+
+        $defaultCounts = ['task' => 0, 'overdue' => 0, 'a_task' => 0, 'need_approval' => 0, 'assignor_task' => 0, 'done' => 0];
+
+        $byEmail = [];
+        foreach ($tasks as $task) {
+            $assignorEmail = trim((string) ($task->assignor ?? ''));
+            if ($assignorEmail !== '') {
+                if (!isset($byEmail[$assignorEmail])) {
+                    $byEmail[$assignorEmail] = $defaultCounts;
+                }
+                $byEmail[$assignorEmail]['assignor_task']++;
+            }
+
+            if (!$task->assign_to || trim((string) $task->assign_to) === '') {
+                continue;
+            }
+            $emails = array_map('trim', explode(',', $task->assign_to));
+            foreach ($emails as $email) {
+                if ($email === '') {
+                    continue;
+                }
+                if (!isset($byEmail[$email])) {
+                    $byEmail[$email] = $defaultCounts;
+                }
+                $byEmail[$email]['task']++;
+                if (($task->status ?? '') === 'Done') {
+                    $byEmail[$email]['done']++;
+                }
+                if (($task->status ?? '') === 'Todo') {
+                    $byEmail[$email]['a_task']++;
+                }
+                if (($task->status ?? '') === 'Need Approval') {
+                    $byEmail[$email]['need_approval']++;
+                }
+                $graceEnd = $task->start_date
+                    ? \Carbon\Carbon::parse($task->start_date)->copy()->addDay()
+                    : null;
+                $isOverdue = $graceEnd
+                    && ($task->status ?? '') !== 'Archived'
+                    && $graceEnd->lt(now());
+                if ($isOverdue) {
+                    $byEmail[$email]['overdue']++;
+                }
+            }
+        }
+
+        $members = User::where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'avatar', 'designation']);
+
+        $rows = [];
+        foreach ($members as $member) {
+            $email = $member->email;
+            $counts = $byEmail[$email] ?? $defaultCounts;
+            $rows[] = [
+                'team_member' => $member->name,
+                'email' => $email,
+                'avatar' => $member->avatar,
+                'designation' => $member->designation,
+                'task' => $counts['task'],
+                'assignor_task' => $counts['assignor_task'],
+                'overdue' => $counts['overdue'],
+                'a_task' => $counts['a_task'],
+                'need_approval' => $counts['need_approval'],
+                'done' => $counts['done'],
+            ];
+        }
+
+        return view('tasks.task-summary', compact('rows'));
+    }
+
     public function getData()
     {
         $user = Auth::user();

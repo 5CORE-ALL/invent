@@ -167,6 +167,30 @@ return [
             'days' => 14,
             'replace_placeholders' => true,
         ],
+
+        /*
+        | shopify:sync-live-inventory — Ohio GraphQL quantities written to shopify_skus.
+        | Files: storage/logs/shopify-live-inventory-YYYY-MM-DD.log
+        */
+        'shopify_live_inventory' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/shopify-live-inventory.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 30,
+            'replace_placeholders' => true,
+        ],
+
+        /*
+        | Proof that `php artisan schedule:run` is executing (heartbeat every minute from Kernel).
+        | tail -f storage/logs/scheduler-activity-*.log
+        */
+        'scheduler_activity' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/scheduler-activity.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 14,
+            'replace_placeholders' => true,
+        ],
     ],
 
 ];

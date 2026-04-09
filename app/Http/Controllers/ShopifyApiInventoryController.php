@@ -25,6 +25,49 @@ class ShopifyApiInventoryController extends Controller
 
     protected int $graphQlQuantitySampleLimit = 0;
 
+    /** Max SKU rows logged per run to shopify_live_inventory (full sync / lists). */
+    protected int $shopifyLiveInventoryLogSampleCap = 40;
+
+    protected function logShopifyLiveInventory(string $message, array $context = [], string $level = 'info'): void
+    {
+        $log = Log::channel('shopify_live_inventory');
+        match ($level) {
+            'warning' => $log->warning($message, $context),
+            'error' => $log->error($message, $context),
+            'critical' => $log->critical($message, $context),
+            default => $log->info($message, $context),
+        };
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $liveKeyedBySku
+     * @return array<int, array<string, mixed>>
+     */
+    protected function shopifyLiveInventoryValueSamples(array $liveKeyedBySku, int $cap): array
+    {
+        $out = [];
+        $n = 0;
+        foreach ($liveKeyedBySku as $sku => $data) {
+            if ($n >= $cap) {
+                break;
+            }
+            if ($sku === '' || $sku === null) {
+                continue;
+            }
+            $out[] = [
+                'sku' => $sku,
+                'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
+                'committed' => max(0, (int) ($data['committed'] ?? 0)),
+                'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
+                'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
+                'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
+            ];
+            $n++;
+        }
+
+        return $out;
+    }
+
     public function __construct()
     {
         $this->shopifyApiKey = config('services.shopify.api_key');
@@ -1049,13 +1092,19 @@ GQL;
                 return false;
             }
 
-            ShopifySku::where('sku', $exactSku)->update([
+            $qty = [
                 'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
                 'committed' => max(0, (int) ($data['committed'] ?? 0)),
                 'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
                 'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
                 'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
-                'updated_at' => now(),
+            ];
+            ShopifySku::where('sku', $exactSku)->update(array_merge($qty, ['updated_at' => now()]));
+
+            $this->logShopifyLiveInventory('single_sku_sync_ok', [
+                'sku' => $exactSku,
+                'variant_id' => $row->variant_id,
+                'quantities_written' => $qty,
             ]);
 
             return true;
@@ -1127,29 +1176,50 @@ GQL;
             }
 
             if ($skuMap === []) {
+                $this->logShopifyLiveInventory('sku_list_sync_aborted', [
+                    'reason' => 'no_resolvable_inventory_items',
+                    'requested' => $skuInputs,
+                ], 'warning');
+
                 return false;
             }
 
             $final = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, $locationId);
             if ($final === []) {
+                $this->logShopifyLiveInventory('sku_list_sync_aborted', [
+                    'reason' => 'graphql_empty',
+                    'location_id' => $locationId,
+                    'sku_count' => count($skuMap),
+                ], 'warning');
+
                 return false;
             }
 
+            $updated = [];
             foreach (array_keys($skuMap) as $exactSku) {
                 $data = $final[$exactSku] ?? null;
                 if ($data === null) {
                     continue;
                 }
 
-                ShopifySku::where('sku', $exactSku)->update([
+                $qty = [
                     'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
                     'committed' => max(0, (int) ($data['committed'] ?? 0)),
                     'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
                     'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
                     'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
-                    'updated_at' => now(),
-                ]);
+                ];
+                ShopifySku::where('sku', $exactSku)->update(array_merge($qty, ['updated_at' => now()]));
+                $updated[$exactSku] = $qty;
             }
+
+            $cap = $this->shopifyLiveInventoryLogSampleCap;
+            $this->logShopifyLiveInventory('sku_list_sync_ok', [
+                'location_id' => $locationId,
+                'rows_updated' => count($updated),
+                'value_samples' => $this->shopifyLiveInventoryValueSamples($updated, $cap),
+                'value_samples_note' => count($updated) > $cap ? 'first_'.$cap.'_skus_in_update_order' : 'all_rows_logged',
+            ]);
 
             return true;
         } finally {
@@ -1167,23 +1237,43 @@ GQL;
     public function syncLiveInventoryToDb(int $graphQlSampleLimit = 0): bool
     {
         $this->setGraphQlQuantitySampleLimit($graphQlSampleLimit);
+        $runId = uniqid('slv_', true);
+        $t0 = microtime(true);
 
         try {
+            $this->logShopifyLiveInventory('full_sync_started', [
+                'run_id' => $runId,
+                'graphQl_sample_limit' => $graphQlSampleLimit,
+            ]);
+
             $live = $this->fetchInventoryWithCommitment();
 
             if (empty($live)) {
                 Log::warning('No live inventory returned from Shopify (sync skipped).');
+                $this->logShopifyLiveInventory('full_sync_aborted', [
+                    'run_id' => $runId,
+                    'reason' => 'empty_api_response',
+                ], 'warning');
+
                 return false;
             }
-            
+
             // Safety check: ensure we got a reasonable number of SKUs
             $liveCount = count($live);
             if ($liveCount < 10) {
                 Log::critical('syncLiveInventoryToDb: Too few SKUs returned, aborting', ['count' => $liveCount]);
+                $this->logShopifyLiveInventory('full_sync_aborted', [
+                    'run_id' => $runId,
+                    'reason' => 'too_few_skus',
+                    'count' => $liveCount,
+                ], 'critical');
+
                 return false;
             }
-            
+
             Log::info('syncLiveInventoryToDb: Starting sync', ['sku_count' => $liveCount]);
+
+            $valueSamples = $this->shopifyLiveInventoryValueSamples($live, $this->shopifyLiveInventoryLogSampleCap);
 
             $updatedCount = 0;
             DB::transaction(function () use ($live, &$updatedCount) {
@@ -1194,7 +1284,7 @@ GQL;
                         if (empty($sku)) {
                             continue;
                         }
-                        
+
                         // Store SKU exactly as it comes from Shopify - no normalization
                         ShopifySku::updateOrCreate(
                             ['sku' => $sku],
@@ -1216,11 +1306,30 @@ GQL;
             Cache::forget('shopify_skus_list');
             Log::info('Synced live inventory to shopify_skus table', [
                 'total_from_api' => count($live),
-                'db_updated' => $updatedCount
+                'db_updated' => $updatedCount,
             ]);
+
+            $durationSec = round(microtime(true) - $t0, 2);
+            $cap = $this->shopifyLiveInventoryLogSampleCap;
+            $this->logShopifyLiveInventory('full_sync_finished', [
+                'run_id' => $runId,
+                'ok' => true,
+                'duration_seconds' => $durationSec,
+                'total_from_api' => $liveCount,
+                'db_updated' => $updatedCount,
+                'value_samples' => $valueSamples,
+                'value_samples_note' => $liveCount > $cap ? 'first_'.$cap.'_skus_in_catalog_order' : 'all_'.$liveCount.'_skus_logged',
+            ]);
+
             return true;
         } catch (\Exception $e) {
             Log::error('Failed to sync live inventory to DB: ' . $e->getMessage());
+            $this->logShopifyLiveInventory('full_sync_failed', [
+                'run_id' => $runId,
+                'error' => $e->getMessage(),
+                'duration_seconds' => round(microtime(true) - $t0, 2),
+            ], 'error');
+
             return false;
         } finally {
             $this->graphQlQuantitySampleLimit = 0;

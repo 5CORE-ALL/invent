@@ -1145,7 +1145,7 @@
                     {
                         title: "Y Sales",
                         field: "Y Sales",
-                        headerTooltip: "Yesterday's sales (Pacific time). Amazon = amazon_orders; others = marketplace_daily_metrics.",
+                        headerTooltip: "Yesterday's sales (Pacific time). Amazon = amazon_orders; Temu / Temu 2 = temu_daily_data / temu2_daily_data (FB price × qty, same as L30); others = snapshot l30_sales.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,

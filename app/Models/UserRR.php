@@ -16,6 +16,8 @@ class UserRR extends Model
         'role',
         'responsibilities',
         'goals',
+        'training',
+        'resources',
     ];
 
     /**

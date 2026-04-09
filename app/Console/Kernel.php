@@ -135,9 +135,13 @@ class Kernel extends ConsoleKernel
     {
         $log = $this->schedulerLog;
 
-        // Test scheduler to verify it's working
+        // Proof cron + schedule:run work: check storage/logs/scheduler-activity-*.log (one line/minute).
         $schedule->call(function () {
             Log::info('Scheduler heartbeat at ' . now());
+            Log::channel('scheduler_activity')->info('schedule:run_heartbeat', [
+                'at' => now()->toIso8601String(),
+                'app_tz' => config('app.timezone'),
+            ]);
         })->everyMinute()->name('scheduler-heartbeat');
 
         /*
@@ -865,22 +869,9 @@ class Kernel extends ConsoleKernel
         | SHOPIFY
         |--------------------------------------------------------------------------
         */
-        $schedule->command('shopify:save-daily-inventory')
-            ->everyFiveMinutes()
-            ->timezone('UTC')
-            ->name('shopify-save-daily-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // shopify:save-daily-inventory — crontab only (see scripts/cron-shopify-save-daily-inventory.sh).
+        // shopify:sync-live-inventory — crontab only (see scripts/cron-shopify-sync-live-inventory.sh).
 
-        // Sync Ohio-location-specific on_hand / available_to_sell / committed
-        $schedule->command('shopify:sync-live-inventory')
-            ->everyThirtyMinutes()
-            ->timezone('UTC')
-            ->name('shopify-sync-live-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
 
         $schedule->command('sync:shopify-quantity')
             ->twiceDaily(1, 13)

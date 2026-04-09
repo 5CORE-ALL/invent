@@ -222,6 +222,23 @@
                                 <span class="text-muted small" id="bulk-selected-count"></span>
                             </div>
                         </div>
+                        <div class="filter-item" id="bulk-stage-bar">
+                            <label class="form-label fw-semibold d-block">🎯 Bulk stage</label>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <select id="bulk-stage-select" class="form-select form-select-sm" style="width: 172px;">
+                                    <option value="">— Choose stage —</option>
+                                    <option value="appr_req">Appr. Req</option>
+                                    <option value="mip">MIP</option>
+                                    <option value="r2s">R2S</option>
+                                    <option value="transit">Transit</option>
+                                    <option value="all_good">😊 All Good</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                </select>
+                                <button type="button" id="bulk-update-stage-btn" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-layer-group me-1"></i> Apply to selected
+                                </button>
+                            </div>
+                        </div>
 
                         <div class="ms-auto d-flex align-items-end">
                             <div class="d-flex align-items-center to-order-counts-box gap-4 rounded border bg-light">
@@ -851,6 +868,7 @@
 
             deleteWithSelect();
             bulkUpdateSupplierWithSelect();
+            bulkUpdateStageWithSelect();
 
             function deleteWithSelect() {
                 const deleteBtn = document.getElementById('delete-selected-btn');
@@ -950,6 +968,140 @@
                         btn.disabled = false;
                         btn.innerHTML = origHtml;
                     });
+                });
+            }
+
+            function bulkUpdateStageWithSelect() {
+                const btn = document.getElementById('bulk-update-stage-btn');
+                const stageSel = document.getElementById('bulk-stage-select');
+                if (!btn || !stageSel) {
+                    return;
+                }
+
+                function postStageUpdate(sku, parent, value) {
+                    return new Promise(function (resolve, reject) {
+                        $.post('/update-forecast-data', {
+                            sku: sku,
+                            parent: parent || '',
+                            column: 'Stage',
+                            value: value,
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        }).done(function (res) {
+                            if (res && res.success) {
+                                resolve(res);
+                            } else {
+                                reject(new Error((res && res.message) ? res.message : 'Save failed'));
+                            }
+                        }).fail(function () {
+                            reject(new Error('Network error'));
+                        });
+                    });
+                }
+
+                btn.addEventListener('click', async function () {
+                    const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                    if (!table) {
+                        alert('Table not ready.');
+                        return;
+                    }
+                    const stageVal = String(stageSel.value || '').trim();
+                    if (!stageVal) {
+                        alert('Choose a stage to apply.');
+                        return;
+                    }
+                    const selectedRows = table.getSelectedRows();
+                    if (selectedRows.length === 0) {
+                        alert('Please select at least one row.');
+                        return;
+                    }
+                    const rows = selectedRows.filter(function (row) {
+                        const sku = String(row.getData().SKU || '').trim();
+                        return sku && !sku.toUpperCase().startsWith('PARENT');
+                    });
+                    if (rows.length === 0) {
+                        alert('No valid SKU rows selected (parent rows are skipped).');
+                        return;
+                    }
+                    const skippedMoq = [];
+                    const toProcess = [];
+                    rows.forEach(function (row) {
+                        const d = row.getData();
+                        const moq = parseInt(d.approved_qty, 10) || 0;
+                        if (!moq) {
+                            skippedMoq.push(d.SKU);
+                        } else {
+                            toProcess.push(row);
+                        }
+                    });
+                    if (toProcess.length === 0) {
+                        alert('MOQ must be greater than zero for each row. Skipped: ' + (skippedMoq.join(', ') || '(all)'));
+                        return;
+                    }
+                    if (!confirm('Apply stage to ' + toProcess.length + ' row(s)?')) {
+                        return;
+                    }
+                    const origHtml = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Applying...';
+                    let ok = 0;
+                    const failed = [];
+                    try {
+                        for (let i = 0; i < toProcess.length; i++) {
+                            const row = toProcess[i];
+                            const d = row.getData();
+                            const sku = String(d.SKU || '').trim();
+                            const parent = String(d.Parent || '').trim();
+                            try {
+                                await postStageUpdate(sku, parent, stageVal);
+                                if (stageVal === 'mip') {
+                                    const payload = {
+                                        parent: d.Parent || '',
+                                        sku: d.SKU || '',
+                                        order_qty: d.approved_qty || '',
+                                        supplier: d.Supplier || '',
+                                        adv_date: d['Adv date'] || ''
+                                    };
+                                    const insertRes = await fetch('/mfrg-progresses/insert', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                                        },
+                                        body: JSON.stringify(payload)
+                                    }).then(function (r) { return r.json(); });
+                                    if (insertRes.success) {
+                                        row.delete();
+                                    } else {
+                                        row.update({ stage: stageVal }, true);
+                                        failed.push(sku + ' (MIP: ' + (insertRes.message || 'insert failed') + ')');
+                                    }
+                                } else {
+                                    row.update({ stage: stageVal }, true);
+                                }
+                                ok++;
+                            } catch (e) {
+                                failed.push(sku + ': ' + (e.message || 'error'));
+                            }
+                        }
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+                    }
+                    table.getSelectedRows().forEach(function (r) {
+                        table.deselectRow(r);
+                    });
+                    const countEl = document.getElementById('bulk-selected-count');
+                    if (countEl) {
+                        countEl.textContent = '';
+                    }
+                    let msg = 'Stage saved for ' + ok + ' row(s).';
+                    if (skippedMoq.length) {
+                        msg += ' Skipped (MOQ empty/zero): ' + skippedMoq.join(', ');
+                    }
+                    if (failed.length) {
+                        msg += ' Issues: ' + failed.join('; ');
+                    }
+                    alert(msg);
                 });
             }
 

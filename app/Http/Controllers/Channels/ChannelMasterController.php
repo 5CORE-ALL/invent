@@ -95,6 +95,7 @@ use App\Models\SheinDailyData;
 use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
 use App\Models\TemuDailyData;
+use App\Models\Temu2DailyData;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
@@ -218,35 +219,55 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Sum of (Shopify inventory * LP) across all SKUs for the Inv@LP badge.
-     * Uses shopify_skus.inv and product_master LP (from Values->lp or lp column).
+     * Shopify inventory + LP from product_master Values JSON (same matching as Inv@LP).
+     *
+     * @return array{inv_sum: float, inv_at_lp: float, weighted_avg_lp: float}
      */
-    private function getInvAtLpShopify(): float
+    private function getShopifyInvLpMetrics(): array
     {
         $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv']);
         $skus = $shopifySkus->pluck('sku')->unique()->filter()->values()->toArray();
         if (empty($skus)) {
-            return 0.0;
+            return ['inv_sum' => 0.0, 'inv_at_lp' => 0.0, 'weighted_avg_lp' => 0.0];
         }
         $productMasters = ProductMaster::whereNull('deleted_at')->whereIn('sku', $skus)->get();
         $pmBySku = $productMasters->keyBy(function ($item) {
             return strtoupper(trim((string) $item->sku));
         });
 
-        $total = 0.0;
+        $invSum = 0.0;
+        $invAtLp = 0.0;
         foreach ($shopifySkus as $row) {
             $sku = trim((string) $row->sku);
-            if ($sku === '') continue;
+            if ($sku === '') {
+                continue;
+            }
             $inv = is_numeric($row->inv) ? (float) $row->inv : 0;
+            $invSum += $inv;
             $pm = $pmBySku->get(strtoupper($sku));
             $lp = 0.0;
             if ($pm) {
                 $values = is_array($pm->Values ?? null) ? $pm->Values : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
                 $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($pm->lp) ? (float) $pm->lp : 0);
             }
-            $total += $inv * $lp;
+            $invAtLp += $inv * $lp;
         }
-        return round($total, 2);
+        $weightedAvgLp = $invSum > 0 ? round($invAtLp / $invSum, 2) : 0.0;
+
+        return [
+            'inv_sum' => round($invSum, 2),
+            'inv_at_lp' => round($invAtLp, 2),
+            'weighted_avg_lp' => $weightedAvgLp,
+        ];
+    }
+
+    /**
+     * Sum of (Shopify inventory * LP) across all SKUs for the Inv@LP badge.
+     * Uses shopify_skus.inv and product_master LP (from Values->lp or lp column).
+     */
+    private function getInvAtLpShopify(): float
+    {
+        return $this->getShopifyInvLpMetrics()['inv_at_lp'];
     }
 
     /**
@@ -966,6 +987,17 @@ class ChannelMasterController extends Controller
             Log::warning('Amazon Y Sales calculation failed: ' . $e->getMessage());
         }
 
+        // Temu / Temu 2 Y Sales: same relative "yesterday" as Amazon (day before latest purchase_date),
+        // sum of FB price × qty for ProductMaster rows — matches L30 Sales source (marketplace_daily_metrics).
+        $temuY = $this->computeTemuYSalesLikeAmazon(false);
+        if ($temuY !== null) {
+            $yesterdaySummaries['temu'] = $temuY;
+        }
+        $temu2Y = $this->computeTemuYSalesLikeAmazon(true);
+        if ($temu2Y !== null) {
+            $yesterdaySummaries['temu2'] = $temu2Y;
+        }
+
         // Map lowercase channel key => controller method
         $controllerMap = [
             'amazon'    => 'getAmazonChannelData',
@@ -1169,8 +1201,9 @@ class ChannelMasterController extends Controller
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('saveChannelDailySummaries failed: ' . $e->getMessage(), ['exception' => $e]);
         }
-        // Sum of (Shopify inventory * LP) for Inv@LP badge and chart
-        $invAtLp = $this->getInvAtLpShopify();
+        // Sum of (Shopify inventory * LP) for Inv@LP badge and chart + Inv / LP breakdown
+        $shopifyInvLp = $this->getShopifyInvLpMetrics();
+        $invAtLp = $shopifyInvLp['inv_at_lp'];
 
         return response()->json([
             'status'  => 200,
@@ -1178,7 +1211,96 @@ class ChannelMasterController extends Controller
             'data'    => $finalData,
             'inventory_value_amazon' => round($inventoryValueAmazon, 2),
             'inv_at_lp' => round($invAtLp, 2),
+            'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
+            'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
         ]);
+    }
+
+    /**
+     * Temu / Temu 2 Y Sales: same clock as Amazon — revenue for the calendar day before the latest
+     * purchase_date in Pacific. Dollar amount uses FB price × qty for SKUs in the ProductMaster universe,
+     * matching UpdateMarketplaceDailyMetrics::calculateTemuMetrics L30 sales.
+     */
+    private function computeTemuYSalesLikeAmazon(bool $isTemu2): ?float
+    {
+        $modelClass = $isTemu2 ? Temu2DailyData::class : TemuDailyData::class;
+
+        try {
+            $latest = $modelClass::whereNotNull('purchase_date')->max('purchase_date');
+            if (!$latest) {
+                return null;
+            }
+
+            $latestPacific = Carbon::parse($latest)->timezone('America/Los_Angeles');
+            $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
+            $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->pluck('sku')
+                ->filter(function ($sku) {
+                    return stripos($sku, 'PARENT') === false;
+                })
+                ->unique()
+                ->values()
+                ->all();
+
+            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
+                return [$normalizeSku($s) => true];
+            })->all();
+
+            $productMastersBySku = ProductMaster::all()->keyBy('sku');
+            $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
+                return $normalizeSku($pm->sku ?? '');
+            });
+
+            $rows = $modelClass::where('purchase_date', '>=', $yStartPacific)
+                ->where('purchase_date', '<=', $yEndPacific)
+                ->get();
+
+            $totalYSales = 0.0;
+
+            foreach ($rows as $row) {
+                if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '' || !$row->order_id || trim((string) $row->order_id) === '') {
+                    continue;
+                }
+                if (!isset($normalizedPmSet[$normalizeSku($row->contribution_sku ?? '')])) {
+                    continue;
+                }
+
+                $pm = $productMastersBySku[$row->contribution_sku]
+                    ?? $productMastersByNormalized[$normalizeSku($row->contribution_sku)]
+                    ?? null;
+                $parent = $pm ? $pm->parent : '';
+                if ($parent && str_starts_with((string) $parent, 'PARENT')) {
+                    continue;
+                }
+
+                $quantity = (int) ($row->quantity_purchased ?? 0);
+                $basePrice = (float) ($row->base_price_total ?? 0);
+                $total = $basePrice * $quantity;
+                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+
+                if ($quantity > 0 && $basePrice > 0) {
+                    $totalYSales += $fbPrice * $quantity;
+                }
+            }
+
+            return round($totalYSales, 2);
+        } catch (\Throwable $e) {
+            Log::warning('computeTemuYSalesLikeAmazon failed: ' . $e->getMessage());
+
+            return null;
+        }
     }
 
     // get total inventory l30 values
@@ -6713,6 +6835,8 @@ class ChannelMasterController extends Controller
 
             // Always return the actual calculated data from channels (even if zeros)
             // Don't use fallback data - return what we actually calculated
+            $shopifyInvLp = $this->getShopifyInvLpMetrics();
+
             return response()->json([
                 'status' => 200,
                 'data' => [
@@ -6725,6 +6849,8 @@ class ChannelMasterController extends Controller
                     'period' => 'L30 (Last 30 Days)',
                     'data_found' => $dataFound,
                     'channels_count' => count($channelData),
+                    'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
+                    'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
                 ],
             ]);
         } catch (\Exception $e) {
@@ -6948,6 +7074,8 @@ class ChannelMasterController extends Controller
      */
     private function getFallbackMetrics()
     {
+        $shopifyInvLp = $this->getShopifyInvLpMetrics();
+
         return response()->json([
             'status' => 200,
             'data' => [
@@ -6960,6 +7088,8 @@ class ChannelMasterController extends Controller
                 'period' => 'L30 (Last 30 Days)',
                 'data_found' => false,
                 'channels_count' => 0,
+                'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
+                'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
             ],
             'message' => 'Using sample data',
         ], 200);

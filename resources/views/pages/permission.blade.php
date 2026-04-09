@@ -326,7 +326,7 @@
 @section('content')
     @include('layouts.shared/page-title', [
         'page_title' => 'Permissions',
-        'sub_title' => 'User Management',
+        'sub_title' => 'Team Management',
     ])
     <div class="row">
         <div class="col-12">

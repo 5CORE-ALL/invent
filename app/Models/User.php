@@ -32,7 +32,8 @@ class User extends Authenticatable
         'designation',
         'is_active',
         'deactivated_at',
-        'logined'
+        'logined',
+        'resource_department_id',
     ];
 
     /**
@@ -72,6 +73,14 @@ class User extends Authenticatable
     }
 
     /**
+     * R&R portfolio document assignments (shared file may apply to many users).
+     */
+    public function rrPortfolioAssignments()
+    {
+        return $this->hasMany(RrPortfolioUser::class);
+    }
+
+    /**
      * Whether the user is a 5Core team member (internal support agent access).
      */
     public function is5CoreMember(): bool
@@ -101,5 +110,10 @@ class User extends Authenticatable
     public function designationModel()
     {
         return $this->belongsTo(Designation::class, 'designation', 'name');
+    }
+
+    public function resourceDepartment()
+    {
+        return $this->belongsTo(ResourceDepartment::class, 'resource_department_id');
     }
 }

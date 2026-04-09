@@ -184,7 +184,7 @@
 @section('content')
     @include('layouts.shared/page-title', [
         'page_title' => 'Permissions',
-        'sub_title' => 'User Management',
+        'sub_title' => 'Team Management',
     ])
 
     <div class="container-fluid">
@@ -195,7 +195,7 @@
                     @php
                         $menuGroups = [
                             'Main' => [['value' => 'dashboard', 'text' => 'Dashboard']],
-                            'User Management' => [
+                            'Team Management' => [
                                 ['value' => 'roles', 'text' => 'Roles'],
                                 ['value' => 'permissions', 'text' => 'Permissions'],
                                 ['value' => 'view_permissions', 'text' => 'View Permissions'],

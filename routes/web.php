@@ -13,6 +13,8 @@ use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayControlle
 use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingController;
 use App\Http\Controllers\ArrivedContainerController;
 use App\Http\Controllers\Auth\UserController;
+use App\Http\Controllers\UserRRPortfolioController;
+use App\Http\Controllers\ResourcesMasterController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
 use App\Http\Controllers\Campaigns\AmazonCampaignReportsController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
@@ -4564,6 +4566,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::match(['get', 'post'], '/ebay/token-callback', [\App\Http\Controllers\EbayTokenController::class, 'callback'])->name('ebay.token.callback');
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
+    Route::get('/tasks/summary', [\App\Http\Controllers\TaskController::class, 'taskSummary'])->name('tasks.summary');
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
     Route::get('/tasks/automated', [\App\Http\Controllers\TaskController::class, 'automatedIndex'])->name('tasks.automated');
     Route::get('/tasks/automated/data', [\App\Http\Controllers\TaskController::class, 'getAutomatedData'])->name('tasks.automatedData');
@@ -4595,6 +4598,25 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'destroy'])->name('tasks.destroy');
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
 
+    // Resources Master (R&R / training / checklists / media / links)
+    Route::prefix('resources-master')->middleware('auth')->name('resources-master.')->group(function () {
+        Route::get('/', [ResourcesMasterController::class, 'dashboard'])->name('dashboard');
+        Route::get('/data', [ResourcesMasterController::class, 'data'])->name('data');
+        Route::get('/section/{section}', [ResourcesMasterController::class, 'section'])->name('section');
+        Route::post('/bulk-upload', [ResourcesMasterController::class, 'bulkUpload'])->name('bulk-upload');
+        Route::post('/import/csv', [ResourcesMasterController::class, 'importCsv'])->name('import.csv');
+        Route::post('/import/zip', [ResourcesMasterController::class, 'importZip'])->name('import.zip');
+        Route::post('/store', [ResourcesMasterController::class, 'store'])->name('store');
+        Route::put('/item/{resource}', [ResourcesMasterController::class, 'update'])->name('update');
+        Route::delete('/item/{resource}', [ResourcesMasterController::class, 'destroy'])->name('destroy');
+        Route::post('/restore/{id}', [ResourcesMasterController::class, 'restore'])->whereNumber('id')->name('restore');
+        Route::delete('/force/{id}', [ResourcesMasterController::class, 'forceDestroy'])->whereNumber('id')->name('force-destroy');
+        Route::get('/item/{resource}/download', [ResourcesMasterController::class, 'download'])->name('download');
+        Route::get('/item/{resource}/thumbnail', [ResourcesMasterController::class, 'thumbnail'])->name('thumbnail');
+        Route::post('/item/{resource}/view', [ResourcesMasterController::class, 'logView'])->name('view-log');
+        Route::post('/item/{resource}/watch', [ResourcesMasterController::class, 'watch'])->name('watch');
+    });
+
     // User management routes
     Route::get('/users/add', [UserController::class, 'index'])
         ->middleware('auth')
@@ -4617,6 +4639,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/api/users/active', [UserController::class, 'getActiveUsers'])
         ->middleware('auth')
         ->name('api.users.active');
+
+    Route::get('/users/{user}/rr-portfolio', [UserRRPortfolioController::class, 'show'])
+        ->middleware('auth')
+        ->name('users.rr-portfolio.show');
+
+    Route::post('/users/{user}/rr-portfolio', [UserRRPortfolioController::class, 'upload'])
+        ->middleware('auth')
+        ->name('users.rr-portfolio.upload');
+
+    Route::post('/users/{user}/rr-portfolio/assignment/{assignment}/fits', [UserRRPortfolioController::class, 'updateFits'])
+        ->middleware('auth')
+        ->name('users.rr-portfolio.assignment.fits');
 
     // Performance Management Routes
     Route::prefix('performance')->middleware('auth')->name('performance.')->group(function () {
