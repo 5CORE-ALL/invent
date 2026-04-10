@@ -414,15 +414,9 @@
                     <select id="acos-slab-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="">ACOS</option>
-                        <option value="8">&lt; 5%</option>
-                        <option value="7">5-9%</option>
-                        <option value="6">10-14%</option>
-                        <option value="5">15-19%</option>
-                        <option value="4">20-24%</option>
-                        <option value="3">25-29%</option>
-                        <option value="2">30-34%</option>
-                        <option value="1">≥ 35%</option>
-                        <option value="acos35spend10">&gt;35% &amp; SPEND &gt;10</option>
+                        <option value="10">Under 20%</option>
+                        <option value="5">20% – 30%</option>
+                        <option value="2">≥ 30%</option>
                     </select>
 
                     <!-- Unified Range Filter (Views & Sold) -->
@@ -1138,6 +1132,74 @@
             const priceColor = (lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
             return '<span style="color: ' + priceColor + '; font-weight: 600;">' + amazonModalFmtMoney(lmpPrice) + '</span>';
         }
+        /** Editable S PRC — saves with /save-amazon-sprice on blur or Enter (same as grid SPRICE editor) */
+        function amazonModalSpriceInputHtml(row) {
+            const sku = row['(Child) sku'] || '';
+            if (!sku) return '<span class="text-muted">—</span>';
+            const sprice = parseFloat(row.SPRICE) || 0;
+            const listPrice = parseFloat(row.price) || 0;
+            const val = sprice > 0 ? sprice.toFixed(2) : '';
+            let ph = 'S PRC';
+            if (listPrice > 0) {
+                ph = 'List $' + listPrice.toFixed(2);
+            }
+            return '<input type="number" class="form-control form-control-sm text-end parent-modal-sprice-input" inputmode="decimal" data-sku="' + escAttr(sku) + '" value="' + escAttr(val) + '" step="0.01" min="0.01" placeholder="' + escAttr(ph) + '" title="Enter S PRC — blur or Enter to save" style="max-width: 6.75rem; margin-left: auto;" />';
+        }
+        /** Accept / push to Amazon — same icon logic as grid (class avoids duplicate .apply-price-btn handler) */
+        function amazonModalAcceptPushHtml(row) {
+            const sku = row['(Child) sku'] || '';
+            const sprice = parseFloat(row.SPRICE) || 0;
+            const status = row.SPRICE_STATUS || null;
+            if (!sku || !sprice || sprice <= 0) {
+                return '<span class="text-muted">N/A</span>';
+            }
+            let icon = '<i class="fas fa-check"></i>';
+            let iconColor = '#28a745';
+            let titleText = 'Apply Price to Amazon';
+            if (status === 'pushed') {
+                icon = '<i class="fa-solid fa-check-double"></i>';
+                titleText = 'Price pushed to Amazon (Double-click to mark as Applied)';
+            } else if (status === 'applied') {
+                icon = '<i class="fa-solid fa-check-double"></i>';
+                titleText = 'Price applied to Amazon (Double-click to change)';
+            } else if (status === 'error') {
+                icon = '<i class="fa-solid fa-x"></i>';
+                iconColor = '#dc3545';
+                titleText = 'Error applying price to Amazon';
+            } else if (status === 'processing') {
+                icon = '<i class="fas fa-spinner fa-spin"></i>';
+                iconColor = '#ffc107';
+                titleText = 'Price pushing in progress...';
+            }
+            return '<button type="button" class="btn btn-sm parent-pricing-modal-apply-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-status="' + escAttr(status || '') + '" title="' + escAttr(titleText) + '" style="border: none; background: none; color: ' + iconColor + '; padding: 0;">' + icon + '</button>';
+        }
+        /** S PFT % — same colors as Spft% column */
+        function amazonModalSpftColoredHtml(row) {
+            const value = row['Spft%'];
+            if (value === null || value === undefined || value === '') return '<span class="text-muted">—</span>';
+            const percent = parseFloat(value);
+            if (isNaN(percent)) return '<span class="text-muted">—</span>';
+            let color = '';
+            if (percent < 10) color = '#a00211';
+            else if (percent >= 10 && percent < 20) color = '#3591dc';
+            else if (percent >= 20 && percent < 30) color = '#ffc107';
+            else if (percent >= 30 && percent < 50) color = '#28a745';
+            else color = '#e83e8c';
+            return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(percent) + '%</span>';
+        }
+        /** SROI % — same colors as SROI column */
+        function amazonModalSroiColoredHtml(row) {
+            const value = row.SROI;
+            if (value === null || value === undefined || value === '') return '<span class="text-muted">—</span>';
+            const percent = parseFloat(value);
+            if (isNaN(percent)) return '<span class="text-muted">—</span>';
+            let color = '';
+            if (percent < 50) color = '#a00211';
+            else if (percent >= 50 && percent < 75) color = '#ffc107';
+            else if (percent >= 75 && percent <= 125) color = '#28a745';
+            else color = '#e83e8c';
+            return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(percent) + '%</span>';
+        }
         function collectChildRowsForAmazonParent(parentKey) {
             if (typeof table === 'undefined' || !table || !parentKey) return [];
             const norm = String(parentKey).trim().replace(/\s+/g, ' ');
@@ -1152,15 +1214,16 @@
         function showParentPricingBreakdownModal(parentKey) {
             const rows = collectChildRowsForAmazonParent(parentKey);
             if (typeof $ === 'undefined') return;
+            $('#parentPricingBreakdownModal').data('amazonParentKey', parentKey || '');
             $('#parent-pricing-modal-title').text(parentKey || '—');
             const tbody = $('#parent-pricing-breakdown-tbody');
             tbody.empty();
             if (!rows.length) {
-                tbody.append('<tr><td colspan="12" class="text-center text-muted py-3">No child SKUs found for this parent.</td></tr>');
+                tbody.append('<tr><td colspan="16" class="text-center text-muted py-3">No child SKUs found for this parent.</td></tr>');
             } else {
                 rows.forEach(function(row) {
                     const sku = row['(Child) sku'] || '—';
-                    const tr = $('<tr></tr>');
+                    const tr = $('<tr></tr>').attr('data-child-sku', sku);
                     tr.append($('<td></td>').text(sku));
                     tr.append($('<td class="text-end"></td>').html(amazonModalChildPriceHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row.Sess30)));
@@ -1173,6 +1236,10 @@
                     tr.append($('<td class="text-end"></td>').html(amazonModalGroiColoredHtml(row['GROI%'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalNroiColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalLmpColoredHtml(row)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalSpriceInputHtml(row)));
+                    tr.append($('<td class="text-center"></td>').html(amazonModalAcceptPushHtml(row)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalSpftColoredHtml(row)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalSroiColoredHtml(row)));
                     tbody.append(tr);
                 });
             }
@@ -1268,6 +1335,19 @@
             }
             const fbaSku = normalizeFbaSkuToken(rowData.FBA_SKU);
             return hasInDisplay || (fbaSku && fbaSku.includes('FBA'));
+        }
+
+        /** Amazon tabulator: only child SKUs ending with "FBA" use FBA-inventory ad lock (matches PHP FbaInventoryService::childSkuHasFbaSuffix). */
+        function childSkuHasFbaSuffixForAds(rowData) {
+            const child = normalizeFbaSkuToken(rowData['(Child) sku'] || '');
+            return child !== '' && child.endsWith('FBA');
+        }
+
+        function rowFbaSuffixZeroFbaInvLocksAds(rowData) {
+            if (!childSkuHasFbaSuffixForAds(rowData)) return false;
+            const q = parseFloat(rowData.FBA_Quantity);
+            const n = isNaN(q) ? 0 : q;
+            return n <= 0;
         }
 
         /** FBA INV: dash when row is not FBA-relevant; never show 0 for those rows */
@@ -2650,6 +2730,195 @@
                 });
             });
 
+            // Parent pricing modal: push SPRICE to Amazon (same retry + row update as Accept column; class is not .apply-price-btn to avoid double POST)
+            $(document).on('click', '.parent-pricing-modal-apply-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                const sku = $btn.attr('data-sku');
+                const price = parseFloat($btn.attr('data-price'));
+                if (!sku || !price || price <= 0 || isNaN(price)) {
+                    showToast('error', 'Invalid SKU or price');
+                    return;
+                }
+                $btn.prop('disabled', true);
+                $btn.css({
+                    'border-radius': '50%',
+                    'width': '35px',
+                    'height': '35px',
+                    'padding': '0',
+                    'display': 'flex',
+                    'align-items': 'center',
+                    'justify-content': 'center'
+                });
+                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
+                applyPriceWithRetry(sku, price, null, 5, 5000)
+                    .then(function() {
+                        if (table) {
+                            const tabRow = table.getRows().find(function(r) {
+                                return (r.getData()['(Child) sku'] || '') === sku;
+                            });
+                            if (tabRow) {
+                                const rowData = tabRow.getData();
+                                rowData.SPRICE_STATUS = 'pushed';
+                                tabRow.update(rowData);
+                            }
+                        }
+                        showToast('success', 'Price $' + price.toFixed(2) + ' pushed to Amazon for ' + sku);
+                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                        if (pk) {
+                            showParentPricingBreakdownModal(pk);
+                        }
+                    })
+                    .catch(function() {
+                        if (table) {
+                            const tabRow = table.getRows().find(function(r) {
+                                return (r.getData()['(Child) sku'] || '') === sku;
+                            });
+                            if (tabRow) {
+                                const rowData = tabRow.getData();
+                                rowData.SPRICE_STATUS = 'error';
+                                tabRow.update(rowData);
+                            }
+                        }
+                        showToast('error', 'Failed to apply price to Amazon');
+                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                        if (pk) {
+                            showParentPricingBreakdownModal(pk);
+                        }
+                    });
+            });
+
+            $(document).on('dblclick', '.parent-pricing-modal-apply-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $btn = $(this);
+                const sku = $btn.attr('data-sku');
+                const currentStatus = $btn.attr('data-status') || '';
+                if (currentStatus === 'pushed') {
+                    $.ajax({
+                        url: '/update-sprice-status',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: { sku: sku, status: 'applied' },
+                        success: function() {
+                            if (table) {
+                                const tabRow = table.getRows().find(function(r) {
+                                    return (r.getData()['(Child) sku'] || '') === sku;
+                                });
+                                if (tabRow) {
+                                    const rowData = tabRow.getData();
+                                    rowData.SPRICE_STATUS = 'applied';
+                                    tabRow.update(rowData);
+                                }
+                            }
+                            showToast('success', 'Status updated to Applied');
+                            const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                            if (pk) {
+                                showParentPricingBreakdownModal(pk);
+                            }
+                        },
+                        error: function() {
+                            showToast('error', 'Failed to update status');
+                        }
+                    });
+                } else if (currentStatus === 'applied') {
+                    showToast('info', 'Price is already marked as Applied');
+                } else {
+                    showToast('info', 'Please push the price first before marking as Applied');
+                }
+            });
+
+            function saveParentModalSpriceFromInput($input) {
+                if (!$input || !$input.length) return;
+                const sku = $input.attr('data-sku');
+                if (!sku || !table) return;
+                let raw = String($input.val() || '').trim().replace(',', '.');
+                const all = table.getData('all') || [];
+                const rowData = all.find(function(x) {
+                    return (x['(Child) sku'] || '') === sku;
+                });
+                if (!rowData) return;
+                if (raw === '') {
+                    const sp = parseFloat(rowData.SPRICE) || 0;
+                    $input.val(sp > 0 ? sp.toFixed(2) : '');
+                    return;
+                }
+                const num = parseFloat(raw);
+                if (isNaN(num) || num <= 0) {
+                    showToast('error', 'Enter a valid price greater than 0');
+                    const sp = parseFloat(rowData.SPRICE) || 0;
+                    $input.val(sp > 0 ? sp.toFixed(2) : '');
+                    return;
+                }
+                const current = parseFloat(rowData.SPRICE) || 0;
+                if (Math.abs(current - num) < 0.0001) return;
+
+                $input.prop('disabled', true);
+                $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: { sku: sku, sprice: num },
+                    success: function(response) {
+                        showToast('success', 'SPRICE updated successfully');
+                        const tabRow = table.getRows().find(function(r) {
+                            return (r.getData()['(Child) sku'] || '') === sku;
+                        });
+                        if (tabRow) {
+                            const u = {
+                                SPRICE: num,
+                                has_custom_sprice: true
+                            };
+                            if (response.sgpft_percent !== undefined) {
+                                u.SGPFT = response.sgpft_percent;
+                            }
+                            if (response.spft_percent !== undefined) {
+                                u['Spft%'] = response.spft_percent;
+                            }
+                            if (response.sroi_percent !== undefined) {
+                                u.SROI = response.sroi_percent;
+                            }
+                            if (response.SPRICE_STATUS != null) {
+                                u.SPRICE_STATUS = response.SPRICE_STATUS;
+                            }
+                            tabRow.update(u);
+                        }
+                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                        if (pk) {
+                            showParentPricingBreakdownModal(pk);
+                        }
+                    },
+                    error: function(xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to update SPRICE';
+                        showToast('error', msg);
+                        const sp = parseFloat(rowData.SPRICE) || 0;
+                        $input.val(sp > 0 ? sp.toFixed(2) : '');
+                        $input.prop('disabled', false);
+                    }
+                });
+            }
+
+            $(document).on('keydown', '.parent-modal-sprice-input', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    $(this).blur();
+                }
+            });
+
+            $(document).on('blur', '.parent-modal-sprice-input', function() {
+                saveParentModalSpriceFromInput($(this));
+            });
+
+            $(document).on('click', '.parent-modal-sprice-input', function(e) {
+                e.stopPropagation();
+            });
+
             // Apply All Prices button - delegated event handler
             $(document).on('click', '.apply-all-prices-btn', function(e) {
                 e.preventDefault();
@@ -3362,7 +3631,7 @@
                             if (rowData.is_parent_summary) {
                                 const pk = amazonParentKeyFromRow(rowData);
                                 if (!pk) return '';
-                                return `<button type="button" class="btn btn-link p-0 parent-pricing-eye-btn" data-parent="${escAttr(pk)}" title="Child SKU pricing (Price, L30, GPFT, AD%, NPFT, GROI, NROI, LMP)" style="color: #0dcaf0;"><i class="fas fa-eye" style="font-size: 16px;"></i></button>`;
+                                return `<button type="button" class="btn btn-link p-0 parent-pricing-eye-btn" data-parent="${escAttr(pk)}" title="Child SKU pricing (incl. S PRC, push, S PFT, SROI)" style="color: #0dcaf0;"><i class="fas fa-eye" style="font-size: 16px;"></i></button>`;
                             }
 
                             const sku = rowData['(Child) sku'] || '';
@@ -5056,6 +5325,11 @@
                                 }
                                 campaignId = row.campaign_id || '';
                             }
+
+                            var fbaInvAdsLocked = rowFbaSuffixZeroFbaInvLocksAds(row);
+                            if (fbaInvAdsLocked) {
+                                isEnabled = false;
+                            }
                             
                             return `
                                 <div class="form-check form-switch d-flex justify-content-center">
@@ -5065,6 +5339,7 @@
                                            data-sku="${escAttr(sku)}"
                                            data-campaign-id="${campaignId}"
                                            data-section="${sectionKey}"
+                                           title="${fbaInvAdsLocked ? 'FBA inventory is 0 — ads cannot be enabled until FBA stock > 0.' : ''}"
                                            ${isEnabled ? 'checked' : ''}
                                            style="cursor: pointer; width: 3rem; height: 1.5rem;">
                                 </div>
@@ -5788,7 +6063,44 @@
                 }
             }
 
+            /** Re-apply sort + clamp page after filter pass (Tabulator can drop sort / leave page past max when data shrinks). */
+            function amazonTabulatorFinalizeFilterApply(sortSnapshot) {
+                queueMicrotask(function() {
+                    if (typeof table === 'undefined' || !table) return;
+                    if (sortSnapshot && sortSnapshot.length) {
+                        try {
+                            table.setSort(sortSnapshot);
+                        } catch (eSort) { /* ignore */ }
+                    }
+                    try {
+                        var maxP = table.getPageMax();
+                        if (typeof maxP === 'number' && maxP >= 1) {
+                            var cur = table.getPage();
+                            if (cur > maxP) {
+                                table.setPage(maxP);
+                            }
+                        }
+                    } catch (ePage) { /* ignore */ }
+                });
+            }
+
             function applyFilters() {
+                if (typeof table === 'undefined' || !table) return;
+                var sortSnapshot = [];
+                try {
+                    sortSnapshot = (table.getSorters() || []).map(function(s) {
+                        try {
+                            var col = s.column;
+                            var field = col && typeof col.getField === 'function' ? col.getField() : null;
+                            return field ? { column: field, dir: s.dir } : null;
+                        } catch (errCol) {
+                            return null;
+                        }
+                    }).filter(Boolean);
+                } catch (errSnap) {
+                    sortSnapshot = [];
+                }
+
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
@@ -5832,6 +6144,7 @@
                     updateCalcValues();
                     updateSummary();
                     updateSeoCount();
+                    amazonTabulatorFinalizeFilterApply(sortSnapshot);
                     return;
                 }
 
@@ -5847,6 +6160,7 @@
                     updateCalcValues();
                     updateSummary();
                     updateSeoCount();
+                    amazonTabulatorFinalizeFilterApply(sortSnapshot);
                     return;
                 }
 
@@ -6188,6 +6502,11 @@
                             }
                         }
 
+                        // FBA-suffix child SKU + FBA inv 0: never treat as "active" (aligns with server overlay + toggle lock)
+                        if (rowFbaSuffixZeroFbaInvLocksAds(data)) {
+                            isEnabled = false;
+                        }
+
                         if (campaignStatusFilter === 'ENABLED') {
                             return isEnabled; // Only show rows that have a campaign and it is ENABLED
                         } else if (campaignStatusFilter === 'PAUSED') {
@@ -6229,36 +6548,25 @@
                     });
                 }
 
-                // ACOS Slab filter - section-aware; apply to ALL rows (parent + child) so table actually filters
+                // ACOS Slab filter - section-aware; buckets match SBGT (10 / 5 / 2): &lt;20%, 20–30%, ≥30%
                 if (acosSlabFilter && acosSlabFilter !== '' && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
                     table.addFilter(function(data) {
                         var currentSection = sectionFilter;
                         var acos = 0;
-                        var spend = 0;
                         if (currentSection === 'hl-ads') {
                             var hlSpend30 = parseFloat(data.hl_spend_L30 || 0);
                             var hlSales30 = parseFloat(data.hl_sales_L30 || 0);
                             acos = (hlSpend30 > 0 && hlSales30 > 0) ? (hlSpend30 / hlSales30) * 100 : (hlSpend30 > 0 ? 100 : 0);
-                            spend = hlSpend30;
                         } else if (currentSection === 'pt-ads') {
                             var ptSpend30 = parseFloat(data.pt_spend_L30 || 0);
                             var ptSales30 = parseFloat(data.pt_sales_L30 || 0);
                             acos = ptSales30 > 0 ? (ptSpend30 / ptSales30) * 100 : 0;
-                            spend = ptSpend30;
                         } else {
                             acos = parseFloat(data.ACOS || data.acos) || 0;
-                            spend = parseFloat(data.AD_Spend_L30 || data.l30_spend) || 0;
                         }
-                        
-                        if (acosSlabFilter === 'acos35spend10') return acos >= 35 && spend > 10;
-                        if (acosSlabFilter === '8') return acos < 5;
-                        if (acosSlabFilter === '7') return acos >= 5 && acos < 10;
-                        if (acosSlabFilter === '6') return acos >= 10 && acos < 15;
-                        if (acosSlabFilter === '5') return acos >= 15 && acos < 20;
-                        if (acosSlabFilter === '4') return acos >= 20 && acos < 25;
-                        if (acosSlabFilter === '3') return acos >= 25 && acos < 30;
-                        if (acosSlabFilter === '2') return acos >= 30 && acos < 35;
-                        if (acosSlabFilter === '1') return acos >= 35;
+                        if (acosSlabFilter === '10') return acos < 20;
+                        if (acosSlabFilter === '5') return acos >= 20 && acos < 30;
+                        if (acosSlabFilter === '2') return acos >= 30;
                         return true;
                     });
                 }
@@ -6408,6 +6716,7 @@
                 } else {
                     $missingCampBadge.removeClass('bg-info').css('background', 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)');
                 }
+                amazonTabulatorFinalizeFilterApply(sortSnapshot);
                 // Update select all checkbox after filter is applied
                 setTimeout(function() {
                     updateSelectAllCheckbox();
@@ -8042,6 +8351,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 if (e.target.classList.contains("campaign-status-toggle")) {
                     var campaignId = e.target.getAttribute("data-campaign-id");
                     var sectionKey = e.target.getAttribute("data-section") || 'kw';
+                    var toggleSku = e.target.getAttribute("data-sku") || '';
                     var isEnabled = e.target.checked;
                     var newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
                     
@@ -8050,11 +8360,39 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         e.target.checked = !isEnabled;
                         return;
                     }
+
+                    var lockRow = null;
+                    if (typeof table !== 'undefined' && table && toggleSku) {
+                        var allR = table.getRows();
+                        var cidStr = String(campaignId);
+                        for (var ri = 0; ri < allR.length; ri++) {
+                            var rd = allR[ri].getData();
+                            if ((rd['(Child) sku'] || '') !== toggleSku) continue;
+                            var match = (sectionKey === 'hl' && String(rd.hl_campaign_id || '') === cidStr) ||
+                                (sectionKey === 'pt' && String(rd.pt_campaign_id || '') === cidStr) ||
+                                (sectionKey !== 'hl' && sectionKey !== 'pt' && String(rd.campaign_id || '') === cidStr);
+                            if (match) { lockRow = rd; break; }
+                        }
+                    }
+                    if (!lockRow && typeof table !== 'undefined' && table && toggleSku) {
+                        var allR2 = table.getRows();
+                        for (var rj = 0; rj < allR2.length; rj++) {
+                            var rd2 = allR2[rj].getData();
+                            if ((rd2['(Child) sku'] || '') === toggleSku) { lockRow = rd2; break; }
+                        }
+                    }
+                    if (isEnabled && lockRow && rowFbaSuffixZeroFbaInvLocksAds(lockRow)) {
+                        e.target.checked = false;
+                        alert('Cannot enable ads while FBA inventory is 0 for this FBA-suffix SKU.');
+                        return;
+                    }
                     
                     var overlay = document.getElementById("progress-overlay");
                     if (overlay) overlay.style.display = "flex";
                     
-                    var toggleUrl = "{{ url('toggle-amazon-sp-campaign-status') }}";
+                    var toggleUrl = sectionKey === 'hl'
+                        ? "{{ url('toggle-amazon-sb-campaign-status') }}"
+                        : "{{ url('toggle-amazon-sp-campaign-status') }}";
                     var csrfMeta = document.querySelector('meta[name="csrf-token"]');
                     var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
                     
@@ -8067,7 +8405,8 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         },
                         body: JSON.stringify({
                             campaign_id: campaignId,
-                            status: newStatus
+                            status: newStatus,
+                            sku: toggleSku
                         })
                     })
                     .then(function(res) {
@@ -8901,6 +9240,10 @@ $('#nmap-count').text(missingCount.toLocaleString());
                                     <th class="text-end">GROI %</th>
                                     <th class="text-end">NROI %</th>
                                     <th class="text-end">LMP</th>
+                                    <th class="text-end">S PRC</th>
+                                    <th class="text-center">Push</th>
+                                    <th class="text-end">S PFT %</th>
+                                    <th class="text-end">SROI %</th>
                                 </tr>
                             </thead>
                             <tbody id="parent-pricing-breakdown-tbody"></tbody>

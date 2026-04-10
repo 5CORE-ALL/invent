@@ -145,6 +145,29 @@ final class FbaInventoryService
         ];
     }
 
+    /** True when the product / child SKU ends with "FBA" (normalized), e.g. "CAPO AL BLK FBA". */
+    public static function childSkuHasFbaSuffix(?string $childSku): bool
+    {
+        $n = strtoupper(self::normalizeSkuChars((string) $childSku));
+
+        return $n !== '' && str_ends_with($n, 'FBA');
+    }
+
+    /**
+     * Block enabling Amazon SP/SB ads for FBA-suffix SKUs when FBA available qty is 0 (Amazon tabulator policy).
+     */
+    public static function blocksEnableForFbaSuffixZeroFbaInv(string $childSku): bool
+    {
+        if (! self::childSkuHasFbaSuffix($childSku)) {
+            return false;
+        }
+        $svc = self::fromFbaRows(FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get());
+        $rec = $svc->resolve($childSku);
+        $qty = $rec ? (int) ($rec->quantity_available ?? 0) : 0;
+
+        return $qty <= 0;
+    }
+
     private function logResolve(string $inputSku, string $normalizedSku, ?FbaTable $hit, string $step): void
     {
         if (! filter_var(env('FBA_INVENTORY_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {

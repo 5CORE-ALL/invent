@@ -9,6 +9,7 @@ use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\FbaInventoryService;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -947,6 +948,15 @@ class AmazonACOSController extends Controller
             ], 400);
         }
 
+        $skuForFba = $request->input('sku');
+        if ($status === 'ENABLED' && $skuForFba !== null && $skuForFba !== ''
+            && FbaInventoryService::blocksEnableForFbaSuffixZeroFbaInv((string) $skuForFba)) {
+            return response()->json([
+                'message' => 'Cannot enable ads while FBA inventory is 0 for this FBA-suffix SKU.',
+                'status' => 422,
+            ], 422);
+        }
+
         $campaignId = is_scalar($campaignId) ? (string) $campaignId : '';
         $profileId = $this->profileId;
         if (is_array($profileId)) {
@@ -1138,6 +1148,15 @@ class AmazonACOSController extends Controller
             ]);
         }
 
+        $skuForFba = $request->input('sku');
+        if ($status === 'ENABLED' && $skuForFba !== null && $skuForFba !== ''
+            && FbaInventoryService::blocksEnableForFbaSuffixZeroFbaInv((string) $skuForFba)) {
+            return response()->json([
+                'message' => 'Cannot enable ads while FBA inventory is 0 for this FBA-suffix SKU.',
+                'status' => 422,
+            ], 422);
+        }
+
         $accessToken = $this->getAccessToken();
         $client = new Client();
         $url = 'https://advertising-api.amazon.com/sb/v4/campaigns';
@@ -1220,6 +1239,13 @@ class AmazonACOSController extends Controller
                 'message' => 'Status must be ENABLED or PAUSED',
                 'status' => 400
             ]);
+        }
+
+        if ($status === 'ENABLED' && FbaInventoryService::blocksEnableForFbaSuffixZeroFbaInv($sku)) {
+            return response()->json([
+                'message' => 'Cannot enable ads while FBA inventory is 0 for this FBA-suffix SKU.',
+                'status' => 422,
+            ], 422);
         }
 
         // Find all campaigns matching the SKU (KW campaigns - exact match or starting with SKU + space)

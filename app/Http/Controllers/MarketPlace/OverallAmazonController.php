@@ -3198,6 +3198,8 @@ class OverallAmazonController extends Controller
 
             $row['image_path'] = $shopify->image_src ?? ($values['image_path'] ?? null);
 
+            $this->applyAmazonTabulatorFbaSuffixZeroFbaInvAdPauseOverlay($row);
+
             $result[] = (object) $row;
         }
 
@@ -4013,6 +4015,7 @@ class OverallAmazonController extends Controller
             $fbaOrphan = $fbaInventoryService->resolve($baseSku);
             $orphanRow['FBA_Quantity'] = $fbaOrphan ? (int) ($fbaOrphan->quantity_available ?? 0) : 0;
             $orphanRow['FBA_SKU'] = $fbaOrphan ? ($fbaOrphan->seller_sku ?? null) : null;
+            $this->applyAmazonTabulatorFbaSuffixZeroFbaInvAdPauseOverlay($orphanRow);
             $finalResult[] = (object) $orphanRow;
         }
 
@@ -6856,6 +6859,32 @@ class OverallAmazonController extends Controller
         } catch (\Exception $e) {
             Log::error('getAmazonKwLastSbidChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching KW Last SBID chart data'], 500);
+        }
+    }
+
+    /**
+     * Child SKUs ending in "FBA" with no FBA inventory: treat KW/PT/HL campaign status as PAUSED in the Amazon tabulator.
+     */
+    private function applyAmazonTabulatorFbaSuffixZeroFbaInvAdPauseOverlay(array &$row): void
+    {
+        $child = isset($row['(Child) sku']) ? (string) $row['(Child) sku'] : '';
+        if (! FbaInventoryService::childSkuHasFbaSuffix($child)) {
+            return;
+        }
+        if ((int) ($row['FBA_Quantity'] ?? 0) > 0) {
+            return;
+        }
+        if (isset($row['kw_campaign_status']) && (string) $row['kw_campaign_status'] !== '') {
+            $row['kw_campaign_status'] = 'PAUSED';
+        }
+        if (! empty($row['campaign_id']) || ! empty($row['campaignName'])) {
+            $row['campaignStatus'] = 'PAUSED';
+        }
+        if (isset($row['pt_campaign_status']) && (string) $row['pt_campaign_status'] !== '') {
+            $row['pt_campaign_status'] = 'PAUSED';
+        }
+        if (isset($row['hl_campaign_status']) && (string) $row['hl_campaign_status'] !== '') {
+            $row['hl_campaign_status'] = 'PAUSED';
         }
     }
 }

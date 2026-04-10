@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaMonthlySale;
 use App\Models\FbaTable;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 class AutoPauseEnableFbaCampaignsByL30 extends Command
 {
     protected $signature = 'fba:auto-pause-enable-by-l30';
-    protected $description = 'Automatically pause/enable FBA campaigns based on L30 sales data';
+    protected $description = 'Pause FBA-suffix SKU ads (SP KW/PT + SB HL) on Amazon when FBA available qty is 0 only; does not auto-enable';
 
     protected $profileId = "4216505535403428";
 
@@ -36,7 +37,7 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
                 return 1;
             }
 
-            $this->info("Starting FBA campaign auto pause/enable based on L30...");
+            $this->info('Starting FBA campaign auto-pause when FBA inventory is 0...');
 
             $campaigns = $this->getFbaCampaignsWithL30();
 
@@ -47,79 +48,70 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
 
         $this->info("Found " . count($campaigns) . " FBA campaigns to process.");
 
-        $campaignsToEnable = [];
-        $campaignsToPause = [];
+        $spPauseIds = [];
+        $sbPauseIds = [];
+        $metaPause = [];
 
         foreach ($campaigns as $campaign) {
-            $l30Units = $campaign->l30_units ?? 0;
-            $inv = $campaign->inv ?? 0;
+            $l30Units = (int) ($campaign->l30_units ?? 0);
+            $inv = (int) ($campaign->inv ?? 0);
             $campaignId = $campaign->campaign_id ?? '';
             $campaignName = $campaign->campaignName ?? '';
+            $isHl = (($campaign->type ?? 'KW') === 'HL');
 
-            if (empty($campaignId)) {
+            if ($campaignId === null || $campaignId === '') {
                 continue;
             }
+            $campaignId = (string) $campaignId;
 
-            // Enable if INV > 0 AND L30 = 0
-            if ($inv > 0 && $l30Units == 0) {
-                $campaignsToEnable[] = [
-                    'campaign_id' => $campaignId,
+            if ($inv <= 0) {
+                if ($isHl) {
+                    $sbPauseIds[] = $campaignId;
+                } else {
+                    $spPauseIds[] = $campaignId;
+                }
+                $metaPause[] = [
                     'campaign_name' => $campaignName,
                     'inv' => $inv,
-                    'l30_units' => $l30Units
-                ];
-            } elseif ($l30Units > 0) {
-                // Pause only when L30 > 0
-                $campaignsToPause[] = [
-                    'campaign_id' => $campaignId,
-                    'campaign_name' => $campaignName,
-                    'inv' => $inv,
-                    'l30_units' => $l30Units
+                    'l30_units' => $l30Units,
+                    'channel' => $isHl ? 'SB (HL)' : 'SP',
                 ];
             }
-            // Otherwise (INV = 0 AND L30 = 0): No action, skip
         }
 
-        $this->line("");
-        $this->info("Campaigns to ENABLE (INV > 0 AND L30 = 0): " . count($campaignsToEnable));
-        $this->info("Campaigns to PAUSE (L30 > 0): " . count($campaignsToPause));
-        $this->line("");
+        $spPauseIds = array_values(array_unique($spPauseIds));
+        $sbPauseIds = array_values(array_unique($sbPauseIds));
 
-        $enableCount = 0;
+        $this->line('');
+        $this->info('Campaigns to PAUSE (FBA inv ≤ 0 only): ' . count($metaPause) . ' (SP: ' . count($spPauseIds) . ', SB: ' . count($sbPauseIds) . ')');
+        $this->line('');
+
         $pauseCount = 0;
 
-        // Enable campaigns
-        if (!empty($campaignsToEnable)) {
-            $enableIds = array_column($campaignsToEnable, 'campaign_id');
-            $result = $this->updateCampaignStates($enableIds, 'ENABLED');
-            if ($result['status'] == 200) {
-                $enableCount = count($enableIds);
-                $this->info("✓ Enabled " . $enableCount . " campaigns.");
-                foreach ($campaignsToEnable as $camp) {
-                    $this->line("  Enabled: {$camp['campaign_name']} (INV: {$camp['inv']}, L30: {$camp['l30_units']})");
-                }
+        if (! empty($spPauseIds)) {
+            $result = $this->updateCampaignStates($spPauseIds, 'PAUSED');
+            if ($result['status'] === 200) {
+                $pauseCount += count($spPauseIds);
+                $this->info('✓ Paused ' . count($spPauseIds) . ' SP campaign(s).');
             } else {
-                $this->error("✗ Failed to enable campaigns: " . ($result['message'] ?? 'Unknown error'));
+                $this->error('✗ Failed to pause SP campaigns: ' . ($result['message'] ?? 'Unknown error'));
             }
         }
-
-        // Pause campaigns
-        if (!empty($campaignsToPause)) {
-            $pauseIds = array_column($campaignsToPause, 'campaign_id');
-            $result = $this->updateCampaignStates($pauseIds, 'PAUSED');
-            if ($result['status'] == 200) {
-                $pauseCount = count($pauseIds);
-                $this->info("✓ Paused " . $pauseCount . " campaigns.");
-                foreach ($campaignsToPause as $camp) {
-                    $this->line("  Paused: {$camp['campaign_name']} (INV: {$camp['inv']}, L30: {$camp['l30_units']})");
-                }
+        if (! empty($sbPauseIds)) {
+            $result = $this->updateSbCampaignStates($sbPauseIds, 'PAUSED');
+            if ($result['status'] === 200) {
+                $pauseCount += count($sbPauseIds);
+                $this->info('✓ Paused ' . count($sbPauseIds) . ' SB (HL) campaign(s).');
             } else {
-                $this->error("✗ Failed to pause campaigns: " . ($result['message'] ?? 'Unknown error'));
+                $this->error('✗ Failed to pause SB campaigns: ' . ($result['message'] ?? 'Unknown error'));
             }
         }
+        foreach ($metaPause as $camp) {
+            $this->line("  Paused [{$camp['channel']}]: {$camp['campaign_name']} (INV: {$camp['inv']}, L30: {$camp['l30_units']})");
+        }
 
-            $this->line("");
-            $this->info("Summary: Enabled {$enableCount} campaigns, Paused {$pauseCount} campaigns");
+            $this->line('');
+            $this->info("Summary: Paused {$pauseCount} campaign id(s) (FBA qty ≤ 0 only)");
 
             return 0;
         } catch (\Exception $e) {
@@ -188,12 +180,22 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
                 ->where('campaignStatus', '!=', 'ARCHIVED')
                 ->get();
 
+            // SB Headline (HL) L30 — restrict to names containing FBA (MSKU campaigns)
+            $amazonSbL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L30')
+                ->where('campaignName', 'LIKE', '%FBA%')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+
         $result = [];
 
-        // Process KW campaigns
+        // Process KW campaigns (seller_sku must end with FBA — MSKU policy)
         foreach ($fbaData as $fba) {
             $sellerSku = $fba->seller_sku;
             $sellerSkuUpper = strtoupper(trim($sellerSku));
+            if (! str_ends_with($sellerSkuUpper, 'FBA')) {
+                continue;
+            }
 
             $monthlySales = $fbaMonthlySales->get($sellerSkuUpper);
             $l30Units = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
@@ -224,6 +226,9 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
         foreach ($fbaData as $fba) {
             $sellerSku = $fba->seller_sku;
             $sellerSkuUpper = strtoupper(trim($sellerSku));
+            if (! str_ends_with($sellerSkuUpper, 'FBA')) {
+                continue;
+            }
 
             // Get base SKU (without FBA) for PT uniqueness
             $baseSku = preg_replace('/\s*FBA\s*/i', '', $sellerSku);
@@ -254,7 +259,44 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
                 ];
             }
         }
-        
+
+        $processedHlCampaignIds = [];
+        foreach ($fbaData as $fba) {
+            $sellerSkuUpper = strtoupper(trim($fba->seller_sku ?? ''));
+            if (! str_ends_with($sellerSkuUpper, 'FBA')) {
+                continue;
+            }
+
+            $monthlySales = $fbaMonthlySales->get($sellerSkuUpper);
+            $l30Units = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
+
+            $matchedHl = $amazonSbL30->first(function ($item) use ($sellerSkuUpper) {
+                $cn = $this->normalizeHlCampaignName($item->campaignName ?? '');
+                $sku = strtoupper(trim(rtrim($sellerSkuUpper, '.')));
+                $skuNd = rtrim($sku, '.');
+
+                return $cn === $sku
+                    || $cn === $sku . ' HEAD'
+                    || $cn === $skuNd
+                    || $cn === $skuNd . ' HEAD';
+            });
+
+            if ($matchedHl && ! empty($matchedHl->campaign_id)) {
+                $cid = (string) $matchedHl->campaign_id;
+                if (isset($processedHlCampaignIds[$cid])) {
+                    continue;
+                }
+                $processedHlCampaignIds[$cid] = true;
+                $result[] = (object) [
+                    'campaign_id' => $matchedHl->campaign_id,
+                    'campaignName' => $matchedHl->campaignName,
+                    'inv' => $fba->quantity_available ?? 0,
+                    'l30_units' => $l30Units,
+                    'type' => 'HL',
+                ];
+            }
+        }
+
         DB::connection()->disconnect();
         return $result;
     
@@ -331,6 +373,18 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
                 $results[] = json_decode($response->getBody(), true);
             }
 
+            try {
+                $updateData = ['campaignStatus' => $state];
+                if ($state === 'PAUSED') {
+                    $updateData['pink_dil_paused_at'] = now();
+                } else {
+                    $updateData['pink_dil_paused_at'] = null;
+                }
+                AmazonSpCampaignReport::whereIn('campaign_id', $campaignIds)->update($updateData);
+            } catch (\Exception $dbError) {
+                $this->warn('SP campaign DB status update failed: ' . $dbError->getMessage());
+            }
+
             return [
                 'message' => 'Campaign states updated successfully',
                 'data' => $results,
@@ -342,6 +396,81 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return [
                 'message' => 'Error updating campaign states',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ];
+        }
+    }
+
+    protected function normalizeHlCampaignName(?string $campaignName): string
+    {
+        $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', (string) $campaignName);
+        $cn = preg_replace('/\s+/', ' ', $cn);
+        $cn = preg_replace('/\s+PCS\b/i', 'PCS', $cn);
+
+        return strtoupper(trim(rtrim($cn, '.')));
+    }
+
+    protected function updateSbCampaignStates(array $campaignIds, string $state): array
+    {
+        if (empty($campaignIds)) {
+            return [
+                'message' => 'No campaign IDs provided',
+                'status' => 400,
+            ];
+        }
+
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+        $url = 'https://advertising-api.amazon.com/sb/v4/campaigns';
+
+        try {
+            $allCampaigns = [];
+            foreach ($campaignIds as $campaignId) {
+                $allCampaigns[] = [
+                    'campaignId' => (string) $campaignId,
+                    'state' => $state,
+                ];
+            }
+
+            foreach (array_chunk($allCampaigns, 10) as $chunk) {
+                $client->put($url, [
+                    'headers' => [
+                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                        'Authorization' => 'Bearer ' . $accessToken,
+                        'Amazon-Advertising-API-Scope' => $this->profileId,
+                        'Content-Type' => 'application/vnd.sbcampaignresource.v4+json',
+                        'Accept' => 'application/vnd.sbcampaignresource.v4+json',
+                    ],
+                    'json' => [
+                        'campaigns' => $chunk,
+                    ],
+                    'timeout' => 60,
+                    'connect_timeout' => 30,
+                ]);
+            }
+
+            try {
+                $updateData = ['campaignStatus' => $state];
+                if ($state === 'PAUSED') {
+                    $updateData['pink_dil_paused_at'] = now();
+                } else {
+                    $updateData['pink_dil_paused_at'] = null;
+                }
+                AmazonSbCampaignReport::whereIn('campaign_id', $campaignIds)->update($updateData);
+            } catch (\Exception $dbError) {
+                $this->warn('SB campaign DB status update failed: ' . $dbError->getMessage());
+            }
+
+            return [
+                'message' => 'SB campaign states updated successfully',
+                'status' => 200,
+            ];
+        } catch (\Exception $e) {
+            $this->error('AutoPauseEnableFbaCampaignsByL30 SB Error: ' . $e->getMessage());
+
+            return [
+                'message' => 'Error updating SB campaign states',
                 'error' => $e->getMessage(),
                 'status' => 500,
             ];
