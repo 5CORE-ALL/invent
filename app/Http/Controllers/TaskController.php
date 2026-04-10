@@ -2095,7 +2095,7 @@ class TaskController extends Controller
             ];
         }
 
-        $canReviveArchivedTasks = strtolower((string) ($user->email ?? '')) === 'president@5core.com';
+        $canReviveArchivedTasks = $this->userCanReviveArchivedTasks($user);
 
         return view('tasks.deleted', compact('stats', 'isAdmin', 'tatChartData', 'missedChartData', 'selectedUserName', 'canReviveArchivedTasks'));
     }
@@ -2152,13 +2152,23 @@ class TaskController extends Controller
     }
 
     /**
+     * Users allowed to revive tasks from the deleted_tasks archive.
+     */
+    private function userCanReviveArchivedTasks(?User $user): bool
+    {
+        $email = strtolower((string) ($user->email ?? ''));
+
+        return in_array($email, ['president@5core.com', 'software5@5core.com'], true);
+    }
+
+    /**
      * Revive a deleted/archived task back to active tasks.
-     * Access: president@5core.com only.
+     * Access: president@5core.com and software5@5core.com.
      */
     public function reviveDeletedTask($id)
     {
         $user = Auth::user();
-        if (strtolower((string) ($user->email ?? '')) !== 'president@5core.com') {
+        if (!$this->userCanReviveArchivedTasks($user)) {
             return response()->json([
                 'success' => false,
                 'message' => 'You are not authorized to revive archived tasks.'
