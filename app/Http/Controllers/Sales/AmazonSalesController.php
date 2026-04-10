@@ -14,8 +14,8 @@ use Carbon\Carbon;
 
 class AmazonSalesController extends Controller
 {
-    /** Inclusive calendar days ending yesterday (Pacific), same for badge + grid API */
-    public const DAILY_SALES_WINDOW_DAYS = 31;
+    /** Inclusive calendar days ending yesterday (Pacific), same for badge + grid API + Channel Master Amazon (L32) */
+    public const DAILY_SALES_WINDOW_DAYS = 32;
 
     public function index()
     {
@@ -151,7 +151,7 @@ class AmazonSalesController extends Controller
                 'order_total_amount' => (float) ($row->order_total_amount ?? 0),
                 'total_amount'       => $linePrice,
                 'currency'           => $row->currency ?? 'USD',
-                'period'             => 'L31',
+                'period'             => 'L32',
                 'asin'               => $row->asin ?? '',
                 'sku'                => $row->sku ?? '',
                 'title'              => $row->title ?? '',
@@ -283,7 +283,7 @@ class AmazonSalesController extends Controller
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,
                 'status' => $item->status,
-                'period' => 'L31',
+                'period' => 'L32',
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
                 't_weight' => round($tWeight, 2),

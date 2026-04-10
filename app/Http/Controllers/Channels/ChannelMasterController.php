@@ -7172,7 +7172,7 @@ class ChannelMasterController extends Controller
         try {
             $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim($request->input('channel', ''))));
             $metric = $request->input('metric', 'l30_sales');
-            $days = intval($request->input('days', 31));
+            $days = intval($request->input('days', 32));
 
             if (!$channel) {
                 return response()->json(['success' => false, 'message' => 'Channel is required'], 400);

@@ -156,7 +156,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Master',
-        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 31-day Pacific rolling window (same as Amazon Daily Sales)',
+        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 32-day Pacific rolling window (same as Amazon Daily Sales)',
     ])
 
     <div class="toast-container"></div>
@@ -278,10 +278,10 @@
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Channels: <span id="total-channels">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last 31 days Pacific order totals, non-canceled. Other channels vary.">
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last 32 days Pacific order totals, non-canceled. Other channels vary.">
                             Sales: <span id="total-l30-sales">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = 31-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = 32-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
                             Orders: <span id="total-l30-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
@@ -657,7 +657,9 @@
                         <select id="adChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
                             <option value="7">7 Days</option>
                             <option value="30">30 Days</option>
-                            <option value="31" selected>31 Days</option>
+                            <option value="31">31 Days</option>
+                            <option value="32" selected>32 Days</option>
+                            <option value="35">35 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
                             <option value="0">Lifetime</option>
@@ -1119,7 +1121,7 @@
                     {
                         title: "Sales",
                         field: "L30 Sales",
-                        headerTooltip: "Rolling sales per channel. Amazon = last 31 days Pacific, SUM(order total), non-canceled — same as Amazon Daily Sales.",
+                        headerTooltip: "Rolling sales per channel. Amazon = last 32 days Pacific, SUM(order total), non-canceled — same as Amazon Daily Sales.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -1272,7 +1274,7 @@
                     {
                         title: "Orders",
                         field: "L30 Orders",
-                        headerTooltip: "Rolling order count per channel. Amazon = 31 days Pacific, non-canceled — same as Amazon Daily Sales.",
+                        headerTooltip: "Rolling order count per channel. Amazon = 32 days Pacific, non-canceled — same as Amazon Daily Sales.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -3531,7 +3533,7 @@
             let currentChartChannel = '';
             let currentChartAdType = '';
             let currentChartMetric = 'spend';
-            let currentChartDays = 31;
+            let currentChartDays = 32;
             let adChartAjax = null; // track in-flight request
             let currentChartMode = 'ad'; // 'ad' = ad breakdown, 'metric' = channel metric
             let currentMetricKey = ''; // metric key for channel metric mode
@@ -3734,10 +3736,10 @@
                 currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
                 currentMetricKey = metricKey;
                 currentChartMetric = metricKey; // for fmtVal formatting
-                currentChartDays = 31; // align with Amazon Daily Sales / channel rolling window
+                currentChartDays = 32; // align with Amazon Daily Sales / channel rolling window
                 currentCellValue = (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) ? cellValue : null;
 
-                $('#adChartRangeSelect').val('31');
+                $('#adChartRangeSelect').val('32');
 
                 // Set title
                 const label = metricLabels[metricKey] || metricKey;

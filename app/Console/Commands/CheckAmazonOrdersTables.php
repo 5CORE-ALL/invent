@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\DB;
 class CheckAmazonOrdersTables extends Command
 {
     protected $signature = 'amazon:check-order-tables
-        {--days=31 : Rolling calendar days (used when not matching daily-sales page)}
+        {--days=32 : Rolling calendar days (used when not matching daily-sales page)}
         {--all-time : No date filter (whole table)}
-        {--match-daily-sales-page : Use same window as /amazon/daily-sales (31 days through yesterday PT)}
+        {--match-daily-sales-page : Use same window as /amazon/daily-sales (32 days through yesterday PT)}
         {--show-zero-effective : List active orders in window with effective revenue ≤ $0}';
 
     protected $description = 'Compare amazon_orders vs order_items; use --match-daily-sales-page to match the sales page badge vs Seller Central';

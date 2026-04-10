@@ -34,7 +34,7 @@ class DiagnoseAmazonSyncGaps extends Command
         $this->info(str_repeat('=', 76));
         $this->info('Amazon sync / orders gap report (America/Los_Angeles)');
         $this->line("Window: {$startStr} → {$endStr} ({$days} day(s), through end of today PT)");
-        $this->line('Note: /amazon/daily-sales uses ~31 days ending **yesterday** PT — align mentally when comparing.');
+        $this->line('Note: /amazon/daily-sales uses ~32 days ending **yesterday** PT — align mentally when comparing.');
         $this->newLine();
 
         $syncRows = DB::table('amazon_daily_syncs')
