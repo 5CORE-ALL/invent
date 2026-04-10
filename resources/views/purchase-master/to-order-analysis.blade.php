@@ -632,6 +632,31 @@
                     },
                     {
                         title: "Reviews",
+                        field: "Reviews",
+                        width: 160,
+                        minWidth: 100,
+                        hozAlign: "center",
+                        headerSort: false,
+                        editor: "textarea",
+                        formatter: function (cell) {
+                            const v = (cell.getValue() || "").trim();
+                            if (!v) {
+                                return '<span class="text-muted" style="font-size:12px;">—</span>';
+                            }
+                            const div = document.createElement("div");
+                            div.textContent = v;
+                            return (
+                                '<div style="white-space:pre-wrap;max-height:72px;overflow:auto;font-size:12px;line-height:1.3;text-align:center;padding:4px;">' +
+                                div.innerHTML.replace(/\n/g, "<br>") +
+                                "</div>"
+                            );
+                        },
+                        cellEdited: function (cell) {
+                            saveLinkUpdate(cell, cell.getValue());
+                        }
+                    },
+                    {
+                        title: "Jungle",
                         field: "rating",
                         hozAlign: "center",
                         headerSort: false,
@@ -1122,8 +1147,13 @@
 
             // edit field updated
             function saveLinkUpdate(cell, value) {
-                let sku = cell.getRow().getData().SKU;
+                const rowData = cell.getRow().getData();
+                let sku = rowData.SKU;
                 let column = cell.getColumn().getField();
+                const payload = { sku: sku, column: column, value: value };
+                if (column === "Reviews") {
+                    payload.parent = rowData.Parent || "";
+                }
 
                 fetch('/update-link', {
                     method: 'POST',
@@ -1131,16 +1161,22 @@
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                     },
-                    body: JSON.stringify({
-                        sku: sku,
-                        column: column,
-                        value: value
-                    })
+                    body: JSON.stringify(payload)
                 })
                 .then(res => res.json())
                 .then(res => {
                     if (!res.success) {
                         alert("Error: " + res.message);
+                        return;
+                    }
+                    if (column === "Reviews") {
+                        const tbl = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                        if (tbl) {
+                            const row = tbl.searchRows("SKU", "=", sku)[0];
+                            if (row) {
+                                row.update({ Reviews: value }, true);
+                            }
+                        }
                     }
                 })
                 .catch(err => console.error(err));
@@ -1312,7 +1348,7 @@
                         if (tbl && column) {
                             const row = tbl.searchRows("SKU", "=", sku)[0];
                             if (row) {
-                                const fieldMap = { 'Supplier': 'Supplier', 'Adv date': 'Adv date', 'RFQ Form Link': 'RFQ Form Link', 'Rfq Report Link': 'Rfq Report Link' };
+                                const fieldMap = { 'Supplier': 'Supplier', 'Adv date': 'Adv date', 'RFQ Form Link': 'RFQ Form Link', 'Rfq Report Link': 'Rfq Report Link', 'Reviews': 'Reviews' };
                                 const field = fieldMap[column] || column;
                                 row.update({ [field]: value }, true);
                             }

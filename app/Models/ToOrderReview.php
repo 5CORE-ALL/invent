@@ -14,6 +14,7 @@ class ToOrderReview extends Model
         'parent',
         'sku',
         'supplier',
+        'reviews_note',
         'positive_review',
         'negative_review',
         'improvement',

@@ -419,6 +419,7 @@ class ToOrderAnalysisController extends Controller
                     'buyer_link'      => $amazonValue['buyer_link'] ?? '',
                     'seller_link'     => $amazonValue['seller_link'] ?? '',
 
+                    'Reviews'         => $review ? (string) ($review->reviews_note ?? '') : '',
                     'has_review'      => $review ? true : false,
                     'positive_review' => $review->positive_review ?? null,
                     'negative_review' => $review->negative_review ?? null,
@@ -513,8 +514,32 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'SKU is required']);
         }
 
-        if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'order_qty', 'Adv date', 'Clink'])) {
+        if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'order_qty', 'Adv date', 'Clink', 'Reviews'])) {
             return response()->json(['success' => false, 'message' => 'Invalid column']);
+        }
+
+        if ($column === 'Reviews') {
+            $parent = trim((string) $request->input('parent', ''));
+            $note = $value === null ? '' : (string) $value;
+
+            try {
+                ToOrderReview::updateOrCreate(
+                    [
+                        'parent' => $parent,
+                        'sku' => $sku,
+                    ],
+                    [
+                        'reviews_note' => $note,
+                        'date_updated' => now()->format('Y-m-d'),
+                    ]
+                );
+
+                return response()->json(['success' => true]);
+            } catch (\Throwable $e) {
+                Log::error('ToOrderAnalysis updateLink Reviews failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            }
         }
 
         // When user chooses "-- Select --" for Supplier, ensure we store empty string (not null) so refresh shows blank
@@ -672,6 +697,9 @@ class ToOrderAnalysisController extends Controller
             'improvement' => $request->input('improvement'),
             'date_updated' => $request->input('date_updated'),
         ];
+        if ($request->has('reviews_note')) {
+            $data['reviews_note'] = $request->input('reviews_note');
+        }
 
         ToOrderReview::updateOrCreate(
             [
