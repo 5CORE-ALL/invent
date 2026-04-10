@@ -128,16 +128,224 @@
     .r2s-copy-cell:hover {
         color: #0d6efd !important;
     }
+    /* Zone CBM summary badges (server totals; same logic as grid: Or. QTY × CBM, NR excluded) */
+    .r2s-zone-cbm-badges {
+        gap: 0.5rem 0.75rem;
+    }
+    .r2s-zone-cbm-badges .r2s-zone-cbm-badge {
+        font-weight: 600;
+        color: #fff;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    }
+    .r2s-zone-cbm-badge--ghz {
+        background: linear-gradient(135deg, #4f46e5, #6366f1) !important;
+    }
+    .r2s-zone-cbm-badge--ningbo {
+        background: linear-gradient(135deg, #0e7490, #06b6d4) !important;
+    }
+    .r2s-zone-cbm-badge--tianjin {
+        background: linear-gradient(135deg, #047857, #10b981) !important;
+    }
+    /* Summary row: pill style (reference layout), same metrics as before */
+    .r2s-stat-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        align-items: stretch;
+        justify-content: flex-start;
+    }
+    .r2s-stat-pill {
+        border-radius: 16px;
+        padding: 0.7rem 1.25rem;
+        font-weight: 700;
+        font-size: 1rem;
+        letter-spacing: 0.02em;
+        min-width: 132px;
+        text-align: center;
+        flex: 1 1 auto;
+        max-width: 280px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    .r2s-stat-pill--amount {
+        background: #e4b953;
+        color: #000;
+    }
+    .r2s-stat-pill--cbm {
+        background: #5fd4cc;
+        color: #fff;
+    }
+    .r2s-stat-pill--items {
+        background: #2a8a82;
+        color: #000;
+    }
+    .r2s-stat-pill--supp {
+        background: #c94c5a;
+        color: #fff;
+    }
+    /* One-page layout: no inner 800px scroll cage; use window scroll + denser grid */
+    #r2sTableScrollWrap {
+        max-height: none !important;
+        overflow-x: auto;
+        overflow-y: visible;
+    }
+    #readyToShipTable.wide-table th,
+    #readyToShipTable.wide-table td {
+        padding: 7px 10px;
+        font-size: 0.8125rem;
+    }
+    #readyToShipTable.wide-table thead th {
+        font-size: 0.75rem;
+        padding: 6px 8px;
+    }
+    #readyToShipTable.wide-table tbody tr:hover {
+        transform: none;
+    }
+    #readyToShipTable .r2s-product-thumb {
+        width: 72px !important;
+        height: 72px !important;
+    }
+    #readyToShipTable.wide-table th[data-column="27"],
+    #readyToShipTable.wide-table td[data-column="27"] {
+        min-width: 88px !important;
+    }
+    .r2s-page-tight .card-body {
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
+    }
+    .r2s-page-tight .column-controls.card {
+        margin-bottom: 0.65rem !important;
+        padding: 0.65rem 0.85rem !important;
+    }
+    .r2s-page-tight .r2s-zone-cbm-badges {
+        margin-bottom: 0.5rem !important;
+    }
+    .r2s-page-tight .r2s-stat-pill {
+        padding: 0.5rem 0.95rem;
+        font-size: 0.9rem;
+        min-width: 118px;
+    }
+    .r2s-page-tight .mb-4 {
+        margin-bottom: 0.65rem !important;
+    }
+    /* Stage column — same pattern as purchase-master/forecastAnalysis (dot / truck + invisible select) */
+    #readyToShipTable.wide-table th[data-column="21"],
+    #readyToShipTable.wide-table td[data-column="21"] {
+        min-width: 44px;
+        width: 52px;
+        max-width: 64px;
+        vertical-align: middle;
+        padding-left: 4px !important;
+        padding-right: 4px !important;
+    }
+    #readyToShipTable .stage-dot-cell {
+        min-height: 36px;
+        min-width: 40px;
+    }
+    #readyToShipTable .stage-dot-cell .stage-status-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+    }
+    #readyToShipTable .stage-dot-cell .stage-stage-select {
+        opacity: 0;
+        cursor: pointer;
+        margin: 0 !important;
+        border: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    #readyToShipTable .stage-dot-cell .stage-transit-icon {
+        font-size: 1.05rem;
+        line-height: 1;
+        color: #334155;
+    }
+    /* Rec. QTY: plain text until click (no permanent input box) */
+    #readyToShipTable .r2s-rec-qty-cell {
+        vertical-align: middle !important;
+        padding: 4px 6px !important;
+    }
+    #readyToShipTable .r2s-rec-qty-display {
+        display: inline-block;
+        min-width: 2.25rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        line-height: 1.35;
+        font-weight: 600;
+        color: #495057;
+        user-select: none;
+    }
+    #readyToShipTable .r2s-rec-qty-display:hover {
+        background: rgba(59, 192, 195, 0.14);
+        outline: 1px solid rgba(59, 192, 195, 0.35);
+    }
+    #readyToShipTable .r2s-rec-qty-input {
+        width: 76px;
+        max-width: 100%;
+        height: 30px;
+        font-size: 0.8125rem;
+        padding: 2px 6px;
+        text-align: center;
+        margin: 0 auto;
+        display: block;
+    }
+    /* Terms (pay_term): plain text until click — same idea as Rec. QTY */
+    #readyToShipTable .r2s-pay-term-cell {
+        vertical-align: middle !important;
+        padding: 4px 6px !important;
+    }
+    #readyToShipTable .r2s-pay-term-display {
+        display: inline-block;
+        min-width: 2.5rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        line-height: 1.35;
+        font-weight: 600;
+        color: #495057;
+        user-select: none;
+    }
+    #readyToShipTable .r2s-pay-term-display:hover {
+        background: rgba(59, 192, 195, 0.14);
+        outline: 1px solid rgba(59, 192, 195, 0.35);
+    }
+    #readyToShipTable .r2s-pay-term-select {
+        min-width: 88px;
+        max-width: 100%;
+        font-size: 0.8125rem;
+        padding: 2px 28px 2px 8px;
+        height: 30px;
+        margin: 0 auto;
+        display: block;
+    }
 </style>
 @endsection
 @section('content')
 @include('layouts.shared.page-title', ['page_title' => 'Ready To Ship', 'sub_title' => 'Ready To Ship'])
 <div class="row">
-    <div class="col-12">
+    <div class="col-12 r2s-page-tight">
+        <div class="d-flex flex-wrap align-items-center r2s-zone-cbm-badges mb-3 px-1" id="r2sZoneCbmBadges" role="region" aria-label="Total CBM by zone">
+            <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing: 0.04em;">CBM by zone</span>
+            @foreach($r2sCbmByZone ?? [] as $zoneLabel => $cbmSum)
+                @php
+                    $zoneClass = 'r2s-zone-cbm-badge--' . \Illuminate\Support\Str::slug($zoneLabel, '-');
+                @endphp
+                <span class="badge rounded-pill px-3 py-2 fs-6 r2s-zone-cbm-badge {{ $zoneClass }}" title="Sum of (Or. QTY × CBM) for rows in {{ $zoneLabel }}, excluding NR">
+                    {{ $zoneLabel }}
+                    <span class="fw-bold ms-1">{{ number_format((float) $cbmSum, 2) }}</span>
+                    <span class="opacity-90 fw-normal ms-1">m³</span>
+                </span>
+            @endforeach
+        </div>
         <div class="card shadow-sm">
             <div class="card-body">
                 <!-- Filters Row - First Row -->
-                <div class="column-controls card mb-3 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 10px;">
+                <div class="column-controls card mb-3 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 8px;">
                     <div class="d-flex flex-wrap align-items-center gap-3">
                         <!-- Navigation -->
                         <div class="col-auto">
@@ -406,53 +614,22 @@
                     </div>
                 </div>
 
-                <!-- Counts/Stats Row - Second Row -->
-                <div class="card mb-4 shadow-sm border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between" style="flex-wrap: nowrap; gap: 0; overflow-x: auto;">
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    💰 Amount
-                                </div>
-                                <div id="total-amount" class="fw-bold text-dark" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    $0
-                                </div>
+                <!-- Counts/Stats: same data as before (Amount, CBM, Items, Suppliers), pill layout -->
+                <div class="mb-4">
+                    <div class="r2s-stat-pills" id="r2sStatPillsBar" role="region" aria-label="Totals for visible Ready to Ship rows">
+                        <div class="r2s-stat-pill r2s-stat-pill--amount">Amount: <span id="total-amount">$0</span></div>
+                        <div class="r2s-stat-pill r2s-stat-pill--cbm">Total CBM: <span id="total-cbm">0</span></div>
+                        <div class="r2s-stat-pill r2s-stat-pill--items">Items: <span id="total-order-items">0</span></div>
+                        <div class="r2s-stat-pill r2s-stat-pill--supp">Suppliers: <span id="followSupplierCount">0</span></div>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-center gap-3 mt-2 flex-wrap" id="r2s-supplier-play-banner" style="display: none;">
+                        <div class="vr flex-shrink-0" style="height: 40px; display: none;" id="supplier-badge-vr"></div>
+                        <div class="text-center" style="min-width: 140px; max-width: 420px; display: none;" id="supplier-badge-container">
+                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                🏭 Current Supplier
                             </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    📊 Total CBM
-                                </div>
-                                <div id="total-cbm" class="fw-bold text-success" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
-                                </div>
-                            </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    🔢 Items
-                                </div>
-                                <div id="total-order-items" class="fw-bold text-warning" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
-                                </div>
-                            </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    👥 Suppliers
-                                </div>
-                                <div id="followSupplierCount" class="fw-bold text-danger" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #dc3545;">
-                                    0
-                                </div>
-                            </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent); display: none;" id="supplier-badge-vr"></div>
-                            <div class="text-center flex-fill" style="min-width: 140px; display: none;" id="supplier-badge-container">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    🏭 Current Supplier
-                                </div>
-                                <div id="current-supplier" class="fw-bold text-white" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #28a745; padding: 8px 16px; border-radius: 6px; display: inline-block; min-width: 120px; word-break: break-word;">
-                                    -
-                                </div>
+                            <div id="current-supplier" class="fw-bold text-white" style="font-size: 1.35rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #28a745; padding: 8px 16px; border-radius: 12px; display: inline-block; min-width: 120px; word-break: break-word;">
+                                -
                             </div>
                         </div>
                     </div>
@@ -710,10 +887,10 @@
                                         <option value="pay_term" data-source="r2s">Terms (pay_term)</option>
                                         <option value="payment_confirmation" data-source="r2s">ADV confirm</option>
                                         <option value="rec_qty" data-source="r2s">Rec. QTY</option>
-                                        <option value="packing_list" data-source="r2s">Packing list (Yes/No)</option>
+                                        <option value="packing_list" data-source="r2s">Packing (Yes/No)</option>
                                         <option value="photo_mail_send" data-source="r2s">New photo (Yes/No)</option>
                                         <option value="supplier" data-source="r2s">Supplier (ready_to_ship)</option>
-                                        <option value="packing_list_link" data-source="r2s">Packing list URL</option>
+                                        <option value="packing_list_link" data-source="r2s">Packing URL</option>
                                         <option value="Stage" data-source="forecast">Stage (forecast)</option>
                                         <option value="NR" data-source="forecast">NRP (forecast)</option>
                                     </select>
@@ -731,7 +908,7 @@
                     </div>
                 </div>
 
-                <div class="wide-table-wrapper table-container">
+                <div class="wide-table-wrapper table-container" id="r2sTableScrollWrap">
                     <table class="wide-table" id="readyToShipTable">
                         <thead>
                             <tr>
@@ -767,9 +944,9 @@
                                 <th data-column="8" data-column-name="shipped_cbm_in_container" hidden>Balance<div
                                         class="resizer"></div>
                                 </th>
-                                <th data-column="15" data-column-name="packing_list">Packing<br/>List
+                                <th data-column="15" data-column-name="packing_list">Packing
                                     @if(!empty($packingListSheetEditUrl ?? ''))
-                                        <a href="{{ $packingListSheetEditUrl }}" target="_blank" rel="noopener" class="small ms-1 align-top" title="Open packing list Google Sheet (edit links)" aria-label="Open packing list Google Sheet">↗</a>
+                                        <a href="{{ $packingListSheetEditUrl }}" target="_blank" rel="noopener" class="small ms-1 align-top" title="Open Packing Google Sheet (edit links)" aria-label="Open Packing Google Sheet">↗</a>
                                     @endif
                                     <div class="resizer"></div>
                                 </th>
@@ -826,8 +1003,9 @@
                                     if ($zoneXSelected !== '' && ! in_array($zoneXSelected, $supplierZoneListOpts, true)) {
                                         $supplierZoneListOpts = array_values(array_unique(array_merge([$zoneXSelected], $supplierZoneListOpts)));
                                     }
+                                    $r2sStageNorm = strtolower(trim((string) ($item->stage ?? '')));
                                 @endphp
-                            <tr data-stage="{{ $item->stage ?? '' }}" class="stage-row" data-r2s-supplier="{{ e($item->supplier ?? '') }}" data-mfrg-supplier="{{ e($mfrgSup) }}">
+                            <tr data-stage="{{ e($r2sStageNorm) }}" class="stage-row" data-r2s-supplier="{{ e($item->supplier ?? '') }}" data-mfrg-supplier="{{ e($mfrgSup) }}">
                                 <td data-column="27" class="text-center align-middle">
                                     @if(!empty($item->Image))
                                         @php
@@ -882,31 +1060,52 @@
                                 </td>
                                 <td data-column="21" class="text-center">
                                     @php
-                                        $stageValue = $item->stage ?? '';
-                                        $bgColor = '#fff';
-                                        if ($stageValue === 'to_order_analysis') {
-                                            $bgColor = '#ffc107'; // Yellow
-                                        } elseif ($stageValue === 'mip') {
-                                            $bgColor = '#0d6efd'; // Blue
-                                        } elseif ($stageValue === 'r2s') {
-                                            $bgColor = '#198754'; // Green
+                                        $stageTips = [
+                                            '' => 'Select stage',
+                                            'appr_req' => 'Appr Req — Approval',
+                                            'mip' => 'MIP',
+                                            'r2s' => 'R2S — Ready to ship',
+                                            'transit' => 'Transit',
+                                            'to_order_analysis' => 'Order — 2 Order',
+                                            'all_good' => 'All Good',
+                                        ];
+                                        $stageTip = $stageTips[$r2sStageNorm] ?? 'Select stage';
+                                        $stageDotColor = '#94a3b8';
+                                        if ($r2sStageNorm === 'appr_req') {
+                                            $stageDotColor = '#facc15';
+                                        } elseif ($r2sStageNorm === 'mip') {
+                                            $stageDotColor = '#2563eb';
+                                        } elseif ($r2sStageNorm === 'to_order_analysis') {
+                                            $stageDotColor = '#c2410c';
+                                        } elseif ($r2sStageNorm === 'r2s') {
+                                            $stageDotColor = '#16a34a';
+                                        } elseif ($r2sStageNorm === 'all_good') {
+                                            $stageDotColor = '#22c55e';
                                         }
                                     @endphp
-                                    <select class="form-select form-select-sm editable-select-stage" 
-                                        data-type="Stage"
-                                        data-sku="{{ $item->sku }}"
-                                        data-parent="{{ $item->parent ?? '' }}"
-                                        style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
-                                            font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                            background-color: {{ $bgColor }}; color: #000;">
-                                        <option value="">Select</option>
-                                        <option value="appr_req" {{ $stageValue === 'appr_req' ? 'selected' : '' }}>Appr. Req</option>
-                                        <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
-                                        <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
-                                        <option value="transit" {{ $stageValue === 'transit' ? 'selected' : '' }}>Transit</option>
-                                        <option value="all_good" {{ $stageValue === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
-                                        <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
-                                    </select>
+                                    <div class="stage-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="{{ e($stageTip) }}">
+                                        <div class="r2s-stage-marker-host d-flex justify-content-center align-items-center">
+                                            @if ($r2sStageNorm === 'transit')
+                                                <i class="fas fa-truck stage-transit-icon" aria-hidden="true"></i>
+                                            @else
+                                                <span class="stage-status-dot" style="background-color: {{ $stageDotColor }};" aria-hidden="true"></span>
+                                            @endif
+                                        </div>
+                                        <select class="form-select form-select-sm editable-select editable-select-stage stage-stage-select position-absolute top-0 start-0 w-100 h-100"
+                                            data-type="Stage"
+                                            data-sku="{{ e($item->sku) }}"
+                                            data-parent="{{ e($item->parent ?? '') }}"
+                                            data-initial-stage="{{ e($r2sStageNorm) }}"
+                                            aria-label="{{ e($stageTip) }}">
+                                            <option value="" {{ $r2sStageNorm === '' ? 'selected' : '' }}>Not Req Now</option>
+                                            <option value="appr_req" {{ $r2sStageNorm === 'appr_req' ? 'selected' : '' }}>Appr Req</option>
+                                            <option value="mip" {{ $r2sStageNorm === 'mip' ? 'selected' : '' }}>MIP</option>
+                                            <option value="r2s" {{ $r2sStageNorm === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                            <option value="transit" {{ $r2sStageNorm === 'transit' ? 'selected' : '' }}>Trn</option>
+                                            <option value="to_order_analysis" {{ $r2sStageNorm === 'to_order_analysis' ? 'selected' : '' }}>Order</option>
+                                            <option value="all_good" {{ $r2sStageNorm === 'all_good' ? 'selected' : '' }}>All Good</option>
+                                        </select>
+                                    </div>
                                 </td>
                                 <td data-column="22" class="text-center" hidden>
                                     @php
@@ -950,19 +1149,22 @@
                                         style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
                                         class="form-control form-control-sm">
                                 </td>
-                                <td data-column="20" class="text-center">
+                                <td data-column="20" class="text-center r2s-rec-qty-cell">
                                     @php
                                         $orderQty = $item->qty ?? '';
                                         $recQtyVal = ($item->rec_qty !== null && $item->rec_qty !== '') ? $item->rec_qty : $orderQty;
                                     @endphp
-                                    <input type="number" 
-                                           class="form-control auto-save" 
-                                           data-sku="{{ $item->sku }}" 
-                                           data-column="rec_qty" 
-                                           value="{{ $recQtyVal }}" 
+                                    <span class="r2s-rec-qty-display" title="Click to edit">{{ $recQtyVal }}</span>
+                                    <input type="number"
+                                           class="form-control form-control-sm r2s-rec-qty-input auto-save d-none"
+                                           data-sku="{{ $item->sku }}"
+                                           data-column="rec_qty"
+                                           data-committed="{{ e($recQtyVal) }}"
+                                           value="{{ $recQtyVal }}"
                                            min="0"
                                            max="10000"
-                                           style="font-size: 0.95rem; height: 36px; width: 90px;">
+                                           inputmode="numeric"
+                                           aria-label="Rec. QTY">
                                 </td>
                                 <td data-column="18" hidden>
                                     <input type="number" 
@@ -1004,14 +1206,20 @@
                                         <button type="button" class="btn btn-link btn-sm p-0 align-baseline r2s-packing-link-edit text-secondary" style="font-size:0.7rem;line-height:1;text-decoration:underline;" title="Set or edit URL (saves to database and Google Sheet)" data-sku="{{ e($item->sku) }}" data-current-url="{{ e($r2sPackingLink ?? '') }}">link</button>
                                     </div>
                                 </td>
-                                <td data-column="10">
+                                <td data-column="10" class="text-center r2s-pay-term-cell">
+                                    @php
+                                        $payTermVal = trim((string) ($item->pay_term ?? ''));
+                                        if ($payTermVal === '') {
+                                            $payTermVal = 'EXW';
+                                        }
+                                    @endphp
+                                    <span class="r2s-pay-term-display" title="Click to edit">{{ $payTermVal }}</span>
                                     <select data-sku="{{ $item->sku }}" data-column="pay_term"
-                                        class="form-select form-select-sm auto-save"
-                                        style="min-width: 90px; font-size: 13px;">
-                                        <option value="EXW" {{ ($item->pay_term ?? '') == 'EXW' ? 'selected' : '' }}>EXW
-                                        </option>
-                                        <option value="FOB" {{ ($item->pay_term ?? '') == 'FOB' ? 'selected' : '' }}>FOB
-                                        </option>
+                                        class="form-select form-select-sm auto-save r2s-pay-term-select d-none"
+                                        data-committed="{{ e($payTermVal) }}"
+                                        aria-label="Terms">
+                                        <option value="EXW" {{ $payTermVal === 'EXW' ? 'selected' : '' }}>EXW</option>
+                                        <option value="FOB" {{ $payTermVal === 'FOB' ? 'selected' : '' }}>FOB</option>
                                     </select>
                                 </td>
                                 <td data-column="11" hidden>
@@ -1417,37 +1625,59 @@
             });
         }
 
-        // Stage Update Handler
+        function r2sStageMarkerRefresh(selectEl, rawValue) {
+            const wrap = selectEl.closest('.stage-dot-cell');
+            if (!wrap) return;
+            const v = String(rawValue ?? '').trim().toLowerCase();
+            const tips = {
+                '': 'Select stage',
+                appr_req: 'Appr Req — Approval',
+                mip: 'MIP',
+                r2s: 'R2S — Ready to ship',
+                transit: 'Transit',
+                to_order_analysis: 'Order — 2 Order',
+                all_good: 'All Good'
+            };
+            const tip = tips[v] || 'Select stage';
+            wrap.setAttribute('title', tip);
+            selectEl.setAttribute('aria-label', tip);
+            const host = wrap.querySelector('.r2s-stage-marker-host');
+            if (!host) return;
+            let dotColor = '#94a3b8';
+            if (v === 'appr_req') dotColor = '#facc15';
+            else if (v === 'mip') dotColor = '#2563eb';
+            else if (v === 'to_order_analysis') dotColor = '#c2410c';
+            else if (v === 'r2s') dotColor = '#16a34a';
+            else if (v === 'all_good') dotColor = '#22c55e';
+            if (v === 'transit') {
+                host.innerHTML = '<i class="fas fa-truck stage-transit-icon" aria-hidden="true"></i>';
+            } else {
+                host.innerHTML = '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
+            }
+        }
+
+        // Stage Update Handler (Forecast Analysis–style dot / truck + overlay select)
         function setupStageUpdate() {
             document.querySelectorAll('.editable-select-stage').forEach(function(select) {
                 select.addEventListener('change', function() {
-                    const sku = this.dataset.sku;
-                    const parent = this.dataset.parent;
-                    const value = this.value.trim();
+                    const sel = this;
+                    const sku = sel.dataset.sku;
+                    const parent = sel.dataset.parent;
+                    const value = sel.value.trim();
+                    const previousPersisted = (sel.getAttribute('data-initial-stage') || '').trim().toLowerCase();
 
-                    // Update background color immediately
-                    let bgColor = '#fff';
-                    if (value === 'to_order_analysis') {
-                        bgColor = '#ffc107'; // Yellow
-                    } else if (value === 'mip') {
-                        bgColor = '#0d6efd'; // Blue
-                    } else if (value === 'r2s') {
-                        bgColor = '#198754'; // Green
-                    }
-                    this.style.backgroundColor = bgColor;
-                    this.style.color = '#000';
-
-                    // Get order_qty for validation
-                    const row = this.closest('tr');
-                    const qtyInput = row.querySelector('td[data-column="4"] input');
+                    const row = sel.closest('tr');
+                    const qtyInput = row ? row.querySelector('td[data-column="4"] input') : null;
                     const orderQty = qtyInput ? parseFloat(qtyInput.value) : 0;
 
                     if (!orderQty || orderQty === 0) {
-                        alert("Order Qty cannot be empty or zero.");
-                        this.value = '';
-                        this.style.backgroundColor = '#fff';
+                        alert('Order Qty cannot be empty or zero.');
+                        sel.value = previousPersisted;
+                        r2sStageMarkerRefresh(sel, previousPersisted);
                         return;
                     }
+
+                    r2sStageMarkerRefresh(sel, value);
 
                     updateForecastField({
                         sku: sku,
@@ -1455,15 +1685,15 @@
                         column: 'Stage',
                         value: value
                     }, function() {
-                        // Success - update the select value to ensure it matches saved value
-                        this.value = value;
-                        // Color already updated
+                        sel.setAttribute('data-initial-stage', value);
+                        if (row) row.setAttribute('data-stage', value);
+                        if (typeof window.filterByR2SStage === 'function') {
+                            window.filterByR2SStage();
+                        }
                     }, function() {
                         alert('Failed to save Stage.');
-                        // Revert color and value
-                        this.style.backgroundColor = '#fff';
-                        // Reload page to get correct value from database
-                        location.reload();
+                        sel.value = previousPersisted;
+                        r2sStageMarkerRefresh(sel, previousPersisted);
                     });
                 });
             });
@@ -1639,16 +1869,186 @@
                 })
                 .then(res => res.json())
                 .then(res => {
+                    if (column === 'rec_qty') {
+                        const td = this.closest('td.r2s-rec-qty-cell');
+                        const disp = td ? td.querySelector('.r2s-rec-qty-display') : null;
+                        if (res.success) {
+                            const v = String(this.value).trim();
+                            this.setAttribute('data-committed', v);
+                            if (disp) disp.textContent = v;
+                            this.classList.add('d-none');
+                            if (disp) disp.classList.remove('d-none');
+                        } else {
+                            alert('Error: ' + res.message);
+                            const committed = this.getAttribute('data-committed') || '';
+                            this.value = committed;
+                            if (disp) disp.textContent = committed;
+                            this.classList.add('d-none');
+                            if (disp) disp.classList.remove('d-none');
+                        }
+                        return;
+                    }
+                    if (column === 'pay_term') {
+                        const td = this.closest('td.r2s-pay-term-cell');
+                        const disp = td ? td.querySelector('.r2s-pay-term-display') : null;
+                        if (res.success) {
+                            const v = String(this.value).trim();
+                            this.setAttribute('data-committed', v);
+                            if (disp) disp.textContent = v;
+                            this.classList.add('d-none');
+                            if (disp) disp.classList.remove('d-none');
+                        } else {
+                            alert('Error: ' + res.message);
+                            const committed = this.getAttribute('data-committed') || '';
+                            this.value = committed;
+                            if (disp) disp.textContent = committed;
+                            this.classList.add('d-none');
+                            if (disp) disp.classList.remove('d-none');
+                        }
+                        return;
+                    }
                     this.style.border = res.success ? '2px solid green' : '2px solid red';
                     if (!res.success) alert('Error: ' + res.message);
-                    setTimeout(() => this.style.border = '', 1000);
+                    setTimeout(() => { this.style.border = ''; }, 1000);
                 })
                 .catch(() => {
-                    this.style.border = '2px solid red';
+                    if (this.dataset.column === 'rec_qty') {
+                        const td = this.closest('td.r2s-rec-qty-cell');
+                        const disp = td ? td.querySelector('.r2s-rec-qty-display') : null;
+                        const committed = this.getAttribute('data-committed') || '';
+                        this.value = committed;
+                        if (disp) disp.textContent = committed;
+                        this.classList.add('d-none');
+                        if (disp) disp.classList.remove('d-none');
+                    } else if (this.dataset.column === 'pay_term') {
+                        const td = this.closest('td.r2s-pay-term-cell');
+                        const disp = td ? td.querySelector('.r2s-pay-term-display') : null;
+                        const committed = this.getAttribute('data-committed') || '';
+                        this.value = committed;
+                        if (disp) disp.textContent = committed;
+                        this.classList.add('d-none');
+                        if (disp) disp.classList.remove('d-none');
+                    } else {
+                        this.style.border = '2px solid red';
+                    }
                     alert('AJAX error occurred.');
                 });
             });
         });
+
+        (function setupR2sRecQtyClickToEdit() {
+            const table = document.getElementById('readyToShipTable');
+            if (!table) return;
+
+            function closeRecQtyEdit(inp, skipSave) {
+                const td = inp.closest('td.r2s-rec-qty-cell');
+                if (!td) return;
+                const disp = td.querySelector('.r2s-rec-qty-display');
+                const committed = (inp.getAttribute('data-committed') || '').trim();
+                const cur = String(inp.value).trim();
+                if (!skipSave && cur !== committed) {
+                    inp.dispatchEvent(new Event('change', { bubbles: true }));
+                    return;
+                }
+                if (disp) disp.textContent = cur || committed;
+                inp.classList.add('d-none');
+                if (disp) disp.classList.remove('d-none');
+            }
+
+            table.addEventListener('click', function (e) {
+                const td = e.target.closest('td[data-column="20"]');
+                if (!td || !table.contains(td) || !td.classList.contains('r2s-rec-qty-cell')) return;
+                if (e.target.closest('a, button')) return;
+                const inp = td.querySelector('.r2s-rec-qty-input');
+                const disp = td.querySelector('.r2s-rec-qty-display');
+                if (!inp || !disp) return;
+                if (!inp.classList.contains('d-none')) {
+                    return;
+                }
+                disp.classList.add('d-none');
+                inp.classList.remove('d-none');
+                inp.focus();
+                inp.select();
+            });
+
+            table.addEventListener('focusout', function (e) {
+                const inp = e.target;
+                if (!inp || !inp.classList || !inp.classList.contains('r2s-rec-qty-input')) return;
+                if (!table.contains(inp)) return;
+                setTimeout(function () {
+                    if (document.activeElement === inp) return;
+                    closeRecQtyEdit(inp, false);
+                }, 0);
+            });
+
+            table.addEventListener('keydown', function (e) {
+                const inp = e.target;
+                if (!inp || !inp.classList || !inp.classList.contains('r2s-rec-qty-input')) return;
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    inp.blur();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    const committed = inp.getAttribute('data-committed') || '';
+                    inp.value = committed;
+                    closeRecQtyEdit(inp, true);
+                }
+            });
+        })();
+
+        (function setupR2sPayTermClickToEdit() {
+            const table = document.getElementById('readyToShipTable');
+            if (!table) return;
+
+            function closePayTermEdit(sel, skipSave) {
+                if (!sel || sel.classList.contains('d-none')) return;
+                const td = sel.closest('td.r2s-pay-term-cell');
+                if (!td) return;
+                const disp = td.querySelector('.r2s-pay-term-display');
+                const committed = (sel.getAttribute('data-committed') || '').trim();
+                const cur = String(sel.value).trim();
+                if (!skipSave && cur !== committed) {
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                    return;
+                }
+                if (disp) disp.textContent = cur || committed;
+                sel.classList.add('d-none');
+                if (disp) disp.classList.remove('d-none');
+            }
+
+            table.addEventListener('click', function (e) {
+                const td = e.target.closest('td[data-column="10"]');
+                if (!td || !table.contains(td) || !td.classList.contains('r2s-pay-term-cell')) return;
+                if (e.target.closest('a, button')) return;
+                const sel = td.querySelector('.r2s-pay-term-select');
+                const disp = td.querySelector('.r2s-pay-term-display');
+                if (!sel || !disp) return;
+                if (!sel.classList.contains('d-none')) return;
+                disp.classList.add('d-none');
+                sel.classList.remove('d-none');
+                sel.focus();
+            });
+
+            table.addEventListener('focusout', function (e) {
+                const sel = e.target;
+                if (!sel || !sel.classList || !sel.classList.contains('r2s-pay-term-select')) return;
+                if (!table.contains(sel)) return;
+                setTimeout(function () {
+                    if (document.activeElement === sel) return;
+                    closePayTermEdit(sel, false);
+                }, 0);
+            });
+
+            table.addEventListener('keydown', function (e) {
+                const sel = e.target;
+                if (!sel || !sel.classList || !sel.classList.contains('r2s-pay-term-select')) return;
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    sel.value = sel.getAttribute('data-committed') || '';
+                    closePayTermEdit(sel, true);
+                }
+            });
+        })();
 
         // New Photo toggle (red/green dot) using ready_to_ship.photo_mail_send (Yes/No)
         document.querySelectorAll('.new-photo-toggle').forEach(dot => {
@@ -1681,7 +2081,7 @@
             });
         });
 
-        // Packing List toggle (red/green dot) using ready_to_ship.packing_list (Yes/No)
+        // Packing toggle (red/green dot) using ready_to_ship.packing_list (Yes/No)
         document.querySelectorAll('.packing-toggle').forEach(dot => {
             dot.addEventListener('click', function () {
                 const sku = this.dataset.sku;
@@ -1712,7 +2112,7 @@
             });
         });
 
-        // Refresh packing-list links from Google Sheet CSV (cached server-side; poll picks up sheet edits)
+        // Refresh Packing links from Google Sheet CSV (cached server-side; poll picks up sheet edits)
         (function () {
             var pollUrl = @json(route('ready.to.ship.packing.list.links'));
             var intervalMs = 120000;
@@ -1781,7 +2181,7 @@
             }
         })();
 
-        // Add / edit packing list URL (DB + Google Sheet)
+        // Add / edit Packing URL (DB + Google Sheet)
         document.addEventListener('click', function (e) {
             var btn = e.target.closest('.r2s-packing-link-edit');
             var tbl = document.getElementById('readyToShipTable');
@@ -1792,7 +2192,7 @@
             e.stopPropagation();
             var sku = btn.getAttribute('data-sku');
             var cur = btn.getAttribute('data-current-url') || '';
-            var msg = window.prompt('Packing list URL (https://...). Leave empty to remove link.', cur);
+            var msg = window.prompt('Packing URL (https://...). Leave empty to remove link.', cur);
             if (msg === null) {
                 return;
             }
@@ -2029,7 +2429,7 @@
                     html = '<label class="form-label fw-bold" for="r2sBulkEditValue">URL (https://…)</label><input type="url" class="form-control" id="r2sBulkEditValue" placeholder="https://...">';
                 } else if (field === 'Stage') {
                     html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Stage</label><select class="form-select" id="r2sBulkEditValue">';
-                    html += '<option value="appr_req">Appr. Req</option><option value="mip">MIP</option><option value="r2s">R2S</option><option value="transit">Transit</option><option value="all_good">😊 All Good</option><option value="to_order_analysis">2 Order</option>';
+                    html += '<option value="">Not Req Now</option><option value="appr_req">Appr Req</option><option value="mip">MIP</option><option value="r2s">R2S</option><option value="transit">Trn</option><option value="to_order_analysis">Order</option><option value="all_good">All Good</option>';
                     html += '</select><p class="small text-muted mt-1 mb-0">Rows with Order Qty 0 are skipped (same rule as single-row Stage).</p>';
                 } else if (field === 'NR') {
                     html = '<label class="form-label fw-bold" for="r2sBulkEditValue">NRP</label><select class="form-select" id="r2sBulkEditValue">';
@@ -2056,14 +2456,29 @@
                     }
                     return;
                 }
-                if (column === 'pay_term' || column === 'payment_confirmation') {
-                    const sel = row.querySelector('select.auto-save[data-column="' + column + '"]');
+                if (column === 'pay_term') {
+                    const sel = row.querySelector('select.r2s-pay-term-select, select.auto-save[data-column="pay_term"]');
+                    if (sel) {
+                        sel.value = value;
+                        sel.setAttribute('data-committed', String(value));
+                        const disp = row.querySelector('.r2s-pay-term-display');
+                        if (disp) disp.textContent = value;
+                    }
+                    return;
+                }
+                if (column === 'payment_confirmation') {
+                    const sel = row.querySelector('select.auto-save[data-column="payment_confirmation"]');
                     if (sel) sel.value = value;
                     return;
                 }
                 if (column === 'rec_qty') {
-                    const inp = row.querySelector('input.auto-save[data-column="rec_qty"]');
-                    if (inp) inp.value = value;
+                    const inp = row.querySelector('input.r2s-rec-qty-input, input.auto-save[data-column="rec_qty"]');
+                    if (inp) {
+                        inp.value = value;
+                        inp.setAttribute('data-committed', String(value));
+                        const disp = row.querySelector('.r2s-rec-qty-display');
+                        if (disp) disp.textContent = value;
+                    }
                     return;
                 }
                 if (column === 'packing_list') {
@@ -2090,14 +2505,13 @@
             function syncDomAfterForecastStage(row, value) {
                 const sel = row.querySelector('.editable-select-stage');
                 if (!sel) return;
-                sel.value = value;
-                let bg = '#fff';
-                if (value === 'to_order_analysis') bg = '#ffc107';
-                else if (value === 'mip') bg = '#0d6efd';
-                else if (value === 'r2s') bg = '#198754';
-                sel.style.backgroundColor = bg;
-                sel.style.color = '#000';
-                row.setAttribute('data-stage', value);
+                const v = String(value != null ? value : '').trim().toLowerCase();
+                sel.value = v;
+                sel.setAttribute('data-initial-stage', v);
+                row.setAttribute('data-stage', v);
+                if (typeof r2sStageMarkerRefresh === 'function') {
+                    r2sStageMarkerRefresh(sel, v);
+                }
             }
 
             function syncDomAfterForecastNr(row, value) {
@@ -2523,14 +2937,12 @@
             let totalCBM = 0;
 
             visibleRows.forEach(row => {
-                // Amount
                 const amountCell = row.querySelector('.total-value');
-                const amountValue = parseFloat(amountCell?.textContent.trim());
+                const amountValue = parseFloat(String(amountCell?.textContent || '').trim().replace(/,/g, ''));
                 if (!isNaN(amountValue)) totalAmount += amountValue;
 
-                // CBM
                 const cbmCell = row.querySelector('[data-column="19"]');
-                const cbmValue = parseFloat(cbmCell?.textContent.trim());
+                const cbmValue = parseFloat(String(cbmCell?.textContent || '').trim().replace(/,/g, ''));
                 if (!isNaN(cbmValue)) totalCBM += cbmValue;
             });
 
@@ -2606,7 +3018,7 @@
             if (row.style.display !== "none") {
                 const td = row.querySelector('.total-value');
                 if (td) {
-                    const value = parseFloat(td.textContent.trim());
+                    const value = parseFloat(td.textContent.trim().replace(/,/g, ''));
                     if (!isNaN(value)) totalAmount += value;
                 }
             }
@@ -2788,9 +3200,11 @@
                 window.filterByR2SStage();
             }
 
+            const playBanner = document.getElementById("r2s-supplier-play-banner");
             const supplierBadgeContainer = document.getElementById("supplier-badge-container");
             const supplierBadge = document.getElementById("current-supplier");
             const supplierBadgeVr = document.getElementById("supplier-badge-vr");
+            if (playBanner) playBanner.style.display = "flex";
             if (supplierBadgeContainer) supplierBadgeContainer.style.display = "block";
             if (supplierBadgeVr) supplierBadgeVr.style.display = "block";
             if (supplierBadge) supplierBadge.textContent = supplier || "-";
@@ -2859,8 +3273,10 @@
                 e.stopPropagation();
                 document.getElementById("play-pause").style.display = "none";
                 document.getElementById("play-auto").style.display = "inline-block";
+                const playBanner = document.getElementById("r2s-supplier-play-banner");
                 const supplierBadgeContainer = document.getElementById("supplier-badge-container");
                 const supplierBadgeVr = document.getElementById("supplier-badge-vr");
+                if (playBanner) playBanner.style.display = "none";
                 if (supplierBadgeContainer) supplierBadgeContainer.style.display = "none";
                 if (supplierBadgeVr) supplierBadgeVr.style.display = "none";
                 window.r2sSupplierNavLock = null;

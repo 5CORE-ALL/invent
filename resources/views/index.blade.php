@@ -5,6 +5,8 @@
 <style>
         /* Menu cards ~30% smaller than original (0.7 scale on spacing/type) */
         .dashboard-card {
+            --dash-accent: #3b82f6;
+            --dash-icon-fallback: #f1f5f9;
             background: #ffffff !important;
             border-radius: 8px !important;
             padding: 14px !important;
@@ -16,12 +18,17 @@
             height: 100% !important;
             display: flex !important;
             flex-direction: column !important;
+            cursor: pointer !important;
         }
 
         .dashboard-card:hover {
             transform: translateY(-2px) !important;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
             border-color: #d1d5db !important;
+        }
+        .dashboard-card:focus-visible {
+            outline: 2px solid var(--dash-accent) !important;
+            outline-offset: 2px !important;
         }
 
         .card-actions {
@@ -53,15 +60,36 @@
         .eye-icon-btn i {
             color: white !important;
             font-size: 18px !important;
-        }        .dashboard-card::before {
+        }
+        .dashboard-card::before {
             content: '' !important;
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
             right: 0 !important;
             height: 3px !important;
-            background: #3b82f6 !important;
+            background: var(--dash-accent) !important;
             border-radius: 8px 8px 0 0 !important;
+        }
+        .dashboard-card .card-icon {
+            background: linear-gradient(145deg,
+                color-mix(in srgb, var(--dash-accent) 22%, white),
+                color-mix(in srgb, var(--dash-accent) 12%, #f8fafc)) !important;
+        }
+        @supports not (background: color-mix(in srgb, red, white)) {
+            .dashboard-card .card-icon {
+                background: var(--dash-icon-fallback, #f1f5f9) !important;
+            }
+        }
+        .dashboard-card--invert-icon .card-icon {
+            background: linear-gradient(145deg, var(--dash-accent), color-mix(in srgb, var(--dash-accent) 65%, black)) !important;
+            color: #fff !important;
+        }
+        @supports not (color: color-mix(in srgb, red, white)) {
+            .dashboard-card--invert-icon .card-icon {
+                background: var(--dash-accent) !important;
+                color: #fff !important;
+            }
         }
 
         .card-header {
@@ -1090,8 +1118,8 @@
 
     <!-- task dashboard -->
       <div class="dashboard-grid">
-        <div class="dashboard-card" onclick="openModal('Tasks')">
-            <div class="card-icon" style="background: #cffafe;">✓</div>
+        <div class="dashboard-card" style="--dash-accent: #0891b2; --dash-icon-fallback: #cffafe;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Tasks', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Tasks',event);}">
+            <div class="card-icon">✓</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Tasks</div>
@@ -1106,8 +1134,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('My Team')">
-            <div class="card-icon" style="background: #d1fae5;">👥</div>
+        <div class="dashboard-card" style="--dash-accent: #059669; --dash-icon-fallback: #d1fae5;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('My Team', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('My Team',event);}">
+            <div class="card-icon">👥</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">My Team</div>
@@ -1122,8 +1150,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Inventory')">
-            <div class="card-icon" style="background: #fed7aa;">📦</div>
+        <div class="dashboard-card" style="--dash-accent: #ea580c; --dash-icon-fallback: #fed7aa;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Inventory', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Inventory',event);}">
+            <div class="card-icon">📦</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Inventory</div>
@@ -1154,8 +1182,8 @@
             </div>
         </div> -->
 
-        <div class="dashboard-card" onclick="openModal('Operations')">
-            <div class="card-icon" style="background: #fce7f3;">⏰</div>
+        <div class="dashboard-card" style="--dash-accent: #db2777; --dash-icon-fallback: #fce7f3;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Operations', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Operations',event);}">
+            <div class="card-icon">⏰</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Operations</div>
@@ -1170,8 +1198,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Human Resources')">
-            <div class="card-icon" style="background: #e9d5ff;">👨‍💼</div>
+        <div class="dashboard-card" style="--dash-accent: #9333ea; --dash-icon-fallback: #e9d5ff;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Human Resources', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Human Resources',event);}">
+            <div class="card-icon">👨‍💼</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Human Resources</div>
@@ -1186,8 +1214,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Software & IT')">
-            <div class="card-icon" style="background: #ccfbf1;">💻</div>
+        <div class="dashboard-card" style="--dash-accent: #0d9488; --dash-icon-fallback: #ccfbf1;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Software & IT', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Software & IT',event);}">
+            <div class="card-icon">💻</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Software & IT</div>
@@ -1202,13 +1230,13 @@
             </div>
         </div>
 
-        <div class="dashboard-card">
+        <div class="dashboard-card dashboard-card--invert-icon" style="--dash-accent: #1e3a5f;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Purchase', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Purchase',event);}">
             <div class="card-actions">
-                <button class="eye-icon-btn" onclick="openModal('Purchase'); event.stopPropagation();">
+                <button type="button" class="eye-icon-btn" onclick="openModal('Purchase'); event.stopPropagation();" title="Open full menu">
                     <i class="ri-eye-line"></i>
                 </button>
             </div>
-            <div class="card-icon" style="background: #1e3a5f; color: white;">🛒</div>
+            <div class="card-icon">🛒</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Purchase</div>
@@ -1223,8 +1251,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Pricing')">
-            <div class="card-icon" style="background: #fef3c7;">💵</div>
+        <div class="dashboard-card" style="--dash-accent: #d97706; --dash-icon-fallback: #fef3c7;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Pricing', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Pricing',event);}">
+            <div class="card-icon">💵</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Pricing</div>
@@ -1238,8 +1266,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Advertisements')">
-            <div class="card-icon" style="background: #e5e7eb;">📢</div>
+        <div class="dashboard-card" style="--dash-accent: #64748b; --dash-icon-fallback: #e5e7eb;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Advertisements', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Advertisements',event);}">
+            <div class="card-icon">📢</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Advertisements</div>
@@ -1254,8 +1282,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Content')">
-            <div class="card-icon" style="background: #7c2d12; color: white;">📝</div>
+        <div class="dashboard-card dashboard-card--invert-icon" style="--dash-accent: #b91c1c;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Content', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Content',event);}">
+            <div class="card-icon">📝</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Content</div>
@@ -1270,8 +1298,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Marketing')">
-            <div class="card-icon" style="background: #dbeafe;">🎯</div>
+        <div class="dashboard-card" style="--dash-accent: #2563eb; --dash-icon-fallback: #dbeafe;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Marketing', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Marketing',event);}">
+            <div class="card-icon">🎯</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Marketing</div>
@@ -1286,8 +1314,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Social Media')">
-            <div class="card-icon" style="background: #fef3c7;">📱</div>
+        <div class="dashboard-card" style="--dash-accent: #ca8a04; --dash-icon-fallback: #fef9c3;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Social Media', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Social Media',event);}">
+            <div class="card-icon">📱</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Social Media</div>
@@ -1302,8 +1330,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Videos')">
-            <div class="card-icon" style="background: #fed7aa;">🎬</div>
+        <div class="dashboard-card" style="--dash-accent: #c2410c; --dash-icon-fallback: #ffedd5;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Videos', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Videos',event);}">
+            <div class="card-icon">🎬</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Videos</div>
@@ -1318,8 +1346,8 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Logistics')">
-            <div class="card-icon" style="background: #1e3a5f; color: white;">🚚</div>
+        <div class="dashboard-card dashboard-card--invert-icon" style="--dash-accent: #4338ca;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Logistics', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Logistics',event);}">
+            <div class="card-icon">🚚</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Logistics</div>
@@ -2230,6 +2258,11 @@
         }
 
         function initDashboardPage() {
+            document.querySelectorAll('.dashboard-grid .subcard-item').forEach(function (el) {
+                el.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                });
+            });
             if (document.getElementById('dashboard-summary-stats')) {
                 loadDashboardFromChannels();
             }
@@ -2316,7 +2349,7 @@
                 icon: '👥',
                 color: '#059669',
                 items: [
-                    { name: 'Team Members', icon: '👤', route: '/team/members' },
+                    { name: 'Team details', icon: '👤', route: '{{ route('users.add') }}' },
                     { name: 'Performance', icon: '📊', route: '/team/performance' },
                     { name: 'Goals & Targets', icon: '🎯', route: '/team/goals' }
                 ]
@@ -2420,6 +2453,34 @@
             }
         };
 
+        function dashboardAbsoluteUrl(route) {
+            if (route == null || route === '') return '';
+            const s = String(route).trim();
+            if (/^https?:\/\//i.test(s)) return s;
+            const path = s.startsWith('/') ? s : '/' + s;
+            try {
+                return new URL(path, window.location.origin).href;
+            } catch (e) {
+                return s;
+            }
+        }
+
+        /** Card click: open first menu route in a new tab (eye button still opens full modal for Purchase). */
+        function openDashboardCardInNewTab(category, event) {
+            if (event && event.target && event.target.closest) {
+                if (event.target.closest('.eye-icon-btn')) return;
+            }
+            const categoryData = menuData[category];
+            if (!categoryData || !categoryData.items || !categoryData.items.length) {
+                openModal(category);
+                return;
+            }
+            const url = dashboardAbsoluteUrl(categoryData.items[0].route);
+            if (url) {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            }
+        }
+
         // Open menu modal
         function openModal(category) {
             const modal = document.getElementById('menuModal');
@@ -2441,8 +2502,9 @@
                 let html = '';
                 if (categoryData.items && categoryData.items.length > 0) {
                     categoryData.items.forEach(item => {
+                        const href = dashboardAbsoluteUrl(item.route);
                         html += `
-                            <a href="${item.route}" class="menu-item">
+                            <a href="${href}" target="_blank" rel="noopener noreferrer" class="menu-item">
                                 <div class="menu-item-icon">${item.icon}</div>
                                 <div class="menu-item-text">${item.name}</div>
                                 <i class="ri-arrow-right-line menu-item-arrow"></i>

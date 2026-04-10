@@ -259,6 +259,51 @@ class ReadyToShipController extends Controller
             }
         }
 
+        // Total CBM per zone (badges on index): same rules as grid — exclude NR rows; zone = zone_x or supplier-mapped zone; line CBM = Or. QTY × CBM (matches Total CBM column).
+        $resolveR2sRowZone = static function ($item, array $supplierZoneMap): string {
+            $mfrgSup = trim((string) ($item->mfrg_supplier ?? ''));
+            if ($mfrgSup === '') {
+                $mfrgSup = trim((string) ($item->supplier ?? ''));
+            }
+            $mappedZone = '';
+            if ($mfrgSup !== '') {
+                if (isset($supplierZoneMap[$mfrgSup])) {
+                    $mappedZone = trim((string) $supplierZoneMap[$mfrgSup]);
+                } else {
+                    foreach ($supplierZoneMap as $n => $z) {
+                        if (strcasecmp(trim((string) $n), $mfrgSup) === 0) {
+                            $mappedZone = trim((string) $z);
+                            break;
+                        }
+                    }
+                }
+            }
+            $zoneXStored = trim((string) ($item->zone_x ?? ''));
+
+            return $zoneXStored !== '' ? $zoneXStored : $mappedZone;
+        };
+
+        $r2sCbmBadgeZones = ['GHZ', 'Ningbo', 'Tianjin'];
+        $r2sCbmByZone = array_fill_keys($r2sCbmBadgeZones, 0.0);
+        foreach ($readyToShipData as $item) {
+            if (strtoupper(trim($item->nr ?? '')) === 'NR') {
+                continue;
+            }
+            $zone = $resolveR2sRowZone($item, $supplierZoneMap);
+            $qty = $item->qty;
+            $cbm = $item->CBM ?? null;
+            if (! is_numeric($qty) || ! is_numeric($cbm)) {
+                continue;
+            }
+            $lineTotal = (float) $qty * (float) $cbm;
+            foreach ($r2sCbmBadgeZones as $bz) {
+                if (strcasecmp($zone, $bz) === 0) {
+                    $r2sCbmByZone[$bz] += $lineTotal;
+                    break;
+                }
+            }
+        }
+
         // Transit container modal (same as transit-container-details)
         $transitTabs = TransitContainerDetail::where(function ($q) {
             $q->whereNull('status')->orWhereRaw("TRIM(status) = ''");
@@ -272,6 +317,7 @@ class ReadyToShipController extends Controller
 
         return view('purchase-master.ready-to-ship.index', [
             'readyToShipList' => $readyToShipData,
+            'r2sCbmByZone' => $r2sCbmByZone,
             'suppliers' => $supplierRows->pluck('name')->unique()->values(),
             'supplierZoneMap' => $supplierZoneMap,
             'supplierZoneListOptions' => $supplierZoneListOptions,
