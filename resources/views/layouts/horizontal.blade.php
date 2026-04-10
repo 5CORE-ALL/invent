@@ -3,7 +3,11 @@
     data-topbar-color="{{ $topbarColor ?? 'light' }}">
 
 <head>
-    @include('layouts.shared/title-meta', ['title' => $title])
+    @include('layouts.shared/title-meta', [
+        'title' => $title,
+        'favicon' => $favicon ?? null,
+        'faviconType' => $faviconType ?? null,
+    ])
     @yield('css')
     @include('layouts.shared/head-css', ['mode' => $mode ?? '', 'demo' => $demo ?? ''])
 </head>

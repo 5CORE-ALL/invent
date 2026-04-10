@@ -276,15 +276,17 @@ class VerificationAdjustmentController extends Controller
                 $shopify = $shopifyData->get($item->sku);
                 $inv = $verifiedInventory[$sku] ?? null;
 
-                // Inventory figures come from syncLiveInventoryToDb() which uses Shopify Admin GraphQL
-                // quantity states at the Ohio location (available, committed, on_hand, unavailable, incoming).
+                // Inventory from shopify_skus: written by syncLiveInventoryToDb() using Shopify Admin GraphQL
+                // for the Ohio location only (available, committed, on_hand, unavailable, incoming).
+                // INV and ON_HAND both use on_hand so the grid matches Shopify Admin "On hand" at Ohio.
                 if ($shopify) {
                     $item->AVAILABLE_TO_SELL = (int) ($shopify->available_to_sell ?? 0);
                     $item->COMMITTED = (int) ($shopify->committed ?? 0);
-                    $item->ON_HAND = (int) ($shopify->on_hand ?? 0);
                     $item->UNAVAILABLE = (int) ($shopify->getAttribute('unavailable') ?? 0);
                     $item->INCOMING = (int) ($shopify->getAttribute('incoming') ?? 0);
-                    $item->INV = $item->ON_HAND;
+                    $onHand = max(0, (int) ($shopify->on_hand ?? 0));
+                    $item->ON_HAND = $onHand;
+                    $item->INV = $onHand;
                     $item->L30 = $shopify->quantity ?? 0;
                     $item->IMAGE_URL = $shopify->image_src ?? null;
                 } else {

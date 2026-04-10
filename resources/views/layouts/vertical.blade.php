@@ -10,14 +10,18 @@
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/modules/export-data.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/modules/accessibility.js"></script>
     <!-- Highcharts default theme used; optional: https://code.highcharts.com/themes/adaptive.js -->
-    @include('layouts.shared/title-meta', ['title' => $title])
+    @include('layouts.shared/title-meta', [
+        'title' => $title,
+        'favicon' => $favicon ?? null,
+        'faviconType' => $faviconType ?? null,
+    ])
     @yield('css')
     @include('layouts.shared/head-css', ['mode' => $mode ?? '', 'demo' => $demo ?? ''])
     
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#667eea">
-    <link rel="apple-touch-icon" href="/images/chat-icon.png">
+    <link rel="apple-touch-icon" href="{{ $appleTouchIcon ?? '/images/chat-icon.png' }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Invent">

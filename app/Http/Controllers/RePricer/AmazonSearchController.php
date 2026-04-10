@@ -805,13 +805,14 @@ class AmazonSearchController extends Controller
                 }
 
                 $productTitle = $competitor['product_title'] ?? null;
+                $marketplace = $competitor['marketplace'] ?? 'amazon';
                 $result = AmazonSkuCompetitor::updateOrCreate(
                     [
                         'sku' => $sku,
                         'asin' => $asin,
+                        'marketplace' => $marketplace,
                     ],
                     [
-                        'marketplace' => $competitor['marketplace'] ?? 'amazon',
                         'product_title' => $productTitle,
                         'seller_name' => $this->extractSellerFromTitle($productTitle),
                         'product_link' => $competitor['product_link'] ?? null,

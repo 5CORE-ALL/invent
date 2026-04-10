@@ -2448,7 +2448,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // routes/web.php or routes/api.php
     Route::get('/channel-counts', [ChannelMasterController::class, 'getChannelCounts']);
 
-    Route::get('/home', fn () => view('index'))->name('home');
+    Route::get('/home', [\App\Http\Controllers\TaskController::class, 'homeDashboard'])->name('home');
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
     Route::get('/title-master', fn () => view('title-master'))->name('title.master');
@@ -4501,25 +4501,25 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/tiktok/utilized/upload', 'uploadUtilized')->name('tiktok.utilized.upload');
         Route::post('/tiktok/utilized/update', 'updateUtilized')->name('tiktok.utilized.update');
     });
-    Route::prefix('repricer/amazon-search')->group(function () {
-        Route::get('/', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'index']);
-        Route::post('/search', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'search']);
-        Route::get('/history', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSearchHistory']);
-        Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults']);
-        Route::get('/filter-options', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getFilterOptions']);
-        Route::get('/raw-response', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getRawResponse']);
-        Route::get('/skus', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSkus']);
-        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'storeCompetitors']);
+    Route::prefix('repricer/amazon-search')->name('repricer.amazon-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/raw-response', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getRawResponse'])->name('raw-response');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'storeCompetitors'])->name('store-competitors');
     });
 
-    Route::prefix('repricer/ebay-search')->group(function () {
-        Route::get('/', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'index']);
-        Route::post('/search', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'search']);
-        Route::get('/history', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSearchHistory']);
-        Route::get('/results', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getResults']);
-        Route::get('/filter-options', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getFilterOptions']);
-        Route::get('/skus', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSkus']);
-        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'storeCompetitors']);
+    Route::prefix('repricer/ebay-search')->name('repricer.ebay-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'storeCompetitors'])->name('store-competitors');
     });
 
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');
@@ -4569,6 +4569,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/summary', [\App\Http\Controllers\TaskController::class, 'taskSummary'])->name('tasks.summary');
+    Route::get('/tasks/summary-stats', [\App\Http\Controllers\TaskController::class, 'taskSummaryStats'])->name('tasks.summaryStats');
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
     Route::get('/tasks/automated', [\App\Http\Controllers\TaskController::class, 'automatedIndex'])->name('tasks.automated');
     Route::get('/tasks/automated/data', [\App\Http\Controllers\TaskController::class, 'getAutomatedData'])->name('tasks.automatedData');

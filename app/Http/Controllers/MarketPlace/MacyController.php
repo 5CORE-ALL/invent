@@ -88,18 +88,11 @@ class MacyController extends Controller
         // 3. Related Models
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        $macysMetrics = MacyProduct::whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
+        // NBSP / unicode spaces in PM vs macy_products break plain whereIn + strtoupper match (SKU looks identical in UI)
+        $macysByNormSku = $this->buildMacyProductLookupByNormalizedSku($skus);
 
         // NR/REQ + SPRICE data from MacyDataView
         $dataViews = MacyDataView::whereIn("sku", $skus)->pluck("value", "sku");
-
-        // Fetch price data from MacysPriceData table (key by uppercase for case-insensitive lookup)
-        $uppercaseSkus = array_map('strtoupper', $skus);
-        $priceDataCollection = MacysPriceData::whereIn('sku', $uppercaseSkus)
-            ->get()
-            ->keyBy('sku');
 
         // Fetch Amazon pricing data (key by uppercase for case-insensitive lookup)
         $amazonData = AmazonDatasheet::whereIn('sku', $skus)
@@ -136,10 +129,11 @@ class MacyController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData->get($pm->sku);
-            $macysMetric = $macysMetrics[$pm->sku] ?? null;
+            $pmSkuU = strtoupper((string) $pm->sku);
+            $pmSkuNorm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+            $macysMetric = $macysByNormSku[$pmSkuNorm] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
-            $priceData = $priceDataCollection[strtoupper($pm->sku)] ?? null; // Use uppercase for lookup
-            $amazon = $amazonData[strtoupper($pm->sku)] ?? null; // Use uppercase for lookup
+            $amazon = $amazonData[$pmSkuU] ?? null;
 
             $row = [];
             $row["Parent"] = $parent;
@@ -149,10 +143,10 @@ class MacyController extends Controller
             $row["INV"] = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $row["L30"] = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
-            // Macys Metrics from macy_products table
+            // Macys Metrics from macy_products only (Mirakl sync — not macys_price_data upload)
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
-            $row["MC Price"] = $priceData->price ?? $macysMetric->price ?? 0; // Use uploaded price first
-            $row["MC INV"] = $priceData ? ($priceData->quantity ?? 0) : 0; // Marketplace inventory for mapping
+            $row["MC Price"] = $macysMetric ? floatval($macysMetric->price ?? 0) : 0.0;
+            $row["MC INV"] = $macysMetric ? (int) ($macysMetric->stock ?? 0) : 0;
 
             // Amazon price
             $row["A Price"] = $amazon ? floatval($amazon->price ?? 0) : null;
@@ -1316,6 +1310,53 @@ class MacyController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    /**
+     * Map normalized product-master SKU → MacyProduct (same Unicode space normalization as ShopifySku).
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, MacyProduct>
+     */
+    private function buildMacyProductLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+        foreach (MacyProduct::whereIn('sku', $productSkus)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        $missingNorm = [];
+        foreach ($productSkus as $pmSku) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $missingNorm[$k] = true;
+            }
+        }
+
+        if ($missingNorm === []) {
+            return $byNorm;
+        }
+
+        MacyProduct::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(2000, function ($rows) use (&$byNorm, &$missingNorm) {
+                foreach ($rows as $row) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($k !== '' && isset($missingNorm[$k]) && ! isset($byNorm[$k])) {
+                        $byNorm[$k] = $row;
+                        unset($missingNorm[$k]);
+                    }
+                }
+
+                return count($missingNorm) > 0;
+            });
+
+        return $byNorm;
     }
 
     /**

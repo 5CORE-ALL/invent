@@ -9,6 +9,8 @@ use App\Models\UserRR;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
@@ -279,8 +281,10 @@ class TaskController extends Controller
 
     /**
      * Per–team-member task counts (assignee-based), matching Task Manager visibility and session user filter.
+     *
+     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, need_approval: int, done: int}>
      */
-    public function taskSummary()
+    protected function getTaskSummaryMemberRows(): array
     {
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
@@ -378,7 +382,82 @@ class TaskController extends Controller
             ];
         }
 
+        return $rows;
+    }
+
+    /**
+     * Dashboard aggregates (same row source as Task Summary / assignee counts).
+     *
+     * @return array{total_tasks: int, assigned_members: int, pending: int, overdue: int, approval_pending: int, done: int}
+     */
+    protected function getTaskDashboardAggregates(): array
+    {
+        $rows = $this->getTaskSummaryMemberRows();
+
+        $totalTasks = 0;
+        $assignedMembers = 0;
+        $pendingSum = 0;
+        $overdueSum = 0;
+        $approvalSum = 0;
+        $doneSum = 0;
+
+        foreach ($rows as $r) {
+            $task = (int) ($r['task'] ?? 0);
+            $totalTasks += $task;
+            if ($task > 0) {
+                $assignedMembers++;
+            }
+            $pendingSum += (int) ($r['a_task'] ?? 0);
+            $overdueSum += (int) ($r['overdue'] ?? 0);
+            $approvalSum += (int) ($r['need_approval'] ?? 0);
+            $doneSum += (int) ($r['done'] ?? 0);
+        }
+
+        return [
+            'total_tasks' => $totalTasks,
+            'assigned_members' => $assignedMembers,
+            'pending' => $pendingSum,
+            'overdue' => $overdueSum,
+            'approval_pending' => $approvalSum,
+            'done' => $doneSum,
+        ];
+    }
+
+    /**
+     * Main dashboard (home) with task overview stats.
+     */
+    public function homeDashboard(): View
+    {
+        $taskDashboardStats = $this->getTaskDashboardAggregates();
+
+        return view('index', compact('taskDashboardStats'));
+    }
+
+    /**
+     * Task summary page (same data as {@see getTaskSummaryMemberRows()}).
+     */
+    public function taskSummary()
+    {
+        $rows = $this->getTaskSummaryMemberRows();
+
         return view('tasks.task-summary', compact('rows'));
+    }
+
+    /**
+     * Aggregates for dashboard / API — matches task-summary analytics badges (sums over all active members).
+     */
+    public function taskSummaryStats(): JsonResponse
+    {
+        $s = $this->getTaskDashboardAggregates();
+
+        return response()->json([
+            'total_tasks' => $s['total_tasks'],
+            'assigned_members' => $s['assigned_members'],
+            'overdue' => $s['overdue'],
+            'approval_pending' => $s['approval_pending'],
+            'done' => $s['done'],
+            'pending' => $s['pending'],
+        ]);
     }
 
     public function getData()

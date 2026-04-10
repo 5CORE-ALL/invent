@@ -2750,8 +2750,8 @@
                             };
                         }
 
-                        // Sum same basis as child INV/ON HAND (was incorrectly summing AVAILABLE_TO_SELL).
-                        parentTotalsMap[parentName].INV += parseFloat(item.ON_HAND) || 0;
+                        // Sum child INV (Ohio GraphQL on_hand — same as Shopify Admin for that location).
+                        parentTotalsMap[parentName].INV += parseFloat(item.INV) || 0;
                         parentTotalsMap[parentName].L30 += parseFloat(item.L30) || 0;
                         parentTotalsMap[parentName].ON_HAND += parseFloat(item.ON_HAND) || 0;
                         parentTotalsMap[parentName].COMMITTED += parseFloat(item.COMMITTED) || 0;

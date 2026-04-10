@@ -947,6 +947,9 @@ $(document).ready(function() {
                     } else if (xhr.responseJSON.message) {
                         errorMsg = xhr.responseJSON.message;
                     }
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg += '\n\n' + xhr.responseJSON.error;
+                    }
                 }
                 alert('Error: ' + errorMsg);
                 console.error('Save Error:', xhr.responseJSON || xhr.responseText);

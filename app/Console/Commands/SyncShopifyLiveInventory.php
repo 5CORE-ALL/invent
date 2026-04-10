@@ -21,7 +21,7 @@ class SyncShopifyLiveInventory extends Command
                             {--limit= : Fast: sync first N rows from shopify_skus (has variant_id), same GraphQL path as full sync}
                             {--samples=0 : Print GraphQL payloads for the first N SKUs (use with full sync; with --limit, defaults to all in batch)}';
 
-    protected $description = 'Sync Ohio inventory via GraphQL. Use --limit=10 or --probe= for fast checks; full sync paginates all products (slow).';
+    protected $description = 'Sync Ohio inventory via GraphQL. Use --limit=10 or --probe= for fast checks; full sync paginates all products (slow). After sync, run shopify:spot-check-sku-list to print SKUs to compare in Admin.';
 
     public function handle()
     {

@@ -1000,6 +1000,185 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
+        /** Parent group key: Parent/parent field, or "PARENT xxx" pseudo-SKU on summary rows (matches table filters). */
+        function amazonParentKeyFromRow(rowData) {
+            if (!rowData) return '';
+            var val = rowData['Parent'] != null ? rowData['Parent'] : (rowData['parent'] != null ? rowData['parent'] : '');
+            var s = (val != null && val !== '') ? String(val).trim() : '';
+            if (!s && rowData['(Child) sku']) {
+                var sku = String(rowData['(Child) sku']).trim();
+                if (sku.toUpperCase().indexOf('PARENT ') === 0) s = sku.slice(7).trim();
+            }
+            return String(s).trim().replace(/\s+/g, ' ');
+        }
+
+        function amazonModalFmtPct(v) {
+            if (v == null || v === '') return '—';
+            const n = parseFloat(v);
+            if (isNaN(n)) return '—';
+            return n.toFixed(2) + '%';
+        }
+        function amazonModalFmtL30(v) {
+            const n = parseFloat(v);
+            if (isNaN(n)) return '—';
+            return Math.round(n).toLocaleString('en-US');
+        }
+        function amazonModalFmtMoney(v) {
+            const n = parseFloat(v);
+            if (isNaN(n) || n <= 0) return '—';
+            return '$' + n.toFixed(2);
+        }
+        /** GPFT % / PFT % — same color bands as tabulator */
+        function amazonModalGpftPftColor(percent) {
+            const p = parseFloat(percent) || 0;
+            if (p < 10) return '#a00211';
+            if (p >= 10 && p < 20) return '#3591dc';
+            if (p >= 20 && p < 30) return '#ffc107';
+            if (p >= 30 && p < 50) return '#28a745';
+            return '#e83e8c';
+        }
+        function amazonModalGpftPftColoredHtml(fieldVal) {
+            const p = parseFloat(fieldVal);
+            const n = isNaN(p) ? 0 : p;
+            const c = amazonModalGpftPftColor(n);
+            return '<span style="color: ' + c + '; font-weight: 600;">' + Math.round(n) + '%</span>';
+        }
+        /** GROI% — same as tabulator */
+        function amazonModalGroiColoredHtml(fieldVal) {
+            const p = parseFloat(fieldVal);
+            const n = isNaN(p) ? 0 : p;
+            let c = '#a00211';
+            if (n >= 50 && n < 75) c = '#ffc107';
+            else if (n >= 75 && n <= 125) c = '#28a745';
+            else if (n > 125) c = '#e83e8c';
+            return '<span style="color: ' + c + '; font-weight: 600;">' + Math.round(n) + '%</span>';
+        }
+        /** NROI% column uses ROI_percentage − TCOS (same as tabulator NROI formatter) */
+        function amazonModalNroiColoredHtml(row) {
+            const roi = parseFloat(row.ROI_percentage) || 0;
+            const adSpend = parseFloat(row.AD_Spend_L30) || 0;
+            const price = parseFloat(row.price) || 0;
+            const aL30 = parseFloat(row.A_L30) || 0;
+            const totalSales = price * aL30;
+            const tcos = totalSales > 0 ? (adSpend / totalSales) * 100 : 0;
+            const nroi = roi - tcos;
+            const nroiSafe = isNaN(nroi) ? 0 : nroi;
+            let c = '#a00211';
+            if (nroiSafe >= 50 && nroiSafe < 75) c = '#ffc107';
+            else if (nroiSafe >= 75 && nroiSafe <= 125) c = '#28a745';
+            else if (nroiSafe > 125) c = '#e83e8c';
+            return '<span style="color: ' + c + '; font-weight: 600;">' + Math.round(nroiSafe) + '%</span>';
+        }
+        /** AD% — same edge-case colors as TACOS column (field AD%) */
+        function amazonModalAdPctColoredHtml(row) {
+            const adSpend = parseFloat(row.AD_Spend_L30) || 0;
+            const sales = parseFloat(row['A_L30']) || 0;
+            const value = row['AD%'];
+            if (adSpend > 0 && sales === 0) {
+                return '<span style="color: #a00211; font-weight: 600;">100%</span>';
+            }
+            if (value === null || value === undefined) {
+                return '<span style="font-weight: 600;">0%</span>';
+            }
+            const percent = parseFloat(value);
+            if (isNaN(percent)) return '<span style="font-weight: 600;">0%</span>';
+            if (adSpend > 0 && percent === 0) {
+                return '<span style="color: #dc3545; font-weight: 600;">100%</span>';
+            }
+            return '<span style="font-weight: 600;">' + Math.round(percent) + '%</span>';
+        }
+        /** CVR L30 — same formula and colors as tabulator CVR L30 column */
+        function amazonModalCvrL30ColoredHtml(row) {
+            const aL30 = parseFloat(row['A_L30']) || 0;
+            const sess30 = parseFloat(row['Sess30']) || 0;
+            if (sess30 === 0) {
+                return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+            }
+            const cvr = (aL30 / sess30) * 100;
+            let color = '#a00211';
+            if (cvr > 4 && cvr <= 7) color = '#ffc107';
+            else if (cvr > 7 && cvr <= 10) color = '#28a745';
+            else if (cvr > 10) color = '#e83e8c';
+            return '<span style="color: ' + color + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>';
+        }
+        function amazonModalCountEmphasisHtml(v) {
+            const t = amazonModalFmtL30(v);
+            if (t === '—') return '<span class="text-muted">—</span>';
+            return '<span style="font-weight: 600;">' + t + '</span>';
+        }
+        /** Price column colors: vs LMP; reference price muted italic */
+        function amazonModalChildPriceHtml(row) {
+            const isListed = !row.is_missing_amazon;
+            if (!isListed) return '<span class="text-muted">—</span>';
+            const price = parseFloat(row.price || 0);
+            const lmpPrice = parseFloat(row.lmp_price || 0);
+            const lmpaPrice = parseFloat(row.price_lmpa || 0);
+            if (price > 0) {
+                if (lmpPrice > 0 && price > lmpPrice) {
+                    return '<span style="color: #dc3545; font-weight: 600;">' + amazonModalFmtMoney(price) + '</span>';
+                }
+                return '<span>' + amazonModalFmtMoney(price) + '</span>';
+            }
+            const fallback = lmpPrice > 0 ? lmpPrice : (lmpaPrice > 0 ? lmpaPrice : 0);
+            if (fallback > 0) {
+                return '<span style="color: #6c757d; font-style: italic;" title="Reference (no Amazon list price)">' + amazonModalFmtMoney(fallback) + '</span>';
+            }
+            return '<span class="text-muted">—</span>';
+        }
+        /** LMP column: red if LMP &lt; your price, else green (same as grid) */
+        function amazonModalLmpColoredHtml(row) {
+            const lmpRaw = row.lmp_price;
+            const lmpPrice = parseFloat(lmpRaw);
+            const totalCompetitors = parseInt(row.lmp_entries_total, 10) || 0;
+            if (isNaN(lmpPrice) || lmpPrice <= 0) {
+                if (!totalCompetitors) return '<span class="text-muted">N/A</span>';
+                return '<span class="text-muted">—</span>';
+            }
+            const currentPrice = parseFloat(row.price || 0);
+            const priceColor = (lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
+            return '<span style="color: ' + priceColor + '; font-weight: 600;">' + amazonModalFmtMoney(lmpPrice) + '</span>';
+        }
+        function collectChildRowsForAmazonParent(parentKey) {
+            if (typeof table === 'undefined' || !table || !parentKey) return [];
+            const norm = String(parentKey).trim().replace(/\s+/g, ' ');
+            const all = table.getData('all') || [];
+            return all.filter(function(r) {
+                if (!r || r.is_parent_summary) return false;
+                return amazonParentKeyFromRow(r) === norm;
+            }).sort(function(a, b) {
+                return String(a['(Child) sku'] || '').localeCompare(String(b['(Child) sku'] || ''));
+            });
+        }
+        function showParentPricingBreakdownModal(parentKey) {
+            const rows = collectChildRowsForAmazonParent(parentKey);
+            if (typeof $ === 'undefined') return;
+            $('#parent-pricing-modal-title').text(parentKey || '—');
+            const tbody = $('#parent-pricing-breakdown-tbody');
+            tbody.empty();
+            if (!rows.length) {
+                tbody.append('<tr><td colspan="12" class="text-center text-muted py-3">No child SKUs found for this parent.</td></tr>');
+            } else {
+                rows.forEach(function(row) {
+                    const sku = row['(Child) sku'] || '—';
+                    const tr = $('<tr></tr>');
+                    tr.append($('<td></td>').text(sku));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalChildPriceHtml(row)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row.Sess30)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row.L30)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row['A_L30'])));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalCvrL30ColoredHtml(row)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['GPFT%'])));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalAdPctColoredHtml(row)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['PFT%'])));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalGroiColoredHtml(row['GROI%'])));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalNroiColoredHtml(row)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalLmpColoredHtml(row)));
+                    tbody.append(tr);
+                });
+            }
+            $('#parentPricingBreakdownModal').modal('show');
+        }
+
         // Play / Pause parent navigation (same as product-master / eBay)
         let productUniqueParents = [];
         let isProductNavigationActive = false;
@@ -3164,12 +3343,27 @@
                         title: "Price",
                         field: "price",
                         hozAlign: "center",
+                        cellClick: function(e, cell) {
+                            if (typeof $ === 'undefined') return;
+                            const $btn = $(e.target).closest('.parent-pricing-eye-btn');
+                            if ($btn.length) {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const pk = $btn.attr('data-parent');
+                                if (pk) {
+                                    showParentPricingBreakdownModal(pk);
+                                }
+                            }
+                        },
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
 
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
+                            if (rowData.is_parent_summary) {
+                                const pk = amazonParentKeyFromRow(rowData);
+                                if (!pk) return '';
+                                return `<button type="button" class="btn btn-link p-0 parent-pricing-eye-btn" data-parent="${escAttr(pk)}" title="Child SKU pricing (Price, L30, GPFT, AD%, NPFT, GROI, NROI, LMP)" style="color: #0dcaf0;"><i class="fas fa-eye" style="font-size: 16px;"></i></button>`;
+                            }
 
                             const sku = rowData['(Child) sku'] || '';
                             const price = parseFloat(value || 0);
@@ -8675,6 +8869,43 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         </thead>
                         <tbody id="campaign-comparison-tbody"></tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Parent row: child SKU pricing breakdown (KW / all sections) -->
+    <div class="modal fade" id="parentPricingBreakdownModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white py-2 px-3">
+                    <h6 class="modal-title mb-0">
+                        <i class="fas fa-eye me-1"></i> Child pricing — <span id="parent-pricing-modal-title"></span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm table-striped mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Child SKU</th>
+                                    <th class="text-end">Price</th>
+                                    <th class="text-end">Views L30</th>
+                                    <th class="text-end">OV L30</th>
+                                    <th class="text-end">A L30</th>
+                                    <th class="text-end">CVR L30</th>
+                                    <th class="text-end">GPFT %</th>
+                                    <th class="text-end">AD %</th>
+                                    <th class="text-end">NPFT %</th>
+                                    <th class="text-end">GROI %</th>
+                                    <th class="text-end">NROI %</th>
+                                    <th class="text-end">LMP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="parent-pricing-breakdown-tbody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

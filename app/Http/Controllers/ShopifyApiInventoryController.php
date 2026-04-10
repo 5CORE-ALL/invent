@@ -54,14 +54,8 @@ class ShopifyApiInventoryController extends Controller
             if ($sku === '' || $sku === null) {
                 continue;
             }
-            $out[] = [
-                'sku' => $sku,
-                'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
-                'committed' => max(0, (int) ($data['committed'] ?? 0)),
-                'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
-                'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
-                'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
-            ];
+            $q = $this->shopifySkuQuantitiesFromGraphQlRow($data);
+            $out[] = array_merge(['sku' => $sku], $q);
             $n++;
         }
 
@@ -449,6 +443,27 @@ class ShopifyApiInventoryController extends Controller
     }
 
     /**
+     * DB columns to persist after GraphQL Ohio inventory (matches Shopify Admin for that location).
+     * Sets legacy `inv` to the same value as on_hand so reports using `inv` stay aligned with Admin.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, int>
+     */
+    protected function shopifySkuQuantitiesFromGraphQlRow(array $data): array
+    {
+        $onHand = max(0, (int) ($data['on_hand'] ?? 0));
+
+        return [
+            'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
+            'committed' => max(0, (int) ($data['committed'] ?? 0)),
+            'on_hand' => $onHand,
+            'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
+            'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
+            'inv' => $onHand,
+        ];
+    }
+
+    /**
      * Per-location quantities matching Shopify Admin: available, committed, on_hand, incoming,
      * and unavailable (reserved + damaged + safety_stock + quality_control per Shopify docs).
      */
@@ -701,6 +716,25 @@ GQL;
         return $final;
     }
 
+    /**
+     * Same resolution as syncLiveInventoryForSku: inventory_item_id for this variant_id via REST.
+     */
+    protected function resolveInventoryItemIdForVariant(string $shopUrl, int $variantId): ?string
+    {
+        if ($variantId <= 0) {
+            return null;
+        }
+
+        $variantRes = $this->shopifyGet("$shopUrl/admin/api/2025-01/variants/{$variantId}.json");
+        if (! $variantRes->successful()) {
+            return null;
+        }
+
+        $iid = $variantRes->json('variant.inventory_item_id');
+
+        return ($iid !== null && $iid !== '') ? (string) $iid : null;
+    }
+
     public function fetchInventoryWithCommitment(): array
     {
         set_time_limit(0);
@@ -727,8 +761,9 @@ GQL;
             return [];
         }
 
-        $skuMap = [];
-        $imageMap = [];
+        // 1) Walk the whole catalog once: variant_id -> inventory_item_id (and image), same fields as product JSON.
+        $variantIdToIid = [];
+        $variantIdToImage = [];
         $nextPageUrl = "$shopUrl/admin/api/2025-01/products.json?limit=250&fields=variants,image,title,handle,id";
         $pageCount = 0;
         $maxPages = 500;
@@ -759,22 +794,25 @@ GQL;
                 $mainImage = $product['image']['src'] ?? null;
 
                 foreach ($product['variants'] as $variant) {
-                    $sku = $variant['sku'] ?? '';
-                    $iid = $variant['inventory_item_id'];
+                    $variantId = (int) ($variant['id'] ?? 0);
+                    $iid = $variant['inventory_item_id'] ?? null;
+                    if ($variantId <= 0 || empty($iid)) {
+                        continue;
+                    }
 
-                    if (! empty($sku)) {
-                        $skuMap[$sku] = $iid;
-                        $imageMap[$sku] = $mainImage;
+                    $variantIdToIid[$variantId] = $iid;
+                    $variantIdToImage[$variantId] = $mainImage;
 
-                        if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
-                            Log::info('=== fetchInventoryWithCommitment: Found SKU ===', [
-                                'sku' => $sku,
-                                'inventory_item_id' => $iid,
-                                'product_id' => $product['id'],
-                                'product_title' => $product['title'] ?? null,
-                                'image_url' => $mainImage,
-                            ]);
-                        }
+                    $sku = trim((string) ($variant['sku'] ?? ''));
+                    if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
+                        Log::info('=== fetchInventoryWithCommitment: catalog variant ===', [
+                            'sku' => $sku,
+                            'inventory_item_id' => $iid,
+                            'variant_id' => $variantId,
+                            'product_id' => $product['id'],
+                            'product_title' => $product['title'] ?? null,
+                            'image_url' => $mainImage,
+                        ]);
                     }
                 }
             }
@@ -789,6 +827,55 @@ GQL;
                 usleep(6000000);
             }
         } while ($nextPageUrl);
+
+        // 2) Variant IDs we need from shopify_skus but did not see in the catalog (same GET as single-SKU sync).
+        $missingVariantIds = [];
+        foreach (ShopifySku::query()
+            ->whereNotNull('variant_id')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->cursor() as $row) {
+            $vid = (int) $row->variant_id;
+            if ($vid > 0 && ! isset($variantIdToIid[$vid])) {
+                $missingVariantIds[$vid] = true;
+            }
+        }
+        $missingVariantIds = array_keys($missingVariantIds);
+
+        if ($missingVariantIds !== []) {
+            Log::info('fetchInventoryWithCommitment: variant_ids not in product catalog, resolving via variants API', [
+                'count' => count($missingVariantIds),
+            ]);
+            foreach ($missingVariantIds as $vid) {
+                $iid = $this->resolveInventoryItemIdForVariant($shopUrl, $vid);
+                if ($iid !== null) {
+                    $variantIdToIid[$vid] = $iid;
+                }
+                usleep(150000);
+            }
+        }
+
+        // 3) Build sku -> inventory_item_id from shopify_skus.variant_id (same linkage as --sku= single sync).
+        $skuMap = [];
+        $imageMap = [];
+        foreach (ShopifySku::query()
+            ->whereNotNull('variant_id')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->cursor() as $row) {
+            $vid = (int) $row->variant_id;
+            $sku = trim((string) $row->sku);
+            if ($sku === '' || ! isset($variantIdToIid[$vid])) {
+                continue;
+            }
+            $skuMap[$sku] = $variantIdToIid[$vid];
+            $imageMap[$sku] = $row->image_src ?: ($variantIdToImage[$vid] ?? null);
+        }
+
+        Log::info('fetchInventoryWithCommitment: skuMap built from shopify_skus.variant_id', [
+            'sku_count' => count($skuMap),
+            'catalog_variants' => count($variantIdToIid),
+        ]);
 
         $graphQl = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, (int) $locationId);
         if ($graphQl !== []) {
@@ -967,10 +1054,10 @@ GQL;
                 }
             }
             
-            // Only reset SKUs that we're actively updating (not ALL SKUs in table)
+            // Only reset SKUs that we're actively updating (not ALL SKUs in table).
+            // Do not reset `inv` / GraphQL quantity columns here — those match Shopify Admin via syncLiveInventoryToDb().
             if (!empty($skusToUpdate)) {
                 ShopifySku::whereIn('sku', $skusToUpdate)->update([
-                    'inv' => 0,
                     'quantity' => 0,
                     'price' => null,
                     'b2b_price' => null,
@@ -1003,7 +1090,7 @@ GQL;
                             'sku' => $sku,
                             'variant_id' => $item['variant_id'],
                             'quantity_L30' => $item['quantity'],
-                            'inv' => $item['inventory'],
+                            'rest_inventory_quantity' => $item['inventory'],
                             'price' => $item['price'],
                             'b2b_price' => $item['b2b_price'] ?? null,
                             'b2c_price' => $item['b2c_price'] ?? null,
@@ -1017,7 +1104,6 @@ GQL;
                             'sku' => $sku,
                             'quantity' => $item['quantity'],
                             'variant_id' => $item['variant_id'],
-                            'inv' => $item['inventory'],
                             'price' => $item['price'],
                             'b2b_price' => $item['b2b_price'] ?? null,
                             'b2c_price' => $item['b2c_price'] ?? null,
@@ -1092,13 +1178,7 @@ GQL;
                 return false;
             }
 
-            $qty = [
-                'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
-                'committed' => max(0, (int) ($data['committed'] ?? 0)),
-                'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
-                'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
-                'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
-            ];
+            $qty = $this->shopifySkuQuantitiesFromGraphQlRow($data);
             ShopifySku::where('sku', $exactSku)->update(array_merge($qty, ['updated_at' => now()]));
 
             $this->logShopifyLiveInventory('single_sku_sync_ok', [
@@ -1202,13 +1282,7 @@ GQL;
                     continue;
                 }
 
-                $qty = [
-                    'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
-                    'committed' => max(0, (int) ($data['committed'] ?? 0)),
-                    'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
-                    'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
-                    'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
-                ];
+                $qty = $this->shopifySkuQuantitiesFromGraphQlRow($data);
                 ShopifySku::where('sku', $exactSku)->update(array_merge($qty, ['updated_at' => now()]));
                 $updated[$exactSku] = $qty;
             }
@@ -1288,15 +1362,13 @@ GQL;
                         // Store SKU exactly as it comes from Shopify - no normalization
                         ShopifySku::updateOrCreate(
                             ['sku' => $sku],
-                            [
-                                'available_to_sell' => max(0, (int) ($data['available_to_sell'] ?? 0)),
-                                'committed' => max(0, (int) ($data['committed'] ?? 0)),
-                                'on_hand' => max(0, (int) ($data['on_hand'] ?? 0)),
-                                'unavailable' => max(0, (int) ($data['unavailable'] ?? 0)),
-                                'incoming' => max(0, (int) ($data['incoming'] ?? 0)),
-                                'image_src' => $data['image_url'] ?? null,
-                                'updated_at' => now(),
-                            ]
+                            array_merge(
+                                $this->shopifySkuQuantitiesFromGraphQlRow($data),
+                                [
+                                    'image_src' => $data['image_url'] ?? null,
+                                    'updated_at' => now(),
+                                ]
+                            )
                         );
                         $updatedCount++;
                     }

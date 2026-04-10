@@ -231,6 +231,116 @@
             color: #374151 !important;
         }
 
+        /* Task overview: compact finance-style stat cards (server-rendered) */
+        @keyframes dashboard-task-mini-in {
+            from {
+                opacity: 0;
+                transform: translateY(14px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .dashboard-task-mini-section {
+            margin-bottom: 1.25rem;
+        }
+        .dashboard-task-mini-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+        }
+        .dashboard-task-mini-card {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            background: #ffffff;
+            border-radius: 18px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+            padding: 16px 20px;
+            min-height: 90px;
+            max-height: 110px;
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            color: inherit;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            animation: dashboard-task-mini-in 0.5s ease backwards;
+        }
+        .dashboard-task-mini-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 14px 28px rgba(0, 0, 0, 0.1);
+            color: inherit;
+        }
+        .dashboard-task-mini-grid .dashboard-task-mini-card:nth-child(1) { animation-delay: 0.04s; }
+        .dashboard-task-mini-grid .dashboard-task-mini-card:nth-child(2) { animation-delay: 0.08s; }
+        .dashboard-task-mini-grid .dashboard-task-mini-card:nth-child(3) { animation-delay: 0.12s; }
+        .dashboard-task-mini-grid .dashboard-task-mini-card:nth-child(4) { animation-delay: 0.16s; }
+        .dashboard-task-mini-grid .dashboard-task-mini-card:nth-child(5) { animation-delay: 0.2s; }
+        .dashboard-task-mini-grid .dashboard-task-mini-card:nth-child(6) { animation-delay: 0.24s; }
+        .dashboard-task-mini-card__icon {
+            width: 48px;
+            height: 48px;
+            min-width: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.35rem;
+            margin-right: 16px;
+        }
+        .dashboard-task-mini-card__icon--blue {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+        .dashboard-task-mini-card__icon--purple {
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+        .dashboard-task-mini-card__icon--orange {
+            background: #ffedd5;
+            color: #ea580c;
+        }
+        .dashboard-task-mini-card__icon--red {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .dashboard-task-mini-card__icon--teal {
+            background: #ccfbf1;
+            color: #0d9488;
+        }
+        .dashboard-task-mini-card__icon--green {
+            background: #d1fae5;
+            color: #059669;
+        }
+        .dashboard-task-mini-card__content {
+            text-align: right;
+            min-width: 0;
+        }
+        .dashboard-task-mini-card__label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            line-height: 1.2;
+            margin-bottom: 4px;
+        }
+        .dashboard-task-mini-card__value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #111827;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .dashboard-task-mini-card {
+                animation: none;
+            }
+            .dashboard-task-mini-card:hover {
+                transform: none;
+            }
+        }
+
         .graphs-section {
             display: grid !important;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)) !important;
@@ -1116,24 +1226,92 @@
         </div>
     </div>
 
-    <!-- task dashboard -->
-      <div class="dashboard-grid">
-        <div class="dashboard-card" style="--dash-accent: #0891b2; --dash-icon-fallback: #cffafe;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Tasks', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Tasks',event);}">
-            <div class="card-icon">✓</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Tasks</div>
-                    <div class="card-description">Manage your tasks, assigned tasks, and track progress</div>
-                </div>
-                <span class="card-badge badge-cyan">31 Items</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">📋 My Tasks</span>
-                <span class="subcard-item">📊 Task Summary</span>
-                <span class="subcard-item">✓ Completed</span>
+    @php
+        $taskDashboardStats = $taskDashboardStats ?? [
+            'total_tasks' => 0,
+            'assigned_members' => 0,
+            'pending' => 0,
+            'overdue' => 0,
+            'approval_pending' => 0,
+            'done' => 0,
+        ];
+    @endphp
+
+    <!-- task dashboard: compact stat widgets (same aggregates as Task Summary) -->
+    <div class="dashboard-task-mini-section">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 px-1">
+            <h5 class="header-title mb-0 text-dark">Tasks overview</h5>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-soft-primary" onclick="openDashboardCardInNewTab('Tasks', event)">
+                    <i class="ri-apps-2-line me-1" aria-hidden="true"></i> Task menu
+                </button>
+                <a href="{{ route('tasks.index') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="ri-task-line me-1" aria-hidden="true"></i> My tasks
+                </a>
+                <a href="{{ route('tasks.summary') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="ri-bar-chart-2-line me-1" aria-hidden="true"></i> Summary
+                </a>
             </div>
         </div>
+        <div class="dashboard-task-mini-grid">
+            <a href="{{ route('tasks.summary') }}" class="dashboard-task-mini-card">
+                <div class="dashboard-task-mini-card__icon dashboard-task-mini-card__icon--blue" aria-hidden="true">
+                    <i class="ri-file-list-3-line"></i>
+                </div>
+                <div class="dashboard-task-mini-card__content flex-grow-1">
+                    <div class="dashboard-task-mini-card__label">Total tasks</div>
+                    <div class="dashboard-task-mini-card__value">{{ number_format($taskDashboardStats['total_tasks']) }}</div>
+                </div>
+            </a>
+            <a href="{{ route('tasks.summary') }}" class="dashboard-task-mini-card" title="Team members with at least one assignee task">
+                <div class="dashboard-task-mini-card__icon dashboard-task-mini-card__icon--purple" aria-hidden="true">
+                    <i class="ri-team-line"></i>
+                </div>
+                <div class="dashboard-task-mini-card__content flex-grow-1">
+                    <div class="dashboard-task-mini-card__label">Assigned</div>
+                    <div class="dashboard-task-mini-card__value">{{ number_format($taskDashboardStats['assigned_members']) }}</div>
+                </div>
+            </a>
+            <a href="{{ route('tasks.index') }}" class="dashboard-task-mini-card" title="Assignee tasks in Todo status">
+                <div class="dashboard-task-mini-card__icon dashboard-task-mini-card__icon--orange" aria-hidden="true">
+                    <i class="ri-loader-2-line"></i>
+                </div>
+                <div class="dashboard-task-mini-card__content flex-grow-1">
+                    <div class="dashboard-task-mini-card__label">Pending / in progress</div>
+                    <div class="dashboard-task-mini-card__value">{{ number_format($taskDashboardStats['pending']) }}</div>
+                </div>
+            </a>
+            <a href="{{ route('tasks.summary') }}" class="dashboard-task-mini-card">
+                <div class="dashboard-task-mini-card__icon dashboard-task-mini-card__icon--red" aria-hidden="true">
+                    <i class="ri-alarm-warning-line"></i>
+                </div>
+                <div class="dashboard-task-mini-card__content flex-grow-1">
+                    <div class="dashboard-task-mini-card__label">Overdue</div>
+                    <div class="dashboard-task-mini-card__value">{{ number_format($taskDashboardStats['overdue']) }}</div>
+                </div>
+            </a>
+            <a href="{{ route('tasks.summary') }}" class="dashboard-task-mini-card">
+                <div class="dashboard-task-mini-card__icon dashboard-task-mini-card__icon--teal" aria-hidden="true">
+                    <i class="ri-time-line"></i>
+                </div>
+                <div class="dashboard-task-mini-card__content flex-grow-1">
+                    <div class="dashboard-task-mini-card__label">Approval</div>
+                    <div class="dashboard-task-mini-card__value">{{ number_format($taskDashboardStats['approval_pending']) }}</div>
+                </div>
+            </a>
+            <a href="{{ route('tasks.index') }}" class="dashboard-task-mini-card">
+                <div class="dashboard-task-mini-card__icon dashboard-task-mini-card__icon--green" aria-hidden="true">
+                    <i class="ri-checkbox-circle-line"></i>
+                </div>
+                <div class="dashboard-task-mini-card__content flex-grow-1">
+                    <div class="dashboard-task-mini-card__label">Done</div>
+                    <div class="dashboard-task-mini-card__value">{{ number_format($taskDashboardStats['done']) }}</div>
+                </div>
+            </a>
+        </div>
+    </div>
 
+      <div class="dashboard-grid">
         <div class="dashboard-card" style="--dash-accent: #059669; --dash-icon-fallback: #d1fae5;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('My Team', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('My Team',event);}">
             <div class="card-icon">👥</div>
             <div class="card-header">

@@ -2,15 +2,17 @@
 
 @section('css')
     <style>
+        .task-summary-table thead th,
+        .task-summary-table tbody td {
+            text-align: center;
+            vertical-align: middle;
+        }
         .task-summary-table thead th {
             font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: #64748b;
             border-bottom-width: 1px;
-        }
-        .task-summary-table tbody td {
-            vertical-align: middle;
         }
         .task-summary-avatar {
             width: 40px;
@@ -25,6 +27,8 @@
         }
         .task-summary-search-wrap {
             max-width: 420px;
+            margin-left: auto;
+            margin-right: auto;
         }
         .task-summary-search-wrap .input-group-text {
             background: #f8fafc;
@@ -70,6 +74,7 @@
         .task-summary-analytics-badges {
             display: flex;
             flex-wrap: wrap;
+            justify-content: center;
             gap: 0.65rem;
         }
         .task-summary-analytics-badge {
@@ -79,7 +84,7 @@
             border: none;
             border-radius: 14px;
             padding: 0.8rem 0.95rem;
-            text-align: left;
+            text-align: center;
             background: #fff;
             box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07), 0 0 0 1px rgba(13, 148, 136, 0.12);
             transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -110,7 +115,6 @@
             letter-spacing: 0.06em;
             text-transform: uppercase;
             color: #64748b;
-            padding-left: 0.35rem;
             margin-bottom: 0.15rem;
         }
         .task-summary-analytics-badge-value {
@@ -118,14 +122,12 @@
             font-weight: 800;
             font-variant-numeric: tabular-nums;
             color: #0f766e;
-            padding-left: 0.35rem;
             line-height: 1.15;
         }
         .task-summary-analytics-badge i {
             position: absolute;
             right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
+            top: 8px;
             font-size: 1.25rem;
             color: rgba(13, 148, 136, 0.35);
             pointer-events: none;
@@ -244,28 +246,28 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
                                         Team Member <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort text-center" style="width: 72px;" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" style="width: 72px;" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
                                         Image <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="designation" data-sort-type="text" title="Sort by designation" role="button" tabindex="0">
                                         Designation <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort text-end" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
                                         Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort text-end" data-sort-key="assignor_task" data-sort-type="number" title="Sort by assignor task count" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Sort by assignor task count" role="button" tabindex="0">
                                         Assignor task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort text-end" data-sort-key="overdue" data-sort-type="number" title="Sort by overdue count" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Sort by overdue count" role="button" tabindex="0">
                                         Overdue <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort text-end" data-sort-key="a_task" data-sort-type="number" title="Sort by A Task count" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="a_task" data-sort-type="number" title="Sort by A Task count" role="button" tabindex="0">
                                         A Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort text-end" data-sort-key="need_approval" data-sort-type="number" title="Sort by Need Approval count" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="need_approval" data-sort-type="number" title="Sort by Need Approval count" role="button" tabindex="0">
                                         Need Approval <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort text-end" data-sort-key="done" data-sort-type="number" title="Sort by done count" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="done" data-sort-type="number" title="Sort by done count" role="button" tabindex="0">
                                         Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                 </tr>
@@ -291,16 +293,16 @@
                                         data-sort-need_approval="{{ (int) ($row['need_approval'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}">
                                         <td>{{ $row['team_member'] }}</td>
-                                        <td class="text-center">
+                                        <td>
                                             <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" width="40" height="40" loading="lazy" />
                                         </td>
                                         <td>{{ $row['designation'] ?: '—' }}</td>
-                                        <td class="text-end task-summary-num">{{ $row['task'] }}</td>
-                                        <td class="text-end task-summary-num">{{ $row['assignor_task'] }}</td>
-                                        <td class="text-end task-summary-num">{{ $row['overdue'] }}</td>
-                                        <td class="text-end task-summary-num">{{ $row['a_task'] }}</td>
-                                        <td class="text-end task-summary-num">{{ $row['need_approval'] }}</td>
-                                        <td class="text-end task-summary-num">{{ $row['done'] }}</td>
+                                        <td class="task-summary-num">{{ $row['task'] }}</td>
+                                        <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
+                                        <td class="task-summary-num">{{ $row['overdue'] }}</td>
+                                        <td class="task-summary-num">{{ $row['a_task'] }}</td>
+                                        <td class="task-summary-num">{{ $row['need_approval'] }}</td>
+                                        <td class="task-summary-num">{{ $row['done'] }}</td>
                                     </tr>
                                 @empty
                                     <tr>
