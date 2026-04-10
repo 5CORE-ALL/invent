@@ -58,6 +58,116 @@
             opacity: 1;
             color: #0d9488;
         }
+
+        /* Interactive analytics (frontend-only, visible rows) */
+        .task-summary-analytics {
+            background: linear-gradient(180deg, rgba(13, 148, 136, 0.07) 0%, transparent 100%);
+            border: 1px solid rgba(13, 148, 136, 0.14);
+            border-radius: 14px;
+            padding: 0.85rem 0.65rem 0.65rem;
+            margin-bottom: 1rem;
+        }
+        .task-summary-analytics-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+        }
+        .task-summary-analytics-badge {
+            flex: 1 1 0;
+            min-width: 118px;
+            max-width: 200px;
+            border: none;
+            border-radius: 14px;
+            padding: 0.8rem 0.95rem;
+            text-align: left;
+            background: #fff;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07), 0 0 0 1px rgba(13, 148, 136, 0.12);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .task-summary-analytics-badge::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: linear-gradient(180deg, #0d9488, #14b8a6);
+        }
+        .task-summary-analytics-badge:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 26px rgba(13, 148, 136, 0.16), 0 0 0 1px rgba(13, 148, 136, 0.2);
+        }
+        .task-summary-analytics-badge:focus-visible {
+            outline: 2px solid #0d9488;
+            outline-offset: 2px;
+        }
+        .task-summary-analytics-badge-label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #64748b;
+            padding-left: 0.35rem;
+            margin-bottom: 0.15rem;
+        }
+        .task-summary-analytics-badge-value {
+            font-size: 1.45rem;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            color: #0f766e;
+            padding-left: 0.35rem;
+            line-height: 1.15;
+        }
+        .task-summary-analytics-badge i {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.25rem;
+            color: rgba(13, 148, 136, 0.35);
+            pointer-events: none;
+        }
+        #taskSummaryAnalyticsModal .modal-content {
+            border-radius: 16px;
+            border: none;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.15);
+        }
+        #taskSummaryAnalyticsModal .modal-header {
+            background: linear-gradient(135deg, #0f766e, #14b8a6);
+            color: #fff;
+            border-bottom: 0;
+        }
+        #taskSummaryAnalyticsModal .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+        }
+        .task-summary-analytics-chart-wrap {
+            position: relative;
+            min-height: 320px;
+        }
+        .task-summary-analytics-loading {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.88);
+            z-index: 2;
+            border-radius: 12px;
+        }
+        .task-summary-analytics-loading .spinner-border {
+            width: 2.5rem;
+            height: 2.5rem;
+            color: #0d9488;
+        }
+        @media (max-width: 575.98px) {
+            .task-summary-analytics-badge {
+                min-width: 140px;
+                max-width: none;
+            }
+        }
     </style>
 @endsection
 
@@ -81,13 +191,39 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <p class="text-muted mb-3">
-                        Counts are based on tasks assigned to each team member (assignee), using the same visibility rules as Task Manager.
-                        <strong>A Task</strong> = tasks in <strong>Todo</strong> status.
-                        <strong>Need Approval</strong> = tasks in <strong>Need Approval</strong> status.
-                        <strong>Assignor task</strong> = tasks where this member is the assignor (creator).
-                    </p>
+                    
+
                     @if (!empty($rows) && count($rows))
+                        <div class="task-summary-analytics">
+                            <div class="task-summary-analytics-badges">
+                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="total" data-ts-title="Total Task Analytics" aria-label="Open total tasks chart">
+                                    <div class="task-summary-analytics-badge-label">Total tasks</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-total">0</div>
+                                    <i class="ri-line-chart-line" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="assigned" data-ts-title="Assigned Task Analytics" title="Visible members with at least one assignee task" aria-label="Open assigned chart">
+                                    <div class="task-summary-analytics-badge-label">Assigned (members)</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-assigned">0</div>
+                                    <i class="ri-team-line" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="overdue" data-ts-title="Overdue Analytics" aria-label="Open overdue chart">
+                                    <div class="task-summary-analytics-badge-label">Overdue</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-overdue">0</div>
+                                    <i class="ri-alarm-warning-line" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="approval" data-ts-title="Approval Pending Analytics" aria-label="Open approval chart">
+                                    <div class="task-summary-analytics-badge-label">Approval pending</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-approval">0</div>
+                                    <i class="ri-time-line" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="done" data-ts-title="Done Task Analytics" aria-label="Open done chart">
+                                    <div class="task-summary-analytics-badge-label">Done</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-done">0</div>
+                                    <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                           
+                        </div>
                         <div class="task-summary-search-wrap mb-3">
                             <label for="task-summary-search" class="visually-hidden">Search team members</label>
                             <div class="input-group">
@@ -183,9 +319,41 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="taskSummaryAnalyticsModal" tabindex="-1" aria-labelledby="taskSummaryAnalyticsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="taskSummaryAnalyticsModalLabel">
+                        <i class="ri-bar-chart-2-line me-2" aria-hidden="true"></i><span id="taskSummaryAnalyticsTitleText">Analytics</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2" id="taskSummaryAnalyticsSubtitle"></p>
+                    <div class="task-summary-analytics-chart-wrap rounded-3 border" style="border-color: rgba(13,148,136,0.18) !important;">
+                        <div class="task-summary-analytics-loading d-none" id="task-summary-analytics-loading">
+                            <div class="spinner-border" role="status"><span class="visually-hidden">Loading…</span></div>
+                        </div>
+                        <div id="task-summary-analytics-apex" style="min-height:320px;"></div>
+                    </div>
+                </div>
+                <div class="modal-footer flex-wrap gap-2">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-outline-secondary" id="task-summary-analytics-export-png" style="border-color:#0d9488;color:#0f766e;">
+                        <i class="ri-image-line me-1"></i>Export PNG
+                    </button>
+                    <button type="button" class="btn text-white" id="task-summary-analytics-export-csv" style="background:linear-gradient(135deg,#0f766e,#14b8a6);border:none;">
+                        <i class="ri-file-excel-2-line me-1"></i>Export CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1/dist/apexcharts.min.js"></script>
     <script>
         (function () {
             var input = document.getElementById('task-summary-search');
@@ -194,9 +362,268 @@
                 return;
             }
             var emptyRow = document.getElementById('task-summary-filter-empty');
+            var tsAnalyticsChart = null;
+            var tsAnalyticsPayload = null;
 
             function getDataRows() {
                 return Array.prototype.slice.call(tbody.querySelectorAll('tr.task-summary-row'));
+            }
+
+            function getVisibleTableData() {
+                return Array.prototype.slice.call(tbody.querySelectorAll('tr.task-summary-row:not(.d-none)')).map(function (tr) {
+                    return {
+                        member: (tr.getAttribute('data-sort-member') || '').trim(),
+                        task: parseInt(tr.getAttribute('data-sort-task'), 10) || 0,
+                        assignor_task: parseInt(tr.getAttribute('data-sort-assignor_task'), 10) || 0,
+                        overdue: parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0,
+                        a_task: parseInt(tr.getAttribute('data-sort-a_task'), 10) || 0,
+                        need_approval: parseInt(tr.getAttribute('data-sort-need_approval'), 10) || 0,
+                        done: parseInt(tr.getAttribute('data-sort-done'), 10) || 0
+                    };
+                });
+            }
+
+            function calculateBadgeSums() {
+                var rows = getVisibleTableData();
+                var totalTask = 0;
+                var withAssignments = 0;
+                var overdueSum = 0;
+                var approvalSum = 0;
+                var doneSum = 0;
+                rows.forEach(function (r) {
+                    totalTask += r.task;
+                    if (r.task > 0) {
+                        withAssignments += 1;
+                    }
+                    overdueSum += r.overdue;
+                    approvalSum += r.need_approval;
+                    doneSum += r.done;
+                });
+                var map = {
+                    total: 'ts-analytics-val-total',
+                    assigned: 'ts-analytics-val-assigned',
+                    overdue: 'ts-analytics-val-overdue',
+                    approval: 'ts-analytics-val-approval',
+                    done: 'ts-analytics-val-done'
+                };
+                var vals = [totalTask, withAssignments, overdueSum, approvalSum, doneSum];
+                var keys = ['total', 'assigned', 'overdue', 'approval', 'done'];
+                keys.forEach(function (k, i) {
+                    var el = document.getElementById(map[k]);
+                    if (el) {
+                        el.textContent = String(vals[i]);
+                    }
+                });
+            }
+
+            function buildChartSeries(metric) {
+                var rows = getVisibleTableData();
+                var fieldMap = {
+                    total: 'task',
+                    assigned: 'task',
+                    overdue: 'overdue',
+                    approval: 'need_approval',
+                    done: 'done'
+                };
+                var field = fieldMap[metric] || 'task';
+                var filtered = rows;
+                if (metric === 'assigned') {
+                    filtered = rows.filter(function (r) {
+                        return r.task > 0;
+                    });
+                }
+                var categories = filtered.map(function (r) {
+                    return r.member || '(Unknown)';
+                });
+                var data = filtered.map(function (r) {
+                    return r[field];
+                });
+                if (categories.length === 0) {
+                    categories = ['—'];
+                    data = [0];
+                }
+                var seriesNames = {
+                    total: 'Tasks (assignee)',
+                    assigned: 'Tasks (assignee)',
+                    overdue: 'Overdue',
+                    approval: 'Need approval',
+                    done: 'Done'
+                };
+                return {
+                    categories: categories,
+                    data: data,
+                    seriesName: seriesNames[metric] || 'Value'
+                };
+            }
+
+            function destroyTsChart() {
+                if (tsAnalyticsChart) {
+                    tsAnalyticsChart.destroy();
+                    tsAnalyticsChart = null;
+                }
+            }
+
+            function openAnalyticsModal(metric) {
+                if (typeof ApexCharts === 'undefined') {
+                    return;
+                }
+                var btn = document.querySelector('.task-summary-analytics-badge[data-ts-metric="' + metric + '"]');
+                var title = btn && btn.getAttribute('data-ts-title') ? btn.getAttribute('data-ts-title') : 'Analytics';
+                var titleEl = document.getElementById('taskSummaryAnalyticsTitleText');
+                var subEl = document.getElementById('taskSummaryAnalyticsSubtitle');
+                if (titleEl) {
+                    titleEl.textContent = title;
+                }
+                if (subEl) {
+                    subEl.textContent = 'Uses the same visible rows as the table (after search). X-axis: team member. Y-axis: ' +
+                        (metric === 'assigned' ? 'assignee task count (only members with tasks).' : 'count for this metric.');
+                }
+                var loading = document.getElementById('task-summary-analytics-loading');
+                var mount = document.getElementById('task-summary-analytics-apex');
+                if (!mount) {
+                    return;
+                }
+                if (loading) {
+                    loading.classList.remove('d-none');
+                }
+                destroyTsChart();
+                mount.innerHTML = '';
+
+                var built = buildChartSeries(metric);
+                tsAnalyticsPayload = {
+                    metric: metric,
+                    title: title,
+                    categories: built.categories,
+                    data: built.data,
+                    seriesName: built.seriesName
+                };
+
+                function renderTsApexChart() {
+                    requestAnimationFrame(function () {
+                        var options = {
+                            chart: {
+                                type: 'line',
+                                height: 340,
+                                toolbar: { show: true },
+                                fontFamily: 'inherit',
+                                animations: { enabled: true, easing: 'easeinout', speed: 550 }
+                            },
+                            series: [{ name: built.seriesName, data: built.data }],
+                            xaxis: {
+                                categories: built.categories,
+                                labels: {
+                                    rotate: -35,
+                                    rotateAlways: built.categories.length > 6,
+                                    style: { fontSize: '11px' }
+                                }
+                            },
+                            yaxis: {
+                                min: 0,
+                                decimalsInFloat: 0,
+                                labels: { style: { fontSize: '12px' } }
+                            },
+                            stroke: { curve: 'smooth', width: 3, colors: ['#0d9488'] },
+                            markers: {
+                                size: 5,
+                                colors: ['#0d9488'],
+                                strokeColors: '#fff',
+                                strokeWidth: 2,
+                                hover: { size: 7 }
+                            },
+                            colors: ['#0d9488'],
+                            grid: { borderColor: '#e2e8f0', strokeDashArray: 4 },
+                            dataLabels: { enabled: false },
+                            tooltip: { theme: 'light', x: { show: true } }
+                        };
+                        tsAnalyticsChart = new ApexCharts(mount, options);
+                        tsAnalyticsChart.render().then(function () {
+                            if (loading) {
+                                loading.classList.add('d-none');
+                            }
+                            if (tsAnalyticsChart && typeof tsAnalyticsChart.resize === 'function') {
+                                tsAnalyticsChart.resize();
+                            }
+                        });
+                    });
+                }
+
+                var modalEl = document.getElementById('taskSummaryAnalyticsModal');
+                if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+                    renderTsApexChart();
+                    return;
+                }
+                var modalInst = bootstrap.Modal.getOrCreateInstance(modalEl);
+                if (modalEl.classList.contains('show')) {
+                    renderTsApexChart();
+                } else {
+                    modalEl.addEventListener('shown.bs.modal', function onTsModalShown() {
+                        modalEl.removeEventListener('shown.bs.modal', onTsModalShown);
+                        renderTsApexChart();
+                    });
+                    modalInst.show();
+                }
+            }
+
+            function exportAnalyticsCsv() {
+                if (!tsAnalyticsPayload) {
+                    return;
+                }
+                var lines = ['Team member,' + tsAnalyticsPayload.seriesName.replace(/,/g, '')];
+                tsAnalyticsPayload.categories.forEach(function (c, i) {
+                    var label = '"' + String(c).replace(/"/g, '""') + '"';
+                    lines.push(label + ',' + tsAnalyticsPayload.data[i]);
+                });
+                var blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'task-summary-analytics.csv';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            }
+
+            function exportAnalyticsPng() {
+                if (!tsAnalyticsChart || typeof tsAnalyticsChart.dataURI !== 'function') {
+                    return;
+                }
+                tsAnalyticsChart.dataURI().then(function (uri) {
+                    var a = document.createElement('a');
+                    a.href = uri.imgURI;
+                    a.download = 'task-summary-analytics.png';
+                    a.click();
+                });
+            }
+
+            document.querySelectorAll('.task-summary-analytics-badge[data-ts-metric]').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    var m = b.getAttribute('data-ts-metric');
+                    if (m) {
+                        openAnalyticsModal(m);
+                    }
+                });
+            });
+
+            var pngBtn = document.getElementById('task-summary-analytics-export-png');
+            var csvBtn = document.getElementById('task-summary-analytics-export-csv');
+            if (pngBtn) {
+                pngBtn.addEventListener('click', exportAnalyticsPng);
+            }
+            if (csvBtn) {
+                csvBtn.addEventListener('click', exportAnalyticsCsv);
+            }
+
+            var modalEl = document.getElementById('taskSummaryAnalyticsModal');
+            if (modalEl) {
+                modalEl.addEventListener('hidden.bs.modal', function () {
+                    destroyTsChart();
+                    var loading = document.getElementById('task-summary-analytics-loading');
+                    if (loading) {
+                        loading.classList.add('d-none');
+                    }
+                    var mount = document.getElementById('task-summary-analytics-apex');
+                    if (mount) {
+                        mount.innerHTML = '';
+                    }
+                });
             }
 
             function runFilter() {
@@ -217,12 +644,14 @@
                 if (emptyRow) {
                     emptyRow.classList.toggle('d-none', !(q && shown === 0));
                 }
+                calculateBadgeSums();
             }
 
             if (input) {
                 input.addEventListener('input', runFilter);
                 input.addEventListener('search', runFilter);
             }
+            calculateBadgeSums();
 
             var sortState = { key: null, dir: 'asc' };
             var headers = document.querySelectorAll('.task-summary-th-sort');
@@ -289,6 +718,7 @@
                 if (emptyRow) {
                     tbody.appendChild(emptyRow);
                 }
+                calculateBadgeSums();
             }
 
             function onSortClick(th) {
