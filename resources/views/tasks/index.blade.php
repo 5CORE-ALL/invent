@@ -2711,6 +2711,21 @@
                 });
             }
 
+            /** Rows on the current pagination page (Tabulator's getRows("visible") is scroll viewport only, not full page). */
+            function getTaskTableRowsOnCurrentPage(tbl) {
+                if (!tbl || typeof tbl.getRows !== 'function') {
+                    return [];
+                }
+                var activeRows = tbl.getRows('active');
+                var page = tbl.getPage();
+                var size = tbl.getPageSize();
+                if (page === false || page < 1 || !size || size < 1) {
+                    return activeRows;
+                }
+                var start = (page - 1) * size;
+                return activeRows.slice(start, Math.min(start + size, activeRows.length));
+            }
+
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
                 selectable: true, // All users can select rows for bulk actions
@@ -2841,7 +2856,7 @@
                 columns: (function() {
                     var cols = [];
                     
-                    // Add checkbox column - FIXED to only select VISIBLE rows
+                    // Add checkbox column — header selects all rows on the current pagination page (not scroll viewport, not all pages)
                     cols.push({
                         formatter: "rowSelection", 
                         titleFormatter: function(cell, formatterParams, onRendered) {
@@ -2850,18 +2865,15 @@
                             checkbox.style.margin = "0";
                             checkbox.style.cursor = "pointer";
                             
-                            // Custom select all - ONLY visible rows!
                             checkbox.addEventListener("click", function(e) {
                                 e.stopPropagation();
-                                const table = cell.getTable();
-                                const activeRows = table.getRows('active'); // Only filtered rows!
+                                const tbl = cell.getTable();
+                                const pageRows = getTaskTableRowsOnCurrentPage(tbl);
                                 
                                 if (checkbox.checked) {
-                                    console.log('✓ Selecting ONLY visible rows:', activeRows.length);
-                                    activeRows.forEach(row => row.select());
+                                    pageRows.forEach(row => row.select());
                                 } else {
-                                    console.log('✓ Deselecting all rows');
-                                    table.deselectRow();
+                                    pageRows.forEach(row => row.deselect());
                                 }
                             });
                             
@@ -3472,6 +3484,7 @@
                         });
                         console.log('✓ Filter applied: No Assignor');
                         persistTaskIndexFilters();
+                        setTimeout(syncTaskTableHeaderSelectAllCheckbox, 0);
                         return; // Skip other filters
                     } else {
                         // Use "like" so tasks show when this person is assignor (exact or in list)
@@ -3512,7 +3525,10 @@
                             renderMobileTasks(filtered);
                         }
                         
-                        setTimeout(updateStatistics, 100);
+                        setTimeout(function () {
+                            updateStatistics();
+                            syncTaskTableHeaderSelectAllCheckbox();
+                        }, 100);
                         persistTaskIndexFilters();
                         return; // Skip other filters
                     } else {
@@ -3563,6 +3579,7 @@
                         const filteredData = table.getData('active');
                         renderMobileTasks(filteredData);
                     }
+                    syncTaskTableHeaderSelectAllCheckbox();
                 }, 100);
                 persistTaskIndexFilters();
             }
@@ -3985,26 +4002,31 @@
                 URL.revokeObjectURL(url);
             }
 
-            // Handle Row Selection - ONLY select FILTERED (visible) rows
+            function syncTaskTableHeaderSelectAllCheckbox() {
+                var headerCb = document.querySelector('#tasks-table .tabulator-headers .tabulator-col:first-child input[type="checkbox"]');
+                if (!headerCb || !table) {
+                    return;
+                }
+                var pageRows = getTaskTableRowsOnCurrentPage(table);
+                if (pageRows.length === 0) {
+                    headerCb.checked = false;
+                    headerCb.indeterminate = false;
+                    return;
+                }
+                var selectedOnPage = pageRows.filter(function (r) { return r.isSelected(); }).length;
+                headerCb.checked = selectedOnPage === pageRows.length;
+                headerCb.indeterminate = selectedOnPage > 0 && selectedOnPage < pageRows.length;
+            }
+
+            // Bulk actions: all selected rows that still pass the current filter (can span multiple pages if user selected per page)
             table.on("rowSelectionChanged", function(data, rows) {
-                // IMPORTANT: Only get IDs from ACTIVE (filtered) rows
                 const activeRows = table.getRows('active');
                 const selectedRows = table.getSelectedRows();
-                
-                // Get IDs that are both selected AND visible (active)
                 const activeRowIds = activeRows.map(r => r.getData().id);
                 const selectedRowIds = selectedRows.map(r => r.getData().id);
-                
-                // Only include IDs that are in BOTH arrays (selected AND visible)
                 selectedTasks = selectedRowIds.filter(id => activeRowIds.includes(id));
                 
                 var count = selectedTasks.length;
-                
-                console.log('📊 Selection changed:');
-                console.log('Active (visible) rows:', activeRowIds.length);
-                console.log('Selected rows:', selectedRowIds.length);
-                console.log('Final selectedTasks (active + selected):', count);
-                console.log('Task IDs:', selectedTasks.slice(0, 10), '...');
                 
                 if (count > 0) {
                     $('#selected-count').show();
@@ -4018,7 +4040,11 @@
                     $('#export-selected-btn').removeClass('btn-success').addClass('btn-secondary');
                     $('#export-selected-btn-mobile').removeClass('btn-success').addClass('btn-secondary');
                 }
+                syncTaskTableHeaderSelectAllCheckbox();
             });
+
+            table.on('pageLoaded', syncTaskTableHeaderSelectAllCheckbox);
+            table.on('dataFiltered', syncTaskTableHeaderSelectAllCheckbox);
 
 
             // Function to load R&R data
