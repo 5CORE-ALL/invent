@@ -1727,7 +1727,7 @@
                             <!-- Desktop only: Priority -->
                             <div class="col-12 mb-2 d-none d-md-block">
                                 <select id="filter-priority" class="form-select form-select-sm">
-                                    <option value="">Priority</option>
+                                    <option value="">All Priority</option>
                                     <option value="low">Low</option>
                                     <option value="normal">Normal</option>
                                     <option value="high">High</option>
@@ -2295,6 +2295,8 @@
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = {!! json_encode(Auth::user()->email) !!};
             var suppressAssignFilterApply = false;
+            /** Set from session (e.g. Task Summary dot); OR filter assignor/assignee; cleared when assignee dropdown changes away from this name */
+            var taskManagerSessionUserFocus = @json(trim((string) ($selectedUserName ?? '')));
 
             function currentUserIsAssigneeOnTask(rowData) {
                 if (!rowData) return false;
@@ -3451,6 +3453,7 @@
                 
                 // Build filter array with AND logic
                 var filters = [];
+                var focusActive = !!(taskManagerSessionUserFocus && String(taskManagerSessionUserFocus).trim());
                 
                 // Group filter
                 var groupValue = $('#filter-group').val();
@@ -3474,9 +3477,9 @@
                 }
                 
 
-                // Assignor filter (including NULL check)
+                // Assignor filter (including NULL check); skipped when session user focus is active (uses OR block below)
                 var assignorValue = $('#filter-assignor').val();
-                if (assignorValue) {
+                if (!focusActive && assignorValue) {
                     if (assignorValue === '__NULL__') {
                         // Custom filter for tasks with NO assignor
                         table.setFilter(function(data) {
@@ -3493,9 +3496,9 @@
                     }
                 }
                 
-                // Assignee filter (including NULL check)
+                // Assignee filter (including NULL check); skipped when session user focus is active
                 var assigneeValue = $('#filter-assignee').val();
-                if (assigneeValue) {
+                if (!focusActive && assigneeValue) {
                     if (assigneeValue === '__NULL__') {
                         console.log('🔴 NO ASSIGNEE FILTER TRIGGERED');
                         
@@ -3564,6 +3567,15 @@
                         {field:"assignee_name", type:"like", value:searchValue}
                     ]);
                 }
+
+                // Task Summary / session: show tasks where this user is assignor OR assignee (Tabulator OR group)
+                if (focusActive) {
+                    var focusName = String(taskManagerSessionUserFocus).trim();
+                    filters.push([
+                        {field:"assignor_name", type:"like", value:focusName},
+                        {field:"assignee_name", type:"like", value:focusName}
+                    ]);
+                }
                 
                 // Apply all filters if any exist
                 if (filters.length > 0) {
@@ -3589,6 +3601,12 @@
                 if (taskIndexFiltersRestored) return;
                 taskIndexFiltersRestored = true;
                 restoreTaskIndexFilters();
+                if (taskManagerSessionUserFocus) {
+                    suppressAssignFilterApply = true;
+                    $('#filter-assignor').val('').trigger('change');
+                    $('#filter-assignee').val(taskManagerSessionUserFocus).trigger('change');
+                    suppressAssignFilterApply = false;
+                }
                 applyFilters();
             });
             $(window).on('beforeunload pagehide', function () {
@@ -3625,6 +3643,26 @@
             
             $('#filter-assignor, #filter-assignee').on('change', function () {
                 if (suppressAssignFilterApply) return;
+                if (taskManagerSessionUserFocus) {
+                    if (this.id === 'filter-assignee') {
+                        var v = $('#filter-assignee').val() || '';
+                        if (v !== taskManagerSessionUserFocus) {
+                            taskManagerSessionUserFocus = '';
+                            $.ajax({
+                                url: '{{ route("tasks.setSelectedUser") }}',
+                                method: 'POST',
+                                data: { _token: '{{ csrf_token() }}', user_name: '' }
+                            });
+                        }
+                    } else if (this.id === 'filter-assignor' && ($('#filter-assignor').val() || '')) {
+                        taskManagerSessionUserFocus = '';
+                        $.ajax({
+                            url: '{{ route("tasks.setSelectedUser") }}',
+                            method: 'POST',
+                            data: { _token: '{{ csrf_token() }}', user_name: '' }
+                        });
+                    }
+                }
                 applyFilters();
             });
             $('#filter-status').on('change', applyFilters);

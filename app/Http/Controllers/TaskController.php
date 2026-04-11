@@ -280,7 +280,9 @@ class TaskController extends Controller
     }
 
     /**
-     * Per–team-member task counts (assignee-based), matching Task Manager visibility and session user filter.
+     * Per–team-member task counts (assignee-based), matching Task Manager visibility for the viewer only.
+     * Does not apply {@see Session::get('selected_user_name')} — Task Summary stays global within that visibility;
+     * the /tasks page keeps its own session + UI filters.
      *
      * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, need_approval: int, done: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned)
      */
@@ -297,19 +299,6 @@ class TaskController extends Controller
                         $q->where('assignor', $user->email)
                             ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
                     });
-            });
-        }
-
-        $selectedUserName = Session::get('selected_user_name', '');
-        $selectedUserEmail = null;
-        if ($selectedUserName) {
-            $selectedUser = User::where('name', $selectedUserName)->first();
-            $selectedUserEmail = $selectedUser ? $selectedUser->email : null;
-        }
-        if ($selectedUserEmail) {
-            $tasksQuery->where(function ($query) use ($selectedUserEmail) {
-                $query->where('assignor', $selectedUserEmail)
-                    ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
             });
         }
 
@@ -472,7 +461,7 @@ class TaskController extends Controller
         ]);
     }
 
-    public function getData()
+    public function getData(Request $request)
     {
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
@@ -488,6 +477,20 @@ class TaskController extends Controller
                             ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
                       });
             });
+        }
+
+        $userNameFilter = trim((string) $request->query('user_name', ''));
+        if ($userNameFilter !== '') {
+            $filterUser = User::where('name', $userNameFilter)->first();
+            if ($filterUser && $filterUser->email) {
+                $email = $filterUser->email;
+                $tasksQuery->where(function ($q) use ($email) {
+                    $q->where('assignor', $email)
+                        ->orWhere('assign_to', 'LIKE', '%' . $email . '%');
+                });
+            } else {
+                $tasksQuery->whereRaw('1 = 0');
+            }
         }
 
         // Order: by date (asc). Within same day, automated tasks on top (us din ka automated task top par), then start_date

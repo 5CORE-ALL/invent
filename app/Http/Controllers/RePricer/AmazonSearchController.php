@@ -7,6 +7,7 @@ use App\Models\AmazonCompetitorAsin;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonDatasheet;
 use App\Models\ProductMaster;
+use App\Models\FbaTable;
 use App\Models\SerpApiRawResponse;
 use App\Models\AmazonSearchRawResponse;
 use Illuminate\Http\Request;
@@ -711,26 +712,39 @@ class AmazonSearchController extends Controller
 
     /**
      * Get SKUs for dropdown
-     * Fetches from product_master to show all available SKUs
+     * Merges product_master (MFN-style SKUs) with fba_table.seller_sku (FBA listings).
      *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getSkus()
     {
-        // Get unique SKUs from product_master (excludes PARENT SKUs)
-        $skus = ProductMaster::select('sku')
+        $productSkus = ProductMaster::select('sku')
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->where('sku', 'NOT LIKE', 'PARENT%')
             ->distinct()
-            ->orderBy('sku', 'asc')
             ->pluck('sku');
+
+        $fbaSkus = FbaTable::select('seller_sku')
+            ->whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->where('seller_sku', 'NOT LIKE', 'PARENT%')
+            ->distinct()
+            ->pluck('seller_sku');
+
+        $skus = $productSkus
+            ->merge($fbaSkus)
+            ->map(fn ($s) => trim((string) $s))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
 
         return response()->json([
             'success' => true,
             'data' => $skus,
             'total' => $skus->count(),
-            'source' => 'product_master'
+            'source' => 'product_master,fba_table',
         ]);
     }
 

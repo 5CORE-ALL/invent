@@ -1535,20 +1535,20 @@
                         <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
                             <label for="parentSearch" class="mb-0 mr-1 small va-label">Parent</label>
                             <div class="dropdown-search-container">
-                                <input type="text" class="form-control form-control-sm parent-search va-input-sm" placeholder="Search parent..." id="parentSearch">
+                                <input type="text" class="form-control form-control-sm parent-search va-input-sm" placeholder="Search parent..." id="parentSearch" title="Search parent" autocomplete="off">
                                 <div class="dropdown-search-results" id="parentSearchResults"></div>
                             </div>
                         </div>
                         <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
                             <label for="skuSearch" class="mb-0 mr-1 small va-label">SKU</label>
                             <div class="dropdown-search-container">
-                                <input type="text" class="form-control form-control-sm sku-search va-input-sm" placeholder="Search SKU..." id="skuSearch">
+                                <input type="text" class="form-control form-control-sm sku-search va-input-sm" placeholder="Search SKU..." id="skuSearch" title="Search SKU" autocomplete="off">
                                 <div class="dropdown-search-results" id="skuSearchResults"></div>
                             </div>
                         </div>
                         <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
                             <label for="search-input" class="mb-0 mr-1 small va-label">Search</label>
-                            <input type="text" id="search-input" class="form-control form-control-sm va-input-sm" placeholder="Search all columns">
+                            <input type="text" id="search-input" class="form-control form-control-sm va-input-sm" placeholder="Search all columns" title="Search all columns" autocomplete="off">
                         </div>
                         <div class="d-flex align-items-center va-controls-actions flex-shrink-0">
                             <label for="bulk-action-select" class="mb-0 mr-1 small va-label">Action</label>
@@ -1776,7 +1776,7 @@
                                         <div class="va-th-v-inner">R&amp;A <span class="sort-arrow">↓</span></div>
                                     </th>
                                     <th data-field="INV" class="va-th-v">
-                                        <div class="va-th-v-inner">INV <span class="sort-arrow">↓</span></div>
+                                        <div class="va-th-v-inner">Main-INV <span class="sort-arrow">↓</span></div>
                                     </th>
                                     <th data-field="L30" class="va-th-v">
                                         <div class="va-th-v-inner">L30 <span class="sort-arrow">↓</span></div>
@@ -1790,13 +1790,13 @@
                                     <th data-field="COMMITTED" class="va-th-v">
                                         <div class="va-th-v-inner">COMMITTED <span class="sort-arrow">↓</span></div>
                                     </th>
-                                    <th data-field="UNAVAILABLE" class="va-th-v" title="Shopify: reserved + damaged + safety stock + quality control">
+                                    <th data-field="UNAVAILABLE" data-no-column-toggle="1" class="hide-column va-th-v unavailable-col-header" title="Shopify: reserved + damaged + safety stock + quality control">
                                         <div class="va-th-v-inner">UNAVAIL <span class="sort-arrow">↓</span></div>
                                     </th>
-                                    <th data-field="INCOMING" class="va-th-v">
+                                    <th data-field="INCOMING" data-no-column-toggle="1" class="hide-column va-th-v incoming-col-header">
                                         <div class="va-th-v-inner">INCOMING <span class="sort-arrow">↓</span></div>
                                     </th>
-                                    <th data-field="ON_HAND" class="va-th-v">
+                                    <th data-field="ON_HAND" data-no-column-toggle="1" class="hide-column va-th-v on-hand-col-header">
                                         <div class="va-th-v-inner">ON HAND <span class="sort-arrow">↓</span></div>
                                     </th>
                                     <th data-field="price" class="va-th-v">
@@ -2750,7 +2750,7 @@
                             };
                         }
 
-                        // Sum child INV (Ohio GraphQL on_hand — same as Shopify Admin for that location).
+                        // Sum child INV (same source as AVAILABLE_TO_SELL from API).
                         parentTotalsMap[parentName].INV += parseFloat(item.INV) || 0;
                         parentTotalsMap[parentName].L30 += parseFloat(item.L30) || 0;
                         parentTotalsMap[parentName].ON_HAND += parseFloat(item.ON_HAND) || 0;
@@ -2946,9 +2946,9 @@
 
                     $row.append($('<td>').text(item.AVAILABLE_TO_SELL));
                     $row.append($('<td>').text(item.COMMITTED));
-                    $row.append($('<td>').text(item.UNAVAILABLE ?? 0));
-                    $row.append($('<td>').text(item.INCOMING ?? 0));
-                    $row.append($('<td>').addClass('on-hand').text(item.ON_HAND));
+                    $row.append($('<td>').addClass('hide-column unavailable-col-cell').text(item.UNAVAILABLE ?? 0));
+                    $row.append($('<td>').addClass('hide-column incoming-col-cell').text(item.INCOMING ?? 0));
+                    $row.append($('<td>').addClass('hide-column on-hand on-hand-col-cell').text(item.ON_HAND));
 
                     $row.append($('<td>').html(`
                         <input type="number" class="form-control verified-stock-input" 
@@ -4132,7 +4132,7 @@
                     return {
                         Parent: item.Parent,
                         SKU: item.SKU,
-                        INV: item.INV,
+                        'Main-INV': item.INV,
                         L30: item.L30,
                         DIL: item.DIL,
                         ON_HAND: item.ON_HAND,
@@ -5340,6 +5340,7 @@
 
                 $headers.each(function() {
                     const $th = $(this);
+                    if ($th.data('no-column-toggle')) return;
                     const field = $th.data('field');
                     const title = $th.text().trim().replace(' ↓', '');
 

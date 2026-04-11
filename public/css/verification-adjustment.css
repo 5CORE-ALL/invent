@@ -10,13 +10,15 @@
     border-bottom: 1px solid #e9ecef;
 }
 
+/* overflow-x:auto forces overflow-y to clip — hides SKU/Parent autocomplete below the bar */
 .va-controls-filters {
     border: 1px solid #dee2e6;
     background-color: #f8f9fa;
     flex-wrap: nowrap;
     gap: 0.5rem;
-    overflow-x: auto;
+    overflow: visible;
     min-height: 38px;
+    align-items: center;
 }
 
 .va-controls-filters .va-label {
@@ -29,23 +31,30 @@
     gap: 0.25rem;
 }
 
-/* Compact inputs so all fit in one line */
+.va-controls-filters .dropdown-search-container {
+    min-width: 0;
+}
+
+/* Wide enough for full placeholders (“Search parent…”, “Search all columns”) */
 .va-controls-filters .va-input-sm {
-    width: 100px;
-    min-width: 100px;
+    width: 110px;
+    min-width: 110px;
 }
 
 .va-controls-filters #row-data-type.va-input-sm {
-    width: 100px;
+    width: 110px;
+    min-width: 110px;
 }
 
 .va-controls-filters .parent-search.va-input-sm,
 .va-controls-filters .sku-search.va-input-sm {
-    width: 100px;
+    width: 138px;
+    min-width: 138px;
 }
 
 .va-controls-filters #search-input.va-input-sm {
-    width: 120px;
+    width: 168px;
+    min-width: 168px;
 }
 
 .va-controls-filters #bulk-action-select.va-input-sm {

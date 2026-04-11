@@ -2,13 +2,30 @@
 
 @section('css')
     <style>
-        #task-summary-size-wrap {
-            --ts-avatar-size: 30px;
+        .task-summary-table {
+            width: max-content;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            table-layout: auto;
         }
         .task-summary-table thead th,
         .task-summary-table tbody td {
             text-align: center;
             vertical-align: middle;
+            padding-top: 0.4rem;
+            padding-bottom: 0.4rem;
+            padding-left: 0.45rem;
+            padding-right: 0.45rem;
+            white-space: nowrap;
+            width: 1%;
+        }
+        .task-summary-table th.task-summary-col-member,
+        .task-summary-table td.task-summary-col-member {
+            text-align: left;
+        }
+        .task-summary-table thead th.task-summary-col-member {
+            text-align: left;
         }
         .task-summary-table thead th {
             font-size: 0.75rem;
@@ -28,21 +45,44 @@
             vertical-align: middle;
         }
         .task-summary-avatar {
-            width: var(--ts-avatar-size, 30px);
-            height: var(--ts-avatar-size, 30px);
+            width: 30px;
+            height: 30px;
             max-width: none;
             border-radius: 50%;
             object-fit: cover;
             border: 1px solid rgba(15, 23, 42, 0.08);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
             transform-origin: center center;
         }
-        .task-summary-avatar-wrap:hover {
-            z-index: 10;
-        }
         .task-summary-avatar-wrap:hover .task-summary-avatar {
-            transform: scale(1.334);
-            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2);
+            transform: scale(1.08);
+        }
+        /* Large preview above cursor (avoids .table-responsive clipping) */
+        #task-summary-avatar-flyout {
+            position: fixed;
+            z-index: 1080;
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid #fff;
+            box-shadow: 0 14px 40px rgba(15, 23, 42, 0.35);
+            pointer-events: none;
+            transform: translate(-50%, calc(-100% - 14px));
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.12s ease, visibility 0.12s ease;
+        }
+        #task-summary-avatar-flyout.is-visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        #task-summary-avatar-flyout img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
         }
         .task-summary-col-overdue-positive {
             color: #dc2626 !important;
@@ -51,16 +91,6 @@
         .task-summary-col-done {
             color: #15803d !important;
             font-weight: 600;
-        }
-        .task-summary-avatar-size-row {
-            max-width: 420px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        .task-summary-avatar-size-row label {
-            font-size: 0.8rem;
-            color: #64748b;
-            white-space: nowrap;
         }
         #ts-analytics-val-overdue {
             color: #dc2626;
@@ -71,6 +101,130 @@
         .task-summary-num {
             font-variant-numeric: tabular-nums;
             font-weight: 600;
+        }
+        .task-summary-member-cell-inner {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            max-width: 100%;
+        }
+        .task-summary-member-name {
+            min-width: 0;
+        }
+        .task-summary-user-tasks-dot {
+            flex-shrink: 0;
+            width: 0.5rem;
+            height: 0.5rem;
+            min-width: 0.5rem;
+            min-height: 0.5rem;
+            padding: 0;
+            margin: 0;
+            border: none;
+            border-radius: 50%;
+            background: #0d9488;
+            box-shadow: 0 0 0 1px rgba(13, 148, 136, 0.35);
+            cursor: pointer;
+            vertical-align: middle;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+        }
+        .task-summary-user-tasks-dot:hover {
+            background: #0f766e;
+            transform: scale(1.35);
+            box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.45);
+        }
+        .task-summary-user-tasks-dot:focus-visible {
+            outline: 2px solid #0d9488;
+            outline-offset: 2px;
+        }
+        #taskSummaryUserPanel.offcanvas-end {
+            width: min(560px, 100vw);
+        }
+        @media (min-width: 992px) {
+            #taskSummaryUserPanel.offcanvas-end {
+                width: min(640px, 42vw);
+            }
+        }
+        #taskSummaryUserPanel .offcanvas-header {
+            background: linear-gradient(135deg, #f0fdfa 0%, #fff 100%);
+        }
+        .ts-user-panel-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.5rem;
+        }
+        @media (max-width: 400px) {
+            .ts-user-panel-stat-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+        .ts-user-panel-stat {
+            border-radius: 10px;
+            padding: 0.45rem 0.5rem;
+            text-align: center;
+            background: #fff;
+            border: 1px solid rgba(13, 148, 136, 0.15);
+            font-size: 0.75rem;
+        }
+        .ts-user-panel-stat .ts-val {
+            font-weight: 800;
+            font-size: 1.1rem;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.2;
+        }
+        .ts-user-panel-stat .ts-lbl {
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 0.62rem;
+            font-weight: 700;
+        }
+        .ts-user-panel-stat.ts-stat-overdue .ts-val {
+            color: #dc2626;
+        }
+        .ts-user-panel-stat.ts-stat-done .ts-val {
+            color: #15803d;
+        }
+        #ts-user-panel-table-wrap {
+            max-height: calc(100vh - 320px);
+            min-height: 200px;
+            overflow: auto;
+        }
+        #ts-user-panel-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #f8fafc;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+            border-bottom-width: 2px;
+            white-space: nowrap;
+        }
+        #ts-user-panel-table td {
+            font-size: 0.8125rem;
+            vertical-align: middle;
+        }
+        /* Match Task Manager Tabulator automated-task row styling */
+        #ts-user-panel-table tbody tr.ts-user-panel-row-automated td {
+            background-color: #fffbea !important;
+        }
+        #ts-user-panel-table tbody tr.ts-user-panel-row-automated-alt td {
+            background-color: #fff7cc !important;
+        }
+        #ts-user-panel-table tbody tr.ts-user-panel-row-automated td:first-child {
+            box-shadow: inset 4px 0 0 #ffc107;
+        }
+        #ts-user-panel-table.table-hover tbody tr.ts-user-panel-row-automated:hover td,
+        #ts-user-panel-table.table-hover tbody tr.ts-user-panel-row-automated-alt:hover td {
+            background-color: #fef3c7 !important;
+        }
+        .ts-user-panel-status {
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 0.2em 0.45em;
+            border-radius: 6px;
+            white-space: nowrap;
         }
         .task-summary-search-wrap {
             max-width: 420px;
@@ -89,7 +243,6 @@
         .task-summary-th-sort {
             cursor: pointer;
             user-select: none;
-            white-space: nowrap;
             transition: background-color 0.12s ease, color 0.12s ease;
         }
         .task-summary-th-sort:hover {
@@ -286,32 +439,14 @@
                             </div>
                         </div>
                     @endif
-                    <div id="task-summary-size-wrap">
-                        @if (!empty($rows) && count($rows))
-                            <div class="task-summary-avatar-size-row d-flex align-items-center gap-3 mb-3 flex-wrap justify-content-center">
-                                <label for="task-summary-avatar-size" class="mb-0">Profile image size</label>
-                                <input type="range"
-                                       class="form-range flex-grow-1"
-                                       style="max-width: 220px;"
-                                       id="task-summary-avatar-size"
-                                       min="20"
-                                       max="56"
-                                       step="2"
-                                       value="30"
-                                       aria-valuemin="20"
-                                       aria-valuemax="56"
-                                       aria-describedby="task-summary-avatar-size-hint" />
-                                <span class="small text-muted tabular-nums" id="task-summary-avatar-size-hint" aria-live="polite">30px</span>
-                            </div>
-                        @endif
                     <div class="table-responsive">
                         <table class="table table-hover table-striped table-bordered mb-0 task-summary-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort task-summary-col-member" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
                                         Team Member <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" style="width: 72px;" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="member" data-sort-type="text" title="Sort by team member" role="button" tabindex="0">
                                         Image <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="designation" data-sort-type="text" title="Sort by designation" role="button" tabindex="0">
@@ -349,6 +484,7 @@
                                     @endphp
                                     <tr class="task-summary-row"
                                         data-search="{{ e($searchBlob) }}"
+                                        data-user-email="{{ e($row['email'] ?? '') }}"
                                         data-sort-member="{{ e($row['team_member']) }}"
                                         data-sort-designation="{{ e($row['designation'] ?? '') }}"
                                         data-sort-task="{{ (int) ($row['task'] ?? 0) }}"
@@ -357,7 +493,16 @@
                                         data-sort-a_task="{{ (int) ($row['a_task'] ?? 0) }}"
                                         data-sort-need_approval="{{ (int) ($row['need_approval'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}">
-                                        <td>{{ $row['team_member'] }}</td>
+                                        <td class="task-summary-col-member">
+                                            <span class="task-summary-member-cell-inner">
+                                                <button type="button"
+                                                        class="task-summary-user-tasks-dot"
+                                                        data-user-name="{{ e($row['team_member']) }}"
+                                                        title="View summary and tasks on this page"
+                                                        aria-label="View tasks and summary for {{ e($row['team_member']) }}"></button>
+                                                <span class="task-summary-member-name">{{ $row['team_member'] }}</span>
+                                            </span>
+                                        </td>
                                         <td class="task-summary-avatar-cell">
                                             <span class="task-summary-avatar-wrap">
                                                 <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" loading="lazy" />
@@ -384,10 +529,13 @@
                             </tbody>
                         </table>
                     </div>
-                    </div>
                 </div>
             </div>
         </div>
+    </div>
+
+    <div id="task-summary-avatar-flyout" aria-hidden="true">
+        <img src="" alt="" />
     </div>
 
     <div class="modal fade" id="taskSummaryAnalyticsModal" tabindex="-1" aria-labelledby="taskSummaryAnalyticsModalLabel" aria-hidden="true">
@@ -420,6 +568,54 @@
             </div>
         </div>
     </div>
+
+    <div class="offcanvas offcanvas-end shadow-lg border-start" tabindex="-1" id="taskSummaryUserPanel" aria-labelledby="taskSummaryUserPanelLabel">
+        <div class="offcanvas-header border-bottom py-3">
+            <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0 me-2">
+                <img src="" alt="" class="rounded-circle border flex-shrink-0 d-none" id="ts-user-panel-avatar" width="52" height="52" style="object-fit:cover;" />
+                <div class="min-w-0">
+                    <h5 class="offcanvas-title mb-0 text-truncate" id="taskSummaryUserPanelLabel"></h5>
+                    <div class="text-muted small text-truncate" id="ts-user-panel-designation"></div>
+                    <div class="text-muted small text-truncate d-none" id="ts-user-panel-email"></div>
+                </div>
+            </div>
+            <button type="button" class="btn-close text-reset flex-shrink-0" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body d-flex flex-column p-0">
+            <div class="p-3 border-bottom bg-light">
+                <div class="ts-user-panel-stat-grid" id="ts-user-panel-stats" aria-label="Summary counts for this user"></div>
+            </div>
+            <div class="px-3 py-2 border-bottom d-flex flex-wrap align-items-center gap-2 bg-white">
+                <input type="search" class="form-control form-control-sm flex-grow-1" style="min-width: 140px;" id="ts-user-panel-task-search" placeholder="Filter tasks by title, status, assignee…" autocomplete="off" />
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="ts-user-panel-open-tm" title="Opens full Task Manager filtered to this user">
+                    <i class="ri-external-link-line me-1" aria-hidden="true"></i>Task Manager
+                </button>
+            </div>
+            <div class="flex-grow-1 d-flex flex-column px-0 pb-0">
+                <div id="ts-user-panel-loading" class="text-center py-5">
+                    <div class="spinner-border text-teal" style="color:#0d9488 !important;" role="status"><span class="visually-hidden">Loading…</span></div>
+                    <p class="text-muted small mt-2 mb-0">Loading tasks…</p>
+                </div>
+                <div id="ts-user-panel-error" class="alert alert-danger mx-3 mt-3 d-none" role="alert"></div>
+                <div id="ts-user-panel-table-wrap" class="d-none px-3 pb-3">
+                    <table class="table table-sm table-hover table-bordered mb-0" id="ts-user-panel-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Task</th>
+                                <th scope="col">Status</th>
+                                <th scope="col" class="d-none d-md-table-cell">Assignee</th>
+                                <th scope="col" class="d-none d-lg-table-cell">Assignor</th>
+                                <th scope="col" class="text-nowrap">Start</th>
+                                <th scope="col" class="text-center text-nowrap">Open</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ts-user-panel-tbody"></tbody>
+                    </table>
+                </div>
+                <p id="ts-user-panel-empty" class="text-muted text-center py-5 mb-0 d-none px-3">No tasks for this user in your current view.</p>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -434,39 +630,72 @@
             var emptyRow = document.getElementById('task-summary-filter-empty');
             var tsAnalyticsChart = null;
             var tsAnalyticsPayload = null;
-            var sizeWrap = document.getElementById('task-summary-size-wrap');
-            var sizeInput = document.getElementById('task-summary-avatar-size');
-            var sizeHint = document.getElementById('task-summary-avatar-size-hint');
-            var avatarSizeLsKey = 'taskSummaryAvatarPx';
 
-            function applyTaskSummaryAvatarSize(px) {
-                var n = parseInt(px, 10);
-                if (isNaN(n)) {
-                    n = 30;
+            var avatarFlyout = document.getElementById('task-summary-avatar-flyout');
+            var avatarFlyoutImg = avatarFlyout ? avatarFlyout.querySelector('img') : null;
+
+            function tsPositionAvatarFlyout(clientX, clientY) {
+                if (!avatarFlyout) {
+                    return;
                 }
-                n = Math.max(20, Math.min(56, n));
-                if (sizeWrap) {
-                    sizeWrap.style.setProperty('--ts-avatar-size', n + 'px');
-                }
-                if (sizeHint) {
-                    sizeHint.textContent = n + 'px';
-                }
+                avatarFlyout.style.left = clientX + 'px';
+                avatarFlyout.style.top = clientY + 'px';
             }
 
-            if (sizeInput && sizeWrap) {
-                var savedPx = parseInt(localStorage.getItem(avatarSizeLsKey), 10);
-                if (!isNaN(savedPx) && savedPx >= 20 && savedPx <= 56) {
-                    sizeInput.value = String(savedPx);
+            function tsHideAvatarFlyout() {
+                if (!avatarFlyout) {
+                    return;
                 }
-                applyTaskSummaryAvatarSize(sizeInput.value);
-                sizeInput.addEventListener('input', function () {
-                    applyTaskSummaryAvatarSize(sizeInput.value);
-                    try {
-                        localStorage.setItem(avatarSizeLsKey, String(parseInt(sizeInput.value, 10) || 30));
-                    } catch (e) { /* ignore */ }
+                avatarFlyout.classList.remove('is-visible');
+                avatarFlyout.setAttribute('aria-hidden', 'true');
+            }
+
+            if (avatarFlyout && avatarFlyoutImg) {
+                tbody.addEventListener('mouseover', function (e) {
+                    var wrap = e.target.closest && e.target.closest('.task-summary-avatar-wrap');
+                    if (!wrap || !tbody.contains(wrap)) {
+                        return;
+                    }
+                    var img = wrap.querySelector('.task-summary-avatar');
+                    if (!img) {
+                        return;
+                    }
+                    var src = img.getAttribute('src');
+                    if (!src) {
+                        return;
+                    }
+                    avatarFlyoutImg.setAttribute('src', src);
+                    avatarFlyout.classList.add('is-visible');
+                    avatarFlyout.setAttribute('aria-hidden', 'false');
+                    tsPositionAvatarFlyout(e.clientX, e.clientY);
                 });
-            } else if (sizeWrap) {
-                applyTaskSummaryAvatarSize(30);
+                tbody.addEventListener('mousemove', function (e) {
+                    if (!avatarFlyout.classList.contains('is-visible')) {
+                        return;
+                    }
+                    tsPositionAvatarFlyout(e.clientX, e.clientY);
+                });
+                tbody.addEventListener('mouseout', function (e) {
+                    var wrap = e.target.closest && e.target.closest('.task-summary-avatar-wrap');
+                    if (!wrap || !tbody.contains(wrap)) {
+                        return;
+                    }
+                    var rel = e.relatedTarget;
+                    if (rel && wrap.contains(rel)) {
+                        return;
+                    }
+                    tsHideAvatarFlyout();
+                });
+                avatarFlyoutImg.addEventListener('error', function () {
+                    tsHideAvatarFlyout();
+                });
+                window.addEventListener(
+                    'scroll',
+                    function () {
+                        tsHideAvatarFlyout();
+                    },
+                    true
+                );
             }
 
             function getDataRows() {
@@ -756,6 +985,353 @@
                 input.addEventListener('search', runFilter);
             }
             calculateBadgeSums();
+
+            var tsTasksDataUrl = @json(route('tasks.data'));
+            var tsTaskShowBase = @json(rtrim(url('/tasks'), '/'));
+            var tsSetSelectedUserUrl = @json(route('tasks.setSelectedUser'));
+            var tsTasksIndexUrl = @json(route('tasks.index'));
+            var tsCsrfToken = document.querySelector('meta[name="csrf-token"]')
+                ? document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                : '';
+            var tsUserPanelTasks = [];
+            var tsUserPanelName = '';
+
+            var tsUserPanelEl = document.getElementById('taskSummaryUserPanel');
+
+            function tsGetUserPanelOffcanvas() {
+                if (!tsUserPanelEl || typeof bootstrap === 'undefined' || !bootstrap.Offcanvas) {
+                    return null;
+                }
+                return bootstrap.Offcanvas.getOrCreateInstance(tsUserPanelEl);
+            }
+
+            function tsStatusBadgeClass(status) {
+                var s = String(status || '').toLowerCase();
+                if (s === 'done') return 'bg-success';
+                if (s === 'todo') return 'bg-secondary';
+                if (s === 'working') return 'bg-primary';
+                if (s === 'need approval') return 'bg-warning text-dark';
+                if (s === 'archived') return 'bg-dark';
+                if (s === 'need help') return 'bg-danger';
+                if (s === 'dependent') return 'bg-info text-dark';
+                return 'bg-secondary';
+            }
+
+            function tsFormatStart(val) {
+                if (!val) return '—';
+                var str = String(val);
+                return str.length >= 10 ? str.slice(0, 10) : str;
+            }
+
+            function tsTaskIsOverdueForPanel(t) {
+                if (!t || !t.start_date || t.status === 'Archived') {
+                    return false;
+                }
+                var startDate = new Date(t.start_date);
+                if (isNaN(startDate.getTime())) {
+                    return false;
+                }
+                startDate.setHours(0, 0, 0, 0);
+                startDate.setDate(startDate.getDate() + 1);
+                var now = new Date();
+                now.setHours(0, 0, 0, 0);
+                return now > startDate;
+            }
+
+            function tsPanelFieldMatchesUser(userNorm, fieldVal) {
+                if (!userNorm) {
+                    return false;
+                }
+                if (fieldVal === undefined || fieldVal === null) {
+                    return false;
+                }
+                var f = String(fieldVal).toLowerCase();
+                if (f === '' || f === '-' || f === '—') {
+                    return false;
+                }
+                return f.indexOf(userNorm) !== -1;
+            }
+
+            function tsSetUserPanelStatsLoading() {
+                var grid = document.getElementById('ts-user-panel-stats');
+                if (!grid) {
+                    return;
+                }
+                var labels = ['As assignee', 'As assignor', 'Done', 'Overdue', 'A task', 'Need appr.'];
+                var classes = ['', '', 'ts-stat-done', 'ts-stat-overdue', '', ''];
+                grid.innerHTML = '';
+                labels.forEach(function (lbl, i) {
+                    var div = document.createElement('div');
+                    div.className = 'ts-user-panel-stat ' + (classes[i] || '');
+                    div.innerHTML = '<div class="ts-val text-muted">…</div><div class="ts-lbl">' + lbl + '</div>';
+                    grid.appendChild(div);
+                });
+            }
+
+            function tsSetUserPanelStatsFromTasks(tasks, userName) {
+                var grid = document.getElementById('ts-user-panel-stats');
+                if (!grid) {
+                    return;
+                }
+                var userNorm = String(userName || '').trim().toLowerCase();
+                var asAssignee = 0;
+                var asAssignor = 0;
+                var done = 0;
+                var overdue = 0;
+                var aTask = 0;
+                var needAppr = 0;
+                (tasks || []).forEach(function (t) {
+                    if (tsPanelFieldMatchesUser(userNorm, t.assignee_name)) {
+                        asAssignee += 1;
+                    }
+                    if (tsPanelFieldMatchesUser(userNorm, t.assignor_name)) {
+                        asAssignor += 1;
+                    }
+                    var st = String(t.status || '').trim();
+                    if (st === 'Done') {
+                        done += 1;
+                    }
+                    if (st === 'Todo') {
+                        aTask += 1;
+                    }
+                    if (st === 'Need Approval') {
+                        needAppr += 1;
+                    }
+                    if (tsTaskIsOverdueForPanel(t)) {
+                        overdue += 1;
+                    }
+                });
+                var specs = [
+                    { lbl: 'As assignee', val: asAssignee, cls: '' },
+                    { lbl: 'As assignor', val: asAssignor, cls: '' },
+                    { lbl: 'Done', val: done, cls: 'ts-stat-done' },
+                    { lbl: 'Overdue', val: overdue, cls: 'ts-stat-overdue' },
+                    { lbl: 'A task', val: aTask, cls: '' },
+                    { lbl: 'Need appr.', val: needAppr, cls: '' }
+                ];
+                grid.innerHTML = '';
+                specs.forEach(function (s) {
+                    var div = document.createElement('div');
+                    div.className = 'ts-user-panel-stat ' + (s.cls || '');
+                    div.innerHTML = '<div class="ts-val">' + String(s.val) + '</div><div class="ts-lbl">' + s.lbl + '</div>';
+                    grid.appendChild(div);
+                });
+            }
+
+            function tsRenderUserPanelTasks(rows) {
+                var tbodyPanel = document.getElementById('ts-user-panel-tbody');
+                var wrap = document.getElementById('ts-user-panel-table-wrap');
+                var emptyEl = document.getElementById('ts-user-panel-empty');
+                if (!tbodyPanel) return;
+                tbodyPanel.innerHTML = '';
+                var q = (document.getElementById('ts-user-panel-task-search') || {}).value;
+                q = (q || '').trim().toLowerCase();
+                var list = rows;
+                if (q) {
+                    list = rows.filter(function (t) {
+                        var blob = [
+                            t.title,
+                            t.status,
+                            t.assignee_name,
+                            t.assignor_name,
+                            t.group
+                        ].join(' ').toLowerCase();
+                        return blob.indexOf(q) !== -1;
+                    });
+                }
+                if (list.length === 0) {
+                    if (wrap) wrap.classList.add('d-none');
+                    if (emptyEl) emptyEl.classList.remove('d-none');
+                    return;
+                }
+                if (wrap) wrap.classList.remove('d-none');
+                if (emptyEl) emptyEl.classList.add('d-none');
+                var tsAutomatedVisualIndex = 0;
+                list.forEach(function (t) {
+                    var isAutoTask = t.is_automate_task == 1 || t.is_automate_task === true || String(t.is_automate_task) === '1';
+                    var tr = document.createElement('tr');
+                    if (isAutoTask) {
+                        tr.classList.add('ts-user-panel-row-automated');
+                        if (tsAutomatedVisualIndex % 2 === 1) {
+                            tr.classList.add('ts-user-panel-row-automated-alt');
+                        }
+                        tsAutomatedVisualIndex += 1;
+                    }
+                    var tdTitle = document.createElement('td');
+                    tdTitle.className = 'fw-medium';
+                    var titleText = document.createTextNode(t.title || '—');
+                    tdTitle.appendChild(titleText);
+                    if (isAutoTask) {
+                        tdTitle.appendChild(document.createTextNode(' '));
+                        var auto = document.createElement('span');
+                        auto.className = 'badge bg-warning text-dark ms-1';
+                        auto.style.fontSize = '0.65rem';
+                        auto.textContent = 'Auto';
+                        tdTitle.appendChild(auto);
+                    }
+                    var tdSt = document.createElement('td');
+                    var badge = document.createElement('span');
+                    badge.className = 'ts-user-panel-status ' + tsStatusBadgeClass(t.status);
+                    badge.textContent = t.status || '—';
+                    tdSt.appendChild(badge);
+                    var tdAsg = document.createElement('td');
+                    tdAsg.className = 'd-none d-md-table-cell';
+                    tdAsg.textContent = t.assignee_name || '—';
+                    var tdAso = document.createElement('td');
+                    tdAso.className = 'd-none d-lg-table-cell';
+                    tdAso.textContent = t.assignor_name || '—';
+                    var tdStart = document.createElement('td');
+                    tdStart.className = 'text-nowrap text-muted small';
+                    tdStart.textContent = tsFormatStart(t.start_date);
+                    var tdOpen = document.createElement('td');
+                    tdOpen.className = 'text-center';
+                    if (t.id) {
+                        var a = document.createElement('a');
+                        a.href = tsTaskShowBase + '/' + encodeURIComponent(t.id);
+                        a.className = 'btn btn-sm btn-link py-0 px-1';
+                        a.textContent = 'View';
+                        a.setAttribute('target', '_blank');
+                        a.setAttribute('rel', 'noopener noreferrer');
+                        tdOpen.appendChild(a);
+                    } else {
+                        tdOpen.textContent = '—';
+                    }
+                    tr.appendChild(tdTitle);
+                    tr.appendChild(tdSt);
+                    tr.appendChild(tdAsg);
+                    tr.appendChild(tdAso);
+                    tr.appendChild(tdStart);
+                    tr.appendChild(tdOpen);
+                    tbodyPanel.appendChild(tr);
+                });
+            }
+
+            function tsLoadUserTasks(userName) {
+                var loading = document.getElementById('ts-user-panel-loading');
+                var errEl = document.getElementById('ts-user-panel-error');
+                var wrap = document.getElementById('ts-user-panel-table-wrap');
+                var emptyEl = document.getElementById('ts-user-panel-empty');
+                if (errEl) {
+                    errEl.classList.add('d-none');
+                    errEl.textContent = '';
+                }
+                if (wrap) wrap.classList.add('d-none');
+                if (emptyEl) emptyEl.classList.add('d-none');
+                if (loading) loading.classList.remove('d-none');
+                var url = tsTasksDataUrl + (tsTasksDataUrl.indexOf('?') >= 0 ? '&' : '?') + 'user_name=' + encodeURIComponent(userName);
+                fetch(url, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('Could not load tasks');
+                        return r.json();
+                    })
+                    .then(function (data) {
+                        if (loading) loading.classList.add('d-none');
+                        tsUserPanelTasks = Array.isArray(data) ? data : [];
+                        tsSetUserPanelStatsFromTasks(tsUserPanelTasks, userName);
+                        tsRenderUserPanelTasks(tsUserPanelTasks);
+                    })
+                    .catch(function (err) {
+                        if (loading) loading.classList.add('d-none');
+                        tsSetUserPanelStatsFromTasks([], userName);
+                        if (errEl) {
+                            errEl.textContent = err && err.message ? err.message : 'Failed to load tasks.';
+                            errEl.classList.remove('d-none');
+                        }
+                    });
+            }
+
+            var tsSearchPanel = document.getElementById('ts-user-panel-task-search');
+            if (tsSearchPanel) {
+                tsSearchPanel.addEventListener('input', function () {
+                    tsRenderUserPanelTasks(tsUserPanelTasks);
+                });
+            }
+
+            var tsOpenTmBtn = document.getElementById('ts-user-panel-open-tm');
+            if (tsOpenTmBtn) {
+                tsOpenTmBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    if (!tsUserPanelName) return;
+                    var fd = new FormData();
+                    fd.append('_token', tsCsrfToken);
+                    fd.append('user_name', tsUserPanelName);
+                    fetch(tsSetSelectedUserUrl, {
+                        method: 'POST',
+                        body: fd,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
+                        credentials: 'same-origin'
+                    })
+                        .finally(function () {
+                            window.location.href = tsTasksIndexUrl;
+                        });
+                });
+            }
+
+            tbody.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest && e.target.closest('.task-summary-user-tasks-dot');
+                if (!btn || !tbody.contains(btn)) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                var name = (btn.getAttribute('data-user-name') || '').trim();
+                if (!name) {
+                    return;
+                }
+                var tr = btn.closest('tr');
+                if (!tr) {
+                    return;
+                }
+                var panel = tsGetUserPanelOffcanvas();
+                if (!panel) {
+                    var fd0 = new FormData();
+                    fd0.append('_token', tsCsrfToken);
+                    fd0.append('user_name', name);
+                    fetch(tsSetSelectedUserUrl, {
+                        method: 'POST',
+                        body: fd0,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
+                        credentials: 'same-origin'
+                    }).finally(function () {
+                        window.location.href = tsTasksIndexUrl;
+                    });
+                    return;
+                }
+                tsUserPanelName = name;
+                var titleEl = document.getElementById('taskSummaryUserPanelLabel');
+                var desEl = document.getElementById('ts-user-panel-designation');
+                var emailEl = document.getElementById('ts-user-panel-email');
+                var avEl = document.getElementById('ts-user-panel-avatar');
+                if (titleEl) titleEl.textContent = name;
+                var des = (tr.getAttribute('data-sort-designation') || '').trim();
+                if (desEl) {
+                    desEl.textContent = des || '—';
+                    desEl.classList.toggle('d-none', !des);
+                }
+                var em = (tr.getAttribute('data-user-email') || '').trim();
+                if (emailEl) {
+                    emailEl.textContent = em || '';
+                    emailEl.classList.toggle('d-none', !em);
+                }
+                if (avEl) {
+                    var img = tr.querySelector('.task-summary-avatar');
+                    var src = img && img.getAttribute('src');
+                    if (src) {
+                        avEl.setAttribute('src', src);
+                        avEl.classList.remove('d-none');
+                    } else {
+                        avEl.classList.add('d-none');
+                    }
+                }
+                tsSetUserPanelStatsLoading();
+                if (tsSearchPanel) tsSearchPanel.value = '';
+                tsUserPanelTasks = [];
+                panel.show();
+                tsLoadUserTasks(name);
+            });
 
             var sortState = { key: null, dir: 'asc' };
             var headers = document.querySelectorAll('.task-summary-th-sort');
