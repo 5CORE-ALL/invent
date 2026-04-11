@@ -47,6 +47,8 @@ class Task extends Model
         'schedule_time',
         'status',
         'rework_reason',
+        'report',
+        'reference_link',
         'delete_rating',
         'delete_feedback',
         'order',

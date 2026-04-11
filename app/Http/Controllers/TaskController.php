@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Validation\Rule;
 
 class TaskController extends Controller
 {
@@ -798,6 +799,8 @@ class TaskController extends Controller
             $taskData['l2'] = $task->getAttribute('link2') ?: $task->getAttribute('l2') ?: '';
             $taskData['pl'] = $task->getAttribute('link8') ?: $task->getAttribute('pl') ?: '';
             $taskData['process'] = $task->getAttribute('link9') ?: $task->getAttribute('process') ?: '';
+            $taskData['report'] = $task->getAttribute('report') ?: '';
+            $taskData['reference_link'] = $task->getAttribute('reference_link') ?: '';
 
             return response()->json($taskData);
         } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
@@ -992,6 +995,48 @@ class TaskController extends Controller
         return response()->json(['success' => true, 'message' => 'Task deleted successfully!']);
     }
 
+    /**
+     * Mark a manual task Done with required completion report (Task Manager /tasks).
+     */
+    public function complete(Request $request, $id): JsonResponse
+    {
+        $task = Task::findOrFail($id);
+        $this->authorize('updateStatus', $task);
+
+        if ($task->status === 'Done') {
+            return response()->json([
+                'message' => 'This task is already marked as Done.',
+            ], 422);
+        }
+
+        $this->mergeEmptyReferenceLink($request);
+        $request->merge(['report' => trim((string) $request->input('report', ''))]);
+
+        $validated = $request->validate([
+            'report' => 'required|string|min:1',
+            'reference_link' => 'nullable|url|max:2048',
+        ]);
+
+        $task->report = $validated['report'];
+        $task->reference_link = $validated['reference_link'] ?? null;
+        $task->status = 'Done';
+        $this->applyTaskDoneEffects($task, null);
+
+        $task->save();
+
+        try {
+            $this->taskWhatsApp->notifyTaskDone($task->fresh());
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Task completed successfully!',
+            'task' => $task->fresh(),
+        ]);
+    }
+
     public function updateStatus(Request $request, $id)
     {
         $task = Task::findOrFail($id);
@@ -999,45 +1044,31 @@ class TaskController extends Controller
         // Check if user can update status
         $this->authorize('updateStatus', $task);
 
+        $this->mergeEmptyReferenceLink($request);
+
         $validated = $request->validate([
             'status' => 'required|in:Todo,Working,Archived,Done,Need Help,Need Approval,Dependent,Approved,Hold,Rework',
             'atc' => 'nullable|integer|min:1|digits_between:1,10',
             'rework_reason' => 'nullable|string',
+            'report' => [
+                Rule::requiredIf(fn () => $request->input('status') === 'Done' && ! $task->is_automate_task),
+                'nullable',
+                'string',
+            ],
+            'reference_link' => 'nullable|url|max:2048',
         ]);
 
         $task->status = $validated['status'];
 
-        // If status is Done, save ATC and completion time
         if ($validated['status'] === 'Done') {
-            if (isset($validated['atc'])) {
-                $task->etc_done = $validated['atc']; // Map to old column name
-                
-                // Log ATC for all assignees (comma-separated)
-                if ($task->assign_to && str_contains($task->assign_to, ',')) {
-                    $assigneeEmails = array_map('trim', explode(',', $task->assign_to));
-                    \Log::info('✅ Task completed - ATC credited to ALL assignees:', [
-                        'task_id' => $task->id,
-                        'atc_minutes' => $validated['atc'],
-                        'assignees' => $assigneeEmails,
-                        'count' => count($assigneeEmails),
-                        'note' => 'Each assignee gets credit for ' . $validated['atc'] . ' minutes'
-                    ]);
-                }
+            if (! $task->is_automate_task) {
+                $task->report = trim((string) ($validated['report'] ?? ''));
+                $task->reference_link = $validated['reference_link'] ?? null;
             }
-            $task->completion_date = now(); // Map to old column name
-            
-            // Calculate completion days
-            if ($task->start_date) {
-                $startDate = \Carbon\Carbon::parse($task->start_date);
-                $task->completion_day = $startDate->diffInDays(now());
-            }
-            
-            // Delete image when task is marked as Done
-            if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
-                unlink(public_path('uploads/tasks/' . $task->image));
-                \Log::info('🗑️ Image deleted for completed task:', ['task_id' => $task->id, 'image' => $task->image]);
-                $task->image = null; // Clear image field
-            }
+            $atc = array_key_exists('atc', $validated) && $validated['atc'] !== null
+                ? (int) $validated['atc']
+                : null;
+            $this->applyTaskDoneEffects($task, $atc);
         }
 
         // If reason is provided (for any status change or rework)
@@ -1066,6 +1097,51 @@ class TaskController extends Controller
             'message' => 'Status updated successfully!',
             'task' => $task->fresh()
         ]);
+    }
+
+    protected function mergeEmptyReferenceLink(Request $request): void
+    {
+        if (! $request->has('reference_link')) {
+            return;
+        }
+        if (trim((string) $request->input('reference_link', '')) === '') {
+            $request->merge(['reference_link' => null]);
+        }
+    }
+
+    protected function applyTaskDoneEffects(Task $task, ?int $atcMinutes): void
+    {
+        if ($atcMinutes !== null) {
+            $task->etc_done = $atcMinutes;
+
+            if ($task->assign_to && str_contains($task->assign_to, ',')) {
+                $assigneeEmails = array_map('trim', explode(',', $task->assign_to));
+                \Log::info('✅ Task completed - ATC credited to ALL assignees:', [
+                    'task_id' => $task->id,
+                    'atc_minutes' => $atcMinutes,
+                    'assignees' => $assigneeEmails,
+                    'count' => count($assigneeEmails),
+                    'note' => 'Each assignee gets credit for ' . $atcMinutes . ' minutes',
+                ]);
+            }
+        }
+
+        $task->completion_date = now();
+
+        if ($task->start_date) {
+            try {
+                $startDate = \Carbon\Carbon::parse($task->start_date);
+                $task->completion_day = $startDate->diffInDays(now());
+            } catch (\Throwable $e) {
+                // keep completion_day unchanged
+            }
+        }
+
+        if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
+            unlink(public_path('uploads/tasks/' . $task->image));
+            \Log::info('🗑️ Image deleted for completed task:', ['task_id' => $task->id, 'image' => $task->image]);
+            $task->image = null;
+        }
     }
 
     public function bulkUpdate(Request $request)

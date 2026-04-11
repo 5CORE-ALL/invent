@@ -1849,15 +1849,22 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="mb-3"><strong>How much time did you actually spend on this task?</strong></p>
+                <div id="done-modal-errors" class="alert alert-danger d-none mb-3" role="alert"></div>
                 <div class="mb-3">
-                    <label for="atc-input" class="form-label">Actual Time to Complete (ATC) in minutes:</label>
-                    <input type="number" class="form-control" id="atc-input" min="1" max="9999999999" placeholder="e.g., 45" required>
+                    <label for="task-done-report" class="form-label">Report <span class="text-danger">*</span></label>
+                    <textarea class="form-control" id="task-done-report" rows="5" placeholder="Describe what was completed, outcomes, or notes for the assignor." required></textarea>
+                    <div class="invalid-feedback d-none" id="task-done-report-feedback">Please enter a report.</div>
+                </div>
+                <div class="mb-0">
+                    <label for="task-done-reference-link" class="form-label">Reference link <span class="text-muted fw-normal">(optional)</span></label>
+                    <input type="text" class="form-control" id="task-done-reference-link" placeholder="https://…" autocomplete="off">
+                    <small class="text-muted">Optional URL (e.g. doc, sheet, or ticket).</small>
                 </div>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="confirm-done-btn">
-                    <i class="mdi mdi-check me-1"></i>Mark as Done
+                    <i class="mdi mdi-check me-1"></i>Submit &amp; mark Done
                 </button>
             </div>
         </div>
@@ -4835,9 +4842,21 @@
                     if (rr) {
                         reasonRow = '<tr><th width="200" style="color: #6c757d; font-weight: 600; vertical-align: top;">Note / reason:</th><td style="white-space: pre-wrap;">' + escapeHtml(rr) + '</td></tr>';
                     }
+                    var completionReport = data.report != null ? String(data.report).trim() : '';
+                    var completionRef = data.reference_link != null ? String(data.reference_link).trim() : '';
+                    var completionReportRow = '';
+                    if (completionReport) {
+                        completionReportRow = '<tr><th width="200" style="color: #6c757d; font-weight: 600; vertical-align: top;">Completion report:</th><td style="white-space: pre-wrap;">' + escapeHtml(completionReport) + '</td></tr>';
+                    }
+                    var completionRefRow = '';
+                    if (completionRef) {
+                        completionRefRow = '<tr><th width="200" style="color: #6c757d; font-weight: 600;">Reference link:</th><td>' + linkCell(completionRef, completionRef) + '</td></tr>';
+                    }
                     var html = '<div style="padding: 10px;">' +
                         '<table class="table table-borderless">' +
                         reasonRow +
+                        completionReportRow +
+                        completionRefRow +
                         '<tr><th width="200" style="color: #6c757d; font-weight: 600;">L1:</th><td>' + (l1Val ? linkCell(l1Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">L2:</th><td>' + (l2Val ? linkCell(l2Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
@@ -4874,9 +4893,21 @@
                             if (rrAjax) {
                                 reasonRowAjax = '<tr><th width="200" style="color: #6c757d; font-weight: 600; vertical-align: top;">Note / reason:</th><td style="white-space: pre-wrap;">' + escapeHtml(rrAjax) + '</td></tr>';
                             }
+                            var completionReportAjax = response.report != null ? String(response.report).trim() : '';
+                            var completionRefAjax = response.reference_link != null ? String(response.reference_link).trim() : '';
+                            var completionReportRowAjax = '';
+                            if (completionReportAjax) {
+                                completionReportRowAjax = '<tr><th width="200" style="color: #6c757d; font-weight: 600; vertical-align: top;">Completion report:</th><td style="white-space: pre-wrap;">' + escapeHtml(completionReportAjax) + '</td></tr>';
+                            }
+                            var completionRefRowAjax = '';
+                            if (completionRefAjax) {
+                                completionRefRowAjax = '<tr><th width="200" style="color: #6c757d; font-weight: 600;">Reference link:</th><td>' + linkCell(completionRefAjax) + '</td></tr>';
+                            }
                             var html = '<div style="padding: 10px;">' +
                                 '<table class="table table-borderless">' +
                                 reasonRowAjax +
+                                completionReportRowAjax +
+                                completionRefRowAjax +
                                 '<tr><th width="200" style="color: #6c757d; font-weight: 600;">L1:</th><td>' + (l1Val ? linkCell(l1Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">L2:</th><td>' + (l2Val ? linkCell(l2Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
@@ -4975,22 +5006,86 @@
                 }
             });
 
-            // Confirm Done
+            // Confirm Done — POST /tasks/{id}/complete (report required, reference link optional)
             $('#confirm-done-btn').on('click', function() {
-                var atc = $('#atc-input').val();
-                var atcNum = parseInt(atc, 10);
-                if (!atc || isNaN(atcNum) || atcNum <= 0) {
-                    alert('Please enter the actual time spent on this task.');
+                $('#done-modal-errors').addClass('d-none').text('');
+                $('#task-done-report').removeClass('is-invalid');
+                $('#task-done-report-feedback').addClass('d-none');
+
+                var report = $('#task-done-report').val().trim();
+                if (!report) {
+                    $('#task-done-report').addClass('is-invalid');
+                    $('#task-done-report-feedback').removeClass('d-none');
                     return;
                 }
-                if (String(atc).length > 10 || atcNum > 9999999999) {
-                    alert('ATC can be up to 10 digits only.');
-                    return;
-                }
-                
-                updateTaskStatus(currentTaskId, 'Done', atcNum, null);
-                $('#doneModal').modal('hide');
-                $('#atc-input').val('');
+
+                var refLink = $('#task-done-reference-link').val().trim();
+                var $btn = $(this);
+                $btn.prop('disabled', true);
+
+                $.ajax({
+                    url: '/tasks/' + currentTaskId + '/complete',
+                    type: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        report: report,
+                        reference_link: refLink || ''
+                    },
+                    success: function(response) {
+                        $('#doneModal').modal('hide');
+                        $('#task-done-report').val('');
+                        $('#task-done-reference-link').val('');
+                        table.replaceData();
+
+                        var alertHtml = `
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-check-circle me-2"></i>${response.message || 'Task completed successfully!'}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `;
+                        $('.task-card .card-body .alert').remove();
+                        $('.task-card .card-body').prepend(alertHtml);
+                        setTimeout(function() {
+                            $('.alert').fadeOut(function() { $(this).remove(); });
+                        }, 3000);
+                    },
+                    error: function(xhr) {
+                        if (xhr.status === 422 && xhr.responseJSON) {
+                            var e = xhr.responseJSON.errors || {};
+                            var parts = [];
+                            if (e.report) {
+                                parts = parts.concat(e.report);
+                            }
+                            if (e.reference_link) {
+                                parts = parts.concat(e.reference_link);
+                            }
+                            if (xhr.responseJSON.message && parts.length === 0) {
+                                parts.push(xhr.responseJSON.message);
+                            }
+                            if (parts.length) {
+                                $('#done-modal-errors').removeClass('d-none').html(parts.map(function(p) {
+                                    return $('<div/>').text(p).html();
+                                }).join('<br>'));
+                                return;
+                            }
+                        }
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Could not complete the task. Please try again.';
+                        alert(msg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false);
+                    }
+                });
+            });
+
+            $('#doneModal').on('hidden.bs.modal', function () {
+                $('#task-done-report').val('');
+                $('#task-done-reference-link').val('');
+                $('#done-modal-errors').addClass('d-none').text('');
+                $('#task-done-report').removeClass('is-invalid');
+                $('#task-done-report-feedback').addClass('d-none');
             });
 
             // Confirm Status Change

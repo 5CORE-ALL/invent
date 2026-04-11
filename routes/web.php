@@ -4599,6 +4599,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/{id}/edit', [\App\Http\Controllers\TaskController::class, 'edit'])->name('tasks.edit');
     Route::put('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'update'])->name('tasks.update');
     Route::delete('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'destroy'])->name('tasks.destroy');
+    Route::post('/tasks/{id}/complete', [\App\Http\Controllers\TaskController::class, 'complete'])->name('tasks.complete');
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
 
     // Resources Master (R&R / training / checklists / media / links)
