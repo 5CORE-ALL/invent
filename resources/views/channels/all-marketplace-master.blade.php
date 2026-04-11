@@ -156,7 +156,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Master',
-        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 32-day Pacific rolling window (same as Amazon Daily Sales). AliExpress L30 Sales, Orders, Qty, PFT, and COGS match the AliExpress Daily Data tabulator (aliexpress_daily_data). Shein L30 Sales, Orders, Qty, PFT, and COGS match the Shein Daily Data tabulator (shein_daily_data, marketplace_percentages keep-rate). Depop L30 Sales, Orders, Qty, and PFT match depop_sales_data (87% margin, /depop/sheet upload). TopDawg matches topdawg_order_metrics and /topdawg/sales-dashboard (margin 0.95, no ship). Y Sales column: same “day before latest order date in feed” rule as Amazon for TopDawg, Tiendamia (Mirakl), Depop, AliExpress, Shein, Shopify B2B, and other wired channels.',
+        'sub_title' => '',
     ])
 
     <div class="toast-container"></div>
