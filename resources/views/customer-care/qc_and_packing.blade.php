@@ -507,7 +507,11 @@
                     <div id="importCsvAlert" class="d-none mb-3"></div>
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
-                        <code>sku@if($showOrderIdField ?? false), order_number (or order id / order_id)@endif, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department</code>
+                        <code>@if($showOrderIdField ?? false)
+                            sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department
+                        @else
+                            sku, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department
+                        @endif</code>
                     </p>
                     <p class="text-muted small mb-3">
                         Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found). All other columns are optional.
@@ -1781,18 +1785,33 @@
                     URL.revokeObjectURL(url);
                 }
 
-                const activeHeaders = ['#', 'SKU'@if($showOrderIdField ?? false), @json($orderIdFieldLabel ?? 'Order ID')@endif, 'Order QTY', 'MKT',
+                const exportIncludeOrderId = @json((bool) ($showOrderIdField ?? false));
+                const exportOrderIdLabel = @json($orderIdFieldLabel ?? 'Order ID');
+                const activeHeaders = ['#', 'SKU'];
+                if (exportIncludeOrderId) {
+                    activeHeaders.push(exportOrderIdLabel);
+                }
+                activeHeaders.push(
+                    'Order QTY', 'MKT',
                     'What?', 'Action', 'Action Remark', 'Track',
                     'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
-                    'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'];
-                const activeData = holdIssueRows.map(r => [
-                    r.id, r.sku, @if($showOrderIdField ?? false)(r.order_number || ''), @endif r.order_qty,
-                    r.marketplace_1, r.what_happened,
-                    r.action_1, r.action_1_remark, r.replacement_tracking,
-                    r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark,
-                    r.department || '',
-                    r.created_by, r.created_at
-                ]);
+                    'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'
+                );
+                const activeData = holdIssueRows.map(r => {
+                    const row = [r.id, r.sku];
+                    if (exportIncludeOrderId) {
+                        row.push(r.order_number || '');
+                    }
+                    row.push(
+                        r.order_qty,
+                        r.marketplace_1, r.what_happened,
+                        r.action_1, r.action_1_remark, r.replacement_tracking,
+                        r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark,
+                        r.department || '',
+                        r.created_by, r.created_at
+                    );
+                    return row;
+                });
 
                 const pageTitle = document.querySelector('h4.page-title, h1.page-title, .page-title h4, .page-title h1')?.textContent?.trim()
                     || document.title || 'export';
