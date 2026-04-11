@@ -443,6 +443,12 @@
                         <option value="equal">CVR 60 = CVR 30</option>
                     </select>
 
+                    <select id="sprice-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">SPRICE</option>
+                        <option value="blank">Blank SPRICE only</option>
+                    </select>
+
                     <!-- DIL Filter -->
                     <div class="manual-dropdown-container pricing-filter-item" id="dil-filter-wrapper">
                         <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown">
@@ -1062,6 +1068,65 @@
         let samePriceModeActive = false;
         let selectedSkus = new Set(); // Track selected SKUs across all pages
 
+        /**
+         * Child SKUs on the current pagination page only (respects filters + SKU Count).
+         * Never return all filtered rows: always slice [start, start + pageSize) over the active/filtered set.
+         */
+        function ebayCurrentPageChildRowsForSelection() {
+            if (!table) return [];
+            const isParent = function(d) {
+                return d && d.Parent && String(d.Parent).toUpperCase().startsWith('PARENT');
+            };
+            const notParent = function(d) { return !isParent(d); };
+            var page = 1;
+            var pageSize = 100;
+            try {
+                page = table.getPage();
+                pageSize = table.getPageSize();
+            } catch (e) { /* ignore */ }
+            if (page < 1) page = 1;
+            const start = Math.max(0, (page - 1) * pageSize);
+            const end = start + pageSize;
+
+            var totalActive = null;
+            try {
+                if (typeof table.getDataCount === 'function') {
+                    totalActive = table.getDataCount('active');
+                }
+            } catch (e) { /* ignore */ }
+
+            var activeData = [];
+            try {
+                activeData = table.getData('active') || [];
+            } catch (e) { /* ignore */ }
+
+            // Full filtered dataset in memory → paginate (works with filters)
+            if (activeData.length > 0) {
+                var fullActiveSet = totalActive == null || activeData.length === totalActive;
+                var longEnough = activeData.length >= end;
+                if (fullActiveSet || longEnough) {
+                    return activeData.slice(start, end).filter(notParent);
+                }
+                if (activeData.length <= pageSize && start === 0) {
+                    return activeData.filter(notParent);
+                }
+            }
+
+            try {
+                var activeRows = table.getRows('active') || [];
+                if (activeRows.length > 0) {
+                    if (totalActive == null || activeRows.length === totalActive || activeRows.length >= end) {
+                        return activeRows.slice(start, end).map(function(r) { return r.getData(); }).filter(notParent);
+                    }
+                    if (activeRows.length <= pageSize && start === 0) {
+                        return activeRows.map(function(r) { return r.getData(); }).filter(notParent);
+                    }
+                }
+            } catch (e2) { /* ignore */ }
+
+            return [];
+        }
+
         // Play / Pause parent navigation (same as product-master)
         let productUniqueParents = [];
         let isProductNavigationActive = false;
@@ -1109,6 +1174,66 @@
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
         let missingFilterActive = false;
+
+        /**
+         * When any narrowing filter/search is on, header "select all" should include every filtered row (all pages).
+         * Default table state (E Stock &gt; 0, REQ only, etc.) = current page only.
+         */
+        function ebaySelectAllUsesFullFilteredSet() {
+            if (typeof isProductNavigationActive !== 'undefined' && isProductNavigationActive) return true;
+            if (($('#sku-search').val() || '').trim() !== '') return true;
+            if (($('#parent-sku-dropdown').val() || '') !== '') return true;
+            if (($('#view-type-filter').val() || 'all') !== 'all') return true;
+            if (($('#inventory-filter').val() || 'more') !== 'more') return true;
+            if (($('#el30-filter').val() || 'all') !== 'all') return true;
+            if (($('#nrl-filter').val() || 'REQ') !== 'REQ') return true;
+            if (($('#gpft-filter').val() || 'all') !== 'all') return true;
+            if (($('#roi-filter').val() || 'all') !== 'all') return true;
+            if (($('#cvr-filter').val() || 'all') !== 'all') return true;
+            if (($('#cvr-trend-filter').val() || 'all') !== 'all') return true;
+            if (($('#sprice-filter').val() || 'all') !== 'all') return true;
+            if (($('#growth-sign-filter').val() || 'all') !== 'all') return true;
+            var dil = 'all';
+            try {
+                dil = $('.column-filter[data-column="dil_percent"].active').data('color') || 'all';
+            } catch (eDil) { /* ignore */ }
+            if (dil !== 'all') return true;
+            if (zeroSoldFilterActive || moreSoldFilterActive || missingFilterActive) return true;
+
+            var sec = $('#section-filter').val();
+            if (sec === 'kw_ads') {
+                if (($('#kw-utilization-filter').val() || 'all') !== 'all') return true;
+                if (($('#kw-status-filter').val() || 'all') !== 'all') return true;
+                if (($('#kw-nra-filter').val() || 'all') !== 'all') return true;
+                if (($('#kw-nrl-filter').val() || 'all') !== 'all') return true;
+                if (($('#kw-sbidm-filter').val() || 'all') !== 'all') return true;
+                if (Object.values(kwRangeFilters).some(function(f) { return f.min !== null || f.max !== null; })) return true;
+            }
+            if (sec === 'pmt_ads') {
+                if (Object.values(pmtDropdownFilters).some(function(c) { return c !== 'all'; })) return true;
+                if (Object.values(pmtRangeFilters).some(function(f) { return f.min !== null || f.max !== null; })) return true;
+            }
+            return false;
+        }
+
+        /** All filtered child rows (every page), excluding parent summary rows. */
+        function ebayAllFilteredChildRowsForSelection() {
+            if (!table) return [];
+            const isParent = function(d) {
+                return d && d.Parent && String(d.Parent).toUpperCase().startsWith('PARENT');
+            };
+            try {
+                return (table.getData('active') || []).filter(function(d) { return !isParent(d); });
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function ebayRowsForHeaderSelectAll() {
+            return ebaySelectAllUsesFullFilteredSet()
+                ? ebayAllFilteredChildRowsForSelection()
+                : ebayCurrentPageChildRowsForSelection();
+        }
         
         // Single toast: accepts showToast(message, type) or showToast(type, message)
         function showToast(a, b) {
@@ -1464,10 +1589,10 @@
             $(document).on('change', '#select-all-checkbox', function() {
                 const isChecked = $(this).prop('checked');
                 
-                // Get all filtered data (excluding parent rows)
-                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+                // With filters/search: all matching rows (all pages). Default state: current page only.
+                const filteredData = ebayRowsForHeaderSelectAll();
                 
-                // Add or remove all filtered SKUs from the selected set
+                // Add or remove those SKUs from the selected set
                 filteredData.forEach(row => {
                     const sku = row['(Child) sku'];
                     if (sku) {
@@ -1613,8 +1738,7 @@
             function updateSelectAllCheckbox() {
                 if (!table) return;
                 
-                // Get all filtered data (excluding parent rows)
-                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+                const filteredData = ebayRowsForHeaderSelectAll();
                 
                 if (filteredData.length === 0) {
                     $('#select-all-checkbox').prop('checked', false);
@@ -2652,7 +2776,7 @@
                         width: 50,
                         titleFormatter: function(column) {
                             return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                                <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Filtered SKUs">
+                                <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="No extra filter: this page only. If filter/search is on: all matching rows (all pages).">
                             </div>`;
                         },
                         formatter: function(cell) {
@@ -4278,6 +4402,9 @@
             $('#sku-search').on('keyup', function() {
                 const value = $(this).val();
                 table.setFilter("(Child) sku", "like", value);
+                setTimeout(function() {
+                    if (typeof updateSelectAllCheckbox === 'function') updateSelectAllCheckbox();
+                }, 50);
             });
 
             // NR/REQ dropdown change handler
@@ -4794,6 +4921,7 @@
                 const roiFilter = $('#roi-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const cvrTrendFilter = $('#cvr-trend-filter').val();
+                const spriceFilter = $('#sprice-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
                 const parentSkuVal = $('#parent-sku-dropdown').val() || '';
                 const viewTypeFilter = $('#view-type-filter').val() || 'all';
@@ -4951,6 +5079,16 @@
                         if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + cvrTrendTol;
                         if (cvrTrendFilter === 'equal') return Math.abs(cvr60 - cvr30) <= cvrTrendTol;
                         return true;
+                    });
+                }
+
+                if (spriceFilter === 'blank') {
+                    table.addFilter(function(data) {
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT')) return true;
+                        const sprice = data.SPRICE;
+                        if (sprice == null || sprice === '') return true;
+                        const num = parseFloat(sprice);
+                        return isNaN(num) || num <= 0;
                     });
                 }
 
@@ -5233,7 +5371,7 @@
                 }, 100);
             }
 
-            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter').on('change', function() {
+            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
 

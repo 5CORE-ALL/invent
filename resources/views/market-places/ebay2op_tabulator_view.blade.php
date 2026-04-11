@@ -355,6 +355,12 @@
                         <option value="equal">CVR 60 = CVR 30</option>
                     </select>
 
+                    <select id="sprice-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">SPRICE</option>
+                        <option value="blank">Blank SPRICE only</option>
+                    </select>
+
                     <!-- DIL Filter -->
                     <div class="manual-dropdown-container pricing-filter-item" id="dil-filter-wrapper">
                         <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown">
@@ -4175,6 +4181,7 @@
                 const roiFilter = $('#roi-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const cvrTrendFilter = $('#cvr-trend-filter').val();
+                const spriceFilter = $('#sprice-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
                 table.clearFilter(true);
@@ -4276,6 +4283,15 @@
                         if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + cvrTrendTol;
                         if (cvrTrendFilter === 'equal') return Math.abs(cvr60 - cvr30) <= cvrTrendTol;
                         return true;
+                    });
+                }
+
+                if (spriceFilter === 'blank') {
+                    table.addFilter(function(data) {
+                        const sprice = data.SPRICE;
+                        if (sprice == null || sprice === '') return true;
+                        const num = parseFloat(sprice);
+                        return isNaN(num) || num <= 0;
                     });
                 }
 
@@ -4480,7 +4496,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter').on('change', function() {
+            $('#inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
 

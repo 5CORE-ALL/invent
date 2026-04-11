@@ -151,6 +151,12 @@
                         <option value="zero">0 Sold</option>
                     </select>
 
+                    <select id="sprice-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">SPRICE</option>
+                        <option value="blank">Blank SPRICE only</option>
+                    </select>
+
                     <!-- Unified Range Filter (Views & Sold) -->
                     <select id="range-column-select" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -3113,6 +3119,7 @@
                 const parentFilter = $('#parent-filter').val();
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
+                const spriceFilter = $('#sprice-filter').val();
                 const rangeMin = parseFloat($('#range-min').val()) || null;
                 const rangeMax = parseFloat($('#range-max').val()) || null;
                 const rangeColumn = $('#range-column-select').val() || '';
@@ -3295,6 +3302,16 @@
                     });
                 }
 
+                if (spriceFilter === 'blank') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentFilter === 'show';
+                        const sprice = data.SPRICE;
+                        if (sprice == null || sprice === '') return true;
+                        const num = parseFloat(sprice);
+                        return isNaN(num) || num <= 0;
+                    });
+                }
+
                 // Unified Range Filter (Views L30/L7, Sold L30/L7)
                 if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
                     table.addFilter(function(data) {
@@ -3378,7 +3395,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
 
