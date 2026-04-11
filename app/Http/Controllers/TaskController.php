@@ -282,7 +282,7 @@ class TaskController extends Controller
     /**
      * Per–team-member task counts (assignee-based), matching Task Manager visibility and session user filter.
      *
-     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, need_approval: int, done: int}>
+     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, need_approval: int, done: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned)
      */
     protected function getTaskSummaryMemberRows(): array
     {
@@ -321,10 +321,22 @@ class TaskController extends Controller
         foreach ($tasks as $task) {
             $assignorEmail = trim((string) ($task->assignor ?? ''));
             if ($assignorEmail !== '') {
-                if (!isset($byEmail[$assignorEmail])) {
-                    $byEmail[$assignorEmail] = $defaultCounts;
+                $assignToRaw = trim((string) ($task->assign_to ?? ''));
+                $assignsToSelf = false;
+                if ($assignToRaw !== '') {
+                    foreach (array_map('trim', explode(',', $assignToRaw)) as $assigneeEmail) {
+                        if ($assigneeEmail !== '' && strcasecmp($assigneeEmail, $assignorEmail) === 0) {
+                            $assignsToSelf = true;
+                            break;
+                        }
+                    }
                 }
-                $byEmail[$assignorEmail]['assignor_task']++;
+                if (!$assignsToSelf) {
+                    if (!isset($byEmail[$assignorEmail])) {
+                        $byEmail[$assignorEmail] = $defaultCounts;
+                    }
+                    $byEmail[$assignorEmail]['assignor_task']++;
+                }
             }
 
             if (!$task->assign_to || trim((string) $task->assign_to) === '') {

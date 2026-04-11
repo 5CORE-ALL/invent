@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" role="img" aria-label="Add Image">
+  <circle cx="40" cy="40" r="40" fill="#f1f5f9"/>
+  <circle cx="40" cy="40" r="39" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+  <path fill="#64748b" d="M26 34h6l2-3h12l2 3h6a2 2 0 012 2v14a2 2 0 01-2 2H26a2 2 0 01-2-2V36a2 2 0 012-2zm14 4a7 7 0 100 14 7 7 0 000-14zm0 3a4 4 0 110 8 4 4 0 010-8z"/>
+  <text x="40" y="62" text-anchor="middle" font-size="8" font-weight="600" fill="#475569" font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif">Add Image</text>
+</svg>

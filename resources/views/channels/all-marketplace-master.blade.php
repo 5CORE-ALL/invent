@@ -1147,7 +1147,7 @@
                     {
                         title: "Y Sales",
                         field: "Y Sales",
-                        headerTooltip: "Yesterday's sales (Pacific time). Amazon = amazon_orders; Temu / Temu 2 = temu_daily_data / temu2_daily_data (FB price × qty, same as L30); others = snapshot l30_sales.",
+                        headerTooltip: "Yesterday's sales = Pacific calendar day before latest order date in that channel's feed (same idea as Amazon), unless noted. Order-level: Amazon, eBay 1–3, Doba, Best Buy & Macy's & Tiendamia (Mirakl, excl. CLOSED), Shopify B2C/B2B (total_amount, excl. refunded), Wayfair (po_date), Faire (wholesale/retail × qty), TikTok Shop (ShipHub sum order_total), TikTok 2 (tiktok_sales_two), Reverb (reverb_daily_data), Mercari w/wo ship (item_price by shipping split), TopDawg. Temu/Temu 2 = FB×qty from daily tables. Snapshot fallback: channels with only aggregate sheet metrics (e.g. PLS, Instagram Shop, FB Marketplace, Business 5Core).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,

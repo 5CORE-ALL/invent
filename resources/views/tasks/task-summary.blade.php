@@ -2,6 +2,9 @@
 
 @section('css')
     <style>
+        #task-summary-size-wrap {
+            --ts-avatar-size: 30px;
+        }
         .task-summary-table thead th,
         .task-summary-table tbody td {
             text-align: center;
@@ -14,12 +17,56 @@
             color: #64748b;
             border-bottom-width: 1px;
         }
+        .task-summary-avatar-cell {
+            overflow: visible;
+        }
+        .task-summary-avatar-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            vertical-align: middle;
+        }
         .task-summary-avatar {
-            width: 40px;
-            height: 40px;
+            width: var(--ts-avatar-size, 30px);
+            height: var(--ts-avatar-size, 30px);
+            max-width: none;
             border-radius: 50%;
             object-fit: cover;
             border: 1px solid rgba(15, 23, 42, 0.08);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            transform-origin: center center;
+        }
+        .task-summary-avatar-wrap:hover {
+            z-index: 10;
+        }
+        .task-summary-avatar-wrap:hover .task-summary-avatar {
+            transform: scale(1.334);
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+        }
+        .task-summary-col-overdue-positive {
+            color: #dc2626 !important;
+            font-weight: 700;
+        }
+        .task-summary-col-done {
+            color: #15803d !important;
+            font-weight: 600;
+        }
+        .task-summary-avatar-size-row {
+            max-width: 420px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .task-summary-avatar-size-row label {
+            font-size: 0.8rem;
+            color: #64748b;
+            white-space: nowrap;
+        }
+        #ts-analytics-val-overdue {
+            color: #dc2626;
+        }
+        #ts-analytics-val-done {
+            color: #15803d;
         }
         .task-summary-num {
             font-variant-numeric: tabular-nums;
@@ -239,6 +286,24 @@
                             </div>
                         </div>
                     @endif
+                    <div id="task-summary-size-wrap">
+                        @if (!empty($rows) && count($rows))
+                            <div class="task-summary-avatar-size-row d-flex align-items-center gap-3 mb-3 flex-wrap justify-content-center">
+                                <label for="task-summary-avatar-size" class="mb-0">Profile image size</label>
+                                <input type="range"
+                                       class="form-range flex-grow-1"
+                                       style="max-width: 220px;"
+                                       id="task-summary-avatar-size"
+                                       min="20"
+                                       max="56"
+                                       step="2"
+                                       value="30"
+                                       aria-valuemin="20"
+                                       aria-valuemax="56"
+                                       aria-describedby="task-summary-avatar-size-hint" />
+                                <span class="small text-muted tabular-nums" id="task-summary-avatar-size-hint" aria-live="polite">30px</span>
+                            </div>
+                        @endif
                     <div class="table-responsive">
                         <table class="table table-hover table-striped table-bordered mb-0 task-summary-table">
                             <thead class="table-light">
@@ -258,6 +323,9 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Sort by assignor task count" role="button" tabindex="0">
                                         Assignor task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="done" data-sort-type="number" title="Sort by done count" role="button" tabindex="0">
+                                        Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Sort by overdue count" role="button" tabindex="0">
                                         Overdue <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
@@ -267,9 +335,6 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="need_approval" data-sort-type="number" title="Sort by Need Approval count" role="button" tabindex="0">
                                         Need Approval <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="done" data-sort-type="number" title="Sort by done count" role="button" tabindex="0">
-                                        Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
-                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -277,7 +342,7 @@
                                     @php
                                         $avatarUrl = !empty($row['avatar'])
                                             ? asset('storage/' . $row['avatar'])
-                                            : asset('images/users/avatar-2.jpg');
+                                            : asset('images/users/add-image-placeholder.svg');
                                         $searchBlob = strtolower(
                                             trim($row['team_member'] . ' ' . ($row['designation'] ?? ''))
                                         );
@@ -293,16 +358,18 @@
                                         data-sort-need_approval="{{ (int) ($row['need_approval'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}">
                                         <td>{{ $row['team_member'] }}</td>
-                                        <td>
-                                            <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" width="40" height="40" loading="lazy" />
+                                        <td class="task-summary-avatar-cell">
+                                            <span class="task-summary-avatar-wrap">
+                                                <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" loading="lazy" />
+                                            </span>
                                         </td>
                                         <td>{{ $row['designation'] ?: '—' }}</td>
                                         <td class="task-summary-num">{{ $row['task'] }}</td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
-                                        <td class="task-summary-num">{{ $row['overdue'] }}</td>
+                                        <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
+                                        <td class="task-summary-num @if(($row['overdue'] ?? 0) > 0) task-summary-col-overdue-positive @endif">{{ $row['overdue'] }}</td>
                                         <td class="task-summary-num">{{ $row['a_task'] }}</td>
                                         <td class="task-summary-num">{{ $row['need_approval'] }}</td>
-                                        <td class="task-summary-num">{{ $row['done'] }}</td>
                                     </tr>
                                 @empty
                                     <tr>
@@ -316,6 +383,7 @@
                                 @endif
                             </tbody>
                         </table>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -366,6 +434,40 @@
             var emptyRow = document.getElementById('task-summary-filter-empty');
             var tsAnalyticsChart = null;
             var tsAnalyticsPayload = null;
+            var sizeWrap = document.getElementById('task-summary-size-wrap');
+            var sizeInput = document.getElementById('task-summary-avatar-size');
+            var sizeHint = document.getElementById('task-summary-avatar-size-hint');
+            var avatarSizeLsKey = 'taskSummaryAvatarPx';
+
+            function applyTaskSummaryAvatarSize(px) {
+                var n = parseInt(px, 10);
+                if (isNaN(n)) {
+                    n = 30;
+                }
+                n = Math.max(20, Math.min(56, n));
+                if (sizeWrap) {
+                    sizeWrap.style.setProperty('--ts-avatar-size', n + 'px');
+                }
+                if (sizeHint) {
+                    sizeHint.textContent = n + 'px';
+                }
+            }
+
+            if (sizeInput && sizeWrap) {
+                var savedPx = parseInt(localStorage.getItem(avatarSizeLsKey), 10);
+                if (!isNaN(savedPx) && savedPx >= 20 && savedPx <= 56) {
+                    sizeInput.value = String(savedPx);
+                }
+                applyTaskSummaryAvatarSize(sizeInput.value);
+                sizeInput.addEventListener('input', function () {
+                    applyTaskSummaryAvatarSize(sizeInput.value);
+                    try {
+                        localStorage.setItem(avatarSizeLsKey, String(parseInt(sizeInput.value, 10) || 30));
+                    } catch (e) { /* ignore */ }
+                });
+            } else if (sizeWrap) {
+                applyTaskSummaryAvatarSize(30);
+            }
 
             function getDataRows() {
                 return Array.prototype.slice.call(tbody.querySelectorAll('tr.task-summary-row'));
