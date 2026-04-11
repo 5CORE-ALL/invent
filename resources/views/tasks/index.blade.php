@@ -1855,10 +1855,16 @@
                     <textarea class="form-control" id="task-done-report" rows="5" placeholder="Describe what was completed, outcomes, or notes for the assignor." required></textarea>
                     <div class="invalid-feedback d-none" id="task-done-report-feedback">Please enter a report.</div>
                 </div>
-                <div class="mb-0">
+                <div class="mb-3">
                     <label for="task-done-reference-link" class="form-label">Reference link <span class="text-muted fw-normal">(optional)</span></label>
                     <input type="text" class="form-control" id="task-done-reference-link" placeholder="https://…" autocomplete="off">
                     <small class="text-muted">Optional URL (e.g. doc, sheet, or ticket).</small>
+                </div>
+                <div class="mb-0">
+                    <label for="task-done-atc" class="form-label">Actual time to complete (ATC) <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control" id="task-done-atc" min="1" max="9999999999" placeholder="Minutes, e.g. 45" autocomplete="off" required>
+                    <small class="text-muted">Minutes you actually spent on this task (required).</small>
+                    <div class="invalid-feedback d-none" id="task-done-atc-feedback">Please enter ATC in minutes (1–9999999999).</div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -5032,16 +5038,31 @@
                 }
             });
 
-            // Confirm Done — POST /tasks/{id}/complete (report required, reference link optional)
+            // Confirm Done — POST /tasks/{id}/complete (report + ATC required, reference link optional)
             $('#confirm-done-btn').on('click', function() {
                 $('#done-modal-errors').addClass('d-none').text('');
                 $('#task-done-report').removeClass('is-invalid');
                 $('#task-done-report-feedback').addClass('d-none');
+                $('#task-done-atc').removeClass('is-invalid');
+                $('#task-done-atc-feedback').addClass('d-none');
 
                 var report = $('#task-done-report').val().trim();
                 if (!report) {
                     $('#task-done-report').addClass('is-invalid');
                     $('#task-done-report-feedback').removeClass('d-none');
+                    return;
+                }
+
+                var atcRaw = $('#task-done-atc').val();
+                var atcNum = parseInt(atcRaw, 10);
+                if (!atcRaw || isNaN(atcNum) || atcNum <= 0) {
+                    $('#task-done-atc').addClass('is-invalid');
+                    $('#task-done-atc-feedback').removeClass('d-none');
+                    return;
+                }
+                if (String(atcRaw).length > 10 || atcNum > 9999999999) {
+                    $('#task-done-atc').addClass('is-invalid');
+                    $('#task-done-atc-feedback').removeClass('d-none');
                     return;
                 }
 
@@ -5055,12 +5076,14 @@
                     data: {
                         _token: '{{ csrf_token() }}',
                         report: report,
-                        reference_link: refLink || ''
+                        reference_link: refLink || '',
+                        atc: atcNum
                     },
                     success: function(response) {
                         $('#doneModal').modal('hide');
                         $('#task-done-report').val('');
                         $('#task-done-reference-link').val('');
+                        $('#task-done-atc').val('');
                         table.replaceData();
 
                         var alertHtml = `
@@ -5084,6 +5107,9 @@
                             }
                             if (e.reference_link) {
                                 parts = parts.concat(e.reference_link);
+                            }
+                            if (e.atc) {
+                                parts = parts.concat(e.atc);
                             }
                             if (xhr.responseJSON.message && parts.length === 0) {
                                 parts.push(xhr.responseJSON.message);
@@ -5109,9 +5135,12 @@
             $('#doneModal').on('hidden.bs.modal', function () {
                 $('#task-done-report').val('');
                 $('#task-done-reference-link').val('');
+                $('#task-done-atc').val('');
                 $('#done-modal-errors').addClass('d-none').text('');
                 $('#task-done-report').removeClass('is-invalid');
                 $('#task-done-report-feedback').addClass('d-none');
+                $('#task-done-atc').removeClass('is-invalid');
+                $('#task-done-atc-feedback').addClass('d-none');
             });
 
             // Confirm Status Change

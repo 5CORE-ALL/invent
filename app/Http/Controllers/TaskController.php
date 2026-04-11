@@ -1001,12 +1001,13 @@ class TaskController extends Controller
         $validated = $request->validate([
             'report' => 'required|string|min:1',
             'reference_link' => 'nullable|url|max:2048',
+            'atc' => 'required|integer|min:1|digits_between:1,10',
         ]);
 
         $task->report = $validated['report'];
         $task->reference_link = $validated['reference_link'] ?? null;
         $task->status = 'Done';
-        $this->applyTaskDoneEffects($task, null);
+        $this->applyTaskDoneEffects($task, (int) $validated['atc']);
 
         $task->save();
 
