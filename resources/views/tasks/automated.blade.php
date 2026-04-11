@@ -900,6 +900,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-duplicate-btn">
                         <i class="mdi mdi-content-copy text-info me-2"></i>
                         <strong>Duplicate Tasks</strong>
+                        <small class="d-block text-muted ms-4">Optional: assign all copies to one user</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
@@ -2068,13 +2069,22 @@
                 exportSelectedAutomatedTasksCsv();
             });
 
-            // Bulk Duplicate
+            // Bulk Duplicate — choose assignee for new copies (or keep each original’s assignee)
             $('#bulk-duplicate-btn').on('click', function(e) {
                 e.preventDefault();
-                
-                if (confirm(`Are you sure you want to duplicate ${selectedTasks.length} task(s)?\n\nThis will create exact copies of the selected automated tasks.`)) {
-                    bulkUpdate('duplicate', {});
-                }
+                bulkActionType = 'duplicate';
+                var html = `
+                    <p class="mb-2"><strong>Duplicate ${selectedTasks.length} automated task(s)</strong></p>
+                    <p class="text-muted small mb-3">Creates one copy per selected row. Choose an assignee below to set <strong>assign_to</strong> on every new copy; otherwise each copy keeps the same assignee as its original.</p>
+                    <div class="mb-3">
+                        <label for="bulk-duplicate-assignee-select" class="form-label">Assign duplicated tasks to</label>
+                        <select class="form-select" id="bulk-duplicate-assignee-select">
+                            <option value="">Same assignee as original (per task)</option>
+                        </select>
+                    </div>
+                `;
+                showBulkUpdateForm('Duplicate tasks', html);
+                loadUsersForDuplicateBulk();
             });
 
             // Bulk Delete
@@ -2213,8 +2223,14 @@
                             return;
                         }
                         break;
+                    case 'duplicate':
+                        var dupAssignee = $('#bulk-duplicate-assignee-select').val();
+                        if (dupAssignee) {
+                            data.assignee_id = dupAssignee;
+                        }
+                        break;
                 }
-                
+
                 bulkUpdate(bulkActionType, data);
             });
 
@@ -2280,6 +2296,25 @@
                             options += `<option value="${user.id}">${user.name}</option>`;
                         });
                         $('#bulk-assignee-select').html(options);
+                    }
+                });
+            }
+
+            function loadUsersForDuplicateBulk() {
+                $.ajax({
+                    url: '/tasks/users-list',
+                    type: 'GET',
+                    success: function(users) {
+                        var sel = $('#bulk-duplicate-assignee-select');
+                        var keep = '<option value="">Same assignee as original (per task)</option>';
+                        var opts = keep;
+                        users.forEach(function(user) {
+                            opts += `<option value="${user.id}">${user.name}</option>`;
+                        });
+                        sel.html(opts);
+                    },
+                    error: function() {
+                        $('#bulk-duplicate-assignee-select').html('<option value="">Same assignee as original (per task)</option>');
                     }
                 });
             }

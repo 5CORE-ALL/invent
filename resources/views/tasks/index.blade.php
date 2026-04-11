@@ -1418,7 +1418,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">ETC 30D</div>
-                        <div class="stat-value">{{ number_format(($stats['etc_last_30'] ?? 0) / 60, 1) }}h</div>
+                        <div class="stat-value">{{ (int) round(($stats['etc_last_30'] ?? 0) / 60) }}h</div>
                         <div class="stat-unit" title="Last 30 days ETC including deleted tasks">hours</div>
                     </div>
                 </div>
@@ -1432,7 +1432,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">ATC 30D</div>
-                        <div class="stat-value">{{ number_format(($stats['atc_last_30'] ?? 0) / 60, 1) }}h</div>
+                        <div class="stat-value">{{ (int) round(($stats['atc_last_30'] ?? 0) / 60) }}h</div>
                         <div class="stat-unit" title="Last 30 days ATC including deleted tasks">hours</div>
                     </div>
                 </div>
@@ -3435,9 +3435,9 @@
                             var label = $(this).find('.stat-label').text().trim();
                             var valueEl = $(this).find('.stat-value');
                             if (label === 'ETC 30D') {
-                                valueEl.text(etcHours.toFixed(1) + 'h');
+                                valueEl.text(Math.round(etcHours) + 'h');
                             } else if (label === 'ATC 30D') {
-                                valueEl.text(atcHours.toFixed(1) + 'h');
+                                valueEl.text(Math.round(atcHours) + 'h');
                             }
                         });
                     }

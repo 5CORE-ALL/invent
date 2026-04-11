@@ -1350,28 +1350,44 @@ class TaskController extends Controller
             case 'duplicate':
                 // Duplicate automated tasks from automate_tasks table
                 $tasksToDuplicate = \DB::table('automate_tasks')->whereIn('id', $taskIds)->get();
-                
+
                 if ($tasksToDuplicate->isEmpty()) {
                     return response()->json([
                         'success' => false,
                         'message' => 'No tasks found to duplicate'
                     ], 404);
                 }
-                
+
+                $duplicateAssigneeEmail = null;
+                if ($request->filled('assignee_id')) {
+                    $dupAssignee = User::find((int) $request->input('assignee_id'));
+                    if ($dupAssignee && $dupAssignee->email) {
+                        $duplicateAssigneeEmail = $dupAssignee->email;
+                    }
+                }
+
                 $duplicatedCount = 0;
                 foreach ($tasksToDuplicate as $task) {
                     $taskArray = (array) $task;
                     unset($taskArray['id']); // Remove ID so a new one is created
                     $taskArray['created_at'] = now();
                     $taskArray['updated_at'] = now();
-                    
+                    if ($duplicateAssigneeEmail !== null) {
+                        $taskArray['assign_to'] = $duplicateAssigneeEmail;
+                    }
+
                     \DB::table('automate_tasks')->insert($taskArray);
                     $duplicatedCount++;
                 }
-                
+
+                $msg = "$duplicatedCount task(s) duplicated successfully!";
+                if ($duplicateAssigneeEmail !== null) {
+                    $msg .= ' All copies assigned to the selected user.';
+                }
+
                 return response()->json([
                     'success' => true,
-                    'message' => "$duplicatedCount task(s) duplicated successfully!"
+                    'message' => $msg,
                 ]);
             
             case 'assignor':
