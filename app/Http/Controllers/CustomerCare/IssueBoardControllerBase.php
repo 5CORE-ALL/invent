@@ -23,6 +23,12 @@ abstract class IssueBoardControllerBase extends Controller
     /** Extra fields to include in issuesIndex API response (override in subclass) */
     protected function extraRowFields(object $row): array { return []; }
 
+    /** Extra fields on history API rows (override in subclass) */
+    protected function extraHistoryRowFields(object $row): array { return []; }
+
+    /** Merge into CSV import row payload (override in subclass; avoid keys your table lacks) */
+    protected function csvImportExtraPayload(callable $get): array { return []; }
+
     protected function normalizeFieldType(string $fieldType): string
     {
         $value = trim($fieldType);
@@ -280,7 +286,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'logged_at_display' => $row->logged_at
                     ? \Carbon\Carbon::parse($row->logged_at)->timezone($tz)->format('d-m-Y H:i')
                     : '',
-            ];
+            ] + $this->extraHistoryRowFields($row);
         })->values();
 
         return response()->json(['data' => $data]);
@@ -436,6 +442,7 @@ abstract class IssueBoardControllerBase extends Controller
             'c_action_1_remark'    => ['c_action_1_remark', 'root cause fixed remark', 'root_cause_fixed_remark'],
             'issue_date'           => ['issue_date', 'issue date', 'date'],
             'department'           => ['department', 'dept'],
+            'order_number'         => ['order_number', 'order id', 'order_id', 'order #'],
         ];
 
         while (($row = fgetcsv($handle)) !== false) {
@@ -504,6 +511,7 @@ abstract class IssueBoardControllerBase extends Controller
                     'created_at'           => $now,
                     'updated_at'           => $now,
                 ];
+                $payload = array_merge($payload, $this->csvImportExtraPayload($get));
 
                 \Illuminate\Support\Facades\DB::transaction(function () use ($payload, $now) {
                     $id = \Illuminate\Support\Facades\DB::table($this->issuesTable())->insertGetId($payload);

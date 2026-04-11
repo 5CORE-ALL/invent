@@ -14,4 +14,6 @@
     'dropdownOptionsDeleteUrl' => route('customer.care.c.care.issues.dropdown.options.delete'),
     'importUrl' => route('customer.care.c.care.issues.import'),
     'marketplaces' => $marketplaces ?? collect(),
+    'showOrderIdField' => true,
+    'orderIdFieldLabel' => 'Order ID',
 ])->render() !!}

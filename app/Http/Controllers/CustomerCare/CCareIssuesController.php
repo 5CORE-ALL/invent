@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers\CustomerCare;
 
+use App\Http\Controllers\CustomerCare\Concerns\HasOptionalOrderNumberField;
+
 class CCareIssuesController extends IssueBoardControllerBase
 {
+    use HasOptionalOrderNumberField;
+
     protected function viewName(): string
     {
         return 'customer-care.c_care_issues';

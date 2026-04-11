@@ -1165,6 +1165,73 @@
                         }
                     },
                     {
+                        title: "L7 Sales",
+                        field: "L7 Sales",
+                        headerTooltip: "Sum of revenue for the 7 Pacific calendar days ending on the same day as Y Sales (inclusive). Same rules per channel as Y Sales.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 95,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue() || 0);
+                            if (!value || value === 0) {
+                                return '<span style="color:#adb5bd;">—</span>';
+                            }
+                            return `<span style="font-weight:600;color:#198754;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong>—</strong>';
+                            return `<strong style="color:#198754;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "L7 vs ÷30",
+                        field: "L7 vs 30 pace %",
+                        headerTooltip: "30-divide rule: daily pace from L30 = L30÷30. Expected L7 = that × 7. This column is (L7 − expected) ÷ expected × 100. Green = ahead of L30 pace (increment), red = behind (reduce).",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 88,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v === null || v === undefined || v === '') {
+                                return '<span style="color:#adb5bd;">—</span>';
+                            }
+                            const n = parseNumber(v);
+                            if (!isFinite(n)) return '<span style="color:#adb5bd;">—</span>';
+                            if (n === 0) {
+                                return '<span style="font-weight:600;color:#6c757d;">0%</span>';
+                            }
+                            const pos = n > 0;
+                            const color = pos ? '#198754' : '#dc3545';
+                            const arrow = pos ? '↑' : '↓';
+                            const sign = pos ? '+' : '';
+                            return `<span style="font-weight:600;color:${color};" title="vs (L30÷30)×7">${arrow} ${sign}${n.toFixed(1)}%</span>`;
+                        },
+                        bottomCalc: function(values, data) {
+                            let sumL30 = 0;
+                            let sumL7 = 0;
+                            data.forEach(function(row) {
+                                sumL30 += parseNumber(row['L30 Sales'] || 0);
+                                sumL7 += parseNumber(row['L7 Sales'] || 0);
+                            });
+                            const expected = (sumL30 / 30) * 7;
+                            if (expected <= 0) return '—';
+                            return ((sumL7 - expected) / expected) * 100;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v === '—' || v === null || v === undefined) return '<strong>—</strong>';
+                            const n = parseNumber(v);
+                            if (!isFinite(n)) return '<strong>—</strong>';
+                            const pos = n > 0;
+                            const color = pos ? '#198754' : '#dc3545';
+                            const arrow = pos ? '↑' : '↓';
+                            const sign = pos ? '+' : '';
+                            return `<strong style="color:${color};">${arrow} ${sign}${n.toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
                         title: "Ads Spend",
                         field: "Total Ad Spend",
                         hozAlign: "center",
@@ -3123,7 +3190,7 @@
                 'ads': ['L30 Sales', 'Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
                 'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
                 'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %', '_gross_pft'],
-                'movement': ['L30 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
+                'movement': ['L30 Sales', 'Y Sales', 'L7 Sales', 'L7 vs 30 pace %', 'L30 Orders', 'Qty items', 'Velocity'],
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
                 'ah': ['AH Score', 'Policy Violations', 'Customer Complaints', 'Shipping Health', 'CC Health', 'Returns %', 'A2Z Claims', 'Ratings & Reviews', 'Seller Rating & Reviews'],
                 'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],

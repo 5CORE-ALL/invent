@@ -268,12 +268,12 @@
                 {
                     title: "Title",
                     field: "title",
-                    width: 200,
+                    width: 280,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value) return '';
-                        // Truncate long titles
-                        return value.length > 50 ? value.substring(0, 50) + '...' : value;
+                        const maxLen = 150;
+                        return value.length > maxLen ? value.substring(0, maxLen) + '...' : value;
                     },
                     tooltip: true
                 },

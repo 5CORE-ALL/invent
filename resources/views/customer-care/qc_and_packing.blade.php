@@ -427,6 +427,8 @@
                                     @if($showDispatchExtras ?? false)
                                     <th class="orders-hold-col-action">Order #</th>
                                     <th class="orders-hold-col-action">Loss $</th>
+                                    @elseif($showOrderIdField ?? false)
+                                    <th class="orders-hold-col-action">{{ $orderIdFieldLabel ?? 'Order ID' }}</th>
                                     @endif
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-mp">MKT</th>
@@ -443,7 +445,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="15" class="text-center text-muted py-4">No records found.</td>
+                                    <td colspan="{{ ($showDispatchExtras ?? false) ? 17 : (($showOrderIdField ?? false) ? 16 : 15) }}" class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -464,6 +466,9 @@
                                     <th class="orders-hold-col-idx">#</th>
                                     <th class="orders-hold-col-img"></th>
                                     <th class="orders-hold-col-sku">SKU</th>
+                                    @if($showOrderIdField ?? false)
+                                    <th class="orders-hold-col-action">{{ $orderIdFieldLabel ?? 'Order ID' }}</th>
+                                    @endif
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-mp">MKT</th>
                                     <th class="orders-hold-col-what">What?</th>
@@ -480,7 +485,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="16" class="text-center text-muted py-4">No history found.</td>
+                                    <td colspan="{{ ($showOrderIdField ?? false) ? 17 : 16 }}" class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -502,7 +507,7 @@
                     <div id="importCsvAlert" class="d-none mb-3"></div>
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
-                        <code>sku, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department</code>
+                        <code>sku@if($showOrderIdField ?? false), order_number (or order id / order_id)@endif, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department</code>
                     </p>
                     <p class="text-muted small mb-3">
                         Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found). All other columns are optional.
@@ -598,6 +603,12 @@
                                 <input type="number" class="form-control" id="hold_issue_total_loss" name="total_loss"
                                     step="0.01" placeholder="0.00">
                             </div>
+                            @elseif($showOrderIdField ?? false)
+                            <div class="col-md-6">
+                                <label for="hold_issue_order_number" class="form-label">{{ $orderIdFieldLabel ?? 'Order ID' }}</label>
+                                <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
+                                    placeholder="Enter order ID">
+                            </div>
                             @endif
 
                             <div class="col-md-6">
@@ -634,7 +645,8 @@
                             </div>
 
                             <div class="col-md-6" id="action1RemarkWrap">
-                                <label for="hold_issue_action_1_remark" class="form-label">Action Remark</label>
+                                <label for="hold_issue_action_1_remark" class="form-label">Action Remark
+                                    <span id="action1RemarkRequiredStar" class="text-danger d-none" aria-hidden="true">*</span></label>
                                 <input type="text" class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
                                     placeholder="Write action remark...">
                             </div>
@@ -646,15 +658,15 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="hold_issue_text" class="form-label">Root Cause Found</label>
+                                <label for="hold_issue_text" class="form-label">Root Cause Found <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="hold_issue_text" name="issue"
                                     list="hold_issue_root_cause_found_datalist"
-                                    placeholder="Type or select root cause..." autocomplete="off">
+                                    placeholder="Type or select root cause..." autocomplete="off" required>
                                 <datalist id="hold_issue_root_cause_found_datalist"></datalist>
                             </div>
 
                             <div class="col-12 d-none" id="rootCauseRemarkWrap">
-                                <label for="hold_issue_remark" class="form-label">Root Cause Remark</label>
+                                <label for="hold_issue_remark" class="form-label">Root Cause Remark <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="hold_issue_remark" name="issue_remark"
                                     placeholder="Write remark for Other">
                             </div>
@@ -683,7 +695,7 @@
                             </div>
 
                             <div class="col-12 d-none" id="cAction1RemarkWrap">
-                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark</label>
+                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="hold_issue_c_action_1_remark"
                                     name="c_action_1_remark" placeholder="Write remark for Other">
                             </div>
@@ -1045,7 +1057,20 @@
                 }
             }
 
-            function toggleAction1RemarkField() { /* always visible */ }
+            function toggleAction1RemarkField() {
+                const selected = String(action1Input?.value || '').trim();
+                const isOther = selected === 'Other';
+                const star = document.getElementById('action1RemarkRequiredStar');
+                if (star) {
+                    star.classList.toggle('d-none', !isOther);
+                }
+                if (action1RemarkInput) {
+                    action1RemarkInput.required = isOther;
+                    if (!isOther) {
+                        action1RemarkInput.setCustomValidity('');
+                    }
+                }
+            }
 
             function toggleCAction1RemarkField() {
                 const selected = String(cAction1Input?.value || '').trim();
@@ -1173,6 +1198,8 @@
                         @if($showDispatchExtras ?? false)
                         '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
                         '<td>' + (row.total_loss != null ? '$' + parseFloat(row.total_loss).toFixed(2) : '—') + '</td>' +
+                        @elseif($showOrderIdField ?? false)
+                        '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
                         @endif
                         '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
@@ -1216,6 +1243,9 @@
                         '<td>' + escapeHtml(row.issue_ref || row.orders_on_hold_issue_id || row.id) + '</td>' +
                         '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row.image_url) + '" class="sku-thumb" alt="">' : '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') + '</td>' +
                         '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) + '</span></td>' +
+                        @if($showOrderIdField ?? false)
+                        '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
+                        @endif
                         '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
@@ -1289,6 +1319,7 @@
                     department: row?.department ?? '',
                     created_by: row?.created_by ?? 'System',
                     logged_at: row?.logged_at_display ?? row?.logged_at ?? '',
+                    order_number: row?.order_number ?? '',
                 };
             }
 
@@ -1338,8 +1369,10 @@
                 resetSkuImage();
                 marketplace1Input.value = '';
                 whatHappenedInput.value = '';
-                @if($showDispatchExtras ?? false)
+                @if(($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
                 if (document.getElementById('hold_issue_order_number')) document.getElementById('hold_issue_order_number').value = '';
+                @endif
+                @if($showDispatchExtras ?? false)
                 if (document.getElementById('hold_issue_total_loss')) document.getElementById('hold_issue_total_loss').value = '';
                 // Clear all extra SKU rows
                 const extraContainer = document.getElementById('extra-sku-rows-container');
@@ -1374,8 +1407,10 @@
                 marketplace1Input.value = record.marketplace_1 || '';
                 whatHappenedInput.value = record.what_happened || '';
                 issueInput.value = record.issue || '';
-                @if($showDispatchExtras ?? false)
+                @if(($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
                 if (document.getElementById('hold_issue_order_number')) document.getElementById('hold_issue_order_number').value = record.order_number || '';
+                @endif
+                @if($showDispatchExtras ?? false)
                 if (document.getElementById('hold_issue_total_loss')) document.getElementById('hold_issue_total_loss').value = record.total_loss ?? '';
                 @endif
                 issueRemarkInput.value = record.issue_remark || '';
@@ -1525,6 +1560,16 @@
                     skuInput.focus();
                     return;
                 }
+                if (!issue) {
+                    showAlert('Root Cause Found is required.');
+                    issueInput.focus();
+                    return;
+                }
+                if (action1Input.value.trim() === 'Other' && action1RemarkInput.value.trim() === '') {
+                    showAlert('Please enter Action remark when Action is Other.');
+                    action1RemarkInput.focus();
+                    return;
+                }
                 if (issueInput.value.trim() === 'Other' && issueRemarkInput.value.trim() === '') {
                     showAlert('Please enter Root Cause remark for Other.');
                     issueRemarkInput.focus();
@@ -1543,8 +1588,10 @@
 
                     const sharedFields = {
                         issue: issue,
-                        @if($showDispatchExtras ?? false)
+                        @if(($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
                         order_number: (document.getElementById('hold_issue_order_number')?.value || '').trim(),
+                        @endif
+                        @if($showDispatchExtras ?? false)
                         total_loss: document.getElementById('hold_issue_total_loss')?.value || '',
                         @endif
                         marketplace_1: marketplace1Input.value.trim(),
@@ -1734,12 +1781,12 @@
                     URL.revokeObjectURL(url);
                 }
 
-                const activeHeaders = ['#', 'SKU', 'Order QTY', 'MKT',
+                const activeHeaders = ['#', 'SKU'@if($showOrderIdField ?? false), @json($orderIdFieldLabel ?? 'Order ID')@endif, 'Order QTY', 'MKT',
                     'What?', 'Action', 'Action Remark', 'Track',
                     'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'];
                 const activeData = holdIssueRows.map(r => [
-                    r.id, r.sku, r.order_qty,
+                    r.id, r.sku, @if($showOrderIdField ?? false)(r.order_number || ''), @endif r.order_qty,
                     r.marketplace_1, r.what_happened,
                     r.action_1, r.action_1_remark, r.replacement_tracking,
                     r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark,
@@ -1767,8 +1814,12 @@
 
             document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
                 e.preventDefault();
-                const headers = ['sku','qty','order_qty','parent','marketplace_1','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark','department'];
-                const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed','','Dispatch'];
+                const headers = {!! json_encode(($showOrderIdField ?? false)
+                    ? ['sku', 'order_number', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1', 'action_1_remark', 'replacement_tracking', 'issue', 'issue_remark', 'c_action_1', 'c_action_1_remark', 'department']
+                    : ['sku', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1', 'action_1_remark', 'replacement_tracking', 'issue', 'issue_remark', 'c_action_1', 'c_action_1_remark', 'department']) !!};
+                const sample  = {!! json_encode(($showOrderIdField ?? false)
+                    ? ['SAMPLE-SKU-001', '112-1234567-8901234', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled', '', 'TRK123', 'Quality Issue', '', 'Fixed', '', 'Dispatch']
+                    : ['SAMPLE-SKU-001', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled', '', 'TRK123', 'Quality Issue', '', 'Fixed', '', 'Dispatch']) !!};
                 const csv = [headers.join(','), sample.join(',')].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);

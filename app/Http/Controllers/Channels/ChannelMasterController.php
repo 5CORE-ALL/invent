@@ -926,6 +926,7 @@ class ChannelMasterController extends Controller
         $advMastersData = \App\Models\ADVMastersData::all()->keyBy('channel');
 
         $finalData = [];
+        $l7Summaries = [];
 
         // ── Yesterday Sales — same source as the dot chart ────────────────────
         // The dot chart reads from channel_master_summaries (snapshot_date per channel).
@@ -977,6 +978,16 @@ class ChannelMasterController extends Controller
                     ->sum('total_amount');
 
                 $yesterdaySummaries['amazon'] = round($amazonYSales, 2);
+
+                [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+                $amazonL7Sales = (float) DB::table('amazon_orders')
+                    ->where('order_date', '>=', $l7StartPacific)
+                    ->where('order_date', '<=', $l7EndPacific)
+                    ->where(function ($q) {
+                        $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
+                    })
+                    ->sum('total_amount');
+                $l7Summaries['amazon'] = round($amazonL7Sales, 2);
             }
         } catch (\Throwable $e) {
             Log::warning('Amazon Y Sales calculation failed: ' . $e->getMessage());
@@ -1127,6 +1138,138 @@ class ChannelMasterController extends Controller
             Log::warning('AliExpress Y Sales failed: ' . $e->getMessage());
         }
 
+        // L7 Sales: seven Pacific calendar days ending on the same "yesterday" as Y Sales (inclusive).
+        $temuL7 = $this->computeTemuL7SalesLikeAmazon(false);
+        if ($temuL7 !== null) {
+            $l7Summaries['temu'] = $temuL7;
+        }
+        $temu2L7 = $this->computeTemuL7SalesLikeAmazon(true);
+        if ($temu2L7 !== null) {
+            $l7Summaries['temu2'] = $temu2L7;
+        }
+        try {
+            $ebayL7 = $this->computeEbayL7SalesLikeAmazon(1);
+            if ($ebayL7 !== null) {
+                $l7Summaries['ebay'] = $ebayL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('eBay L7 Sales calculation failed: ' . $e->getMessage());
+        }
+        try {
+            $ebay2L7 = $this->computeEbayL7SalesLikeAmazon(2);
+            if ($ebay2L7 !== null) {
+                $l7Summaries['ebaytwo'] = $ebay2L7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('eBay 2 L7 Sales calculation failed: ' . $e->getMessage());
+        }
+        try {
+            $ebay3L7 = $this->computeEbayL7SalesLikeAmazon(3);
+            if ($ebay3L7 !== null) {
+                $l7Summaries['ebaythree'] = $ebay3L7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('eBay 3 L7 Sales calculation failed: ' . $e->getMessage());
+        }
+        try {
+            $dobaL7 = $this->computeDobaL7SalesLikeAmazon();
+            if ($dobaL7 !== null) {
+                $l7Summaries['doba'] = $dobaL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Doba L7 Sales calculation failed: ' . $e->getMessage());
+        }
+        try {
+            $bestbuyL7 = $this->computeBestBuyUsaL7SalesLikeAmazon();
+            if ($bestbuyL7 !== null) {
+                $l7Summaries['bestbuyusa'] = $bestbuyL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy USA L7 Sales calculation failed: ' . $e->getMessage());
+        }
+        foreach (["Macy's, Inc." => 'macys', 'Tiendamia' => 'tiendamia'] as $miraklChannelName => $l7Key) {
+            try {
+                $miraklL7 = $this->computeMiraklL7SalesLikeAmazon($miraklChannelName);
+                if ($miraklL7 !== null) {
+                    $l7Summaries[$l7Key] = $miraklL7;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Mirakl L7 Sales (' . $miraklChannelName . ') failed: ' . $e->getMessage());
+            }
+        }
+        if (isset($l7Summaries['tiendamia'])) {
+            $l7Summaries['tendamia'] = $l7Summaries['tiendamia'];
+        } else {
+            try {
+                $tiendaMiaL7 = $this->computeMiraklL7SalesLikeAmazon('Tienda Mia');
+                if ($tiendaMiaL7 !== null) {
+                    $l7Summaries['tiendamia'] = $tiendaMiaL7;
+                    $l7Summaries['tendamia'] = $tiendaMiaL7;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Mirakl L7 Sales (Tienda Mia alt) failed: ' . $e->getMessage());
+            }
+        }
+
+        $extendedL7 = [
+            [fn () => $this->computeShopifyB2xL7SalesLikeAmazon(false), 'shopifyb2c', 'Shopify B2C L7 Sales'],
+            [fn () => $this->computeShopifyB2xL7SalesLikeAmazon(true), 'shopifyb2b', 'Shopify B2B L7 Sales'],
+            [fn () => $this->computeWayfairL7SalesLikeAmazon(), 'wayfair', 'Wayfair L7 Sales'],
+            [fn () => $this->computeFaireL7SalesLikeAmazon(), 'faire', 'Faire L7 Sales'],
+            [fn () => $this->computeTiktokShopL7SalesFromShiphub(), 'tiktokshop', 'TikTok Shop L7 Sales'],
+            [fn () => $this->computeReverbL7SalesLikeAmazon(), 'reverb', 'Reverb L7 Sales'],
+            [fn () => $this->computeMercariL7SalesLikeAmazon(true), 'mercariwship', 'Mercari w ship L7 Sales'],
+            [fn () => $this->computeMercariL7SalesLikeAmazon(false), 'mercariwoship', 'Mercari wo ship L7 Sales'],
+            [fn () => $this->computeTopDawgL7SalesLikeAmazon(), 'topdawg', 'TopDawg L7 Sales'],
+        ];
+        foreach ($extendedL7 as [$fn, $key, $label]) {
+            try {
+                $v = $fn();
+                if ($v !== null) {
+                    $l7Summaries[$key] = $v;
+                }
+            } catch (\Throwable $e) {
+                Log::warning($label . ' failed: ' . $e->getMessage());
+            }
+        }
+
+        try {
+            $tiktok2L7 = $this->computeTiktokTwoL7SalesLikeAmazon();
+            if ($tiktok2L7 !== null) {
+                $l7Summaries['tiktok2'] = $tiktok2L7;
+                $l7Summaries['tiktokshop2'] = $tiktok2L7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok 2 L7 Sales failed: ' . $e->getMessage());
+        }
+
+        try {
+            $depopL7 = $this->computeDepopL7SalesLikeAmazon();
+            if ($depopL7 !== null) {
+                $l7Summaries['depop'] = $depopL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Depop L7 Sales failed: ' . $e->getMessage());
+        }
+
+        try {
+            $sheinL7 = $this->computeSheinL7SalesLikeAmazon();
+            if ($sheinL7 !== null) {
+                $l7Summaries['shein'] = $sheinL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Shein L7 Sales failed: ' . $e->getMessage());
+        }
+
+        try {
+            $aliexpressL7 = $this->computeAliexpressL7SalesLikeAmazon();
+            if ($aliexpressL7 !== null) {
+                $l7Summaries['aliexpress'] = $aliexpressL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AliExpress L7 Sales failed: ' . $e->getMessage());
+        }
+
         // Map lowercase channel key => controller method
         $controllerMap = [
             'amazon'    => 'getAmazonChannelData',
@@ -1182,6 +1325,8 @@ class ChannelMasterController extends Controller
                 'sheet_link'     => $channelRow->sheet_link,
                 'L-60 Sales'     => 0,
                 'L30 Sales'      => 0,
+                'L7 Sales'       => 0,
+                'L7 vs 30 pace %' => null,
                 'Growth'         => 0,
                 'L60 Orders'     => 0,
                 'L30 Orders'     => 0,
@@ -1314,6 +1459,15 @@ class ChannelMasterController extends Controller
             // Key must match saveChannelDailySummaries: lowercase, no spaces/dashes/&/slashes
             $channelLookup = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row['Channel '] ?? $channel))));
             $row['Y Sales'] = round($yesterdaySummaries[$channelLookup] ?? 0, 2);
+            $row['L7 Sales'] = round($l7Summaries[$channelLookup] ?? 0, 2);
+
+            // L7 vs "30 divide" pace: expected L7 = (L30 ÷ 30) × 7; % = (L7 − expected) / expected × 100
+            $l30ForPace = (float) str_replace(['$', ',', '%'], '', (string) ($row['L30 Sales'] ?? 0));
+            $l7ForPace = (float) ($row['L7 Sales'] ?? 0);
+            $expectedL7FromL30 = ($l30ForPace / 30.0) * 7.0;
+            $row['L7 vs 30 pace %'] = ($expectedL7FromL30 > 0)
+                ? round((($l7ForPace - $expectedL7FromL30) / $expectedL7FromL30) * 100, 2)
+                : null;
 
             $finalData[] = $row;
         }
@@ -1892,6 +2046,539 @@ class ChannelMasterController extends Controller
             DB::table('aliexpress_daily_data')
                 ->where('order_date', '>=', $yStart)
                 ->where('order_date', '<=', $yEnd)
+                ->cursor() as $row
+        ) {
+            $status = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($status, 'refund')
+                || str_contains($status, 'return')
+                || str_contains($status, 'cancel')
+                || str_contains($status, 'closed')) {
+                continue;
+            }
+            if (empty($row->sku_code) || empty($row->order_id)) {
+                continue;
+            }
+            $lineRevenue = (float) ($row->product_total ?? 0);
+            if ($lineRevenue <= 0) {
+                $lineRevenue = (float) ($row->supply_price ?? 0);
+            }
+            if ($lineRevenue <= 0) {
+                $lineRevenue = (float) ($row->order_amount ?? 0);
+            }
+            $sum += $lineRevenue;
+        }
+
+        return round($sum, 2);
+    }
+
+    /**
+     * Seven inclusive Pacific calendar days ending on Y-Sales "yesterday" (day before latest anchor).
+     *
+     * @return array{0: \Carbon\Carbon, 1: \Carbon\Carbon} [start, end]
+     */
+    private function pacificL7WindowEndingYesterday(Carbon $latestPacific): array
+    {
+        $end = $latestPacific->copy()->subDay()->endOfDay();
+        $start = $latestPacific->copy()->subDay()->subDays(6)->startOfDay();
+
+        return [$start, $end];
+    }
+
+    /**
+     * Temu / Temu 2 L7 Sales: same clock and revenue rules as Y Sales, 7-day window ending that yesterday.
+     */
+    private function computeTemuL7SalesLikeAmazon(bool $isTemu2): ?float
+    {
+        $modelClass = $isTemu2 ? Temu2DailyData::class : TemuDailyData::class;
+
+        try {
+            $latest = $modelClass::whereNotNull('purchase_date')->max('purchase_date');
+            if (!$latest) {
+                return null;
+            }
+
+            $latestPacific = Carbon::parse($latest)->timezone('America/Los_Angeles');
+            [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $normalizedPmSet = [];
+            if (!$isTemu2) {
+                $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
+                    ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                    ->orderBy('sku', 'asc')
+                    ->pluck('sku')
+                    ->filter(function ($sku) {
+                        return stripos($sku, 'PARENT') === false;
+                    })
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
+                    return [$normalizeSku($s) => true];
+                })->all();
+            }
+
+            $productMastersBySku = ProductMaster::all()->keyBy('sku');
+            $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
+                return $normalizeSku($pm->sku ?? '');
+            });
+
+            $rows = $modelClass::where('purchase_date', '>=', $l7StartPacific)
+                ->where('purchase_date', '<=', $l7EndPacific)
+                ->get();
+
+            $total = 0.0;
+
+            foreach ($rows as $row) {
+                if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '') {
+                    continue;
+                }
+                if (!$isTemu2) {
+                    if (!$row->order_id || trim((string) $row->order_id) === '') {
+                        continue;
+                    }
+                    if (!isset($normalizedPmSet[$normalizeSku($row->contribution_sku ?? '')])) {
+                        continue;
+                    }
+                }
+
+                $pm = $productMastersBySku[$row->contribution_sku]
+                    ?? $productMastersByNormalized[$normalizeSku($row->contribution_sku)]
+                    ?? null;
+                $parent = $pm ? $pm->parent : '';
+                if ($parent && str_starts_with((string) $parent, 'PARENT')) {
+                    continue;
+                }
+
+                $quantity = (int) ($row->quantity_purchased ?? 0);
+                $basePrice = (float) ($row->base_price_total ?? 0);
+                $sub = $basePrice * $quantity;
+                $fbPrice = $sub < 27 ? $basePrice + 2.99 : $basePrice;
+
+                if ($quantity > 0 && $basePrice > 0) {
+                    $total += $fbPrice * $quantity;
+                }
+            }
+
+            return round($total, 2);
+        } catch (\Throwable $e) {
+            Log::warning('computeTemuL7SalesLikeAmazon failed: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * eBay 1 / 2 / 3 L7 Sales: seven days ending Y-Sales yesterday (same revenue rules as Y Sales).
+     */
+    private function computeEbayL7SalesLikeAmazon(int $which): ?float
+    {
+        if ($which === 1) {
+            $latestRaw = DB::table('ebay_orders')
+                ->where(function ($q) {
+                    $q->whereNull('status')->orWhere('status', '!=', 'CANCELLED');
+                })
+                ->max('order_date');
+        } elseif ($which === 2) {
+            $latestRaw = DB::table('ebay2_orders')
+                ->where(function ($q) {
+                    $q->whereNull('status')->orWhere('status', '!=', 'CANCELLED');
+                })
+                ->max('order_date');
+        } elseif ($which === 3) {
+            $latestRaw = DB::table('ebay3_daily_data')->max('creation_date');
+        } else {
+            return null;
+        }
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        if ($which === 1) {
+            $sum = (float) DB::table('ebay_orders as o')
+                ->join('ebay_order_items as i', 'o.id', '=', 'i.ebay_order_id')
+                ->where('o.order_date', '>=', $l7StartPacific)
+                ->where('o.order_date', '<=', $l7EndPacific)
+                ->where(function ($q) {
+                    $q->whereNull('o.status')->orWhere('o.status', '!=', 'CANCELLED');
+                })
+                ->sum('i.price');
+        } elseif ($which === 2) {
+            $sum = (float) DB::table('ebay2_orders as o')
+                ->join('ebay2_order_items as i', 'o.id', '=', 'i.ebay2_order_id')
+                ->where('o.order_date', '>=', $l7StartPacific)
+                ->where('o.order_date', '<=', $l7EndPacific)
+                ->where(function ($q) {
+                    $q->whereNull('o.status')->orWhere('o.status', '!=', 'CANCELLED');
+                })
+                ->sum('i.price');
+        } else {
+            $sum = (float) DB::table('ebay3_daily_data')
+                ->where('creation_date', '>=', $l7StartPacific)
+                ->where('creation_date', '<=', $l7EndPacific)
+                ->sum('unit_price');
+        }
+
+        return round($sum, 2);
+    }
+
+    private function computeDobaL7SalesLikeAmazon(): ?float
+    {
+        $cancelled = ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'];
+
+        $latestRaw = DB::table('doba_daily_data')
+            ->where(function ($q) use ($cancelled) {
+                $q->whereNull('order_status')->orWhereNotIn('order_status', $cancelled);
+            })
+            ->max('order_time');
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = (float) DB::table('doba_daily_data')
+            ->where('order_time', '>=', $l7StartPacific)
+            ->where('order_time', '<=', $l7EndPacific)
+            ->where(function ($q) use ($cancelled) {
+                $q->whereNull('order_status')->orWhereNotIn('order_status', $cancelled);
+            })
+            ->sum('total_price');
+
+        return round($sum, 2);
+    }
+
+    private function computeMiraklL7SalesLikeAmazon(string $channelName): ?float
+    {
+        $latestRaw = DB::table('mirakl_daily_data')
+            ->where('channel_name', $channelName)
+            ->where('status', '!=', 'CLOSED')
+            ->max('order_created_at');
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = (float) DB::table('mirakl_daily_data')
+            ->where('channel_name', $channelName)
+            ->where('order_created_at', '>=', $l7StartPacific)
+            ->where('order_created_at', '<=', $l7EndPacific)
+            ->where('status', '!=', 'CLOSED')
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeBestBuyUsaL7SalesLikeAmazon(): ?float
+    {
+        return $this->computeMiraklL7SalesLikeAmazon('Best Buy USA');
+    }
+
+    private function computeShopifyB2xL7SalesLikeAmazon(bool $isB2b): ?float
+    {
+        $table = $isB2b ? 'shopify_b2b_daily_data' : 'shopify_b2c_daily_data';
+
+        $latestRaw = DB::table($table)
+            ->where('financial_status', '!=', 'refunded')
+            ->max('order_date');
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = (float) DB::table($table)
+            ->where('order_date', '>=', $l7StartPacific)
+            ->where('order_date', '<=', $l7EndPacific)
+            ->where('financial_status', '!=', 'refunded')
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeWayfairL7SalesLikeAmazon(): ?float
+    {
+        $latestRaw = DB::table('wayfair_daily_data')->whereNotNull('po_date')->max('po_date');
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
+        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+
+        $sum = (float) DB::table('wayfair_daily_data')
+            ->where('po_date', '>=', $l7StartDate)
+            ->where('po_date', '<=', $l7EndDate)
+            ->where('quantity', '>', 0)
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeFaireL7SalesLikeAmazon(): ?float
+    {
+        $latestRaw = DB::table('faire_daily_data')->whereNotNull('order_date')->max('order_date');
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = (float) DB::table('faire_daily_data')
+            ->where('order_date', '>=', $l7StartPacific)
+            ->where('order_date', '<=', $l7EndPacific)
+            ->where('quantity', '>', 0)
+            ->selectRaw(
+                'COALESCE(SUM((CASE WHEN COALESCE(wholesale_price, 0) > 0 THEN wholesale_price ELSE COALESCE(retail_price, 0) END) * quantity), 0) as revenue'
+            )
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeTiktokShopL7SalesFromShiphub(): ?float
+    {
+        $latestDate = DB::connection('shiphub')->table('orders')
+            ->where('marketplace', '=', 'tiktok')
+            ->max('order_date');
+
+        if (!$latestDate) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestDate)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $rows = DB::connection('shiphub')
+            ->table('orders as o')
+            ->where('o.order_date', '>=', $l7StartPacific)
+            ->where('o.order_date', '<=', $l7EndPacific)
+            ->where('o.marketplace', '=', 'tiktok')
+            ->where(function ($query) {
+                $query->where(function ($q) {
+                    $q->where('o.order_status', '!=', 'Canceled')
+                        ->where('o.order_status', '!=', 'Cancelled');
+                })->orWhereNull('o.order_status');
+            })
+            ->selectRaw('COALESCE(SUM(o.order_total), 0) as revenue')
+            ->value('revenue');
+
+        return round((float) $rows, 2);
+    }
+
+    private function computeTiktokTwoL7SalesLikeAmazon(): ?float
+    {
+        $latestRaw = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = (float) DB::table('tiktok_sales_two')
+            ->where('order_date', '>=', $l7StartPacific)
+            ->where('order_date', '<=', $l7EndPacific)
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeReverbL7SalesLikeAmazon(): ?float
+    {
+        $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
+        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+
+        $sum = (float) DB::table('reverb_daily_data')
+            ->where('order_date', '>=', $l7StartDate)
+            ->where('order_date', '<=', $l7EndDate)
+            ->selectRaw('COALESCE(SUM(COALESCE(amount, unit_price * quantity)), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeMercariL7SalesLikeAmazon(bool $withShip): ?float
+    {
+        $q = DB::table('mercari_daily_data')
+            ->whereNotNull('sold_date')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->whereNull('canceled_date')
+            ->where(function ($q2) {
+                $q2->whereNull('order_status')
+                    ->orWhereRaw('LOWER(order_status) NOT LIKE ?', ['%cancel%']);
+            });
+
+        if ($withShip) {
+            $q->where(function ($q3) {
+                $q3->whereNull('buyer_shipping_fee')
+                    ->orWhere('buyer_shipping_fee', '=', 0)
+                    ->orWhere('buyer_shipping_fee', '=', '');
+            });
+        } else {
+            $q->where('buyer_shipping_fee', '>', 0);
+        }
+
+        $latestRaw = (clone $q)->max('sold_date');
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = (float) (clone $q)
+            ->where('sold_date', '>=', $l7StartPacific)
+            ->where('sold_date', '<=', $l7EndPacific)
+            ->selectRaw('COALESCE(SUM(item_price), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeTopDawgL7SalesLikeAmazon(): ?float
+    {
+        if (!Schema::hasTable('topdawg_order_metrics')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('topdawg_order_metrics')->whereNotNull('order_date')->max('order_date');
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
+        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+
+        $sum = (float) DB::table('topdawg_order_metrics')
+            ->where('order_date', '>=', $l7StartDate)
+            ->where('order_date', '<=', $l7EndDate)
+            ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeDepopL7SalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('depop_sales_data')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('depop_sales_data')->whereNotNull('sale_date')->max('sale_date');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
+        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+
+        $sum = (float) DB::table('depop_sales_data')
+            ->where('sale_date', '>=', $l7StartDate)
+            ->where('sale_date', '<=', $l7EndDate)
+            ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeSheinL7SalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('shein_daily_data')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('shein_daily_data')->whereNotNull('order_processed_on')->max('order_processed_on');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = 0.0;
+        foreach (
+            DB::table('shein_daily_data')
+                ->where('order_processed_on', '>=', $l7Start)
+                ->where('order_processed_on', '<=', $l7End)
+                ->cursor() as $row
+        ) {
+            $orderNum = trim((string) ($row->order_number ?? ''));
+            $sellerSku = trim((string) ($row->seller_sku ?? ''));
+            if ($orderNum === '' && $sellerSku === '') {
+                continue;
+            }
+            $orderStatus = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($orderStatus, 'refund')
+                || str_contains($orderStatus, 'return')
+                || str_contains($orderStatus, 'cancel')
+                || str_contains($orderStatus, 'closed')
+                || str_contains($orderStatus, 'exchange')) {
+                continue;
+            }
+            $quantity = (int) ($row->quantity ?? 0);
+            $productPrice = (float) ($row->product_price ?? 0);
+            $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
+            $lineRevenue = $productPrice > 0 ? $productPrice * $quantity : ($estRev > 0 ? $estRev : 0.0);
+            $sum += $lineRevenue;
+        }
+
+        return round($sum, 2);
+    }
+
+    private function computeAliexpressL7SalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('aliexpress_daily_data')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('aliexpress_daily_data')->whereNotNull('order_date')->max('order_date');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = 0.0;
+        foreach (
+            DB::table('aliexpress_daily_data')
+                ->where('order_date', '>=', $l7Start)
+                ->where('order_date', '<=', $l7End)
                 ->cursor() as $row
         ) {
             $status = strtolower((string) ($row->order_status ?? ''));
@@ -8949,6 +9636,8 @@ class ChannelMasterController extends Controller
                     // Sales & Orders
                     'l60_sales' => floatval($row['L-60 Sales'] ?? 0),
                     'l30_sales' => $l30Sales,
+                    'l7_sales' => floatval($row['L7 Sales'] ?? 0),
+                    'l7_vs_30_pace_pct' => $row['L7 vs 30 pace %'] !== null ? floatval($row['L7 vs 30 pace %']) : null,
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
                     'total_quantity' => floatval($totalQuantity), // Total quantity (units sold) from marketplace_daily_metrics
