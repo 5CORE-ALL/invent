@@ -1,0 +1,1 @@
+TopDawg L30 / order metrics: table topdawg_order_metrics (sync: php artisan topdawg:fetch). All Marketplace Master aligns with marketplace_daily_metrics (channel TopDawg) from UpdateMarketplaceDailyMetrics. UI: /topdawg/sales-dashboard (route topdawg.sales.dashboard).

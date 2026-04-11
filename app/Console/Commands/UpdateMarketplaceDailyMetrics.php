@@ -1224,7 +1224,16 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy('sku');
+        $pctRow = MarketplacePercentage::where('marketplace', 'Shein')->first();
+        $marginPct = 100.0;
+        if ($pctRow && $pctRow->percentage !== null && $pctRow->percentage !== '') {
+            $marginPct = (float) $pctRow->percentage;
+        }
+        $margin = $marginPct / 100.0;
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper(trim((string) $item->sku));
+        });
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -1236,20 +1245,25 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalQuantityForPrice = 0;
 
         foreach ($data as $row) {
-            // Skip rows without order_number
-            if (!$row->order_number || $row->order_number === '') continue;
-            
-            // Skip refunded/returned/cancelled orders (like badge does)
-            $orderStatus = strtolower($row->order_status ?? '');
-            if (str_contains($orderStatus, 'refund') || str_contains($orderStatus, 'returned') || str_contains($orderStatus, 'cancelled')) {
+            $orderNum = trim((string) ($row->order_number ?? ''));
+            $sellerSku = trim((string) ($row->seller_sku ?? ''));
+            if ($orderNum === '' && $sellerSku === '') {
+                continue;
+            }
+
+            // Skip refunded/returned/cancelled orders (same as shein_tabulator_view updateSummary)
+            $orderStatus = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($orderStatus, 'refund')
+                || str_contains($orderStatus, 'returned')
+                || str_contains($orderStatus, 'cancelled')) {
                 continue;
             }
 
             $totalOrders++;
-            $quantity = (int) ($row->quantity ?? 1);
+            $quantity = (int) ($row->quantity ?? 0);
             $productPrice = (float) ($row->product_price ?? 0);
             $commission = (float) ($row->commission ?? 0);
-            
+
             $totalQuantity += $quantity;
             $totalRevenue += $productPrice * $quantity;
             $totalCommission += $commission;
@@ -1259,41 +1273,37 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $totalQuantityForPrice += $quantity;
             }
 
-            // Get LP and Ship from ProductMaster
-            $sku = $row->seller_sku;
-            $lp = 0;
-            $ship = 0;
+            $skuKey = strtoupper(trim((string) ($row->seller_sku ?? '')));
+            $lp = 0.0;
+            $ship = 0.0;
 
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
+            if ($skuKey !== '' && isset($productMasters[$skuKey])) {
+                $pm = $productMasters[$skuKey];
                 $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                
-                // Get LP
+                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
                 foreach ($values as $k => $v) {
-                    if (strtolower($k) === "lp") {
-                        $lp = floatval($v);
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
                         break;
                     }
                 }
-                if ($lp === 0 && isset($pm->lp)) {
-                    $lp = floatval($pm->lp);
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
                 }
-                
-                // Get Ship
+
                 if (isset($values['ship'])) {
-                    $ship = floatval($values['ship']);
+                    $ship = (float) $values['ship'];
                 } elseif (isset($pm->ship)) {
-                    $ship = floatval($pm->ship);
+                    $ship = (float) $pm->ship;
                 }
             }
 
-            // COGS = Quantity * LP only (not Ship)
             $cogs = $lp * $quantity;
             $totalCogs += $cogs;
 
-            // Calculate PFT: (Product Price * 0.89 - LP - Ship) * Quantity
-            $pft = ($productPrice * 0.89 - $lp - $ship) * $quantity;
+            // PFT: (unit price × marketplace keep-rate − LP − Ship) × Qty — matches /shein/daily-data + tabulator
+            $pft = ($productPrice * $margin - $lp - $ship) * $quantity;
             $totalPft += $pft;
         }
 
@@ -1724,8 +1734,11 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         // Get marketplace percentage from ChannelMaster (like other channels)
         $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->channel_percentage ?? 100) : 100;
-        $margin = $percentage / 100; // Convert % to fraction
+        $percentage = $marketplaceData ? (float) ($marketplaceData->channel_percentage ?? 100) : 100.0;
+        if ($percentage <= 0) {
+            $percentage = 89.0;
+        }
+        $margin = $percentage / 100; // Convert % to fraction (matches Aliexpress daily tabulator)
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -1749,18 +1762,22 @@ class UpdateMarketplaceDailyMetrics extends Command
             }
 
             $totalOrders++;
-            $quantity = (int) ($row->quantity ?? 1);
-            $productPrice = (float) ($row->product_total ?? 0);
-            $orderAmount = (float) ($row->order_amount ?? 0);
-            
-            $totalQuantity += $quantity;
-            $totalRevenue += $orderAmount;
+            $quantity = max(1, (int) ($row->quantity ?? 1));
+            // Line revenue: same order as AliExpress tabulator summary (product_total → supply_price → order_amount)
+            $lineRevenue = (float) ($row->product_total ?? 0);
+            if ($lineRevenue <= 0) {
+                $lineRevenue = (float) ($row->supply_price ?? 0);
+            }
+            if ($lineRevenue <= 0) {
+                $lineRevenue = (float) ($row->order_amount ?? 0);
+            }
 
-            // For average price calculation, use product price per unit
-            // product_total is TOTAL (not per-unit), so divide by quantity
-            if ($quantity > 0 && $productPrice > 0) {
-                $unitPriceForAvg = $productPrice / $quantity;
-                $totalWeightedPrice += $unitPriceForAvg * $quantity; // Sum of (unit_price × quantity)
+            $totalQuantity += $quantity;
+            $totalRevenue += $lineRevenue;
+
+            $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0.0;
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
                 $totalQuantityForPrice += $quantity;
             }
 
@@ -1796,11 +1813,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             $cogs = $lp * $quantity;
             $totalCogs += $cogs;
 
-            // Calculate unit price (product_total is TOTAL, not per-unit)
-            $unitPrice = $quantity > 0 ? $productPrice / $quantity : 0;
-            
-            // Calculate PFT: (Unit Price × Margin - LP - Ship) × Quantity
-            // Same formula as sales page and eBay
+            // Calculate PFT: (Unit Price × Margin - LP - Ship) × Quantity (same as /aliexpress/daily-data)
             $pft = (($unitPrice * $margin) - $lp - $ship) * $quantity;
             $totalPft += $pft;
         }

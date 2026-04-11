@@ -43,6 +43,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Models\AliExpressSheetData;
+use App\Models\AliexpressDailyData;
 use App\Models\AliexpressListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
@@ -1050,6 +1051,20 @@ class ChannelMasterController extends Controller
                 Log::warning('Mirakl Y Sales (' . $miraklChannelName . ') failed: ' . $e->getMessage());
             }
         }
+        // Tiendamia: channel_master row "Tienda Mia" normalizes to tendamia (not tiendamia)
+        if (isset($yesterdaySummaries['tiendamia'])) {
+            $yesterdaySummaries['tendamia'] = $yesterdaySummaries['tiendamia'];
+        } else {
+            try {
+                $tiendaMiaY = $this->computeMiraklYSalesLikeAmazon('Tienda Mia');
+                if ($tiendaMiaY !== null) {
+                    $yesterdaySummaries['tiendamia'] = $tiendaMiaY;
+                    $yesterdaySummaries['tendamia'] = $tiendaMiaY;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Mirakl Y Sales (Tienda Mia alt) failed: ' . $e->getMessage());
+            }
+        }
 
         // Shopify B2C / B2B, Wayfair, Faire, TikTok Shop (ShipHub), TikTok 2, Reverb, Mercari, TopDawg
         $extendedYs = [
@@ -1083,6 +1098,33 @@ class ChannelMasterController extends Controller
             }
         } catch (\Throwable $e) {
             Log::warning('TikTok 2 Y Sales failed: ' . $e->getMessage());
+        }
+
+        try {
+            $depopY = $this->computeDepopYSalesLikeAmazon();
+            if ($depopY !== null) {
+                $yesterdaySummaries['depop'] = $depopY;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Depop Y Sales failed: ' . $e->getMessage());
+        }
+
+        try {
+            $sheinY = $this->computeSheinYSalesLikeAmazon();
+            if ($sheinY !== null) {
+                $yesterdaySummaries['shein'] = $sheinY;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Shein Y Sales failed: ' . $e->getMessage());
+        }
+
+        try {
+            $aliexpressY = $this->computeAliexpressYSalesLikeAmazon();
+            if ($aliexpressY !== null) {
+                $yesterdaySummaries['aliexpress'] = $aliexpressY;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AliExpress Y Sales failed: ' . $e->getMessage());
         }
 
         // Map lowercase channel key => controller method
@@ -1610,6 +1652,30 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Depop: depop_sales_data — item_price × quantity (quantity defaults to 1) on calendar day before latest sale_date.
+     */
+    private function computeDepopYSalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('depop_sales_data')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('depop_sales_data')->whereNotNull('sale_date')->max('sale_date');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $yDate = Carbon::parse($latestRaw)->subDay()->toDateString();
+
+        $sum = (float) DB::table('depop_sales_data')
+            ->whereDate('sale_date', $yDate)
+            ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    /**
      * TikTok Shop: ShipHub — sum order_total once per order on Y day (same cancel filter as calculateTikTokMetrics).
      */
     private function computeTiktokShopYSalesFromShiphub(): ?float
@@ -1751,6 +1817,102 @@ class ChannelMasterController extends Controller
             ->whereDate('order_date', $yDate)
             ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
             ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    /**
+     * Shein: revenue on Pacific calendar day before latest order_processed_on (matches tabulator / aggregateSheinDailyDataLikeTabulator line revenue).
+     */
+    private function computeSheinYSalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('shein_daily_data')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('shein_daily_data')->whereNotNull('order_processed_on')->max('order_processed_on');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $yStart = $latestPacific->copy()->subDay()->startOfDay();
+        $yEnd = $latestPacific->copy()->subDay()->endOfDay();
+
+        $sum = 0.0;
+        foreach (
+            DB::table('shein_daily_data')
+                ->where('order_processed_on', '>=', $yStart)
+                ->where('order_processed_on', '<=', $yEnd)
+                ->cursor() as $row
+        ) {
+            $orderNum = trim((string) ($row->order_number ?? ''));
+            $sellerSku = trim((string) ($row->seller_sku ?? ''));
+            if ($orderNum === '' && $sellerSku === '') {
+                continue;
+            }
+            $orderStatus = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($orderStatus, 'refund')
+                || str_contains($orderStatus, 'return')
+                || str_contains($orderStatus, 'cancel')
+                || str_contains($orderStatus, 'closed')
+                || str_contains($orderStatus, 'exchange')) {
+                continue;
+            }
+            $quantity = (int) ($row->quantity ?? 0);
+            $productPrice = (float) ($row->product_price ?? 0);
+            $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
+            $lineRevenue = $productPrice > 0 ? $productPrice * $quantity : ($estRev > 0 ? $estRev : 0.0);
+            $sum += $lineRevenue;
+        }
+
+        return round($sum, 2);
+    }
+
+    /**
+     * AliExpress: line revenue on Pacific day before latest order_date (product_total → supply_price → order_amount; same filters as calculateAliexpressMetrics).
+     */
+    private function computeAliexpressYSalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('aliexpress_daily_data')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('aliexpress_daily_data')->whereNotNull('order_date')->max('order_date');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $yStart = $latestPacific->copy()->subDay()->startOfDay();
+        $yEnd = $latestPacific->copy()->subDay()->endOfDay();
+
+        $sum = 0.0;
+        foreach (
+            DB::table('aliexpress_daily_data')
+                ->where('order_date', '>=', $yStart)
+                ->where('order_date', '<=', $yEnd)
+                ->cursor() as $row
+        ) {
+            $status = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($status, 'refund')
+                || str_contains($status, 'return')
+                || str_contains($status, 'cancel')
+                || str_contains($status, 'closed')) {
+                continue;
+            }
+            if (empty($row->sku_code) || empty($row->order_id)) {
+                continue;
+            }
+            $lineRevenue = (float) ($row->product_total ?? 0);
+            if ($lineRevenue <= 0) {
+                $lineRevenue = (float) ($row->supply_price ?? 0);
+            }
+            if ($lineRevenue <= 0) {
+                $lineRevenue = (float) ($row->order_amount ?? 0);
+            }
+            $sum += $lineRevenue;
+        }
 
         return round($sum, 2);
     }
@@ -4523,26 +4685,270 @@ class ChannelMasterController extends Controller
         ]);
     }
 
+    /**
+     * Load product_master rows keyed by UPPER(TRIM(sku)) for the given normalized keys (chunked for large lists).
+     *
+     * @param  list<string>  $normalizedSkuKeys
+     * @return array<string, ProductMaster>
+     */
+    private function productMastersByNormalizedSkus(array $normalizedSkuKeys): array
+    {
+        $normalizedSkuKeys = array_values(array_unique(array_filter(array_map(
+            static fn ($k) => strtoupper(trim((string) $k)),
+            $normalizedSkuKeys
+        ))));
+        if ($normalizedSkuKeys === []) {
+            return [];
+        }
+
+        $map = [];
+        foreach (array_chunk($normalizedSkuKeys, 400) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $batch = ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $chunk)
+                ->get();
+            foreach ($batch as $pm) {
+                $map[strtoupper(trim((string) $pm->sku))] = $pm;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Approximate L30 revenue from shein_sheet_data when daily table is empty (SKU × l30 × price).
+     */
+    private function aggregateSheinSheetSalesFallback(): ?array
+    {
+        if (! Schema::hasTable((new SheinSheetData)->getTable())) {
+            return null;
+        }
+
+        $hasShopifyPrice = Schema::hasColumn((new SheinSheetData)->getTable(), 'shopify_price');
+        $priceExpr = $hasShopifyPrice
+            ? 'COALESCE(NULLIF(price, 0), NULLIF(shopify_price, 0), 0)'
+            : 'COALESCE(NULLIF(price, 0), 0)';
+
+        $totalSales = (float) (SheinSheetData::query()
+            ->where('sku', 'not like', '%Parent%')
+            ->selectRaw("SUM(COALESCE(l30, 0) * ({$priceExpr})) as t")
+            ->value('t') ?? 0);
+
+        if ($totalSales <= 0) {
+            return null;
+        }
+
+        $qtySum = (int) (SheinSheetData::query()
+            ->where('sku', 'not like', '%Parent%')
+            ->sum('l30') ?? 0);
+
+        return [
+            'total_orders' => 0,
+            'total_quantity' => $qtySum,
+            'total_sales' => $totalSales,
+            'total_cogs' => 0.0,
+            'total_pft' => 0.0,
+            'pft_percentage' => 0.0,
+            'roi_percentage' => 0.0,
+            'avg_price' => $qtySum > 0 ? $totalSales / $qtySum : 0.0,
+        ];
+    }
+
+    /**
+     * Shein sales / orders / PFT — same rules as Shein Daily Data tabulator (shein_tabulator_view updateSummary)
+     * and /shein/daily-data (marketplace_margin_decimal from marketplace_percentages).
+     * Uses a cursor + scoped product_master load so large uploads do not OOM (which previously yielded an empty row).
+     */
+    private function aggregateSheinDailyDataLikeTabulator(): ?array
+    {
+        if (! SheinDailyData::query()->exists()) {
+            return null;
+        }
+
+        $pctRow = MarketplacePercentage::where('marketplace', 'Shein')->first();
+        $marginPct = 100.0;
+        if ($pctRow && $pctRow->percentage !== null && $pctRow->percentage !== '') {
+            $marginPct = (float) $pctRow->percentage;
+        }
+        $margin = $marginPct / 100.0;
+
+        $skuKeys = SheinDailyData::query()
+            ->whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->selectRaw('UPPER(TRIM(seller_sku)) as k')
+            ->groupBy(DB::raw('UPPER(TRIM(seller_sku))'))
+            ->pluck('k')
+            ->filter()
+            ->values()
+            ->all();
+
+        $productMasters = $this->productMastersByNormalizedSkus($skuKeys);
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0.0;
+        $totalCogs = 0.0;
+        $totalPft = 0.0;
+        $totalWeightedPrice = 0.0;
+        $totalQuantityForPrice = 0;
+
+        foreach (SheinDailyData::query()->orderBy('id')->cursor() as $row) {
+            $orderNum = trim((string) ($row->order_number ?? ''));
+            $sellerSku = trim((string) ($row->seller_sku ?? ''));
+            // Tabulator requires order_number; some exports only populate seller_sku — include those for master totals.
+            if ($orderNum === '' && $sellerSku === '') {
+                continue;
+            }
+
+            $orderStatus = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($orderStatus, 'refund')
+                || str_contains($orderStatus, 'returned')
+                || str_contains($orderStatus, 'cancelled')) {
+                continue;
+            }
+
+            $quantity = (int) ($row->quantity ?? 0);
+            $productPrice = (float) ($row->product_price ?? 0);
+            $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
+            $lineRevenue = $productPrice > 0 ? $productPrice * $quantity : ($estRev > 0 ? $estRev : 0.0);
+            $unitPriceForPft = $productPrice > 0 ? $productPrice : ($quantity > 0 && $estRev > 0 ? $estRev / $quantity : ($estRev > 0 ? $estRev : 0.0));
+
+            $totalOrders++;
+            $totalQuantity += $quantity;
+            $totalRevenue += $lineRevenue;
+
+            if ($quantity > 0 && $unitPriceForPft > 0) {
+                $totalWeightedPrice += $unitPriceForPft * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            $skuKey = strtoupper(trim((string) ($row->seller_sku ?? '')));
+            $lp = 0.0;
+            $ship = 0.0;
+            if ($skuKey !== '' && isset($productMasters[$skuKey])) {
+                $pm = $productMasters[$skuKey];
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+
+                if (isset($values['ship'])) {
+                    $ship = (float) $values['ship'];
+                } elseif (isset($pm->ship)) {
+                    $ship = (float) $pm->ship;
+                }
+            }
+
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            $pft = ($unitPriceForPft * $margin - $lp - $ship) * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+        ];
+    }
+
     public function getSheinChannelData(Request $request)
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated)
+        $agg = $this->aggregateSheinDailyDataLikeTabulator();
         $metrics = MarketplaceDailyMetric::where('channel', 'Shein')->latest('date')->first();
+        $sheetAgg = null;
+        if ($agg === null) {
+            $sheetAgg = $this->aggregateSheinSheetSalesFallback();
+        }
+
+        $aggLooksEmpty = $agg !== null
+            && $agg['total_orders'] === 0
+            && ($agg['total_sales'] ?? 0) <= 0.00001
+            && SheinDailyData::query()->exists();
+
+        $metricsHasTotals = $metrics && (
+            (float) ($metrics->total_sales ?? 0) > 0.00001
+            || (int) ($metrics->total_orders ?? 0) > 0
+        );
+
+        // Prefer live daily aggregate when it has totals; if daily exists but sums to 0, use saved metrics when those have totals; then sheet; else daily zeros.
+        if ($agg !== null && ! $aggLooksEmpty) {
+            $l30Sales = $agg['total_sales'];
+            $l30Orders = $agg['total_orders'];
+            $totalQuantity = $agg['total_quantity'];
+            $totalProfit = $agg['total_pft'];
+            $totalCogs = $agg['total_cogs'];
+            $gProfitPct = $agg['pft_percentage'];
+            $gRoi = $agg['roi_percentage'];
+            $nPftValue = $totalProfit;
+            $nRoi = $gRoi;
+        } elseif ($aggLooksEmpty && $metricsHasTotals) {
+            $l30Sales = (float) ($metrics->total_sales ?? 0);
+            $l30Orders = (int) ($metrics->total_orders ?? 0);
+            $totalQuantity = (int) ($metrics->total_quantity ?? 0);
+            $totalProfit = (float) ($metrics->total_pft ?? 0);
+            $totalCogs = (float) ($metrics->total_cogs ?? 0);
+            $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
+            $gRoi = (float) ($metrics->roi_percentage ?? 0);
+            $nPftValue = (float) ($metrics->n_pft ?? $totalProfit);
+            $nRoi = (float) ($metrics->n_roi ?? $gRoi);
+        } elseif ($agg !== null) {
+            $l30Sales = $agg['total_sales'];
+            $l30Orders = $agg['total_orders'];
+            $totalQuantity = $agg['total_quantity'];
+            $totalProfit = $agg['total_pft'];
+            $totalCogs = $agg['total_cogs'];
+            $gProfitPct = $agg['pft_percentage'];
+            $gRoi = $agg['roi_percentage'];
+            $nPftValue = $totalProfit;
+            $nRoi = $gRoi;
+        } elseif ($sheetAgg !== null) {
+            $l30Sales = $sheetAgg['total_sales'];
+            $l30Orders = $sheetAgg['total_orders'];
+            $totalQuantity = $sheetAgg['total_quantity'];
+            $totalProfit = $sheetAgg['total_pft'];
+            $totalCogs = $sheetAgg['total_cogs'];
+            $gProfitPct = $sheetAgg['pft_percentage'];
+            $gRoi = $sheetAgg['roi_percentage'];
+            $nPftValue = $totalProfit;
+            $nRoi = $gRoi;
+        } else {
+            $l30Sales = (float) ($metrics?->total_sales ?? 0);
+            $l30Orders = (int) ($metrics?->total_orders ?? 0);
+            $totalQuantity = (int) ($metrics?->total_quantity ?? 0);
+            $totalProfit = (float) ($metrics?->total_pft ?? 0);
+            $totalCogs = (float) ($metrics?->total_cogs ?? 0);
+            $gProfitPct = (float) ($metrics?->pft_percentage ?? 0);
+            $gRoi = (float) ($metrics?->roi_percentage ?? 0);
+            $nPftValue = (float) ($metrics?->n_pft ?? $totalProfit);
+            $nRoi = (float) ($metrics?->n_roi ?? $gRoi);
+        }
         
         // L60 will be 0 until we have historical data with proper dates
         $l60Orders = 0;
         $l60Sales = 0;
-
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $nPftValue = $metrics->n_pft ?? $totalProfit;
-        $nRoi = $metrics->n_roi ?? $gRoi;
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -4563,7 +4969,7 @@ class ChannelMasterController extends Controller
         $result[] = [
             'Channel '   => 'Shein',
             'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
+            'L30 Sales'  => (int) round($l30Sales),
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
@@ -5342,25 +5748,151 @@ class ChannelMasterController extends Controller
         return $missingListingCount;
     }
 
+    /**
+     * AliExpress sales / orders / PFT totals — same rules as AliExpress Daily Data tabulator
+     * (aliexpress_tabulator_view updateSummary + /aliexpress/daily-data line revenue).
+     */
+    private function aggregateAliexpressDailyDataLikeTabulator(): ?array
+    {
+        $data = AliexpressDailyData::all();
+        if ($data->isEmpty()) {
+            return null;
+        }
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
+        $percentage = $marketplaceData !== null
+            ? (float) ($marketplaceData->channel_percentage ?? 100)
+            : 100.0;
+        if ($percentage <= 0) {
+            $percentage = 89.0;
+        }
+        $margin = $percentage / 100.0;
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0.0;
+        $totalCogs = 0.0;
+        $totalPft = 0.0;
+        $totalWeightedPrice = 0.0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($data as $row) {
+            $status = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($status, 'refund') || str_contains($status, 'return')
+                || str_contains($status, 'cancel') || str_contains($status, 'closed')) {
+                continue;
+            }
+
+            if (empty($row->sku_code) || empty($row->order_id)) {
+                continue;
+            }
+
+            $quantity = max(1, (int) ($row->quantity ?? 1));
+
+            $lineRevenue = (float) ($row->product_total ?? 0);
+            if ($lineRevenue <= 0) {
+                $lineRevenue = (float) ($row->supply_price ?? 0);
+            }
+            if ($lineRevenue <= 0) {
+                $lineRevenue = (float) ($row->order_amount ?? 0);
+            }
+
+            $totalOrders++;
+            $totalQuantity += $quantity;
+            $totalRevenue += $lineRevenue;
+
+            $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0.0;
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            $sku = strtoupper(trim((string) ($row->sku_code ?? '')));
+            $lp = 0.0;
+            $ship = 0.0;
+
+            if ($sku !== '' && isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+
+                $ship = isset($values['ship'])
+                    ? (float) $values['ship']
+                    : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+            }
+
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            $pft = (($unitPrice * $margin) - $lp - $ship) * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+        ];
+    }
+
     public function getAliexpressChannelData(Request $request)
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'AliExpress')->latest('date')->first();
+        $agg = $this->aggregateAliexpressDailyDataLikeTabulator();
+        $metrics = null;
+        if ($agg === null) {
+            $metrics = MarketplaceDailyMetric::where('channel', 'AliExpress')->latest('date')->first();
+        }
 
         // Get L60 data from sheet data for comparison
         $query = AliExpressSheetData::where('sku', 'not like', '%Parent%');
         $l60Orders = $query->sum('aliexpress_l60');
         $l60Sales  = (clone $query)->selectRaw('SUM(aliexpress_l60 * price) as total')->value('total') ?? 0;
 
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
+        if ($agg !== null) {
+            $l30Sales = $agg['total_sales'];
+            $l30Orders = $agg['total_orders'];
+            $totalQuantity = $agg['total_quantity'];
+            $totalProfit = $agg['total_pft'];
+            $totalCogs = $agg['total_cogs'];
+            $gProfitPct = $agg['pft_percentage'];
+            $gRoi = $agg['roi_percentage'];
+            $nRoi = $gRoi;
+        } else {
+            $l30Sales = (float) ($metrics?->total_sales ?? 0);
+            $l30Orders = (int) ($metrics?->total_orders ?? 0);
+            $totalQuantity = (int) ($metrics?->total_quantity ?? 0);
+            $totalProfit = (float) ($metrics?->total_pft ?? 0);
+            $totalCogs = (float) ($metrics?->total_cogs ?? 0);
+            $gProfitPct = (float) ($metrics?->pft_percentage ?? 0);
+            $gRoi = (float) ($metrics?->roi_percentage ?? 0);
+            $nRoi = (float) ($metrics?->n_roi ?? $gRoi);
+        }
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -5372,9 +5904,6 @@ class ChannelMasterController extends Controller
         // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
         $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
 
-        // N ROI = same as G ROI for AliExpress (no ads)
-        $nRoi = $metrics->n_roi ?? $gRoi;
-
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Aliexpress')->first();
 
@@ -5384,7 +5913,7 @@ class ChannelMasterController extends Controller
         $result[] = [
             'Channel '   => 'Aliexpress',
             'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
+            'L30 Sales'  => (int) round($l30Sales),
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
@@ -6155,6 +6684,7 @@ class ChannelMasterController extends Controller
 
     /**
      * TopDawg channel data. Prefer marketplace_daily_metrics (from app:update-marketplace-daily-metrics / topdawg_order_metrics), else fall back to TopDawgSheetdata.
+     * Sheet link default: /topdawg/sales-dashboard — see migration ensure_topdawg_sales_dashboard_sheet_link.
      */
     public function getTopDawgChannelData(Request $request)
     {

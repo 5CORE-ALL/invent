@@ -533,7 +533,8 @@ class SheinController extends Controller
                         continue;
                     }
 
-                    // Map row data to database columns
+                    // Map columns to current Shein order export (0-based, row 2 = headers after group row).
+                    // Template adds "Requested Shipping Time" before delivery dates; Referral Fees→commission; Sales Tax→consumption_tax.
                     $insertData = [
                         'order_type' => isset($row[0]) && $row[0] !== '' ? trim($row[0]) : null,
                         'order_number' => isset($row[1]) && $row[1] !== '' ? trim($row[1]) : null,
@@ -559,20 +560,23 @@ class SheinController extends Controller
                         'locked_or_not' => isset($row[21]) && $row[21] !== '' ? trim($row[21]) : null,
                         'order_processed_on' => isset($row[22]) ? $this->parseDate($row[22]) : null,
                         'collection_deadline' => isset($row[23]) ? $this->parseDate($row[23]) : null,
-                        'delivery_deadline' => isset($row[24]) ? $this->parseDate($row[24]) : null,
-                        'delivery_time' => isset($row[25]) ? $this->parseDate($row[25]) : null,
-                        'tracking_number' => isset($row[26]) && $row[26] !== '' ? trim($row[26]) : null,
-                        'sellers_package' => isset($row[27]) && $row[27] !== '' ? trim($row[27]) : null,
-                        'seller_currency' => isset($row[28]) && $row[28] !== '' ? trim($row[28]) : null,
-                        'product_price' => isset($row[29]) ? $this->sanitizePrice($row[29]) : null,
-                        'coupon_discount' => isset($row[30]) ? $this->sanitizePrice($row[30]) : null,
-                        'store_campaign_discount' => isset($row[31]) ? $this->sanitizePrice($row[31]) : null,
-                        'commission' => isset($row[32]) ? $this->sanitizePrice($row[32]) : null,
-                        'estimated_merchandise_revenue' => isset($row[33]) ? $this->sanitizePrice($row[33]) : null,
-                        'consumption_tax' => isset($row[34]) ? $this->sanitizePrice($row[34]) : null,
-                        'province' => isset($row[35]) && $row[35] !== '' ? trim($row[35]) : null,
-                        'city' => isset($row[36]) && $row[36] !== '' ? trim($row[36]) : null,
-                        'quantity' => 1, // Default quantity is 1
+                        'requested_shipping_time' => isset($row[24]) ? $this->parseDate($row[24]) : null,
+                        'delivery_deadline' => isset($row[25]) ? $this->parseDate($row[25]) : null,
+                        'delivery_time' => isset($row[26]) ? $this->parseDate($row[26]) : null,
+                        'tracking_number' => isset($row[27]) && $row[27] !== '' ? trim($row[27]) : null,
+                        'sellers_package' => isset($row[28]) && $row[28] !== '' ? trim($row[28]) : null,
+                        'seller_currency' => isset($row[29]) && $row[29] !== '' ? trim($row[29]) : null,
+                        'product_price' => isset($row[30]) ? $this->sanitizePrice($row[30]) : null,
+                        'coupon_discount' => isset($row[31]) ? $this->sanitizePrice($row[31]) : null,
+                        'store_campaign_discount' => isset($row[32]) ? $this->sanitizePrice($row[32]) : null,
+                        'commission' => isset($row[33]) ? $this->sanitizePrice($row[33]) : null,
+                        'estimated_merchandise_revenue' => isset($row[34]) ? $this->sanitizePrice($row[34]) : null,
+                        'fulfillment_service_fee' => isset($row[35]) ? $this->sanitizePrice($row[35]) : null,
+                        'storage_fee' => isset($row[36]) ? $this->sanitizePrice($row[36]) : null,
+                        'consumption_tax' => isset($row[37]) ? $this->sanitizePrice($row[37]) : null,
+                        'province' => isset($row[38]) && $row[38] !== '' ? trim($row[38]) : null,
+                        'city' => isset($row[39]) && $row[39] !== '' ? trim($row[39]) : null,
+                        'quantity' => 1,
                     ];
 
                     SheinDailyData::create($insertData);

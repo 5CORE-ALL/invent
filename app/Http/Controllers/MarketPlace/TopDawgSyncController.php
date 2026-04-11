@@ -139,6 +139,7 @@ class TopDawgSyncController extends Controller
 
     /**
      * Sales dashboard view (Tabulator + badges from topdawg_order_metrics, margin 0.95, no ship).
+     * Route: GET /topdawg/sales-dashboard (topdawg.sales.dashboard). Linked from All Marketplace Master sheet_link when set by migration.
      */
     public function salesDashboard(Request $request): View
     {

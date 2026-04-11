@@ -156,7 +156,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Master',
-        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 32-day Pacific rolling window (same as Amazon Daily Sales)',
+        'sub_title' => 'Comprehensive Marketplace Analytics — Amazon Sales/Orders use a 32-day Pacific rolling window (same as Amazon Daily Sales). AliExpress L30 Sales, Orders, Qty, PFT, and COGS match the AliExpress Daily Data tabulator (aliexpress_daily_data). Shein L30 Sales, Orders, Qty, PFT, and COGS match the Shein Daily Data tabulator (shein_daily_data, marketplace_percentages keep-rate). Depop L30 Sales, Orders, Qty, and PFT match depop_sales_data (87% margin, /depop/sheet upload). TopDawg matches topdawg_order_metrics and /topdawg/sales-dashboard (margin 0.95, no ship). Y Sales column: same “day before latest order date in feed” rule as Amazon for TopDawg, Tiendamia (Mirakl), Depop, AliExpress, Shein, Shopify B2B, and other wired channels.',
     ])
 
     <div class="toast-container"></div>
@@ -1126,7 +1126,7 @@
                         sorter: "number",
                         width: 100,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = Math.round(parseNumber(cell.getValue()));
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             const dotColor = getMetricDotColor(channel, 'l30_sales');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
@@ -1140,14 +1140,13 @@
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                            const value = Math.round(parseNumber(cell.getValue()));
+                            return `<strong>$${value.toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
                         title: "Y Sales",
                         field: "Y Sales",
-                        headerTooltip: "Yesterday's sales = Pacific calendar day before latest order date in that channel's feed (same idea as Amazon), unless noted. Order-level: Amazon, eBay 1–3, Doba, Best Buy & Macy's & Tiendamia (Mirakl, excl. CLOSED), Shopify B2C/B2B (total_amount, excl. refunded), Wayfair (po_date), Faire (wholesale/retail × qty), TikTok Shop (ShipHub sum order_total), TikTok 2 (tiktok_sales_two), Reverb (reverb_daily_data), Mercari w/wo ship (item_price by shipping split), TopDawg. Temu/Temu 2 = FB×qty from daily tables. Snapshot fallback: channels with only aggregate sheet metrics (e.g. PLS, Instagram Shop, FB Marketplace, Business 5Core).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,

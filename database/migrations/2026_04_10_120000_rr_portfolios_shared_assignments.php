@@ -12,25 +12,30 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('rr_portfolios', function (Blueprint $table) {
-            $table->id();
-            $table->longText('html_content')->nullable();
-            $table->string('original_filename')->nullable();
-            $table->string('source_format', 32)->nullable();
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('rr_portfolios')) {
+            Schema::create('rr_portfolios', function (Blueprint $table) {
+                $table->id();
+                $table->longText('html_content')->nullable();
+                $table->string('original_filename')->nullable();
+                $table->string('source_format', 32)->nullable();
+                $table->timestamps();
+            });
+        }
 
-        Schema::create('rr_portfolio_user', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('rr_portfolio_id')->constrained('rr_portfolios')->cascadeOnDelete();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->boolean('fits')->default(false);
-            $table->timestamps();
+        if (! Schema::hasTable('rr_portfolio_user')) {
+            Schema::create('rr_portfolio_user', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('rr_portfolio_id')->constrained('rr_portfolios')->cascadeOnDelete();
+                $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+                $table->boolean('fits')->default(false);
+                $table->timestamps();
 
-            $table->unique(['rr_portfolio_id', 'user_id']);
-        });
+                $table->unique(['rr_portfolio_id', 'user_id']);
+            });
+        }
 
-        if (Schema::hasTable('user_rr_portfolios')) {
+        if (Schema::hasTable('user_rr_portfolios') && Schema::hasTable('rr_portfolio_user')
+            && DB::table('rr_portfolio_user')->count() === 0) {
             $rows = DB::table('user_rr_portfolios')->get();
             foreach ($rows as $row) {
                 $pid = DB::table('rr_portfolios')->insertGetId([

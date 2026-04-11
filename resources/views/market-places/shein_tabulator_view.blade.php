@@ -313,12 +313,14 @@
                     },
                     mutator: function(value, data, type, params, component) {
                         const productPrice = parseFloat(data.product_price) || 0;
-                        const quantity = parseInt(data.quantity) || 0;
+                        const estRev = parseFloat(data.estimated_merchandise_revenue) || 0;
+                        const quantity = parseInt(data.quantity, 10) || 0;
+                        const unitPrice = productPrice > 0 ? productPrice : (quantity > 0 && estRev > 0 ? estRev / quantity : (estRev > 0 ? estRev : 0));
                         const lp = parseFloat(data.lp) || 0;
                         const ship = parseFloat(data.ship) || 0;
-                        
+
                         const m = sheinMarketplaceMarginDecimal;
-                        const pft = (productPrice * m - lp - ship) * quantity;
+                        const pft = (unitPrice * m - lp - ship) * quantity;
                         return pft.toFixed(2);
                     }
                 },
@@ -386,20 +388,6 @@
                     }
                 },
                 {
-                    title: "Commission",
-                    field: "commission",
-                    hozAlign: "right",
-                    sorter: "number",
-                    width: 120,
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
-                    }
-                },
-                {
                     title: "Coupon Discount",
                     field: "coupon_discount",
                     hozAlign: "right",
@@ -428,6 +416,20 @@
                     }
                 },
                 {
+                    title: "Referral Fees",
+                    field: "commission",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 120,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
                     title: "Est. Revenue",
                     field: "estimated_merchandise_revenue",
                     hozAlign: "right",
@@ -442,7 +444,35 @@
                     }
                 },
                 {
-                    title: "Consumption Tax",
+                    title: "Fulfillment Fee",
+                    field: "fulfillment_service_fee",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 120,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
+                    title: "Storage Fee",
+                    field: "storage_fee",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 110,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
+                    title: "Sales Tax",
                     field: "consumption_tax",
                     hozAlign: "right",
                     sorter: "number",
@@ -487,6 +517,18 @@
                     field: "collection_deadline",
                     sorter: "datetime",
                     width: 160,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        const date = new Date(value);
+                        return date.toLocaleDateString();
+                    }
+                },
+                {
+                    title: "Req. Ship Time",
+                    field: "requested_shipping_time",
+                    sorter: "datetime",
+                    width: 140,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value) return '';
@@ -570,36 +612,43 @@
             let totalCogs = 0;
 
             data.forEach(row => {
-                // Skip rows with empty order_number
-                if (!row.order_number || row.order_number === '') {
+                // Match ChannelMasterController::aggregateSheinDailyDataLikeTabulator — count rows with order_number OR seller_sku
+                const orderNum = String(row.order_number ?? '').trim();
+                const sellerSku = String(row.seller_sku ?? '').trim();
+                if (!orderNum && !sellerSku) {
                     return;
                 }
-                
-                // Skip refunded orders
+
+                // Skip refunded / cancelled orders (same spirit as shein pricing salesAgg filters)
                 const orderStatus = (row.order_status || '').toLowerCase();
-                if (orderStatus.includes('refund') || orderStatus.includes('returned') || orderStatus.includes('cancelled')) {
+                if (orderStatus.includes('refund') || orderStatus.includes('return') || orderStatus.includes('returned')
+                    || orderStatus.includes('cancel') || orderStatus.includes('cancelled') || orderStatus.includes('closed')
+                    || orderStatus.includes('exchange')) {
                     return;
                 }
-                
+
                 totalOrders++;
-                const quantity = parseInt(row.quantity) || 0;
+                const quantity = Math.max(0, parseInt(row.quantity, 10) || 0);
                 const productPrice = parseFloat(row.product_price) || 0;
+                const estRev = parseFloat(row.estimated_merchandise_revenue) || 0;
+                // Line revenue: prefer unit price × qty; fall back to Est. Revenue when Product Price is missing (common export mismatch)
+                const lineRevenue = productPrice > 0 ? productPrice * quantity : (estRev > 0 ? estRev : 0);
+                const unitPriceForPft = productPrice > 0 ? productPrice : (quantity > 0 && estRev > 0 ? estRev / quantity : (estRev > 0 ? estRev : 0));
                 const commission = parseFloat(row.commission) || 0;
                 const lp = parseFloat(row.lp) || 0;
                 const ship = parseFloat(row.ship) || 0;
-                
+
                 totalQuantity += quantity;
-                totalRevenue += productPrice * quantity;
+                totalRevenue += lineRevenue;
                 totalCommission += commission;
-                
-                // Calculate weighted price (price * quantity for average)
-                if (quantity > 0 && productPrice > 0) {
-                    totalWeightedPrice += productPrice * quantity;
+
+                if (quantity > 0 && unitPriceForPft > 0) {
+                    totalWeightedPrice += unitPriceForPft * quantity;
                     totalQuantityForPrice += quantity;
                 }
-                
+
                 const m = sheinMarketplaceMarginDecimal;
-                const pft = (productPrice * m - lp - ship) * quantity;
+                const pft = (unitPriceForPft * m - lp - ship) * quantity;
                 totalPft += pft;
                 
                 // Calculate COGS: Quantity * LP

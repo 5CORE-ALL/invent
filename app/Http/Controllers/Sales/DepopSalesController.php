@@ -73,8 +73,10 @@ class DepopSalesController extends Controller
     }
 
     /**
-     * Upload Depop sales export (TSV): 1 header row, then data rows.
-     * Columns: 0=Date of sale, 1=Time of sale, 4=Bundle amount, 5=Buyer, 7=Description, 8=Size, 9=Item price, 11=Total, 12=USPS Cost, 13=Depop fee
+     * Upload Depop sales export (TSV/CSV): 1 header row, then data rows. Min 14 columns.
+     * Column map (0-based) — sample layout: resources/views/market-places/depop sheet
+     * 0=Date of sale, 1=Time of sale, 4=Bundle amount, 5=Buyer, 7=Description, 8=Size,
+     * 9=Item price, 11=Total, 12=USPS Cost, 13=Depop fee (indices 2,3,6,10 ignored).
      */
     public function upload(Request $request)
     {

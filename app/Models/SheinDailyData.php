@@ -36,6 +36,7 @@ class SheinDailyData extends Model
         'locked_or_not',
         'order_processed_on',
         'collection_deadline',
+        'requested_shipping_time',
         'delivery_deadline',
         'delivery_time',
         'tracking_number',
@@ -46,6 +47,8 @@ class SheinDailyData extends Model
         'store_campaign_discount',
         'commission',
         'estimated_merchandise_revenue',
+        'fulfillment_service_fee',
+        'storage_fee',
         'consumption_tax',
         'province',
         'city',
@@ -55,6 +58,7 @@ class SheinDailyData extends Model
     protected $casts = [
         'order_processed_on' => 'datetime',
         'collection_deadline' => 'datetime',
+        'requested_shipping_time' => 'datetime',
         'delivery_deadline' => 'datetime',
         'delivery_time' => 'datetime',
         'product_price' => 'decimal:2',
@@ -62,6 +66,8 @@ class SheinDailyData extends Model
         'store_campaign_discount' => 'decimal:2',
         'commission' => 'decimal:2',
         'estimated_merchandise_revenue' => 'decimal:2',
+        'fulfillment_service_fee' => 'decimal:2',
+        'storage_fee' => 'decimal:2',
         'consumption_tax' => 'decimal:2',
         'quantity' => 'integer',
     ];

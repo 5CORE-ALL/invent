@@ -1071,6 +1071,9 @@
                             <a href="{{ url('/ebay3/daily-sales') }}">eBay 3 Sales Data</a>
                         </li>
 
+                        <li>
+                            <a href="{{ route('topdawg.sales.dashboard') }}">TopDawg Sales Data</a>
+                        </li>
 
                         <li>
                             <a href="{{ url('amazon/daily-sales') }}">Amazon Sales Data</a>
