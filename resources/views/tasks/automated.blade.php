@@ -900,7 +900,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-duplicate-btn">
                         <i class="mdi mdi-content-copy text-info me-2"></i>
                         <strong>Duplicate Tasks</strong>
-                        <small class="d-block text-muted ms-4">Optional: assign all copies to one user</small>
+                        <small class="d-block text-muted ms-4">Optional: new group, title suffix, assignor, assignee</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
@@ -2069,15 +2069,35 @@
                 exportSelectedAutomatedTasksCsv();
             });
 
-            // Bulk Duplicate — choose assignee for new copies (or keep each original’s assignee)
+            // Bulk Duplicate — optional group, title suffix, assignor, assignee for new copies
             $('#bulk-duplicate-btn').on('click', function(e) {
                 e.preventDefault();
                 bulkActionType = 'duplicate';
+                var assignorBlock = '';
+                @if($isAdmin)
+                assignorBlock = `
+                    <div class="mb-3">
+                        <label for="bulk-duplicate-assignor-select" class="form-label">Assignor for all copies <span class="text-muted fw-normal">(optional)</span></label>
+                        <select class="form-select" id="bulk-duplicate-assignor-select">
+                            <option value="">Same assignor as original (per task)</option>
+                        </select>
+                    </div>
+                `;
+                @endif
                 var html = `
                     <p class="mb-2"><strong>Duplicate ${selectedTasks.length} automated task(s)</strong></p>
-                    <p class="text-muted small mb-3">Creates one copy per selected row. Choose an assignee below to set <strong>assign_to</strong> on every new copy; otherwise each copy keeps the same assignee as its original.</p>
+                    <p class="text-muted small mb-3">Creates one copy per selected row. Leave options empty to copy group, title, assignor, and assignee from each original—same as before.</p>
                     <div class="mb-3">
-                        <label for="bulk-duplicate-assignee-select" class="form-label">Assign duplicated tasks to</label>
+                        <label for="bulk-duplicate-group" class="form-label">Group for all copies <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" class="form-control" id="bulk-duplicate-group" placeholder="Leave empty to keep each task’s group">
+                    </div>
+                    <div class="mb-3">
+                        <label for="bulk-duplicate-title-suffix" class="form-label">Append to task name <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" class="form-control" id="bulk-duplicate-title-suffix" placeholder="e.g. (Copy) or - Branch 2 — added to each duplicated title">
+                    </div>
+                    ` + assignorBlock + `
+                    <div class="mb-3">
+                        <label for="bulk-duplicate-assignee-select" class="form-label">Assignee for all copies <span class="text-muted fw-normal">(optional)</span></label>
                         <select class="form-select" id="bulk-duplicate-assignee-select">
                             <option value="">Same assignee as original (per task)</option>
                         </select>
@@ -2085,6 +2105,9 @@
                 `;
                 showBulkUpdateForm('Duplicate tasks', html);
                 loadUsersForDuplicateBulk();
+                @if($isAdmin)
+                loadUsersForDuplicateAssignor();
+                @endif
             });
 
             // Bulk Delete
@@ -2228,6 +2251,20 @@
                         if (dupAssignee) {
                             data.assignee_id = dupAssignee;
                         }
+                        var dupGroup = ($('#bulk-duplicate-group').val() || '').trim();
+                        if (dupGroup) {
+                            data.duplicate_group = dupGroup;
+                        }
+                        var dupSuffix = ($('#bulk-duplicate-title-suffix').val() || '').trim();
+                        if (dupSuffix) {
+                            data.duplicate_title_suffix = dupSuffix;
+                        }
+                        if (isAdmin) {
+                            var dupAssignor = $('#bulk-duplicate-assignor-select').val();
+                            if (dupAssignor) {
+                                data.duplicate_assignor_id = dupAssignor;
+                            }
+                        }
                         break;
                 }
 
@@ -2315,6 +2352,34 @@
                     },
                     error: function() {
                         $('#bulk-duplicate-assignee-select').html('<option value="">Same assignee as original (per task)</option>');
+                    }
+                });
+            }
+
+            function loadUsersForDuplicateAssignor() {
+                if (!isAdmin) {
+                    return;
+                }
+                $.ajax({
+                    url: '/tasks/users-list',
+                    type: 'GET',
+                    success: function(users) {
+                        var sel = $('#bulk-duplicate-assignor-select');
+                        if (!sel.length) {
+                            return;
+                        }
+                        var keep = '<option value="">Same assignor as original (per task)</option>';
+                        var opts = keep;
+                        users.forEach(function(user) {
+                            opts += `<option value="${user.id}">${user.name}</option>`;
+                        });
+                        sel.html(opts);
+                    },
+                    error: function() {
+                        var sel = $('#bulk-duplicate-assignor-select');
+                        if (sel.length) {
+                            sel.html('<option value="">Same assignor as original (per task)</option>');
+                        }
                     }
                 });
             }

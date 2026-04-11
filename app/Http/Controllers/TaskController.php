@@ -1180,6 +1180,9 @@ class TaskController extends Controller
                 'assignor' => 'nullable|string',
                 'etc_minutes' => 'nullable|integer|min:1',
                 'freq' => 'nullable|in:daily,weekly,monthly',
+                'duplicate_group' => 'nullable|string|max:255',
+                'duplicate_title_suffix' => 'nullable|string|max:500',
+                'duplicate_assignor_id' => 'nullable|exists:users,id',
             ];
             $validated = $request->validate($rules);
 
@@ -1442,6 +1445,17 @@ class TaskController extends Controller
                     }
                 }
 
+                $groupOverride = trim((string) $request->input('duplicate_group', ''));
+                $titleSuffix = trim((string) $request->input('duplicate_title_suffix', ''));
+
+                $duplicateAssignorEmail = null;
+                if ($isAdmin && $request->filled('duplicate_assignor_id')) {
+                    $dupAssignor = User::find((int) $request->input('duplicate_assignor_id'));
+                    if ($dupAssignor && $dupAssignor->email) {
+                        $duplicateAssignorEmail = $dupAssignor->email;
+                    }
+                }
+
                 $duplicatedCount = 0;
                 foreach ($tasksToDuplicate as $task) {
                     $taskArray = (array) $task;
@@ -1451,6 +1465,15 @@ class TaskController extends Controller
                     if ($duplicateAssigneeEmail !== null) {
                         $taskArray['assign_to'] = $duplicateAssigneeEmail;
                     }
+                    if ($groupOverride !== '') {
+                        $taskArray['group'] = $groupOverride;
+                    }
+                    if ($titleSuffix !== '') {
+                        $taskArray['title'] = (string) ($task->title ?? '') . $titleSuffix;
+                    }
+                    if ($duplicateAssignorEmail !== null) {
+                        $taskArray['assignor'] = $duplicateAssignorEmail;
+                    }
 
                     \DB::table('automate_tasks')->insert($taskArray);
                     $duplicatedCount++;
@@ -1458,7 +1481,16 @@ class TaskController extends Controller
 
                 $msg = "$duplicatedCount task(s) duplicated successfully!";
                 if ($duplicateAssigneeEmail !== null) {
-                    $msg .= ' All copies assigned to the selected user.';
+                    $msg .= ' All copies use the selected assignee.';
+                }
+                if ($groupOverride !== '') {
+                    $msg .= ' Group set for all copies.';
+                }
+                if ($titleSuffix !== '') {
+                    $msg .= ' Title suffix applied to each copy.';
+                }
+                if ($duplicateAssignorEmail !== null) {
+                    $msg .= ' Assignor set for all copies.';
                 }
 
                 return response()->json([
