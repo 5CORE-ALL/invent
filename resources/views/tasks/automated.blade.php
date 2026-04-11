@@ -1224,7 +1224,7 @@
                         }
                     });
                     
-                    // ETC (MIN)
+                    // ETC (MIN) — whole minutes
                     cols.push({
                         title: "ETC (MIN)", 
                         field: "eta_time", 
@@ -1232,11 +1232,15 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value ? '<strong>' + value + '</strong>' : '-';
+                            if (value === null || value === undefined || value === '') {
+                                return '-';
+                            }
+                            var n = Math.round(Number(value));
+                            return !isNaN(n) ? '<strong>' + n + '</strong>' : '-';
                         }
                     });
 
-                    // ETC MONTHLY (ETC x frequency multiplier)
+                    // ETC MONTHLY (ETC x frequency multiplier) — whole number
                     cols.push({
                         title: "ETC MONTHLY",
                         field: "etc_monthly",
@@ -1246,7 +1250,8 @@
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var etcMonthly = calculateEtcMonthly(rowData);
-                            return '<strong>' + etcMonthly + '</strong>';
+                            var n = Math.round(etcMonthly);
+                            return '<strong>' + (isNaN(n) ? 0 : n) + '</strong>';
                         }
                     });
                     
@@ -1578,7 +1583,7 @@
                         case 'WEEKLY': valueEl.text(weekly); break;
                         case 'MONTHLY': valueEl.text(monthly); break;
                         case 'ACTIVE': valueEl.text(active); break;
-                        case 'ETC MONTHLY': valueEl.text((etcMonthlyTotal / 60).toFixed(1)); break;
+                        case 'ETC MONTHLY': valueEl.text(Math.round(etcMonthlyTotal / 60) + 'h'); break;
                     }
                 });
             }

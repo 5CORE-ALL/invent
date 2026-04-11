@@ -1446,7 +1446,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">TAT</div>
-                        <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? number_format($stats['tat_avg_30'], 1) : '-' }}</div>
+                        <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? (int) round((float) $stats['tat_avg_30']) : '-' }}</div>
                         <div class="stat-unit" title="Average turnaround (days) for tasks completed in the last 30 days">30-day avg</div>
                     </div>
                 </div>
@@ -2441,7 +2441,11 @@
                                 callbacks: {
                                     label: function(ctx) {
                                         var v = ctx.raw;
-                                        return v != null ? v + ' days' : 'No data';
+                                        if (v == null) {
+                                            return 'No data';
+                                        }
+                                        var n = Math.round(Number(v));
+                                        return (isNaN(n) ? v : n) + ' days';
                                     }
                                 }
                             }
@@ -2451,7 +2455,12 @@
                             y: {
                                 beginAtZero: true,
                                 title: { display: true, text: 'TAT (days)' },
-                                ticks: { stepSize: 1 }
+                                ticks: {
+                                    stepSize: 1,
+                                    callback: function(val) {
+                                        return Math.round(Number(val));
+                                    }
+                                }
                             }
                         }
                     }
@@ -2616,7 +2625,19 @@
                             
                             <div class="mobile-task-info">
                                 <div><i class="mdi mdi-account-circle"></i> ${task.assignee_name || 'Unassigned'}</div>
-                                ${task.etc_minutes ? `<div><i class="mdi mdi-clock-outline"></i> ${task.etc_minutes} min</div>` : ''}
+                                ${(() => {
+                                    var rawEtc = task.eta_time != null && task.eta_time !== '' ? task.eta_time : task.etc_minutes;
+                                    var etcN = rawEtc != null && rawEtc !== '' ? Math.round(Number(rawEtc)) : NaN;
+                                    var atcN = task.etc_done != null && task.etc_done !== '' ? Math.round(Number(task.etc_done)) : NaN;
+                                    var parts = [];
+                                    if (!isNaN(etcN)) {
+                                        parts.push('<div><i class="mdi mdi-clock-outline"></i> ETC ' + etcN + ' min</div>');
+                                    }
+                                    if (task.status === 'Done' || (!isNaN(atcN) && atcN > 0)) {
+                                        parts.push('<div><i class="mdi mdi-check-circle-outline"></i> ATC ' + (isNaN(atcN) ? 0 : atcN) + ' min</div>');
+                                    }
+                                    return parts.join('');
+                                })()}
                                 ${task.tid ? `<div><i class="mdi mdi-calendar"></i> ${new Date(task.tid).toLocaleDateString()}</div>` : ''}
                             </div>
                             
@@ -3058,7 +3079,7 @@
                         }
                     });
                     
-                    // ETC (Estimated Time) - Limited to 3 characters
+                    // ETC (Estimated Time) — whole minutes
                     cols.push({
                         title: "ETC", 
                         field: "eta_time", 
@@ -3066,15 +3087,17 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            if (value) {
-                                var displayValue = String(value).substring(0, 3);
-                                return '<span style="font-size: 11px;" title="' + value + ' minutes">' + displayValue + '</span>';
+                            if (value !== null && value !== undefined && value !== '') {
+                                var n = Math.round(Number(value));
+                                if (!isNaN(n)) {
+                                    return '<span style="font-size: 11px;" title="' + n + ' min">' + n + '</span>';
+                                }
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
-                    // ATC (Actual Time)
+                    // ATC (Actual Time) — whole minutes
                     cols.push({
                         title: "ATC", 
                         field: "etc_done", 
@@ -3082,8 +3105,11 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            if (value) {
-                                return '<strong style="color: #28a745; font-size: 11px;" title="' + value + ' minutes">' + value + '</strong>';
+                            if (value !== null && value !== undefined && value !== '') {
+                                var n = Math.round(Number(value));
+                                if (!isNaN(n) && n > 0) {
+                                    return '<strong style="color: #28a745; font-size: 11px;" title="' + n + ' min">' + n + '</strong>';
+                                }
                             }
                             return '<span style="color: #adb5bd;">0</span>';
                         }
@@ -3343,11 +3369,11 @@
                     completion.setHours(0, 0, 0, 0);
                     
                     var days = Math.abs(completion.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-                    tatValues.push(Math.round(days * 10) / 10); // Round to 1 decimal
+                    tatValues.push(Math.round(days));
                 });
                 
-                stats.tat_avg_30 = tatValues.length > 0 
-                    ? Math.round((tatValues.reduce((a, b) => a + b, 0) / tatValues.length) * 10) / 10 
+                stats.tat_avg_30 = tatValues.length > 0
+                    ? Math.round(tatValues.reduce((a, b) => a + b, 0) / tatValues.length)
                     : null;
                 
                 // MISSED calculation: Count of tasks with start_date in last 30 days that are not Done/Archived
@@ -3405,7 +3431,7 @@
                             valueEl.text(Math.round(stats.done_atc / 60));
                             break;
                         case 'TAT':
-                            valueEl.text(stats.tat_avg_30 !== null ? stats.tat_avg_30.toFixed(1) : '-');
+                            valueEl.text(stats.tat_avg_30 !== null ? String(Math.round(stats.tat_avg_30)) : '-');
                             break;
                         case 'AVG SCORE':
                             if (performanceAverageScore !== null && performanceAverageScore !== undefined && performanceAverageScore !== '') {

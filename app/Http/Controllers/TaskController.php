@@ -175,9 +175,9 @@ class TaskController extends Controller
                 ? \Carbon\Carbon::parse($task->completion_date)
                 : \Carbon\Carbon::parse($task->updated_at);
             $days = abs($completion->getTimestamp() - $start->getTimestamp()) / 86400;
-            $tatValues[] = round($days, 1);
+            $tatValues[] = (int) round($days);
         }
-        $stats['tat_avg_30'] = count($tatValues) > 0 ? round(array_sum($tatValues) / count($tatValues), 1) : null;
+        $stats['tat_avg_30'] = count($tatValues) > 0 ? (int) round(array_sum($tatValues) / count($tatValues)) : null;
 
         // Daily TAT for line chart (last 30 days): date => avg TAT for tasks completed on that day
         $tatByDay = [];
@@ -191,14 +191,14 @@ class TaskController extends Controller
             if (!isset($tatByDay[$day])) {
                 $tatByDay[$day] = [];
             }
-            $tatByDay[$day][] = round($days, 1);
+            $tatByDay[$day][] = (int) round($days);
         }
         $tatChartData = [];
         for ($i = 29; $i >= 0; $i--) {
             $d = now()->subDays($i);
             $key = $d->format('Y-m-d');
             $avg = isset($tatByDay[$key]) && count($tatByDay[$key]) > 0
-                ? round(array_sum($tatByDay[$key]) / count($tatByDay[$key]), 1)
+                ? (int) round(array_sum($tatByDay[$key]) / count($tatByDay[$key]))
                 : null;
             $tatChartData[] = [
                 'date' => $key,
@@ -2253,9 +2253,9 @@ class TaskController extends Controller
             $deleted = \Carbon\Carbon::parse($task->deleted_at);
             $tid = \Carbon\Carbon::parse($task->start_date);
             $days = abs($deleted->getTimestamp() - $tid->getTimestamp()) / 86400;
-            $tatValues[] = round($days, 1);
+            $tatValues[] = (int) round($days);
         }
-        $stats['tat_avg_30'] = count($tatValues) > 0 ? round(array_sum($tatValues) / count($tatValues), 1) : null;
+        $stats['tat_avg_30'] = count($tatValues) > 0 ? (int) round(array_sum($tatValues) / count($tatValues)) : null;
 
         // Daily TAT for line chart (last 30 days): date => avg TAT for tasks deleted on that day
         $tatByDay = [];
@@ -2267,14 +2267,14 @@ class TaskController extends Controller
             if (!isset($tatByDay[$day])) {
                 $tatByDay[$day] = [];
             }
-            $tatByDay[$day][] = round($days, 1);
+            $tatByDay[$day][] = (int) round($days);
         }
         $tatChartData = [];
         for ($i = 29; $i >= 0; $i--) {
             $d = now()->subDays($i);
             $key = $d->format('Y-m-d');
             $avg = isset($tatByDay[$key]) && count($tatByDay[$key]) > 0
-                ? round(array_sum($tatByDay[$key]) / count($tatByDay[$key]), 1)
+                ? (int) round(array_sum($tatByDay[$key]) / count($tatByDay[$key]))
                 : null;
             $tatChartData[] = [
                 'date' => $key,

@@ -257,7 +257,7 @@
                     <div class="stat-content d-flex align-items-center justify-content-between">
                         <div>
                             <div class="stat-label">TAT</div>
-                            <div class="stat-value">{{ $stats['tat_avg_30'] !== null ? number_format($stats['tat_avg_30'], 1) : '-' }}</div>
+                            <div class="stat-value">{{ $stats['tat_avg_30'] !== null ? (int) round((float) $stats['tat_avg_30']) : '-' }}</div>
                             <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;">Avg last 30 days (days)</div>
                         </div>
                         <button type="button" class="btn btn-sm btn-light border-0 p-2 rounded" id="tat-chart-eye-btn" title="View TAT trend">
@@ -461,7 +461,11 @@
                                 callbacks: {
                                     label: function(ctx) {
                                         var v = ctx.raw;
-                                        return v != null ? v + ' days' : 'No data';
+                                        if (v == null) {
+                                            return 'No data';
+                                        }
+                                        var n = Math.round(Number(v));
+                                        return (isNaN(n) ? v : n) + ' days';
                                     }
                                 }
                             }
@@ -471,7 +475,12 @@
                             y: {
                                 beginAtZero: true,
                                 title: { display: true, text: 'TAT (days)' },
-                                ticks: { stepSize: 1 }
+                                ticks: {
+                                    stepSize: 1,
+                                    callback: function(val) {
+                                        return Math.round(Number(val));
+                                    }
+                                }
                             }
                         }
                     }
@@ -680,7 +689,8 @@
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value !== null && value !== undefined && value !== '') {
-                                return '<span style="font-weight: 600;">' + Number(value).toFixed(1) + ' days</span>';
+                                var d = Math.round(Number(value));
+                                return '<span style="font-weight: 600;">' + (isNaN(d) ? '-' : d) + ' days</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
