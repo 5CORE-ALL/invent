@@ -35,7 +35,6 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'order_number'  => 'nullable|string|max:255',
             'refund_amount' => 'nullable|numeric|min:0',
             'total_loss'    => 'nullable|numeric',
-            'department'    => 'nullable|string|max:100',
         ];
     }
 
@@ -45,7 +44,6 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'order_number'  => isset($validated['order_number'])  ? trim((string) $validated['order_number'])  : null,
             'refund_amount' => isset($validated['refund_amount'])  ? (float) $validated['refund_amount']         : null,
             'total_loss'    => isset($validated['total_loss'])     ? (float) $validated['total_loss']            : null,
-            'department'    => isset($validated['department'])     ? trim((string) $validated['department'])     : null,
         ];
     }
 
@@ -56,7 +54,6 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'refund_amount' => $row->refund_amount  !== null ? (float) $row->refund_amount : null,
             'total_loss'    => $row->total_loss     !== null ? (float) $row->total_loss    : null,
             'group_id'      => $row->group_id       ?? null,
-            'department'    => $row->department     ?? null,
         ];
     }
 
@@ -119,12 +116,14 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'c_action_1'           => $row->c_action_1,
                 'c_action_1_remark'    => $row->c_action_1_remark,
                 'close_note'           => $row->close_note,
+                'department'           => $row->department ?? null,
                 'created_by'           => $row->created_by,
                 'created_at'           => $row->created_at,
                 'created_at_display'   => $row->created_at
                     ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
                     : '',
-            ] + $this->extraRowFields($row);        })->values();
+            ] + $this->extraRowFields($row);
+        })->values();
 
         return response()->json(['data' => $data]);
     }

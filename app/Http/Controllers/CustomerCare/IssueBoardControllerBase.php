@@ -55,6 +55,7 @@ abstract class IssueBoardControllerBase extends Controller
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
             'issue_date' => 'nullable|string|max:100',
+            'department' => 'nullable|string|max:100',
         ]);
 
         // Merge page-specific extra field validation
@@ -238,6 +239,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'department' => $row->department ?? null,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'issue_date' => $row->issue_date ?? null,
@@ -281,6 +283,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'department' => $row->department ?? null,
                 'created_by' => $row->created_by,
                 'logged_at' => $row->logged_at,
                 'logged_at_display' => $row->logged_at
@@ -316,6 +319,9 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'department' => isset($validated['department']) && trim((string) $validated['department']) !== ''
+                    ? trim((string) $validated['department'])
+                    : null,
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
                 'issue_date' => isset($validated['issue_date']) ? trim((string) $validated['issue_date']) : null,
@@ -354,6 +360,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'department' => $row->department ?? null,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'issue_date' => $row->issue_date ?? null,
@@ -392,6 +399,9 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'department' => isset($validated['department']) && trim((string) $validated['department']) !== ''
+                    ? trim((string) $validated['department'])
+                    : null,
                 'updated_at' => $now,
                 'issue_date' => isset($validated['issue_date']) ? trim((string) $validated['issue_date']) : null,
             ];
@@ -578,6 +588,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => $row->c_action_1 ?? null,
                 'c_action_1_remark' => $row->c_action_1_remark ?? null,
                 'close_note' => $row->close_note ?? null,
+                'department' => $row->department ?? null,
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,

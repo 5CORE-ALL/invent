@@ -1399,6 +1399,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'department',
                 'created_by',
                 'created_at',
             ]);
@@ -1422,6 +1423,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'department' => $row->department ?? null,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'created_at_display' => $row->created_at
@@ -1456,6 +1458,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'department',
                 'created_by',
                 'logged_at',
             ]);
@@ -1489,6 +1492,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'department' => $row->department ?? null,
                 'created_by' => $row->created_by,
                 'logged_at' => $row->logged_at,
                 'logged_at_display' => $row->logged_at
@@ -1516,6 +1520,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'c_action_1' => 'nullable|string|max:255',
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
+            'department' => 'nullable|string|max:100',
         ]);
         if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
             return response()->json([
@@ -1538,6 +1543,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         $id = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $createdBy, $user) {
             $now = now();
+            $department = isset($validated['department']) && trim((string) $validated['department']) !== ''
+                ? trim((string) $validated['department'])
+                : null;
 
             $payload = [
                 'sku' => trim($validated['sku']),
@@ -1555,6 +1563,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'department' => $department,
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
                 'created_at' => $now,
@@ -1582,6 +1591,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $payload['c_action_1'],
                 'c_action_1_remark' => $payload['c_action_1_remark'],
                 'close_note' => $payload['close_note'],
+                'department' => $department,
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1611,6 +1621,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1',
                 'c_action_1_remark',
                 'close_note',
+                'department',
                 'created_by',
                 'created_at',
             ]);
@@ -1636,6 +1647,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'department' => $row->department ?? null,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'created_at_display' => $row->created_at
@@ -1661,6 +1673,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'c_action_1' => 'nullable|string|max:255',
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
+            'department' => 'nullable|string|max:100',
         ]);
         if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
             return response()->json([
@@ -1691,6 +1704,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')
                 ->where('orders_on_hold_issue_id', $id)
                 ->max('revision_no'))) + 1;
+            $department = isset($validated['department']) && trim((string) $validated['department']) !== ''
+                ? trim((string) $validated['department'])
+                : null;
             $payload = [
                 'sku' => trim($validated['sku']),
                 'qty' => (float) $validated['qty'],
@@ -1707,6 +1723,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'department' => $department,
                 'updated_at' => $now,
             ];
 
@@ -1731,6 +1748,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $payload['c_action_1'],
                 'c_action_1_remark' => $payload['c_action_1_remark'],
                 'close_note' => $payload['close_note'],
+                'department' => $department,
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1786,6 +1804,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1 ?? null,
                 'c_action_1_remark' => $row->c_action_1_remark ?? null,
                 'close_note' => $row->close_note ?? null,
+                'department' => $row->department ?? null,
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,
                 'logged_at' => $now,
@@ -1875,7 +1894,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         $headers = null; $inserted = 0; $skipped = 0; $errors = [];
         $user = auth()->user();
         $createdBy = trim((string)($user?->name ?? 'System')) ?: 'System';
-        $map = ['sku'=>['sku'],'qty'=>['qty','quantity'],'order_qty'=>['order_qty','order qty'],'parent'=>['parent'],'marketplace_1'=>['marketplace_1','mkt1'],'marketplace_2'=>['marketplace_2','mkt2'],'what_happened'=>['what_happened','what?','what happened'],'action_1'=>['action_1','action','action 1'],'action_1_remark'=>['action_1_remark','action remark'],'replacement_tracking'=>['replacement_tracking','replacement tracking'],'issue'=>['issue','root_cause_found','root cause found'],'issue_remark'=>['issue_remark','root cause remark'],'c_action_1'=>['c_action_1','root_cause_fixed','root cause fixed'],'c_action_1_remark'=>['c_action_1_remark','root cause fixed remark']];
+        $map = ['sku'=>['sku'],'qty'=>['qty','quantity'],'order_qty'=>['order_qty','order qty'],'parent'=>['parent'],'marketplace_1'=>['marketplace_1','mkt1'],'marketplace_2'=>['marketplace_2','mkt2'],'what_happened'=>['what_happened','what?','what happened'],'action_1'=>['action_1','action','action 1'],'action_1_remark'=>['action_1_remark','action remark'],'replacement_tracking'=>['replacement_tracking','replacement tracking'],'issue'=>['issue','root_cause_found','root cause found'],'issue_remark'=>['issue_remark','root cause remark'],'c_action_1'=>['c_action_1','root_cause_fixed','root cause fixed'],'c_action_1_remark'=>['c_action_1_remark','root cause fixed remark'],'department'=>['department','dept']];
         while (($row = fgetcsv($handle)) !== false) {
             if ($headers === null) { $headers = array_map(fn($h)=>strtolower(trim((string)$h)),$row); continue; }
             if (!array_filter($row,fn($v)=>trim((string)$v)!=='')) continue;
@@ -1886,7 +1905,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $issue=$get('issue'); if(!$issue){$skipped++;$errors[]="Row skipped (SKU=$sku): Root Cause Found required.";continue;}
             try {
                 $now=now();
-                $payload=['sku'=>$sku,'qty'=>(float)$qty,'order_qty'=>$get('order_qty')!==null?(float)$get('order_qty'):null,'parent'=>$get('parent'),'marketplace_1'=>$get('marketplace_1'),'marketplace_2'=>$get('marketplace_2'),'what_happened'=>$get('what_happened'),'issue'=>$issue,'issue_remark'=>$get('issue_remark'),'action_1'=>$get('action_1'),'action_1_remark'=>$get('action_1_remark'),'replacement_tracking'=>$get('replacement_tracking'),'c_action_1'=>$get('c_action_1'),'c_action_1_remark'=>$get('c_action_1_remark'),'created_by'=>$createdBy,'created_by_user_id'=>$user?->id,'created_at'=>$now,'updated_at'=>$now];
+                $payload=['sku'=>$sku,'qty'=>(float)$qty,'order_qty'=>$get('order_qty')!==null?(float)$get('order_qty'):null,'parent'=>$get('parent'),'marketplace_1'=>$get('marketplace_1'),'marketplace_2'=>$get('marketplace_2'),'what_happened'=>$get('what_happened'),'issue'=>$issue,'issue_remark'=>$get('issue_remark'),'action_1'=>$get('action_1'),'action_1_remark'=>$get('action_1_remark'),'replacement_tracking'=>$get('replacement_tracking'),'c_action_1'=>$get('c_action_1'),'c_action_1_remark'=>$get('c_action_1_remark'),'department'=>$get('department'),'created_by'=>$createdBy,'created_by_user_id'=>$user?->id,'created_at'=>$now,'updated_at'=>$now];
                 \Illuminate\Support\Facades\DB::transaction(function() use($payload,$now){
                     $id=\Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->insertGetId($payload);
                     \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')->insert(array_merge($payload,['orders_on_hold_issue_id'=>$id,'event_type'=>'created','revision_no'=>0,'logged_at'=>$now]));
