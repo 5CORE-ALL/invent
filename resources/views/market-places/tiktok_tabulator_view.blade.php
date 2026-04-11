@@ -214,7 +214,8 @@
                         <option value="lt40">&lt;40%</option>
                         <option value="40-75">40 to 75%</option>
                         <option value="75-125">75 to 125%</option>
-                        <option value="125-250">125 to 250%</option>
+                        <option value="125-175">125 to 175%</option>
+                        <option value="175-250">175 to 250%</option>
                         <option value="gt250">&gt;250%</option>
                     </select>
 
@@ -2491,7 +2492,8 @@
                         if (roiFilter === 'lt40') return roi < 40;
                         if (roiFilter === '40-75') return roi >= 40 && roi < 75;
                         if (roiFilter === '75-125') return roi >= 75 && roi < 125;
-                        if (roiFilter === '125-250') return roi >= 125 && roi < 250;
+                        if (roiFilter === '125-175') return roi >= 125 && roi < 175;
+                        if (roiFilter === '175-250') return roi >= 175 && roi < 250;
                         if (roiFilter === 'gt250') return roi >= 250;
                         return true;
                     });

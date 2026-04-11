@@ -9,6 +9,7 @@ use App\Models\UserRR;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,19 +28,7 @@ class TaskController extends Controller
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
 
-        // Build query based on role
-        $tasksQuery = Task::query();
-        
-        if (!$isAdmin) {
-            // Normal user: see all automated tasks, plus manual tasks they created/are assigned to.
-            $tasksQuery->where(function($query) use ($user) {
-                $query->where('is_automate_task', 1)
-                      ->orWhere(function($q) use ($user) {
-                          $q->where('assignor', $user->email)
-                            ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
-                      });
-            });
-        }
+        $tasksQuery = $this->taskManagerVisibilityQuery();
 
         // Get selected user from session (set from user selection) - CHECK THIS FIRST
         $selectedUserName = Session::get('selected_user_name', '');
@@ -116,17 +105,7 @@ class TaskController extends Controller
             ->get();
 
         // Assignor/assignee roles from visible tasks (for "Select user" dropdown labels)
-        // Use original query without user filter for dropdown
-        $baseTasksQuery = Task::query();
-        if (!$isAdmin) {
-            $baseTasksQuery->where(function($query) use ($user) {
-                $query->where('is_automate_task', 1)
-                      ->orWhere(function($q) use ($user) {
-                          $q->where('assignor', $user->email)
-                            ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
-                      });
-            });
-        }
+        $baseTasksQuery = $this->taskManagerVisibilityQuery();
         $assignorEmails = (clone $baseTasksQuery)->whereNotNull('assignor')->where('assignor', '!=', '')
             ->distinct()->pluck('assignor')->values()->all();
         $assigneeEmails = (clone $baseTasksQuery)->whereNotNull('assign_to')->where('assign_to', '!=', '')
@@ -281,13 +260,10 @@ class TaskController extends Controller
     }
 
     /**
-     * Per–team-member task counts (assignee-based), matching Task Manager visibility for the viewer only.
-     * Does not apply {@see Session::get('selected_user_name')} — Task Summary stays global within that visibility;
-     * the /tasks page keeps its own session + UI filters.
-     *
-     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, need_approval: int, done: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned)
+     * Tasks visible in Task Manager for the current user (same rules as the task list API).
+     * Does not apply {@see Session::get('selected_user_name')} — dashboard / Task Summary stay global within that visibility.
      */
-    protected function getTaskSummaryMemberRows(): array
+    protected function taskManagerVisibilityQuery(): Builder
     {
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
@@ -302,6 +278,20 @@ class TaskController extends Controller
                     });
             });
         }
+
+        return $tasksQuery;
+    }
+
+    /**
+     * Per–team-member task counts (assignee-based), matching Task Manager visibility for the viewer only.
+     * Does not apply {@see Session::get('selected_user_name')} — Task Summary stays global within that visibility;
+     * the /tasks page keeps its own session + UI filters.
+     *
+     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, need_approval: int, done: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned)
+     */
+    protected function getTaskSummaryMemberRows(): array
+    {
+        $tasksQuery = $this->taskManagerVisibilityQuery();
 
         $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date']);
 
@@ -388,41 +378,50 @@ class TaskController extends Controller
     }
 
     /**
-     * Dashboard aggregates (same row source as Task Summary / assignee counts).
+     * Dashboard / summary headline stats: one row per task, same definitions as {@see index()} stats
+     * (without session selected_user — matches /tasks when no user filter is selected).
      *
      * @return array{total_tasks: int, assigned_members: int, pending: int, overdue: int, approval_pending: int, done: int}
      */
     protected function getTaskDashboardAggregates(): array
     {
-        $rows = $this->getTaskSummaryMemberRows();
+        $q = $this->taskManagerVisibilityQuery();
 
-        $totalTasks = 0;
-        $assignedMembers = 0;
-        $pendingSum = 0;
-        $overdueSum = 0;
-        $approvalSum = 0;
-        $doneSum = 0;
+        $overdueQuery = (clone $q)->whereNotNull('start_date')
+            ->whereRaw('DATE_ADD(start_date, INTERVAL 1 DAY) < NOW()')
+            ->where('status', '!=', 'Archived');
 
-        foreach ($rows as $r) {
-            $task = (int) ($r['task'] ?? 0);
-            $totalTasks += $task;
-            if ($task > 0) {
-                $assignedMembers++;
-            }
-            $pendingSum += (int) ($r['a_task'] ?? 0);
-            $overdueSum += (int) ($r['overdue'] ?? 0);
-            $approvalSum += (int) ($r['need_approval'] ?? 0);
-            $doneSum += (int) ($r['done'] ?? 0);
-        }
+        $activeEmailSet = array_flip(User::where('is_active', true)->pluck('email')->all());
+        $assignedMembers = (clone $q)
+            ->whereNotNull('assign_to')
+            ->where('assign_to', '!=', '')
+            ->pluck('assign_to')
+            ->flatMap(function ($assignTo) {
+                return array_map('trim', explode(',', $assignTo));
+            })
+            ->filter()
+            ->unique()
+            ->filter(function ($email) use ($activeEmailSet) {
+                return isset($activeEmailSet[$email]);
+            })
+            ->count();
 
         return [
-            'total_tasks' => $totalTasks,
+            'total_tasks' => (clone $q)->count(),
             'assigned_members' => $assignedMembers,
-            'pending' => $pendingSum,
-            'overdue' => $overdueSum,
-            'approval_pending' => $approvalSum,
-            'done' => $doneSum,
+            'pending' => (clone $q)->where('status', 'Todo')->count(),
+            'overdue' => $overdueQuery->count(),
+            'approval_pending' => (clone $q)->where('status', 'Need Approval')->count(),
+            'done' => (clone $q)->where('status', 'Done')->count(),
         ];
+    }
+
+    /**
+     * Headline task counts for dashboard blades outside {@see homeDashboard()} (e.g. channel master).
+     */
+    public function sharedTaskDashboardAggregates(): array
+    {
+        return $this->getTaskDashboardAggregates();
     }
 
     /**
@@ -441,12 +440,13 @@ class TaskController extends Controller
     public function taskSummary()
     {
         $rows = $this->getTaskSummaryMemberRows();
+        $taskDashboardStats = $this->getTaskDashboardAggregates();
 
-        return view('tasks.task-summary', compact('rows'));
+        return view('tasks.task-summary', compact('rows', 'taskDashboardStats'));
     }
 
     /**
-     * Aggregates for dashboard / API — matches task-summary analytics badges (sums over all active members).
+     * Aggregates for dashboard / API — same headline counts as /tasks (no session user filter).
      */
     public function taskSummaryStats(): JsonResponse
     {
@@ -464,21 +464,7 @@ class TaskController extends Controller
 
     public function getData(Request $request)
     {
-        $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
-
-        $tasksQuery = Task::query();
-        
-        if (!$isAdmin) {
-            // Normal user: see all automated tasks, plus manual tasks they created/are assigned to.
-            $tasksQuery->where(function($query) use ($user) {
-                $query->where('is_automate_task', 1)
-                      ->orWhere(function($q) use ($user) {
-                          $q->where('assignor', $user->email)
-                            ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
-                      });
-            });
-        }
+        $tasksQuery = $this->taskManagerVisibilityQuery();
 
         $userNameFilter = trim((string) $request->query('user_name', ''));
         if ($userNameFilter !== '') {

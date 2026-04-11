@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Dashboard', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Dashboard', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'hideFloatingTaskButton' => true])
 
 @section('css')
 <!-- task dashboard css -->
@@ -1054,6 +1054,17 @@
 @section('content')
 @include('layouts.shared/page-title', ['sub_title' => 'Menu', 'page_title' => 'Dashboard'])
 
+    @php
+        $taskDashboardStats = $taskDashboardStats ?? [
+            'total_tasks' => 0,
+            'assigned_members' => 0,
+            'pending' => 0,
+            'overdue' => 0,
+            'approval_pending' => 0,
+            'done' => 0,
+        ];
+    @endphp
+
     <div id="dashboard-summary-stats" class="mt-2 mb-3 p-3 bg-light rounded">
         <h6 class="mb-1">Summary Statistics</h6>
         <div class="d-flex flex-wrap gap-2">
@@ -1226,17 +1237,6 @@
         </div>
     </div>
 
-    @php
-        $taskDashboardStats = $taskDashboardStats ?? [
-            'total_tasks' => 0,
-            'assigned_members' => 0,
-            'pending' => 0,
-            'overdue' => 0,
-            'approval_pending' => 0,
-            'done' => 0,
-        ];
-    @endphp
-
     <!-- task dashboard: compact stat widgets (same aggregates as Task Summary) -->
     <div class="dashboard-task-mini-section">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 px-1">
@@ -1272,7 +1272,7 @@
                     <div class="dashboard-task-mini-card__value">{{ number_format($taskDashboardStats['assigned_members']) }}</div>
                 </div>
             </a>
-            <a href="{{ route('tasks.index') }}" class="dashboard-task-mini-card" title="Assignee tasks in Todo status">
+            <a href="{{ route('tasks.index') }}" class="dashboard-task-mini-card" title="Tasks in Todo status (same row count rules as Task Manager)">
                 <div class="dashboard-task-mini-card__icon dashboard-task-mini-card__icon--orange" aria-hidden="true">
                     <i class="ri-loader-2-line"></i>
                 </div>
@@ -1310,238 +1310,6 @@
             </a>
         </div>
     </div>
-
-      <div class="dashboard-grid">
-        <div class="dashboard-card" style="--dash-accent: #059669; --dash-icon-fallback: #d1fae5;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('My Team', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('My Team',event);}">
-            <div class="card-icon">👥</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">My Team</div>
-                    <div class="card-description">View team members and performance metrics</div>
-                </div>
-                <span class="card-badge badge-green">1 Members</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">👤 Members</span>
-                <span class="subcard-item">📊 Performance</span>
-                <span class="subcard-item">🎯 Goals</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card" style="--dash-accent: #ea580c; --dash-icon-fallback: #fed7aa;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Inventory', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Inventory',event);}">
-            <div class="card-icon">📦</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Inventory</div>
-                    <div class="card-description">Inventory values</div>
-                </div>
-                <span class="card-badge badge-orange">1 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">📈 Stock Levels</span>
-                <span class="subcard-item">💰 Valuation</span>
-            </div>
-        </div>
-
-        <!-- <div class="dashboard-card" onclick="openModal('Sales')">
-            <div class="card-icon" style="background: #fef3c7;">💰</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Sales</div>
-                    <div class="card-description">Track sales performance</div>
-                </div>
-                <span class="card-badge badge-brown">286,435</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">🛒 E-Commerce</span>
-                <span class="subcard-item">🛍️ Shopify</span>
-                <span class="subcard-item">📱 Social Media</span>
-                <span class="subcard-item">📦 Amazon</span>
-            </div>
-        </div> -->
-
-        <div class="dashboard-card" style="--dash-accent: #db2777; --dash-icon-fallback: #fce7f3;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Operations', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Operations',event);}">
-            <div class="card-icon">⏰</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Operations</div>
-                    <div class="card-description">Track customer, Shipping & Reviews analyze</div>
-                </div>
-                <span class="card-badge badge-pink">3 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">🚚 Shipping</span>
-                <span class="subcard-item">⭐ Reviews</span>
-                <span class="subcard-item">👥 Customers</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card" style="--dash-accent: #9333ea; --dash-icon-fallback: #e9d5ff;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Human Resources', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Human Resources',event);}">
-            <div class="card-icon">👨‍💼</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Human Resources</div>
-                    <div class="card-description">Employee management & attendance tracking</div>
-                </div>
-                <span class="card-badge badge-purple">3 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">👥 Employees</span>
-                <span class="subcard-item">📅 Attendance</span>
-                <span class="subcard-item">💼 Payroll</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card" style="--dash-accent: #0d9488; --dash-icon-fallback: #ccfbf1;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Software & IT', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Software & IT',event);}">
-            <div class="card-icon">💻</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Software & IT</div>
-                    <div class="card-description">Generate reports and view analytics</div>
-                </div>
-                <span class="card-badge badge-teal">12 Items</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">🖥️ Systems</span>
-                <span class="subcard-item">🔧 Maintenance</span>
-                <span class="subcard-item">📊 Analytics</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card dashboard-card--invert-icon" style="--dash-accent: #1e3a5f;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Purchase', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Purchase',event);}">
-            <div class="card-actions">
-                <button type="button" class="eye-icon-btn" onclick="openModal('Purchase'); event.stopPropagation();" title="Open full menu">
-                    <i class="ri-eye-line"></i>
-                </button>
-            </div>
-            <div class="card-icon">🛒</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Purchase</div>
-                    <div class="card-description">Purchase management and analytics</div>
-                </div>
-                <span class="card-badge badge-indigo">3 Modules</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">📦 Categories</span>
-                <span class="subcard-item">🏢 Suppliers</span>
-                <span class="subcard-item">⚙️ MFRG</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card" style="--dash-accent: #d97706; --dash-icon-fallback: #fef3c7;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Pricing', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Pricing',event);}">
-            <div class="card-icon">💵</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Pricing</div>
-                    <div class="card-description">Get Pricing reports and view analytics</div>
-                </div>
-                <span class="card-badge badge-yellow">79%</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">💰 Price Lists</span>
-                <span class="subcard-item">📈 Trends</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card" style="--dash-accent: #64748b; --dash-icon-fallback: #e5e7eb;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Advertisements', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Advertisements',event);}">
-            <div class="card-icon">📢</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Advertisements</div>
-                    <div class="card-description">Get Advertisments reports and view analytics</div>
-                </div>
-                <span class="card-badge badge-gray">9 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">📱 Digital Ads</span>
-                <span class="subcard-item">📺 Campaigns</span>
-                <span class="subcard-item">📊 ROI</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card dashboard-card--invert-icon" style="--dash-accent: #b91c1c;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Content', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Content',event);}">
-            <div class="card-icon">📝</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Content</div>
-                    <div class="card-description">Get Content reports</div>
-                </div>
-                <span class="card-badge badge-red">0 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">✍️ Articles</span>
-                <span class="subcard-item">🎨 Media</span>
-                <span class="subcard-item">📅 Schedule</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card" style="--dash-accent: #2563eb; --dash-icon-fallback: #dbeafe;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Marketing', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Marketing',event);}">
-            <div class="card-icon">🎯</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Marketing</div>
-                    <div class="card-description">Get Marketing analytics</div>
-                </div>
-                <span class="card-badge badge-blue">6 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">📧 Email</span>
-                <span class="subcard-item">🎯 Campaigns</span>
-                <span class="subcard-item">📊 Analytics</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card" style="--dash-accent: #ca8a04; --dash-icon-fallback: #fef9c3;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Social Media', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Social Media',event);}">
-            <div class="card-icon">📱</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Social Media</div>
-                    <div class="card-description">Get Social Media analytics</div>
-                </div>
-                <span class="card-badge badge-yellow">0 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">📘 Facebook</span>
-                <span class="subcard-item">📷 Instagram</span>
-                <span class="subcard-item">🐦 Twitter</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card" style="--dash-accent: #c2410c; --dash-icon-fallback: #ffedd5;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Videos', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Videos',event);}">
-            <div class="card-icon">🎬</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Videos</div>
-                    <div class="card-description">Get Videos details</div>
-                </div>
-                <span class="card-badge badge-orange">0 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">🎥 Library</span>
-                <span class="subcard-item">▶️ Views</span>
-                <span class="subcard-item">👍 Engagement</span>
-            </div>
-        </div>
-
-        <div class="dashboard-card dashboard-card--invert-icon" style="--dash-accent: #4338ca;" role="button" tabindex="0" onclick="openDashboardCardInNewTab('Logistics', event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDashboardCardInNewTab('Logistics',event);}">
-            <div class="card-icon">🚚</div>
-            <div class="card-header">
-                <div>
-                    <div class="card-title">Logistics</div>
-                    <div class="card-description">Get Logistics Track Reports</div>
-                </div>
-                <span class="card-badge badge-indigo">0 Metrics</span>
-            </div>
-            <div class="subcards-preview">
-                <span class="subcard-item">📦 Shipments</span>
-                <span class="subcard-item">🚛 Tracking</span>
-                <span class="subcard-item">📍 Delivery</span>
-            </div>
-        </div>
-    </div>
-    
-    <!-- end row -->
 
     <!-- Menu Modal -->
     <div class="modal" id="menuModal">

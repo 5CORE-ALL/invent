@@ -287,7 +287,8 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-250">125–250%</option>
+                        <option value="125-175">125–175%</option>
+                        <option value="175-250">175–250%</option>
                         <option value="gt250">&gt; 250%</option>
                     </select>
 
@@ -6110,6 +6111,8 @@
                 const dilFilter = $('#dil-filter').val();
                 const ratingFilter = $('#rating-filter').val();
                 const parentFilter = $('#parent-filter').val();
+                const sectionFilter = $('#section-filter').val();
+                const parentRowsBypassDataFilters = (parentFilter === 'parents' || sectionFilter === 'hl-ads');
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
@@ -6166,12 +6169,12 @@
 
                 if (inventoryFilter === 'zero') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         return parseFloat(data.INV) === 0 || !data.INV;
                     });
                 } else if (inventoryFilter === 'more') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         return parseFloat(data.INV) > 0;
                     });
                 }
@@ -6180,7 +6183,7 @@
                     if (nrlFilter === 'req') {
                         // Show only RL (REQ) - exclude NRL; use NR or derive from NRL for parent rows
                         table.addFilter(function(data) {
-                            if (data.is_parent_summary) return true;
+                            if (data.is_parent_summary) return parentRowsBypassDataFilters;
                             var nr = (data.NR || '').toString().trim();
                             if (!nr) {
                                 var nrl = (data.NRL || 'REQ').toString().trim();
@@ -6191,7 +6194,7 @@
                     } else if (nrlFilter === 'nr') {
                         // Show only NRL (red dot)
                         table.addFilter(function(data) {
-                            if (data.is_parent_summary) return true;
+                            if (data.is_parent_summary) return parentRowsBypassDataFilters;
                             var nr = (data.NR || '').toString().trim();
                             if (!nr) {
                                 var nrl = (data.NRL || 'REQ').toString().trim();
@@ -6204,7 +6207,7 @@
 
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         
                         if (gpftFilter === 'negative') return gpft < 0;
@@ -6220,7 +6223,7 @@
 
                 if (roiFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const roiVal = parseFloat(data['GROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
                         if (roiFilter === 'gt250') return roiVal > 250;
@@ -6231,7 +6234,7 @@
 
                 if (cvrFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const aL30 = parseFloat(data['A_L30']) || 0;
                         const sess30 = parseFloat(data['Sess30']) || 0;
                         const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
@@ -6252,7 +6255,7 @@
                 if (cvrTrendFilter !== 'all') {
                     const cvrTrendTol = 0.1; // treat as equal within 0.1%
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const aL30 = parseFloat(data['A_L30']) || 0;
                         const sess30 = parseFloat(data['Sess30']) || 0;
                         const aL60 = parseFloat(data['units_ordered_l60']) || 0;
@@ -6269,7 +6272,7 @@
                 // DIL filter (sales velocity = L30 / INV * 100)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const inv = parseFloat(data['INV']) || 0;
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
@@ -6285,10 +6288,16 @@
                 // Rating filter
                 if (ratingFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
-                        const rating = parseFloat(data['rating']) || 0;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
+                        const rawRating = data['rating'];
+                        const rating = parseFloat(rawRating);
 
-                        if (ratingFilter === 'red') return rating < 3;
+                        if (ratingFilter === 'red') {
+                            if (rawRating === null || rawRating === undefined) return false;
+                            if (typeof rawRating === 'string' && rawRating.trim() === '') return false;
+                            if (isNaN(rating) || rating <= 0) return false;
+                            return rating < 3;
+                        }
                         if (ratingFilter === 'yellow') return rating >= 3 && rating <= 3.5;
                         if (ratingFilter === 'blue') return rating >= 3.51 && rating <= 3.99;
                         if (ratingFilter === 'green') return rating >= 4 && rating <= 4.5;
@@ -6298,7 +6307,6 @@
                 }
 
                 // Filter Rows: parents, skus, or all (skip when Play is active - show current parent group only)
-                var sectionFilter = $('#section-filter').val();
                 if (!isProductNavigationActive) {
                     if (sectionFilter === 'hl-ads') {
                         table.addFilter(function(data) {
@@ -6332,7 +6340,7 @@
 
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         
                         const status = data.SPRICE_STATUS || null;
                         
@@ -6353,7 +6361,7 @@
                 // Sold filter (based on A_L30)
                 if (soldFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         
                         const aL30 = parseFloat(data.A_L30) || 0;
                         
@@ -6369,7 +6377,7 @@
                 // S PRC filter: show only rows where SPRICE is blank (no value or 0)
                 if (spriceFilter === 'blank') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const sprice = data.SPRICE;
                         if (sprice == null || sprice === '') return true;
                         const num = parseFloat(sprice);
@@ -6380,7 +6388,7 @@
                 // Unified Range Filter (Views L30/L7, Sold L30/L7)
                 if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         
                         const value = parseFloat(data[rangeColumn]) || 0;
                         
@@ -6404,7 +6412,7 @@
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         
                         const price = parseFloat(data.price) || 0;
                         const lmpPrice = parseFloat(data.lmp_price) || 0;
@@ -6416,7 +6424,7 @@
                 // Map filter (INV vs INV_AMZ) - for inventory sync
                 if (mapFilterActive !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         
                         const inv = parseFloat(data.INV) || 0;
                         const nrValue = data.NR || '';
@@ -6479,6 +6487,7 @@
                 // Active = only rows with a campaign that is ENABLED; rows with no campaign must be hidden
                 if (campaignStatusFilter && campaignStatusFilter !== '' && campaignStatusFilter !== 'ALL') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         var currentSection = $('#section-filter').val();
                         var isEnabled = false;
                         var hasCampaignInSection = false;
@@ -6522,7 +6531,7 @@
                 // NRA filter - when "All" or empty, show all rows; when RA/NRA/LATER, filter to that value
                 if (nraFilter && nraFilter !== '' && nraFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         var nraValue = (data.NRA || '').toString().trim();
                         if (!nraValue) {
                             var nrlValue = (data.NRL || 'REQ').toString().trim();
@@ -6535,7 +6544,7 @@
                 // Price Slab filter
                 if (priceSlabFilter && priceSlabFilter !== '') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const price = parseFloat(data.price) || 0;
                         
                         if (priceSlabFilter === 'lt10') return price < 10;
@@ -6551,6 +6560,7 @@
                 // ACOS Slab filter - section-aware; buckets match SBGT (10 / 5 / 2): &lt;20%, 20–30%, ≥30%
                 if (acosSlabFilter && acosSlabFilter !== '' && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         var currentSection = sectionFilter;
                         var acos = 0;
                         if (currentSection === 'hl-ads') {
@@ -6574,7 +6584,7 @@
                 // 7UB Range filter - section-aware
                 if (ub7Min !== null || ub7Max !== null) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         var currentSection = $('#section-filter').val();
                         var l7_spend, budget;
                         if (currentSection === 'hl-ads') {
@@ -6598,7 +6608,7 @@
                 // 1UB Range filter - section-aware
                 if (ub1Min !== null || ub1Max !== null) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         var currentSection = $('#section-filter').val();
                         var l1_spend, budget;
                         if (currentSection === 'hl-ads') {
@@ -6622,6 +6632,7 @@
                 // ACOS Range filter - section-aware; apply to ALL rows so table actually filters
                 if ((acosRangeMin !== null || acosRangeMax !== null) && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         var currentSection = sectionFilter;
                         var acos = 0;
                         if (currentSection === 'hl-ads') {
@@ -6650,7 +6661,7 @@
                 // When NRA = "All" or empty, show all rows including NRA so KW Ads section shows full 198 count
                 if ((sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads') && nraFilter === 'RA' && (!utilizationTypeFilter || utilizationTypeFilter === 'all')) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         var nraValue = (data.NRA || '').toString().trim();
                         if (!nraValue) {
                             var nrlValue = (data.NRL || 'REQ').toString().trim();
@@ -6664,6 +6675,7 @@
                 // Only when an ads section is selected; apply to ALL rows (parent + child) so table actually filters
                 if (utilizationTypeFilter && utilizationTypeFilter !== 'all' && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         var currentSection = sectionFilter;
                         var hasCampaign, l2_spend, l1_spend, l7_spend, budget;
                         // Same logic as KW 2 UB% / KW 1 UB% column formatters: budget and hasCampaign

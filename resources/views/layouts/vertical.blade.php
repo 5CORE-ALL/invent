@@ -61,6 +61,7 @@
     </div>
     <!-- END wrapper -->
 
+    @unless($hideFloatingTaskButton ?? false)
     <!-- Floating Add Task Button (Chat bot / Help desk icon) -->
     <button type="button" 
             class="btn floating-task-btn" 
@@ -714,6 +715,7 @@
             });
         });
     </script>
+    @endunless
 
     @yield('modal')
 

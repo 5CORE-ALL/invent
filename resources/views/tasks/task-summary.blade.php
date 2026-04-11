@@ -374,6 +374,16 @@
 @endsection
 
 @section('content')
+    @php
+        $taskDashboardStats = $taskDashboardStats ?? [
+            'total_tasks' => 0,
+            'assigned_members' => 0,
+            'pending' => 0,
+            'overdue' => 0,
+            'approval_pending' => 0,
+            'done' => 0,
+        ];
+    @endphp
     <div class="row">
         <div class="col-12">
             <div class="page-title-box">
@@ -400,27 +410,27 @@
                             <div class="task-summary-analytics-badges">
                                 <button type="button" class="task-summary-analytics-badge" data-ts-metric="total" data-ts-title="Total Task Analytics" aria-label="Open total tasks chart">
                                     <div class="task-summary-analytics-badge-label">Total tasks</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-total">0</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-total">{{ number_format($taskDashboardStats['total_tasks']) }}</div>
                                     <i class="ri-line-chart-line" aria-hidden="true"></i>
                                 </button>
-                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="assigned" data-ts-title="Assigned Task Analytics" title="Visible members with at least one assignee task" aria-label="Open assigned chart">
+                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="assigned" data-ts-title="Assigned Task Analytics" title="Active members with at least one assignee task" aria-label="Open assigned chart">
                                     <div class="task-summary-analytics-badge-label">Assigned (members)</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-assigned">0</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-assigned">{{ number_format($taskDashboardStats['assigned_members']) }}</div>
                                     <i class="ri-team-line" aria-hidden="true"></i>
                                 </button>
                                 <button type="button" class="task-summary-analytics-badge" data-ts-metric="overdue" data-ts-title="Overdue Analytics" aria-label="Open overdue chart">
                                     <div class="task-summary-analytics-badge-label">Overdue</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-overdue">0</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-overdue">{{ number_format($taskDashboardStats['overdue']) }}</div>
                                     <i class="ri-alarm-warning-line" aria-hidden="true"></i>
                                 </button>
                                 <button type="button" class="task-summary-analytics-badge" data-ts-metric="approval" data-ts-title="Approval Pending Analytics" aria-label="Open approval chart">
                                     <div class="task-summary-analytics-badge-label">Approval pending</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-approval">0</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-approval">{{ number_format($taskDashboardStats['approval_pending']) }}</div>
                                     <i class="ri-time-line" aria-hidden="true"></i>
                                 </button>
                                 <button type="button" class="task-summary-analytics-badge" data-ts-metric="done" data-ts-title="Done Task Analytics" aria-label="Open done chart">
                                     <div class="task-summary-analytics-badge-label">Done</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-done">0</div>
+                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-done">{{ number_format($taskDashboardStats['done']) }}</div>
                                     <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
                                 </button>
                             </div>
@@ -716,39 +726,6 @@
                 });
             }
 
-            function calculateBadgeSums() {
-                var rows = getVisibleTableData();
-                var totalTask = 0;
-                var withAssignments = 0;
-                var overdueSum = 0;
-                var approvalSum = 0;
-                var doneSum = 0;
-                rows.forEach(function (r) {
-                    totalTask += r.task;
-                    if (r.task > 0) {
-                        withAssignments += 1;
-                    }
-                    overdueSum += r.overdue;
-                    approvalSum += r.need_approval;
-                    doneSum += r.done;
-                });
-                var map = {
-                    total: 'ts-analytics-val-total',
-                    assigned: 'ts-analytics-val-assigned',
-                    overdue: 'ts-analytics-val-overdue',
-                    approval: 'ts-analytics-val-approval',
-                    done: 'ts-analytics-val-done'
-                };
-                var vals = [totalTask, withAssignments, overdueSum, approvalSum, doneSum];
-                var keys = ['total', 'assigned', 'overdue', 'approval', 'done'];
-                keys.forEach(function (k, i) {
-                    var el = document.getElementById(map[k]);
-                    if (el) {
-                        el.textContent = String(vals[i]);
-                    }
-                });
-            }
-
             function buildChartSeries(metric) {
                 var rows = getVisibleTableData();
                 var fieldMap = {
@@ -808,7 +785,7 @@
                     titleEl.textContent = title;
                 }
                 if (subEl) {
-                    subEl.textContent = 'Uses the same visible rows as the table (after search). X-axis: team member. Y-axis: ' +
+                    subEl.textContent = 'Chart uses visible table rows (after search). Top badges match Task Manager row counts. X-axis: team member. Y-axis: ' +
                         (metric === 'assigned' ? 'assignee task count (only members with tasks).' : 'count for this metric.');
                 }
                 var loading = document.getElementById('task-summary-analytics-loading');
@@ -977,14 +954,12 @@
                 if (emptyRow) {
                     emptyRow.classList.toggle('d-none', !(q && shown === 0));
                 }
-                calculateBadgeSums();
             }
 
             if (input) {
                 input.addEventListener('input', runFilter);
                 input.addEventListener('search', runFilter);
             }
-            calculateBadgeSums();
 
             var tsTasksDataUrl = @json(route('tasks.data'));
             var tsTaskShowBase = @json(rtrim(url('/tasks'), '/'));
@@ -1398,7 +1373,6 @@
                 if (emptyRow) {
                     tbody.appendChild(emptyRow);
                 }
-                calculateBadgeSums();
             }
 
             function onSortClick(th) {

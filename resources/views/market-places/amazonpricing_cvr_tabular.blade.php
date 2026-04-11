@@ -88,6 +88,17 @@
                         <option value="40plus">40%+</option>
                     </select>
 
+                    <select id="roi-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="125-175">125–175%</option>
+                        <option value="175-250">175–250%</option>
+                        <option value="gt250">&gt; 250%</option>
+                    </select>
+
                     <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR</option>
@@ -3095,6 +3106,7 @@
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
+                const roiFilter = $('#roi-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const dilFilter = $('#dil-filter').val();
                 const ratingFilter = $('#rating-filter').val();
@@ -3130,20 +3142,28 @@
                 }
 
                 if (inventoryFilter === 'zero') {
-                    table.addFilter('INV', '=', 0);
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentFilter === 'show';
+                        return parseFloat(data.INV) === 0 || !data.INV;
+                    });
                 } else if (inventoryFilter === 'more') {
-                    table.addFilter('INV', '>', 0);
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentFilter === 'show';
+                        return parseFloat(data.INV) > 0;
+                    });
                 }
 
                 if (nrlFilter !== 'all') {
                     if (nrlFilter === 'req') {
                         // Show only REQ (exclude NR)
                         table.addFilter(function(data) {
+                            if (data.is_parent_summary) return parentFilter === 'show';
                             return data.NR !== 'NR';
                         });
                     } else if (nrlFilter === 'nr') {
                         // Show only NR
                         table.addFilter(function(data) {
+                            if (data.is_parent_summary) return parentFilter === 'show';
                             return data.NR === 'NR';
                         });
                     }
@@ -3151,6 +3171,7 @@
 
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         
                         if (gpftFilter === 'negative') return gpft < 0;
@@ -3164,8 +3185,20 @@
                     });
                 }
 
+                if (roiFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentFilter === 'show';
+                        const roiVal = parseFloat(data['ROI_percentage']) || 0;
+                        if (roiFilter === 'lt40') return roiVal < 40;
+                        if (roiFilter === 'gt250') return roiVal > 250;
+                        const [min, max] = roiFilter.split('-').map(Number);
+                        return roiVal >= min && roiVal <= max;
+                    });
+                }
+
                 if (cvrFilter !== 'all') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         const aL30 = parseFloat(data['A_L30']) || 0;
                         const sess30 = parseFloat(data['Sess30']) || 0;
                         const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
@@ -3185,6 +3218,7 @@
                 // DIL filter (sales velocity = L30 / INV * 100)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         const inv = parseFloat(data['INV']) || 0;
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
@@ -3200,9 +3234,16 @@
                 // Rating filter
                 if (ratingFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const rating = parseFloat(data['rating']) || 0;
-                        
-                        if (ratingFilter === 'red') return rating < 3;
+                        if (data.is_parent_summary) return parentFilter === 'show';
+                        const rawRating = data['rating'];
+                        const rating = parseFloat(rawRating);
+
+                        if (ratingFilter === 'red') {
+                            if (rawRating === null || rawRating === undefined) return false;
+                            if (typeof rawRating === 'string' && rawRating.trim() === '') return false;
+                            if (isNaN(rating) || rating <= 0) return false;
+                            return rating < 3;
+                        }
                         if (ratingFilter === 'yellow') return rating >= 3 && rating <= 3.5;
                         if (ratingFilter === 'blue') return rating >= 3.51 && rating <= 3.99;
                         if (ratingFilter === 'green') return rating >= 4 && rating <= 4.5;
@@ -3220,7 +3261,7 @@
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
                         // Skip parent rows
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         
                         const status = data.SPRICE_STATUS || null;
                         
@@ -3241,7 +3282,7 @@
                 // Sold filter (based on A_L30)
                 if (soldFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         
                         const aL30 = parseFloat(data.A_L30) || 0;
                         
@@ -3257,7 +3298,7 @@
                 // Unified Range Filter (Views L30/L7, Sold L30/L7)
                 if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         
                         const value = parseFloat(data[rangeColumn]) || 0;
                         
@@ -3281,7 +3322,7 @@
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         
                         const price = parseFloat(data.price) || 0;
                         const lmpPrice = parseFloat(data.lmp_price) || 0;
@@ -3293,7 +3334,7 @@
                 // Map filter (INV vs INV_AMZ) - for inventory sync
                 if (mapFilterActive !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         
                         const inv = parseFloat(data.INV) || 0;
                         const nrValue = data.NR || '';
@@ -3317,7 +3358,7 @@
                 // Missing Amazon filter - for items not in amazon_datsheets table
                 if (missingAmazonFilterActive) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return parentFilter === 'show';
                         
                         const inv = parseFloat(data.INV) || 0;
                         const nrValue = data.NR || '';
@@ -3337,7 +3378,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter').on('change', function() {
                 applyFilters();
             });
 

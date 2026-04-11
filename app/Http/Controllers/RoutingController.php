@@ -53,7 +53,12 @@ class RoutingController extends Controller
             abort(404);
         }
 
-        return view($first, ['mode' => $mode, 'demo' => $demo]);
+        $data = ['mode' => $mode, 'demo' => $demo];
+        if ($first === 'index') {
+            $data['taskDashboardStats'] = app(TaskController::class)->sharedTaskDashboardAggregates();
+        }
+
+        return view($first, $data);
     }
 
     /**

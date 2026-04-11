@@ -173,7 +173,8 @@
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
-                        <option value="125-250">125–250%</option>
+                        <option value="125-175">125–175%</option>
+                        <option value="175-250">175–250%</option>
                         <option value="gt250">&gt; 250%</option>
                     </select>
 
