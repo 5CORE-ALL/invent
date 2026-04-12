@@ -361,6 +361,9 @@ class AmazonSpApiService
                     ->patch($endpoint, $body);
 
                 $responseData = $response->json();
+                if (!is_array($responseData)) {
+                    $responseData = [];
+                }
 
                 // Check for errors in response
                 if ($response->failed()) {
@@ -423,15 +426,47 @@ class AmazonSpApiService
                     return $responseData;
                 }
 
-                // Success - log and return
-                Log::info("Amazon Price Update: SUCCESS (Attempt {$attempt}/{$maxRetries})", [
+                $patchFailure = $this->listingsPatchFailureFromResponseBody($responseData);
+                if ($patchFailure !== null) {
+                    Log::error("Amazon Price Update: listing patch not accepted (Attempt {$attempt}/{$maxRetries})", [
+                        'original_sku' => $sku,
+                        'amazon_sku' => $amazonSku,
+                        'price' => $price,
+                        'response' => $responseData,
+                    ]);
+                    return $patchFailure;
+                }
+
+                $confirmFailure = $this->confirmPriceAfterListingsPatch($amazonSku, $price, $accessToken);
+                if ($confirmFailure !== null) {
+                    $lastError = $confirmFailure;
+                    Log::warning("Amazon Price Update: post-patch verification did not succeed (Attempt {$attempt}/{$maxRetries})", [
+                        'original_sku' => $sku,
+                        'amazon_sku' => $amazonSku,
+                        'price' => $price,
+                        'patch_response' => $responseData,
+                        'errors' => $confirmFailure['errors'] ?? $confirmFailure,
+                    ]);
+                    if ($attempt < $maxRetries) {
+                        sleep(2);
+                        continue;
+                    }
+                    Log::error('Amazon Price Update: post-patch verification failed after all attempts', [
+                        'original_sku' => $sku,
+                        'amazon_sku' => $amazonSku,
+                        'price' => $price,
+                    ]);
+                    return $confirmFailure;
+                }
+
+                Log::info("Amazon Price Update: SUCCESS and verified (Attempt {$attempt}/{$maxRetries})", [
                     "original_sku" => $sku,
                     "amazon_sku" => $amazonSku,
                     "price" => $price,
                     "response" => $responseData
                 ]);
-                
-                return $responseData ?: ['success' => true];
+
+                return !empty($responseData) ? $responseData : ['success' => true, 'status' => 'ACCEPTED'];
                 
             } catch (\Exception $e) {
                 Log::error("Amazon Price Update Exception (Attempt {$attempt}/{$maxRetries})", [
@@ -600,6 +635,156 @@ class AmazonSpApiService
     }
 
     /**
+     * Listings Items PATCH returns HTTP 200 with status/issues; treat non-ACCEPTED and ERROR issues as failure.
+     *
+     * @param  array<string,mixed>  $body
+     * @return array{errors: array<int, array{code?: string, message?: string}>}|null  Error payload or null if OK
+     */
+    private function listingsPatchFailureFromResponseBody(array $body): ?array
+    {
+        $errors = [];
+
+        if (isset($body['status']) && is_string($body['status']) && strtoupper($body['status']) !== 'ACCEPTED') {
+            $errors[] = [
+                'code' => 'ListingsPatchNotAccepted',
+                'message' => 'Amazon did not accept the price update (status: ' . $body['status'] . ').',
+            ];
+        }
+
+        $issues = $body['issues'] ?? [];
+        if (is_array($issues)) {
+            foreach ($issues as $issue) {
+                if (!is_array($issue)) {
+                    continue;
+                }
+                $sev = strtoupper((string) ($issue['severity'] ?? ''));
+                if ($sev !== 'ERROR') {
+                    continue;
+                }
+                $errors[] = [
+                    'code' => (string) ($issue['code'] ?? 'ListingIssue'),
+                    'message' => trim((string) ($issue['message'] ?? 'Amazon reported an error for the listing update.')),
+                ];
+            }
+        }
+
+        if (empty($errors)) {
+            return null;
+        }
+
+        return ['errors' => $errors];
+    }
+
+    /**
+     * Read back listing price after PATCH (eventual consistency).
+     *
+     * @return array{errors: array<int, array{code?: string, message?: string}>}|null  Null when price matches
+     */
+    private function confirmPriceAfterListingsPatch(string $amazonSku, float $price, string $accessToken): ?array
+    {
+        $anyFalse = false;
+        $attempts = 6;
+
+        for ($i = 0; $i < $attempts; $i++) {
+            if ($i > 0) {
+                usleep(1500000);
+            } else {
+                usleep(1000000);
+            }
+
+            $v = $this->verifyPriceUpdate($amazonSku, $price, $accessToken);
+            if ($v === true) {
+                return null;
+            }
+            if ($v === false) {
+                $anyFalse = true;
+            }
+        }
+
+        if ($anyFalse) {
+            return [
+                'errors' => [[
+                    'code' => 'PriceVerificationFailed',
+                    'message' => 'Amazon did not show the new price after the update. Check Seller Central or retry.',
+                ]],
+            ];
+        }
+
+        return [
+            'errors' => [[
+                'code' => 'PriceVerificationInconclusive',
+                'message' => 'Could not read the listing price back from Amazon to confirm the update. Check Seller Central or retry in a minute.',
+            ]],
+        ];
+    }
+
+    /**
+     * Extract "your" price from getListingsItem JSON (multiple shapes / includedData sets).
+     *
+     * @param  array<string,mixed>  $data
+     */
+    private function extractListingsItemYourPrice(array $data): ?float
+    {
+        $fromSchedule = function ($v): ?float {
+            if ($v === null) {
+                return null;
+            }
+            if (is_array($v) && isset($v[0]['schedule'][0]['value_with_tax'])) {
+                return (float) $v[0]['schedule'][0]['value_with_tax'];
+            }
+            if (is_array($v) && isset($v[0]['value_with_tax'])) {
+                return (float) $v[0]['value_with_tax'];
+            }
+
+            return null;
+        };
+
+        $fromOffer = function (array $o) use ($fromSchedule): ?float {
+            foreach (['ourPrice', 'our_price'] as $k) {
+                if (!isset($o[$k])) {
+                    continue;
+                }
+                $p = $fromSchedule($o[$k]);
+                if ($p !== null) {
+                    return $p;
+                }
+            }
+
+            return null;
+        };
+
+        $offers = $data['offers'] ?? [];
+        if (isset($offers[0]) && is_array($offers[0])) {
+            $p = $fromOffer($offers[0]);
+            if ($p !== null) {
+                return $p;
+            }
+        }
+
+        if (isset($data['summaries'][0]['offers']) && is_array($data['summaries'][0]['offers'])) {
+            foreach ($data['summaries'][0]['offers'] as $offer) {
+                if (is_array($offer) && ($p = $fromOffer($offer)) !== null) {
+                    return $p;
+                }
+            }
+        }
+
+        $attrs = $data['attributes'] ?? [];
+        $purchasable = $attrs['purchasable_offer'] ?? null;
+        if (is_array($purchasable) && isset($purchasable[0]) && is_array($purchasable[0])) {
+            $po = $purchasable[0];
+            if (isset($po['our_price'])) {
+                $p = $fromSchedule($po['our_price']);
+                if ($p !== null) {
+                    return $p;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Verify that the price was actually updated on Amazon
      * Returns: true if verified, false if price doesn't match, null if unable to verify
      */
@@ -611,6 +796,8 @@ class AmazonSpApiService
                 Log::warning("Price verification: Seller ID not configured");
                 return null;
             }
+
+            $marketplaceId = $this->marketplaceId ?? config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER';
             
             // Get fresh token if not provided
             if (empty($accessToken)) {
@@ -622,12 +809,18 @@ class AmazonSpApiService
             }
             
             $encodedSku = rawurlencode($amazonSku);
-            $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+            $url = $this->endpoint . '/listings/2021-08-01/items/' . $sellerId . '/' . $encodedSku
+                . '?marketplaceIds=' . rawurlencode((string) $marketplaceId)
+                . '&includedData=' . rawurlencode('summaries,attributes,offers');
             
-            $response = Http::withHeaders([
-                'x-amz-access-token' => $accessToken,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get($url);
+            $response = Http::withToken($accessToken)
+                ->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(30)
+                ->get($url);
             
             if ($response->failed()) {
                 Log::warning("Price verification: Failed to fetch data", [
@@ -639,30 +832,18 @@ class AmazonSpApiService
             }
             
             $data = $response->json();
-            
-            // Extract current price from response - try multiple paths
-            $currentPrice = null;
-            
-            // Path 1: summaries > offers > ourPrice
-            if (isset($data['summaries'][0]['offers'])) {
-                foreach ($data['summaries'][0]['offers'] as $offer) {
-                    if (isset($offer['ourPrice'][0]['schedule'][0]['value_with_tax'])) {
-                        $currentPrice = (float) $offer['ourPrice'][0]['schedule'][0]['value_with_tax'];
-                        break;
-                    }
-                }
+            if (!is_array($data)) {
+                return null;
             }
-            
-            // Path 2: attributes > purchasable_offer
-            if ($currentPrice === null && isset($data['attributes']['purchasable_offer'][0]['our_price'][0]['schedule'][0]['value_with_tax'])) {
-                $currentPrice = (float) $data['attributes']['purchasable_offer'][0]['our_price'][0]['schedule'][0]['value_with_tax'];
-            }
+
+            $currentPrice = $this->extractListingsItemYourPrice($data);
             
             if ($currentPrice === null) {
                 Log::warning("Could not extract price from verification response", [
                     'sku' => $amazonSku,
                     'has_summaries' => isset($data['summaries']),
                     'has_attributes' => isset($data['attributes']),
+                    'has_offers' => isset($data['offers']),
                     'response_keys' => array_keys($data)
                 ]);
                 return null;
@@ -714,33 +895,30 @@ class AmazonSpApiService
             }
             
             $encodedSku = rawurlencode($amazonSku);
-            $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+            $marketplaceId = $this->marketplaceId ?? config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER';
+            $url = $this->endpoint . '/listings/2021-08-01/items/' . $sellerId . '/' . $encodedSku
+                . '?marketplaceIds=' . rawurlencode((string) $marketplaceId)
+                . '&includedData=' . rawurlencode('summaries,attributes,offers');
             
-            $response = Http::withHeaders([
-                'x-amz-access-token' => $accessToken,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get($url);
+            $response = Http::withToken($accessToken)
+                ->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(30)
+                ->get($url);
             
             if ($response->failed()) {
                 return null;
             }
             
             $data = $response->json();
-            
-            // Extract current price
-            if (isset($data['summaries'][0]['offers'])) {
-                foreach ($data['summaries'][0]['offers'] as $offer) {
-                    if (isset($offer['ourPrice'][0]['schedule'][0]['value_with_tax'])) {
-                        return (float) $offer['ourPrice'][0]['schedule'][0]['value_with_tax'];
-                    }
-                }
+            if (!is_array($data)) {
+                return null;
             }
-            
-            if (isset($data['attributes']['purchasable_offer'][0]['our_price'][0]['schedule'][0]['value_with_tax'])) {
-                return (float) $data['attributes']['purchasable_offer'][0]['our_price'][0]['schedule'][0]['value_with_tax'];
-            }
-            
-            return null;
+
+            return $this->extractListingsItemYourPrice($data);
         } catch (\Exception $e) {
             Log::error("Error getting current Amazon price", [
                 'sku' => $sku,

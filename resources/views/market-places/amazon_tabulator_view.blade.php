@@ -2677,58 +2677,28 @@
                 const originalHtml = $btn.html();
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> Applying...');
                 
-                // Call the API to update Amazon price
-                $.ajax({
-                    url: '/apply-amazon-price',
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    data: {
-                        sku: sku,
-                        price: price
-                    },
-                    success: function(response) {
+                // Same retry path as Accept column (backend verifies listing price after PATCH)
+                applyPriceWithRetry(sku, price, null, 5, 5000)
+                    .then(function() {
                         $btn.prop('disabled', false);
-                        
-                        // Check for errors in response (matching FBA pattern)
-                        if (response.errors && response.errors.length > 0) {
+                        showToast('success', `Price $${price.toFixed(2)} applied successfully to Amazon for SKU: ${sku}`);
+                        $btn.removeClass('btn-success').addClass('btn-secondary');
+                        $btn.html('<i class="fas fa-check-circle"></i> Applied');
+                        setTimeout(function() {
+                            $btn.removeClass('btn-secondary').addClass('btn-success');
                             $btn.html(originalHtml);
-                            const errorMsg = response.errors[0].message || 'Failed to apply price to Amazon';
-                            showToast('error', errorMsg);
-                        } else {
-                            // Success - no errors
-                            showToast('success', `Price $${price.toFixed(2)} applied successfully to Amazon for SKU: ${sku}`);
-                            // Update button to show success state
-                            $btn.removeClass('btn-success').addClass('btn-secondary');
-                            $btn.html('<i class="fas fa-check-circle"></i> Applied');
-                            setTimeout(() => {
-                                $btn.removeClass('btn-secondary').addClass('btn-success');
-                                $btn.html(originalHtml);
-                            }, 3000);
-                        }
-                    },
-                    error: function(xhr) {
+                        }, 3000);
+                    })
+                    .catch(function(err) {
                         $btn.prop('disabled', false);
                         $btn.html(originalHtml);
-                        
-                        let errorMsg = 'Failed to apply price to Amazon';
-                        if (xhr.responseJSON) {
-                            // Check for error field first (matching FBA pattern)
-                            errorMsg = xhr.responseJSON.error || xhr.responseJSON.message || errorMsg;
-                        } else if (xhr.responseText) {
-                            try {
-                                const errorData = JSON.parse(xhr.responseText);
-                                errorMsg = errorData.error || errorData.message || errorMsg;
-                            } catch (e) {
-                                errorMsg = xhr.responseText.substring(0, 100);
-                            }
-                        }
-                        
+                        const r = err && err.response;
+                        const errorMsg = (r && r.errors && r.errors[0] && r.errors[0].message)
+                            ? r.errors[0].message
+                            : 'Failed to apply price to Amazon';
                         showToast('error', errorMsg);
-                        console.error('Apply price error:', xhr);
-                    }
-                });
+                        console.error('Apply price error:', err);
+                    });
             });
 
             // Parent pricing modal: push SPRICE to Amazon (same retry + row update as Accept column; class is not .apply-price-btn to avoid double POST)
