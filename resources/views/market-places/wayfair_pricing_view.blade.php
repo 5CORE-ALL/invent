@@ -457,8 +457,7 @@
             if (wfUniformPriceModeActive) {
                 $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-warning')
                     .html('<i class="fas fa-equals"></i> Same SPRICE');
-                if (selectCol) selectCol.hide();
-                wfSelectedSkus.clear();
+                if (selectCol) selectCol.show();
                 $('#wf-discount-input').attr('placeholder', 'SPRICE $');
                 wfUpdateSelectedCount();
                 return;
@@ -487,7 +486,14 @@
 
         function wfUpdateSelectedCount() {
             if (wfUniformPriceModeActive) {
-                $('#wf-selected-skus-count').text('One SPRICE for every SKU row (not parent summaries).');
+                const cnt = wfSelectedSkus.size;
+                if (cnt > 0) {
+                    $('#wf-selected-skus-count').text(
+                        cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected — Apply uses these rows only (clear checks for all SKUs).'
+                    );
+                } else {
+                    $('#wf-selected-skus-count').text('Same SPRICE: no rows checked — Apply updates every SKU (not parent summaries).');
+                }
             } else {
                 const cnt = wfSelectedSkus.size;
                 $('#wf-selected-skus-count').text(cnt + ' SKU' + (cnt !== 1 ? 's' : '') + ' selected');
@@ -515,9 +521,11 @@
                 if (isNaN(discountVal) || discountVal <= 0 || !table) return;
                 const newSprice = wfRoundToRetailPrice(Math.max(0.99, discountVal));
                 const updates = [];
+                const limitToSelection = wfSelectedSkus.size > 0;
                 table.getRows().forEach(function(row) {
                     const d = row.getData();
                     if (d.is_parent) return;
+                    if (limitToSelection && !wfSelectedSkus.has(d.sku)) return;
                     const margin = wayfairMarginFromRow(d);
                     const lp = parseFloat(d.lp) || 0;
                     const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
@@ -568,14 +576,18 @@
 
         function wfClearSpriceForSelected() {
             if (wfUniformPriceModeActive) {
-                if (!confirm('Clear SPRICE for ALL SKU rows?')) return;
+                const limitToSelection = wfSelectedSkus.size > 0;
+                const msg = limitToSelection
+                    ? ('Clear SPRICE for ' + wfSelectedSkus.size + ' selected SKU(s)?')
+                    : 'Clear SPRICE for ALL SKU rows?';
+                if (!confirm(msg)) return;
                 const updates = [];
                 table.getRows().forEach(function(row) {
                     const d = row.getData();
-                    if (!d.is_parent) {
-                        row.update({ sprice: 0, sgpft: 0, sroi: 0 });
-                        updates.push({ sku: d.sku, sprice: 0 });
-                    }
+                    if (d.is_parent) return;
+                    if (limitToSelection && !wfSelectedSkus.has(d.sku)) return;
+                    row.update({ sprice: 0, sgpft: 0, sroi: 0 });
+                    updates.push({ sku: d.sku, sprice: 0 });
                 });
                 if (updates.length) saveWayfairSpriceUpdates(updates);
                 return;
@@ -831,7 +843,7 @@
                 },
                 layout: 'fitDataStretch',
                 pagination: true,
-                paginationSize: 100,
+                paginationSize: 50,
                 initialSort: [],
                 rowFormatter: function(row) {
                     if (row.getData().is_parent === true) {
