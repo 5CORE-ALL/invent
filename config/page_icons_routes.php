@@ -126,6 +126,9 @@ return [
     'walmart.*' => 'sidebar_ads',
     'wayfair.*' => 'sidebar_ads',
     'macy.*' => 'sidebar_ads',
+    // Macy's daily sales: Sales Dashboard context — not channel/ads marketplace pages
+    'macys.daily.sales' => 'sidebar_analytics',
+    'macys.daily.sales.data' => 'sidebar_analytics',
     'macys.*' => 'sidebar_ads',
     'temu.*' => 'sidebar_ads',
     'shein.*' => 'sidebar_ads',

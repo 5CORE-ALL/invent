@@ -23,7 +23,7 @@ class MacysSalesController extends Controller
 
         $orders = MiraklDailyData::macys()
             ->l30()
-            ->where('status', '!=', 'CLOSED')
+            ->whereNotIn('status', ['CLOSED', 'CHANNEL_SPECIFIC'])
             ->orderBy('order_created_at', 'desc')
             ->get();
 

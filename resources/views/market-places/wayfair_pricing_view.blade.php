@@ -497,6 +497,16 @@
             $('#wf-discount-container').toggle(showPanel);
         }
 
+        /** Clear pricing-mode SKU checkboxes when table filters change (visible row set changes). */
+        function wfClearSkuSelections() {
+            wfSelectedSkus.clear();
+            $('#wf-select-all').prop('checked', false);
+            wfUpdateSelectedCount();
+            if (table) {
+                try { table.redraw(true); } catch (err) { /* ignore */ }
+            }
+        }
+
         function wfApplyDiscount() {
             const discountType = $('#wf-discount-type').val();
             const discountVal = parseFloat($('#wf-discount-input').val());
@@ -1271,7 +1281,10 @@
             });
 
             $('#wf-pricing-parent-search, #wf-pricing-sku-search').on('input', function() { applyFilters(); });
-            $('#wf-row-type-filter, #wf-inv-filter, #wf-stock-filter, #wf-gpft-filter, #wf-cvr-filter, #wf-roi-filter, #wf-fqty-filter, #wf-map-filter').on('change', function() { applyFilters(); });
+            $('#wf-row-type-filter, #wf-inv-filter, #wf-stock-filter, #wf-gpft-filter, #wf-cvr-filter, #wf-roi-filter, #wf-fqty-filter, #wf-map-filter').on('change', function() {
+                wfClearSkuSelections();
+                applyFilters();
+            });
 
             $(document).on('click', '.wf-dil-toggle', function(e) {
                 e.stopPropagation();
@@ -1285,6 +1298,7 @@
                 const circle = $(this).find('.wf-sc').clone();
                 $('#wf-dil-btn').html('').append(circle).append('DIL%');
                 $(this).closest('.wf-manual-dropdown').removeClass('show');
+                wfClearSkuSelections();
                 applyFilters();
             });
             $(document).on('click', function() { $('.wf-manual-dropdown').removeClass('show'); });
@@ -1320,21 +1334,25 @@
             $('#wf-missing-badge').on('click', function() {
                 wfMissingActive = !wfMissingActive;
                 wfNMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-map-badge').on('click', function() {
                 wfNMapActive = !wfNMapActive;
                 wfMissingActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-zero-sold-badge').on('click', function() {
                 wfZeroSoldActive = !wfZeroSoldActive;
                 wfMoreSoldActive = wfMissingActive = wfNMapActive = false;
+                wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-more-sold-badge').on('click', function() {
                 wfMoreSoldActive = !wfMoreSoldActive;
                 wfZeroSoldActive = wfMissingActive = wfNMapActive = false;
+                wfClearSkuSelections();
                 applyFilters();
             });
 
