@@ -1949,6 +1949,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/incoming-sku-lookup', [IncomingController::class, 'lookupSku'])->name('incoming.sku.lookup');
     Route::post('/incoming-data-store', [IncomingController::class, 'store'])->name('incoming.store');
     Route::get('/incoming-data-list', [IncomingController::class, 'list']);
+    Route::get('/incoming-return-merged-list', [IncomingController::class, 'listIncomingReturnViewMerged'])->name('incoming.return.merged.list');
     Route::get('/incoming-return-view', [IncomingController::class, 'incomingReturnIndex'])->name('incoming.return.view');
     Route::post('/incoming-return-store', [IncomingController::class, 'storeReturn'])->name('incoming.return.store');
     Route::get('/incoming-return-history-list', [IncomingController::class, 'listReturnHistory']);

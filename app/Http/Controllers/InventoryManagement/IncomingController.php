@@ -216,6 +216,76 @@ class IncomingController extends Controller
         return asset('storage/'.$p);
     }
 
+    /**
+     * URLs for user-uploaded photos only (inventories.incoming_images JSON), not catalog/Shopify.
+     *
+     * @param  mixed  $incoming
+     * @return list<string>
+     */
+    protected function resolveIncomingSavedPhotoUrlsFromArray($incoming): array
+    {
+        if (! is_array($incoming)) {
+            return [];
+        }
+        $out = [];
+        foreach ($incoming as $v) {
+            if (is_string($v) && trim($v) !== '') {
+                $u = $this->normalizePublicDiskImageUrl($v);
+                if ($u) {
+                    $out[] = $u;
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @param  iterable<int, Inventory>  $items
+     * @return list<string>
+     */
+    protected function mergeIncomingSavedPhotoUrlsFromItems(iterable $items): array
+    {
+        $paths = [];
+        foreach ($items as $item) {
+            $incoming = $item->incoming_images ?? null;
+            if (! is_array($incoming)) {
+                continue;
+            }
+            foreach ($incoming as $v) {
+                if (is_string($v) && trim($v) !== '') {
+                    $paths[] = trim($v);
+                }
+            }
+        }
+        $paths = array_values(array_unique($paths));
+        $urls = [];
+        foreach ($paths as $p) {
+            $u = $this->normalizePublicDiskImageUrl($p);
+            if ($u) {
+                $urls[] = $u;
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * @param  iterable<int, Inventory>  $items
+     */
+    protected function mergeIncomingVoicePathFromItems(iterable $items): ?string
+    {
+        $sorted = collect($items)->sortByDesc('id');
+        foreach ($sorted as $item) {
+            $v = trim((string) ($item->incoming_voice_note ?? ''));
+            if ($v !== '') {
+                return $v;
+            }
+        }
+
+        return null;
+    }
+
     protected function resolveInventoryRowImageUrl(Inventory $item, ?ProductMaster $pm, ?ShopifySku $shop): ?string
     {
         $url = $this->resolveSuggestionImageUrl($pm, $shop);
@@ -532,6 +602,7 @@ class IncomingController extends Controller
         ini_set('max_execution_time', 90);
 
         $storedImagePaths = [];
+        $storedVoicePath = null;
 
         try {
             // Validate input (date is always server-side now; images optional)
@@ -542,6 +613,7 @@ class IncomingController extends Controller
                 'reason' => 'required|string|max:10000',
                 'images' => 'nullable|array|max:20',
                 'images.*' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:10240',
+                'voice_note' => 'nullable|file|max:15360|mimetypes:audio/webm,video/webm,audio/ogg,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav',
             ]);
 
             if ($inventoryType === 'incoming_return') {
@@ -974,6 +1046,13 @@ class IncomingController extends Controller
                 }
             }
 
+            if ($request->hasFile('voice_note')) {
+                $voiceFile = $request->file('voice_note');
+                if ($voiceFile && $voiceFile->isValid()) {
+                    $storedVoicePath = $voiceFile->store($imageFolderPrefix.'/voice/'.date('Y/m'), 'public');
+                }
+            }
+
             $productMaster = ProductMaster::query()
                 ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($sku)])
                 ->first();
@@ -1037,6 +1116,16 @@ class IncomingController extends Controller
                             $update['incoming_images'] = $allPaths !== [] ? json_encode($allPaths) : null;
                         }
 
+                        if (Schema::hasColumn('inventories', 'incoming_voice_note')) {
+                            $mergedVoice = null;
+                            if ($storedVoicePath) {
+                                $mergedVoice = $storedVoicePath;
+                            } else {
+                                $mergedVoice = $this->mergeIncomingVoicePathFromItems($matches);
+                            }
+                            $update['incoming_voice_note'] = $mergedVoice;
+                        }
+
                         DB::table('inventories')->where('id', $keep->id)->update($update);
 
                         $otherIds = $matches->pluck('id')->skip(1)->values()->all();
@@ -1092,6 +1181,10 @@ class IncomingController extends Controller
                     $insert['incoming_images'] = $incomingImagesJson;
                 }
 
+                if (Schema::hasColumn('inventories', 'incoming_voice_note')) {
+                    $insert['incoming_voice_note'] = $storedVoicePath;
+                }
+
                 DB::table('inventories')->insert($insert);
 
                 DB::commit();
@@ -1100,7 +1193,7 @@ class IncomingController extends Controller
 
                 $message = $pushToShopify
                     ? "✓ {$successLabel} for {$sku} added successfully! Quantity: {$qty} units."
-                    : "✓ {$successLabel} for {$sku} saved locally ({$qty} units). Shopify was not updated — only Main Godown syncs to Shopify. (Guardado localmente; solo Main Godown sincroniza con Shopify.)";
+                    : "✓ {$successLabel} for {$sku} saved locally ({$qty} units). Shopify was not updated — only Main Godown syncs to Shopify.";
 
                 return response()->json([
                     'success' => true,
@@ -1116,6 +1209,9 @@ class IncomingController extends Controller
                 DB::rollBack();
                 foreach ($storedImagePaths as $path) {
                     Storage::disk('public')->delete($path);
+                }
+                if ($storedVoicePath) {
+                    Storage::disk('public')->delete($storedVoicePath);
                 }
                 Log::error('Failed to save incoming record to database', ['sku' => $sku, 'error' => $dbException->getMessage(), 'shopify_was_attempted' => $pushToShopify]);
 
@@ -1218,6 +1314,109 @@ class IncomingController extends Controller
         });
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Single feed for the Incoming Return page: merges general incoming stock rows with grouped return history.
+     *
+     * Data sources (same DB table, different filters):
+     * - General incoming: {@see Inventory} where type = 'incoming' (same as {@see list()}).
+     * - Returns: {@see Inventory} where type = 'incoming_return', grouped by SKU + warehouse (same as {@see listReturnHistory()}).
+     */
+    public function listIncomingReturnViewMerged()
+    {
+        $incomingItems = Inventory::with('warehouse')
+            ->where('type', 'incoming')
+            ->orderByDesc('id')
+            ->get();
+
+        [$pmIn, $shopIn] = $this->batchProductMasterAndShopifyBySkuKeys($incomingItems->pluck('sku'));
+
+        $incomingRows = $incomingItems->map(function ($item) use ($pmIn, $shopIn) {
+            $k = strtolower(trim((string) ($item->sku ?? '')));
+            $pm = $pmIn->get($k);
+            $shop = $shopIn->get($k);
+            $at = $item->approved_at ?? $item->updated_at;
+            $voicePath = Schema::hasColumn('inventories', 'incoming_voice_note')
+                ? trim((string) ($item->incoming_voice_note ?? ''))
+                : '';
+
+            return [
+                'sku' => $item->sku,
+                'verified_stock' => $item->verified_stock,
+                'reason' => $item->reason,
+                'warehouse_id' => $item->warehouse_id,
+                'warehouse_name' => $item->warehouse->name ?? '',
+                'approved_by' => $item->approved_by,
+                'approved_at' => $item->approved_at
+                    ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('m-d-Y')
+                    : '',
+                'image_url' => $this->resolveInventoryRowImageUrl($item, $pm, $shop),
+                'user_upload_image_urls' => $this->resolveIncomingSavedPhotoUrlsFromArray($item->incoming_images),
+                'voice_note_url' => $voicePath !== '' ? $this->normalizePublicDiskImageUrl($voicePath) : null,
+                'record_type' => 'incoming',
+                'record_type_label' => 'General incoming',
+                '_sort' => $at ? Carbon::parse($at)->timestamp : 0,
+            ];
+        });
+
+        $returnItems = Inventory::with('warehouse')
+            ->where('type', 'incoming_return')
+            ->latest()
+            ->get();
+
+        [$pmRet, $shopRet] = $this->batchProductMasterAndShopifyBySkuKeys($returnItems->pluck('sku'));
+
+        $grouped = $returnItems->groupBy(function ($item) {
+            $skuKey = strtoupper(trim((string) ($item->sku ?? '')));
+
+            return $skuKey.'|'.(int) ($item->warehouse_id ?? 0);
+        });
+
+        $sortedGroups = $grouped->sortByDesc(fn ($group) => $group->max('id'));
+
+        $returnRows = $sortedGroups->values()->map(function ($group) use ($pmRet, $shopRet) {
+            $rep = $group->sortByDesc('id')->values()->first();
+            $sumQty = $group->sum(fn ($i) => (float) ($i->verified_stock ?? 0));
+            $k = strtolower(trim((string) ($rep->sku ?? '')));
+            $pm = $pmRet->get($k);
+            $shop = $shopRet->get($k);
+            $reasonParts = $group->pluck('reason')->map(fn ($r) => trim((string) $r))->filter()->unique()->values()->all();
+            $at = $rep->approved_at ?? $rep->updated_at;
+            $mergedVoicePath = Schema::hasColumn('inventories', 'incoming_voice_note')
+                ? $this->mergeIncomingVoicePathFromItems($group)
+                : null;
+
+            return [
+                'sku' => $rep->sku,
+                'verified_stock' => $sumQty,
+                'reason' => implode(' | ', $reasonParts),
+                'warehouse_id' => $rep->warehouse_id,
+                'warehouse_name' => $rep->warehouse->name ?? '',
+                'approved_by' => $rep->approved_by,
+                'approved_at' => $rep->approved_at
+                    ? Carbon::parse($rep->approved_at)->timezone('America/New_York')->format('m-d-Y')
+                    : '',
+                'image_url' => $this->resolveInventoryRowImageUrl($rep, $pm, $shop),
+                'user_upload_image_urls' => $this->mergeIncomingSavedPhotoUrlsFromItems($group),
+                'voice_note_url' => $mergedVoicePath ? $this->normalizePublicDiskImageUrl($mergedVoicePath) : null,
+                'record_type' => 'incoming_return',
+                'record_type_label' => 'Return',
+                '_sort' => $at ? Carbon::parse($at)->timestamp : 0,
+            ];
+        });
+
+        $merged = $incomingRows->concat($returnRows)
+            ->sortByDesc('_sort')
+            ->values()
+            ->map(function (array $row) {
+                unset($row['_sort']);
+
+                return $row;
+            })
+            ->values();
+
+        return response()->json(['data' => $merged->all()]);
     }
 
     /**

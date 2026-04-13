@@ -44,6 +44,7 @@ class Inventory extends Model
         'action',
         'combo_action',
         'incoming_images',
+        'incoming_voice_note',
         'replacement_tracking',
     ];
 

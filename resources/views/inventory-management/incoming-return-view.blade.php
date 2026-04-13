@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Incoming Return (Devolución entrante)', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Incoming Return', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -91,18 +91,6 @@
         #inventoryTable thead th.sorting:after,
         #inventoryTable thead th.sorting_asc:after,
         #inventoryTable thead th.sorting_desc:after {
-            color: white !important;
-            opacity: 0.8 !important;
-        }
-
-        #returnHistoryTable thead th {
-            background-color: #2c6ed5 !important;
-            color: white !important;
-        }
-
-        #returnHistoryTable thead th.sorting:after,
-        #returnHistoryTable thead th.sorting_asc:after,
-        #returnHistoryTable thead th.sorting_desc:after {
             color: white !important;
             opacity: 0.8 !important;
         }
@@ -278,8 +266,18 @@
             vertical-align: middle;
         }
 
-        #inventoryTable th:first-child,
-        #returnHistoryTable th:first-child {
+        .incoming-table-thumb-link {
+            display: inline-block;
+            line-height: 0;
+        }
+
+        .incoming-u-images-cell {
+            min-width: 4rem;
+            max-width: 220px;
+            vertical-align: middle;
+        }
+
+        #inventoryTable th:first-child {
             width: 64px;
         }
 
@@ -358,29 +356,25 @@
         .incoming-wh-dd-trigger-dot--openbox { background-color: #7a5f00; }
 
         #inventoryTable tbody td.incoming-wh-main,
-        #returnHistoryTable tbody td.incoming-wh-main,
         .incoming-wh-cell.incoming-wh-main {
             color: #0d4d2e !important;
             font-weight: 600;
         }
 
         #inventoryTable tbody td.incoming-wh-trash,
-        #returnHistoryTable tbody td.incoming-wh-trash,
         .incoming-wh-cell.incoming-wh-trash {
             color: #9b1c1c !important;
             font-weight: 600;
         }
 
         #inventoryTable tbody td.incoming-wh-openbox,
-        #returnHistoryTable tbody td.incoming-wh-openbox,
         .incoming-wh-cell.incoming-wh-openbox {
             color: #7a5f00 !important;
             font-weight: 600;
         }
 
         /* Dot beside warehouse text (same hue as godown theme) */
-        #inventoryTable tbody td.incoming-wh-main::before,
-        #returnHistoryTable tbody td.incoming-wh-main::before {
+        #inventoryTable tbody td.incoming-wh-main::before {
             content: '';
             display: inline-block;
             width: 0.55rem;
@@ -391,8 +385,7 @@
             background-color: #0d4d2e;
         }
 
-        #inventoryTable tbody td.incoming-wh-trash::before,
-        #returnHistoryTable tbody td.incoming-wh-trash::before {
+        #inventoryTable tbody td.incoming-wh-trash::before {
             content: '';
             display: inline-block;
             width: 0.55rem;
@@ -403,8 +396,7 @@
             background-color: #9b1c1c;
         }
 
-        #inventoryTable tbody td.incoming-wh-openbox::before,
-        #returnHistoryTable tbody td.incoming-wh-openbox::before {
+        #inventoryTable tbody td.incoming-wh-openbox::before {
             content: '';
             display: inline-block;
             width: 0.55rem;
@@ -420,15 +412,15 @@
 
 @section('content')
     @include('layouts.shared/page-title', [
-        'page_title' => 'Incoming Return (Devolución entrante)',
-        'sub_title' => 'Incoming Return (Devolución entrante)',
+        'page_title' => 'Incoming Return',
+        'sub_title' => 'Incoming Return',
     ])
 
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11000;">
         <div id="incomingToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
                 <div class="toast-body" id="incomingToastBody"></div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close (Cerrar)"></button>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
         </div>
     </div>
@@ -443,16 +435,16 @@
                     <div class="row mb-3 g-2 align-items-end">
                         <div class="col-xl-4 col-lg-5 col-md-12 d-flex align-items-center flex-wrap gap-2">
                             <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
-                                <i class="fas fa-plus me-1"></i> CREATE INCOMING RETURN (CREAR DEVOLUCIÓN ENTRANTE)
+                                <i class="fas fa-plus me-1"></i> CREATE INCOMING RETURN
                             </button>
                             <div class="dataTables_length"></div>
                         </div>
 
                         <div class="col-xl-3 col-lg-4 col-md-6">
-                            <label for="filterWarehouseMain_btn" class="form-label small fw-semibold mb-1">Warehouse filter (Filtro almacén)</label>
+                            <label for="filterWarehouseMain_btn" class="form-label small fw-semibold mb-1">Warehouse filter</label>
                             <div class="incoming-wh-dd-wrap position-relative">
                                 <select id="filterWarehouseMain" class="d-none incoming-wh-dd-native" aria-hidden="true" tabindex="-1">
-                                    <option value="">All warehouses (Todos los almacenes)</option>
+                                    <option value="">All warehouses</option>
                                     @foreach($warehouses as $warehouse)
                                         <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
                                     @endforeach
@@ -468,11 +460,22 @@
                             <label for="customSearch" class="form-label small fw-semibold mb-1 d-none d-md-block">&nbsp;</label>
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text"><i class="fas fa-search"></i></span>
-                                <input type="text" id="customSearch" class="form-control" placeholder="Search Incoming (Buscar entradas)">
-                                <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear (Limpiar)</button>
+                                <input type="text" id="customSearch" class="form-control" placeholder="Search incoming & returns">
+                                <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear</button>
                             </div>
                         </div>
                     </div>
+
+                    <p class="small text-muted mb-3">
+                        <strong>Data source:</strong>
+                        <code>inventories</code> table via
+                        <code>{{ url('/incoming-return-merged-list') }}</code>
+                        (<code>incoming.return.merged.list</code>)
+                        — rows with <code>type = incoming</code> (general incoming) and <code>type = incoming_return</code> (returns grouped by SKU + warehouse).
+                        <strong>IMAGE</strong> column: product master / Shopify thumbnail, or first user upload if no catalog image.
+                        <strong>U Images</strong> column: all paths from <code>incoming_images</code> (user uploads only).
+                        <strong>Voice</strong> column: optional recording from <code>incoming_voice_note</code> (public storage path).
+                    </p>
 
 
                     <!-- <div class="col-md-6 text-end">
@@ -493,25 +496,25 @@
                                 <div class="modal-content incoming-mobile">
 
                                     <div class="modal-header bg-primary text-white">
-                                        <h5 class="modal-title" id="incomingModalLabel">Add Incoming Return (Agregar devolución entrante)</h5>
+                                        <h5 class="modal-title" id="incomingModalLabel">Add Incoming Return</h5>
                                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                     </div>
 
                                     <div class="modal-body">
                                         <div id="incoming-offline-banner" class="alert alert-warning d-none mb-3" role="alert">
-                                            <i class="fas fa-wifi-slash me-2"></i>You are offline. Connect to the internet to submit (camera upload requires a connection). <span class="d-block mt-1">(Sin conexión. Conéctese a internet para enviar; la cámara requiere conexión.)</span>
+                                            <i class="fas fa-wifi-slash me-2"></i>You are offline. Connect to the internet to submit (camera upload requires a connection).
                                         </div>
                                         <div id="incoming-errors" class="mb-2 text-danger"></div>
 
                                         <div class="mb-3">
-                                            <label for="sku" class="form-label fw-bold">SKU (SKU)</label>
+                                            <label for="sku" class="form-label fw-bold">SKU</label>
                                             <div class="d-flex flex-column flex-sm-row gap-2">
                                                 <div class="incoming-sku-input-wrap flex-grow-1 position-relative">
-                                                    <input type="text" class="form-control w-100" id="sku" name="sku" required autocomplete="off" placeholder="Scan or type SKU (Escanee o escriba el SKU)" inputmode="text">
+                                                    <input type="text" class="form-control w-100" id="sku" name="sku" required autocomplete="off" placeholder="Scan or type SKU" inputmode="text">
                                                     <div id="sku-suggest-list" class="incoming-sku-suggest list-group position-absolute w-100 d-none" style="z-index: 1060; max-height: 240px; overflow-y: auto;" role="listbox" aria-label="SKU suggestions"></div>
                                                 </div>
                                                 <button type="button" class="btn btn-outline-primary btn-touch" id="btnScanBarcode">
-                                                    <i class="fas fa-barcode me-1"></i> Scan Barcode (Escanear código de barras)
+                                                    <i class="fas fa-barcode me-1"></i> Scan Barcode
                                                 </button>
                                             </div>
                                             <div id="sku-product-hint" class="incoming-product-hint mt-2 d-none"></div>
@@ -519,14 +522,14 @@
 
                                         <div class="row g-3 mb-3">
                                             <div class="col-12 col-md-6">
-                                                <label for="qty" class="form-label fw-bold">Quantity (Cantidad)</label>
+                                                <label for="qty" class="form-label fw-bold">Quantity</label>
                                                 <input type="number" class="form-control" id="qty" name="qty" required min="1" step="1" inputmode="numeric">
                                             </div>
                                             <div class="col-12 col-md-6">
-                                                <label for="warehouse_id_btn" class="form-label fw-bold">Warehouse (Almacén)</label>
+                                                <label for="warehouse_id_btn" class="form-label fw-bold">Warehouse</label>
                                                 <div class="incoming-wh-dd-wrap position-relative">
                                                     <select class="d-none incoming-wh-dd-native" id="warehouse_id" name="warehouse_id" required aria-hidden="true" tabindex="-1">
-                                                        <option selected disabled value="">Select Warehouse (Seleccione almacén)</option>
+                                                        <option selected disabled value="">Select Warehouse</option>
                                                         @foreach($warehouses as $warehouse)
                                                             <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
                                                         @endforeach
@@ -540,56 +543,73 @@
                                         </div>
 
                                         <div class="mb-3">
-                                            <label for="reason" class="form-label fw-bold">Condition / Remarks (Condición / observaciones)</label>
-                                            <textarea class="form-control" id="reason" name="reason" rows="4" required lang="es" maxlength="10000" style="min-height: 100px;" placeholder="Describa la condición del artículo, observaciones de la devolución, daños visibles, embalaje, etc."></textarea>
-                                            <small class="text-muted">Escriba en español. (Write in Spanish.)</small>
+                                            <label for="reason" class="form-label fw-bold">Condition / Remarks</label>
+                                            <textarea class="form-control" id="reason" name="reason" rows="4" required maxlength="10000" style="min-height: 100px;" placeholder="Describe the item condition, return notes, visible damage, packaging, etc."></textarea>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <span class="form-label fw-bold d-block">Voice Note <span class="text-muted fw-normal">(optional)</span></span>
+                                            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                                                <button type="button" class="btn btn-danger btn-touch" id="btnVoiceRecord" aria-pressed="false">
+                                                    <i class="fas fa-microphone me-1"></i>Record
+                                                </button>
+                                                <button type="button" class="btn btn-secondary btn-touch d-none" id="btnVoiceStop">
+                                                    <i class="fas fa-stop me-1"></i>Stop
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary btn-touch d-none" id="btnVoiceClear">
+                                                    <i class="fas fa-trash-alt me-1"></i>Clear
+                                                </button>
+                                                <span id="voiceRecordStatus" class="small text-muted"></span>
+                                            </div>
+                                            <audio id="voiceNotePlayback" class="w-100 d-none" controls preload="metadata" style="max-height: 48px;"></audio>
+                                            <small class="text-muted d-block">Microphone works in modern browsers over HTTPS. One clip per save (max ~15 MB).</small>
                                         </div>
 
                                         <div class="row g-3 mb-3">
                                             <div class="col-12 col-md-4">
-                                                <label class="form-label fw-bold">Photo 1 (Foto 1) <span class="text-muted fw-normal">(optional / opcional)</span></label>
+                                                <label class="form-label fw-bold">Photo 1 <span class="text-muted fw-normal">(optional)</span></label>
                                                 <div class="d-flex flex-column gap-2">
                                                     <input type="file" id="incoming-photo-input" class="d-none" accept="image/*" capture="environment" multiple>
                                                     <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos">
-                                                        <i class="fas fa-camera me-2"></i>Add Photos (Agregar fotos)
+                                                        <i class="fas fa-camera me-2"></i>Add Photos
                                                     </button>
                                                 </div>
                                                 <div id="incoming-photo-thumbs" class="mt-2"></div>
                                             </div>
                                             <div class="col-12 col-md-4">
-                                                <label class="form-label fw-bold">Photo 2 (Foto 2) <span class="text-muted fw-normal">(optional / opcional)</span></label>
+                                                <label class="form-label fw-bold">Photo 2 <span class="text-muted fw-normal">(optional)</span></label>
                                                 <div class="d-flex flex-column gap-2">
                                                     <input type="file" id="incoming-photo-input-2" class="d-none" accept="image/*" capture="environment" multiple>
                                                     <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos2">
-                                                        <i class="fas fa-camera me-2"></i>Add Photos (Agregar fotos)
+                                                        <i class="fas fa-camera me-2"></i>Add Photos
                                                     </button>
                                                 </div>
                                                 <div id="incoming-photo-thumbs-2" class="mt-2"></div>
                                             </div>
                                             <div class="col-12 col-md-4">
-                                                <label class="form-label fw-bold">Photo 3 (Foto 3) <span class="text-muted fw-normal">(optional / opcional)</span></label>
+                                                <label class="form-label fw-bold">Photo 3 <span class="text-muted fw-normal">(optional)</span></label>
                                                 <div class="d-flex flex-column gap-2">
                                                     <input type="file" id="incoming-photo-input-3" class="d-none" accept="image/*" capture="environment" multiple>
                                                     <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos3">
-                                                        <i class="fas fa-camera me-2"></i>Add Photos (Agregar fotos)
+                                                        <i class="fas fa-camera me-2"></i>Add Photos
                                                     </button>
                                                 </div>
                                                 <div id="incoming-photo-thumbs-3" class="mt-2"></div>
                                             </div>
                                         </div>
-                                        <small class="text-muted d-block mb-3">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery. <span class="d-block mt-1">(La cámara requiere HTTPS. Si no está disponible, puede elegir imágenes de la galería.)</span></small>
+                                        <small class="text-muted d-block mb-3">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery.</small>
 
                                         <p class="small text-muted mb-0">
-                                            <i class="fas fa-clock me-1"></i>Date and time are saved automatically when you submit. (La fecha y hora se guardan automáticamente al enviar.)
+                                            <i class="fas fa-clock me-1"></i>Date and time are saved automatically when you submit.
                                         </p>
                                     </div>
 
                                     <input type="hidden" name="type" value="incoming_return">
 
                                     <div class="modal-footer flex-column flex-sm-row gap-2">
-                                        <button type="button" class="btn btn-secondary btn-touch w-100 w-sm-auto" data-bs-dismiss="modal">Cancel (Cancelar)</button>
+                                        <button type="button" class="btn btn-secondary btn-touch w-100 w-sm-auto" data-bs-dismiss="modal">Cancel</button>
                                         <button type="submit" class="btn btn-success btn-touch w-100 w-sm-auto" id="incomingSubmitBtn">
-                                            <i class="fas fa-save me-1"></i> Save Incoming Return (Guardar devolución entrante)
+                                            <i class="fas fa-save me-1"></i> Save Incoming Return
                                         </button>
                                     </div>
                                 </div>
@@ -602,15 +622,15 @@
                         <div class="modal-dialog modal-dialog-centered modal-lg">
                             <div class="modal-content">
                                 <div class="modal-header">
-                                    <h5 class="modal-title" id="barcodeScannerLabel">Scan barcode (Escanear código de barras)</h5>
-                                    <button type="button" class="btn-close" id="barcodeScannerClose" data-bs-dismiss="modal" aria-label="Close (Cerrar)"></button>
+                                    <h5 class="modal-title" id="barcodeScannerLabel">Scan barcode</h5>
+                                    <button type="button" class="btn-close" id="barcodeScannerClose" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
                                     <div id="barcode-reader" class="w-100"></div>
                                     <p id="barcode-scan-status" class="small text-muted mt-2 mb-0"></p>
                                 </div>
                                 <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel (Cancelar)</button>
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                 </div>
                             </div>
                         </div>
@@ -738,18 +758,18 @@
                         <div class="modal-dialog modal-lg">
                             <div class="modal-content">
                                 <div class="modal-header bg-primary text-white">
-                                    <h5 class="modal-title">Processing Data (Procesando datos)</h5>
+                                    <h5 class="modal-title">Processing Data</h5>
                                 </div>
                                 <div class="modal-body">
                                     <div id="progress-container" class="mb-3"></div>
                                     <div id="error-container"></div>
                                     <div id="success-alert" class="alert alert-success" style="display:none">
-                                        All sheets updated successfully! (¡Todas las hojas se actualizaron correctamente!)
+                                        All sheets updated successfully!
                                     </div>
                                 </div>
                                 <div class="modal-footer">
-                                    <button id="cancelUploadBtn" class="btn btn-secondary">Cancel (Cancelar)</button>
-                                    <button id="doneBtn" class="btn btn-primary" style="display:none">Done (Listo)</button>
+                                    <button id="cancelUploadBtn" class="btn btn-secondary">Cancel</button>
+                                    <button id="doneBtn" class="btn btn-primary" style="display:none">Done</button>
                                 </div>
                             </div>
                         </div>
@@ -760,13 +780,16 @@
                         <table id="inventoryTable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th>IMAGE (IMAGEN)</th>
-                                    <th>SKU (SKU)</th>
-                                    <th>QUANTITY (CANTIDAD)</th>
-                                    <th>WAREHOUSE (ALMACÉN)</th>
-                                    <th>CONDITION / REMARKS (CONDICIÓN / OBS.)</th>
-                                    <th>CREATED BY (CREADO POR)</th>
-                                    <th>DATE (FECHA)</th>
+                                    <th>IMAGE</th>
+                                    <th>TYPE</th>
+                                    <th>SKU</th>
+                                    <th>QUANTITY</th>
+                                    <th>WAREHOUSE</th>
+                                    <th>CONDITION / REMARKS</th>
+                                    <th>U Images</th>
+                                    <th>Voice</th>
+                                    <th>CREATED BY</th>
+                                    <th>DATE</th>
                                 </tr>
                             </thead>
                             <tbody id="inventory-table-body">
@@ -781,70 +804,7 @@
                         <div class="wave"></div>
                         <div class="wave"></div>
                         <div class="wave"></div>
-                        <div class="loading-text">Loading Incoming Data… (Cargando datos de entradas…)</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="mb-3">Return History (Historial de devoluciones)</h5>
-
-                    <div class="row mb-3 g-2 align-items-end">
-                        <div class="col-xl-4 col-lg-5 col-md-12"></div>
-                        <div class="col-xl-3 col-lg-4 col-md-6">
-                            <label for="filterWarehouseReturn_btn" class="form-label small fw-semibold mb-1">Warehouse filter (Filtro almacén)</label>
-                            <div class="incoming-wh-dd-wrap position-relative">
-                                <select id="filterWarehouseReturn" class="d-none incoming-wh-dd-native" aria-hidden="true" tabindex="-1">
-                                    <option value="">All warehouses (Todos los almacenes)</option>
-                                    @foreach($warehouses as $warehouse)
-                                        <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
-                                    @endforeach
-                                </select>
-                                <button type="button" id="filterWarehouseReturn_btn" class="form-select form-select-sm incoming-wh-dd-trigger warehouse-filter-select w-100 text-start d-flex align-items-center" aria-haspopup="listbox" aria-expanded="false">
-                                    <span class="incoming-wh-dd-trigger-inner d-flex align-items-center min-w-0 flex-grow-1"></span>
-                                </button>
-                                <div class="incoming-wh-dd-panel list-group position-absolute top-100 start-0 end-0 d-none bg-white border rounded shadow-sm mt-1 py-1" role="listbox"></div>
-                            </div>
-                        </div>
-                        <div class="col-xl-5 col-lg-12 col-md-6">
-                            <label for="customSearchReturnHistory" class="form-label small fw-semibold mb-1 d-none d-md-block">&nbsp;</label>
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="fas fa-search"></i></span>
-                                <input type="text" id="customSearchReturnHistory" class="form-control" placeholder="Search Return History (Buscar historial de devoluciones)">
-                                <button class="btn btn-outline-secondary" type="button" id="clearSearchReturnHistory">Clear (Limpiar)</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="table-responsive">
-                        <table id="returnHistoryTable" class="table dt-responsive nowrap w-100">
-                            <thead>
-                                <tr>
-                                    <th>IMAGE (IMAGEN)</th>
-                                    <th>SKU (SKU)</th>
-                                    <th>QUANTITY (CANTIDAD)</th>
-                                    <th>WAREHOUSE (ALMACÉN)</th>
-                                    <th>CONDITION / REMARKS (CONDICIÓN / OBS.)</th>
-                                    <th>CREATED BY (CREADO POR)</th>
-                                    <th>DATE (FECHA)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="return-history-table-body">
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="return-history-rainbow-loader" class="rainbow-loader">
-                        <div class="wave"></div>
-                        <div class="wave"></div>
-                        <div class="wave"></div>
-                        <div class="wave"></div>
-                        <div class="wave"></div>
-                        <div class="loading-text">Loading Return History… (Cargando historial de devoluciones…)</div>
+                        <div class="loading-text">Loading Incoming Data…</div>
                     </div>
                 </div>
             </div>
@@ -857,7 +817,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-success text-white">
                     <h5 class="modal-title" id="successModalLabel">
-                        <i class="fas fa-check-circle me-2"></i>Success (Éxito)
+                        <i class="fas fa-check-circle me-2"></i>Success
                     </h5>
                 </div>
                 <div class="modal-body text-center py-4">
@@ -868,7 +828,7 @@
                 </div>
                 <div class="modal-footer justify-content-center">
                     <button type="button" class="btn btn-success btn-lg px-5" id="successModalOkBtn">
-                        <i class="fas fa-check me-2"></i>OK (Aceptar)
+                        <i class="fas fa-check me-2"></i>OK
                     </button>
                 </div>
             </div>
@@ -897,11 +857,9 @@
 
             // Show loader immediately
             document.getElementById('rainbow-loader').style.display = 'block';
-            document.getElementById('return-history-rainbow-loader').style.display = 'block';
 
             // Store the loaded data globally
             let tableData = [];
-            let returnHistoryTableData = [];
 
             function setupProgressModal() {
                 const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
@@ -946,7 +904,7 @@
                                     <div id="${sheet.id}-progress" class="progress-bar progress-bar-striped progress-bar-animated" 
                                         role="progressbar" style="width: 0%"></div>
                                 </div>
-                                <div id="${sheet.id}-status" class="small text-muted mt-1">Initializing… (Iniciando…)</div>
+                                <div id="${sheet.id}-status" class="small text-muted mt-1">Initializing…</div>
                                 <div id="${sheet.id}-error" class="small text-danger mt-1"></div>
                             </div>
                         `;
@@ -967,13 +925,13 @@
                         if (isSuccess) {
                             progressEl.classList.remove('progress-bar-animated');
                             progressEl.classList.add('bg-success');
-                            statusEl.textContent = status || 'Completed successfully (Completado correctamente)';
+                            statusEl.textContent = status || 'Completed successfully';
                             statusEl.classList.add('text-success');
                             iconEl.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
                         } else if (progress === 100) {
                             progressEl.classList.remove('progress-bar-animated');
                             progressEl.classList.add('bg-danger');
-                            statusEl.textContent = status || 'Failed (Falló)';
+                            statusEl.textContent = status || 'Failed';
                             statusEl.classList.add('text-danger');
                             iconEl.innerHTML = '<i class="fas fa-times-circle text-danger"></i>';
 
@@ -987,7 +945,7 @@
                                 `;
                             }
                         } else {
-                            statusEl.textContent = status || 'Processing… (Procesando…)';
+                            statusEl.textContent = status || 'Processing…';
                         }
                     }
                 };
@@ -1003,7 +961,7 @@
                         document.getElementById('error-container').innerHTML += `
                             <div class="alert alert-warning mt-3">
                                 <i class="fas fa-info-circle me-2"></i>
-                                ${successCount}/${totalCount} sheets updated successfully (hojas actualizadas correctamente)
+                                ${successCount}/${totalCount} sheets updated successfully
                             </div>
                         `;
                         doneBtn.style.display = 'block';
@@ -1014,9 +972,7 @@
             function initializeTable() {
                 setupIncomingWarehouseDropdowns();
                 loadData();
-                loadReturnHistoryData();
                 setupSearch();
-                setupReturnHistorySearch();
                 setupAddWarehouseModal();
                 setupProgressModal();
                 setupEditDeleteButtons();
@@ -1114,6 +1070,82 @@
                 /** Avoid double-firing decode before stop() / modal close */
                 let incomingBarcodeDecodeHandled = false;
                 let incomingBarcodeLastAt = 0;
+
+                let incomingVoiceBlob = null;
+                let incomingVoiceMime = 'audio/webm';
+                let incomingVoiceMediaRecorder = null;
+                let incomingVoiceStream = null;
+                let incomingVoiceChunks = [];
+                let incomingVoicePlaybackUrl = null;
+
+                function pickIncomingVoiceMimeType() {
+                    if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) {
+                        return '';
+                    }
+                    const opts = [
+                        'audio/webm;codecs=opus',
+                        'audio/webm',
+                        'audio/mp4',
+                        'audio/ogg;codecs=opus',
+                        'audio/ogg',
+                    ];
+                    for (let i = 0; i < opts.length; i++) {
+                        if (MediaRecorder.isTypeSupported(opts[i])) {
+                            return opts[i];
+                        }
+                    }
+                    return '';
+                }
+
+                function incomingVoiceFilenameForMime(mime) {
+                    const m = (mime || '').toLowerCase();
+                    if (m.indexOf('mp4') !== -1) {
+                        return 'voice-note.m4a';
+                    }
+                    if (m.indexOf('ogg') !== -1) {
+                        return 'voice-note.ogg';
+                    }
+                    return 'voice-note.webm';
+                }
+
+                function clearIncomingVoiceNote() {
+                    if (incomingVoiceMediaRecorder && incomingVoiceMediaRecorder.state === 'recording') {
+                        try {
+                            incomingVoiceMediaRecorder.stop();
+                        } catch (e) { /* ignore */ }
+                    }
+                    incomingVoiceMediaRecorder = null;
+                    if (incomingVoiceStream) {
+                        incomingVoiceStream.getTracks().forEach(function (t) {
+                            try {
+                                t.stop();
+                            } catch (e) { /* ignore */ }
+                        });
+                        incomingVoiceStream = null;
+                    }
+                    incomingVoiceChunks = [];
+                    incomingVoiceBlob = null;
+                    incomingVoiceMime = 'audio/webm';
+
+                    const audioEl = document.getElementById('voiceNotePlayback');
+                    if (audioEl) {
+                        audioEl.pause();
+                        audioEl.removeAttribute('src');
+                        audioEl.load();
+                        audioEl.classList.add('d-none');
+                    }
+                    if (incomingVoicePlaybackUrl) {
+                        try {
+                            URL.revokeObjectURL(incomingVoicePlaybackUrl);
+                        } catch (e) { /* ignore */ }
+                        incomingVoicePlaybackUrl = null;
+                    }
+
+                    $('#btnVoiceRecord').removeClass('d-none').prop('disabled', false).attr('aria-pressed', 'false');
+                    $('#btnVoiceStop').addClass('d-none');
+                    $('#btnVoiceClear').addClass('d-none');
+                    $('#voiceRecordStatus').text('');
+                }
 
                 function incomingReturnBarcodeFormats() {
                     if (typeof Html5QrcodeSupportedFormats === 'undefined') {
@@ -1217,6 +1249,96 @@
                     renderIncomingPhotoThumbs3();
                 });
 
+                $('#btnVoiceRecord').on('click', function () {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        showIncomingToast('Microphone is not available in this browser.');
+                        return;
+                    }
+                    if (typeof MediaRecorder === 'undefined') {
+                        showIncomingToast('Audio recording is not supported in this browser.');
+                        return;
+                    }
+                    const mime = pickIncomingVoiceMimeType();
+                    if (!mime) {
+                        showIncomingToast('No supported audio format for recording.');
+                        return;
+                    }
+                    incomingVoiceMime = mime;
+                    incomingVoiceChunks = [];
+                    navigator.mediaDevices.getUserMedia({ audio: true })
+                        .then(function (stream) {
+                            incomingVoiceStream = stream;
+                            try {
+                                incomingVoiceMediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+                            } catch (err) {
+                                stream.getTracks().forEach(function (t) {
+                                    t.stop();
+                                });
+                                incomingVoiceStream = null;
+                                showIncomingToast('Could not start recorder.');
+                                return;
+                            }
+                            incomingVoiceMediaRecorder.ondataavailable = function (e) {
+                                if (e.data && e.data.size > 0) {
+                                    incomingVoiceChunks.push(e.data);
+                                }
+                            };
+                            incomingVoiceMediaRecorder.onstop = function () {
+                                if (incomingVoiceStream) {
+                                    incomingVoiceStream.getTracks().forEach(function (t) {
+                                        try {
+                                            t.stop();
+                                        } catch (e2) { /* ignore */ }
+                                    });
+                                    incomingVoiceStream = null;
+                                }
+                                incomingVoiceMediaRecorder = null;
+                                const blob = new Blob(incomingVoiceChunks, { type: incomingVoiceMime || 'audio/webm' });
+                                incomingVoiceChunks = [];
+                                if (blob.size < 1) {
+                                    $('#voiceRecordStatus').text('');
+                                    $('#btnVoiceRecord').removeClass('d-none').prop('disabled', false).attr('aria-pressed', 'false');
+                                    $('#btnVoiceStop').addClass('d-none');
+                                    return;
+                                }
+                                incomingVoiceBlob = blob;
+                                if (incomingVoicePlaybackUrl) {
+                                    try {
+                                        URL.revokeObjectURL(incomingVoicePlaybackUrl);
+                                    } catch (e3) { /* ignore */ }
+                                }
+                                incomingVoicePlaybackUrl = URL.createObjectURL(blob);
+                                const audioEl = document.getElementById('voiceNotePlayback');
+                                if (audioEl) {
+                                    audioEl.src = incomingVoicePlaybackUrl;
+                                    audioEl.classList.remove('d-none');
+                                }
+                                $('#voiceRecordStatus').text('Recorded — play back or save with the form.');
+                                $('#btnVoiceRecord').removeClass('d-none').prop('disabled', false).attr('aria-pressed', 'false');
+                                $('#btnVoiceStop').addClass('d-none');
+                                $('#btnVoiceClear').removeClass('d-none');
+                            };
+                            incomingVoiceMediaRecorder.start(200);
+                            $('#btnVoiceRecord').addClass('d-none').attr('aria-pressed', 'true');
+                            $('#btnVoiceStop').removeClass('d-none');
+                            $('#btnVoiceClear').addClass('d-none');
+                            $('#voiceRecordStatus').text('Recording…');
+                        })
+                        .catch(function () {
+                            showIncomingToast('Microphone permission denied or unavailable (HTTPS required on most devices).');
+                        });
+                });
+
+                $('#btnVoiceStop').on('click', function () {
+                    if (incomingVoiceMediaRecorder && incomingVoiceMediaRecorder.state === 'recording') {
+                        incomingVoiceMediaRecorder.stop();
+                    }
+                });
+
+                $('#btnVoiceClear').on('click', function () {
+                    clearIncomingVoiceNote();
+                });
+
                 function showIncomingToast(msg) {
                     const el = document.getElementById('incomingToast');
                     const body = document.getElementById('incomingToastBody');
@@ -1240,11 +1362,11 @@
                                 hint.removeClass('d-none').html(
                                     '<i class="fas fa-check-circle text-success me-1"></i>' +
                                     escapeHtml(res.title || res.sku) +
-                                    (res.parent ? ' · Parent (Padre): ' + escapeHtml(res.parent) : '')
+                                    (res.parent ? ' · Parent: ' + escapeHtml(res.parent) : '')
                                 );
                             } else {
                                 hint.removeClass('d-none').html(
-                                    '<i class="fas fa-info-circle me-1"></i>' + escapeHtml(res.message || 'SKU not in product master (will still try Shopify). (SKU no está en el catálogo maestro; se intentará en Shopify.)')
+                                    '<i class="fas fa-info-circle me-1"></i>' + escapeHtml(res.message || 'SKU not in product master (will still try Shopify).')
                                 );
                             }
                         })
@@ -1287,7 +1409,7 @@
                             $text.append($('<div class="small text-muted text-truncate" style="max-width:100%"/>').text(it.label));
                         }
                         if (it.parent) {
-                            $text.append($('<div class="small text-muted"/>').text('Parent (Padre): ' + it.parent));
+                            $text.append($('<div class="small text-muted"/>').text('Parent: ' + it.parent));
                         }
                         $row.append($text);
                         $btn.append($row);
@@ -1370,12 +1492,12 @@
 
                 $('#btnScanBarcode').on('click', function () {
                     if (typeof Html5Qrcode === 'undefined') {
-                        $('#incoming-errors').html('<div class="alert alert-warning mb-0">Barcode scanner library did not load. Refresh the page or type the SKU manually. <span class="d-block mt-1 small">(No se cargó el escáner. Actualice la página o escriba el SKU manualmente.)</span></div>');
+                        $('#incoming-errors').html('<div class="alert alert-warning mb-0">Barcode scanner library did not load. Refresh the page or type the SKU manually.</div>');
                         return;
                     }
                     $('#incoming-errors').html('');
                     incomingBarcodeDecodeHandled = false;
-                    $('#barcode-scan-status').text('Starting camera… (Iniciando cámara…)');
+                    $('#barcode-scan-status').text('Starting camera…');
                     const modalEl = document.getElementById('barcodeScannerModal');
                     const bsScanModal = bootstrap.Modal.getOrCreateInstance(modalEl);
                     $(modalEl).one('shown.bs.modal', function () {
@@ -1442,13 +1564,12 @@
                             function () { /* per frame — no OCR */ }
                         ).then(function () {
                             $('#barcode-scan-status').text(
-                                'Point the camera at the bars (EAN-13, EAN-8, or Code 128). Human-readable text under the barcode is ignored. ' +
-                                '(Apunte a las barras; el texto impreso debajo se ignora.)'
+                                'Point the camera at the bars (EAN-13, EAN-8, or Code 128). Human-readable text under the barcode is ignored.'
                             );
                         }).catch(function (err) {
                             incomingBarcodeDecodeHandled = false;
                             $('#barcode-scan-status').text(
-                                'Camera unavailable (' + (err && err.message ? err.message : 'permission or HTTPS') + '). Type the SKU or allow camera access. (Cámara no disponible. Escriba el SKU o permita el acceso a la cámara.)'
+                                'Camera unavailable (' + (err && err.message ? err.message : 'permission or HTTPS') + '). Type the SKU or allow camera access.'
                             );
                         });
                     });
@@ -1467,7 +1588,7 @@
                     }
 
                     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-                        $('#incoming-errors').html('<div class="alert alert-danger mb-0">You are offline. Connect to the internet to submit incoming return stock. <span class="d-block mt-1 small">(Sin conexión. Conéctese a internet para enviar la devolución entrante.)</span></div>');
+                        $('#incoming-errors').html('<div class="alert alert-danger mb-0">You are offline. Connect to the internet to submit incoming return stock.</div>');
                         return false;
                     }
 
@@ -1476,10 +1597,10 @@
 
                     let hasError = false;
                     const fields = [
-                        { id: '#sku', name: 'SKU (SKU)' },
-                        { id: '#qty', name: 'Quantity (Cantidad)' },
-                        { id: '#warehouse_id', name: 'Warehouse (Almacén)' },
-                        { id: '#reason', name: 'Condition / Remarks (Condición / observaciones)' },
+                        { id: '#sku', name: 'SKU' },
+                        { id: '#qty', name: 'Quantity' },
+                        { id: '#warehouse_id', name: 'Warehouse' },
+                        { id: '#reason', name: 'Condition / Remarks' },
                     ];
 
                     fields.forEach(function (f) {
@@ -1488,7 +1609,7 @@
                         if (!v || v === 'Select Warehouse') {
                             hasError = true;
                             el.addClass('is-invalid');
-                            el.after('<div class="text-danger error-message">' + f.name + ' is required. (Obligatorio.)</div>');
+                            el.after('<div class="text-danger error-message">' + f.name + ' is required.</div>');
                         }
                     });
 
@@ -1497,11 +1618,11 @@
                     isSubmitting = true;
                     const submitBtn = $(this).find('button[type="submit"]');
                     const originalBtnText = submitBtn.html();
-                    submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing… (Procesando…)');
+                    submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing…');
 
                     const allPickedPhotos = incomingPhotoFiles.concat(incomingPhoto2Files, incomingPhoto3Files);
                     if (allPickedPhotos.length > 20) {
-                        $('#incoming-errors').html('<div class="alert alert-danger mb-0">Too many images (max 20). Reduce photos across Photo 1–3. <span class="d-block mt-1 small">(Demasiadas imágenes: máximo 20 en total.)</span></div>');
+                        $('#incoming-errors').html('<div class="alert alert-danger mb-0">Too many images (max 20). Reduce photos across Photo 1–3.</div>');
                         submitBtn.prop('disabled', false).html(originalBtnText);
                         isSubmitting = false;
                         return false;
@@ -1512,6 +1633,13 @@
                     allPickedPhotos.forEach(function (file) {
                         fd.append('images[]', file, file.name);
                     });
+                    if (incomingVoiceBlob && incomingVoiceBlob.size > 0) {
+                        fd.append(
+                            'voice_note',
+                            incomingVoiceBlob,
+                            incomingVoiceFilenameForMime(incomingVoiceMime)
+                        );
+                    }
 
                     const overlay = document.createElement('div');
                     overlay.id = 'processing-overlay';
@@ -1529,9 +1657,9 @@
                             z-index:9999;
                             font-size:20px;
                         ">
-                            <div style="font-size:28px;">🚀 Processing incoming return… (Procesando devolución entrante…)</div>
+                            <div style="font-size:28px;">🚀 Processing incoming return…</div>
                             <small style="margin-top:10px;font-size:16px;">
-                                Please wait while we update Shopify inventory. (Espere mientras actualizamos el inventario en Shopify.)<br>
+                                Please wait while we update Shopify inventory.<br>
                                 <span id="retry-status" style="font-size: 14px; opacity: 0.8;"></span>
                             </small>
                         </div>`;
@@ -1558,6 +1686,7 @@
                             hideSkuSuggestions();
                             $('#sku-product-hint').addClass('d-none').text('');
                             clearIncomingPhotos();
+                            clearIncomingVoiceNote();
 
                             submitBtn.prop('disabled', false).html(originalBtnText);
                             isSubmitting = false;
@@ -1571,7 +1700,7 @@
                             console.error('Final error after retries:', error);
 
                             // Parse error message and show prominently in modal
-                            let errorMsg = 'Error storing incoming return. (Error al guardar la devolución entrante.)';
+                            let errorMsg = 'Error storing incoming return.';
 
                             if (error.response && error.response.error) {
                                 errorMsg = error.response.error;
@@ -1579,11 +1708,11 @@
                                     errorMsg += ' — ' + error.response.details;
                                 }
                             } else if (error.status === 0) {
-                                errorMsg = 'Network/timeout error. Please try again. (Error de red o tiempo de espera. Inténtelo de nuevo.)';
+                                errorMsg = 'Network/timeout error. Please try again.';
                             }
 
                             // Display big red error inside modal area
-                            $('#incoming-errors').html(`<div style="color:#b00020;font-size:20px;font-weight:800">${escapeHtml(errorMsg)}<br><small style=\"font-size:13px;color:#6b0b15\">(Attempted ${error.attempt} times) (Intentos: ${error.attempt})</small></div>`);
+                            $('#incoming-errors').html(`<div style="color:#b00020;font-size:20px;font-weight:800">${escapeHtml(errorMsg)}<br><small style=\"font-size:13px;color:#6b0b15\">Attempted ${error.attempt} times</small></div>`);
 
                             // Reset submit button on error
                             submitBtn.prop('disabled', false).html(originalBtnText);
@@ -1603,14 +1732,15 @@
                     if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
                     hideSkuSuggestions();
                     $('#warehouseId').val('');
-                    $('#incomingModalLabel').text('Create Incoming Return (Crear devolución entrante)');
-                    $('#warehouseModalLabel').text('Create Incoming Return (Crear devolución entrante)');
+                    $('#incomingModalLabel').text('Create Incoming Return');
+                    $('#warehouseModalLabel').text('Create Incoming Return');
                     $('#incoming-errors').html('');
                     $('#sku-product-hint').addClass('d-none').text('');
                     clearIncomingPhotos();
+                    clearIncomingVoiceNote();
                     isSubmitting = false;
                     const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
-                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return (Guardar devolución entrante)');
+                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return');
                     updateOfflineBanner();
                     $('#addWarehouseModal').modal('show');
                 });
@@ -1619,8 +1749,9 @@
                 $('#addWarehouseModal').on('hidden.bs.modal', function () {
                     isSubmitting = false;
                     hideSkuSuggestions();
+                    clearIncomingVoiceNote();
                     const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
-                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return (Guardar devolución entrante)');
+                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return');
                     $('#incoming-errors').html('');
                 });
 
@@ -1679,30 +1810,34 @@
                 renderTable(rows);
             }
 
-            function applyReturnHistoryFilters() {
-                syncWarehouseFilterSelectTheme('filterWarehouseReturn');
-                const whEl = document.getElementById('filterWarehouseReturn');
-                const searchEl = document.getElementById('customSearchReturnHistory');
-                const wh = whEl ? String(whEl.value || '') : '';
-                const searchTerm = searchEl ? String(searchEl.value || '').toLowerCase().trim() : '';
+            function buildUserUploadImagesCell(item) {
+                const urls = Array.isArray(item.user_upload_image_urls)
+                    ? item.user_upload_image_urls.filter(function (u) { return u && String(u).trim() !== ''; })
+                    : [];
+                if (urls.length === 0) {
+                    return '<td class="text-center align-middle incoming-u-images-cell"><span class="text-muted small">—</span></td>';
+                }
+                const thumbs = urls.map(function (u) {
+                    const href = escapeHtml(String(u).trim());
+                    return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" class="incoming-table-thumb-link" title="User photo">' +
+                        '<img class="incoming-table-thumb" src="' + href + '" alt="" loading="lazy" onerror="var l=this.closest(\'a\');if(l)l.style.display=\'none\'">' +
+                        '</a>';
+                }).join('');
+                return '<td class="text-center align-middle incoming-u-images-cell"><div class="d-flex flex-wrap justify-content-center align-items-center gap-1 py-1">' + thumbs + '</div></td>';
+            }
 
-                let rows = returnHistoryTableData.slice();
-                if (wh !== '') {
-                    rows = rows.filter(item => String(item.warehouse_id ?? '') === wh);
+            function buildVoiceNoteCell(item) {
+                const u = String(item.voice_note_url || '').trim();
+                if (!u) {
+                    return '<td class="text-center align-middle"><span class="text-muted small">—</span></td>';
                 }
-                if (searchTerm) {
-                    rows = rows.filter(item =>
-                        Object.values(item).some(value =>
-                            String(value).toLowerCase().includes(searchTerm)
-                        )
-                    );
-                }
-                renderReturnHistoryTable(rows);
+                const src = escapeHtml(u);
+                return '<td class="align-middle incoming-voice-cell"><audio controls preload="none" class="incoming-voice-audio w-100" style="max-width: 240px; height: 36px;"><source src="' + src + '"></audio></td>';
             }
 
             function loadData() {
                 $.ajax({
-                    url: '/incoming-data-list',
+                    url: @json(route('incoming.return.merged.list')),
                     method: 'GET',
                     headers: {
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1722,35 +1857,12 @@
                 });
             }
 
-            function loadReturnHistoryData() {
-                $.ajax({
-                    url: '/incoming-return-history-list',
-                    method: 'GET',
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    beforeSend: function () {
-                        $('#return-history-rainbow-loader').show();
-                    },
-                    success: function (response) {
-                        returnHistoryTableData = response.data || [];
-                        applyReturnHistoryFilters();
-                        $('#return-history-rainbow-loader').hide();
-                    },
-                    error: function(xhr) {
-                        console.error("Return history load error:", xhr.responseText);
-                        $('#return-history-rainbow-loader').hide();
-                    }
-                });
-            }
-
-            
             function renderTable(data) {
                 const tbody = document.getElementById('inventory-table-body');
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No records found (No se encontraron registros)</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center">No records found</td></tr>';
                     return;
                 }
 
@@ -1761,48 +1873,23 @@
                         ? `<td class="text-center align-middle"><img class="incoming-table-thumb" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.classList.add('d-none'); var s=this.nextElementSibling; if(s) s.classList.remove('d-none');"><span class="text-muted small d-none">—</span></td>`
                         : `<td class="text-center align-middle"><span class="text-muted small">—</span></td>`;
 
+                    const typeLabel = escapeHtml(String(item.record_type_label ?? (item.record_type === 'incoming_return' ? 'Return' : 'General incoming')));
                     const whName = String(item.warehouse_name ?? '-');
+                    const uImgCell = buildUserUploadImagesCell(item);
+                    const voiceCell = buildVoiceNoteCell(item);
                     row.innerHTML = `
                         ${imgCell}
+                        <td class="small">${typeLabel}</td>
                         <td>${escapeHtml(String(item.sku ?? '-'))}</td>
                         <td>${escapeHtml(String(item.verified_stock ?? '-'))}</td>
                         <td class="${incomingWarehouseCellClass(whName)}">${escapeHtml(whName)}</td>
                         <td>${escapeHtml(String(item.reason ?? '-'))}</td>
+                        ${uImgCell}
+                        ${voiceCell}
                         <td>${escapeHtml(String(item.approved_by ?? '-'))}</td>
                         <td>${escapeHtml(String(item.approved_at ?? '-'))}</td>
                     `;
 
-                    tbody.appendChild(row);
-                });
-            }
-
-            function renderReturnHistoryTable(data) {
-                const tbody = document.getElementById('return-history-table-body');
-                if (!tbody) return;
-                tbody.innerHTML = '';
-
-                if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No records found (No se encontraron registros)</td></tr>';
-                    return;
-                }
-
-                data.forEach(item => {
-                    const row = document.createElement('tr');
-                    const imgUrl = String(item.image_url || '').trim();
-                    const imgCell = imgUrl
-                        ? `<td class="text-center align-middle"><img class="incoming-table-thumb" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.classList.add('d-none'); var s=this.nextElementSibling; if(s) s.classList.remove('d-none');"><span class="text-muted small d-none">—</span></td>`
-                        : `<td class="text-center align-middle"><span class="text-muted small">—</span></td>`;
-
-                    const whName = String(item.warehouse_name ?? '-');
-                    row.innerHTML = `
-                        ${imgCell}
-                        <td>${escapeHtml(String(item.sku ?? '-'))}</td>
-                        <td>${escapeHtml(String(item.verified_stock ?? '-'))}</td>
-                        <td class="${incomingWarehouseCellClass(whName)}">${escapeHtml(whName)}</td>
-                        <td>${escapeHtml(String(item.reason ?? '-'))}</td>
-                        <td>${escapeHtml(String(item.approved_by ?? '-'))}</td>
-                        <td>${escapeHtml(String(item.approved_at ?? '-'))}</td>
-                    `;
                     tbody.appendChild(row);
                 });
             }
@@ -1833,31 +1920,6 @@
                 });
             }
 
-            function setupReturnHistorySearch() {
-                const searchInput = document.getElementById('customSearchReturnHistory');
-                const clearButton = document.getElementById('clearSearchReturnHistory');
-                const whSel = document.getElementById('filterWarehouseReturn');
-                if (!searchInput || !clearButton || !whSel) return;
-
-                $(searchInput).off('.incomingReturnRH');
-                $(clearButton).off('.incomingReturnRH');
-                $(whSel).off('.incomingReturnRH');
-
-                $(searchInput).on('input.incomingReturnRH', debounce(function () {
-                    applyReturnHistoryFilters();
-                }, 300));
-
-                $(clearButton).on('click.incomingReturnRH', function () {
-                    searchInput.value = '';
-                    applyReturnHistoryFilters();
-                });
-
-                $(whSel).on('change.incomingReturnRH', function () {
-                    applyReturnHistoryFilters();
-                });
-            }
-
-
             function setupAddWarehouseModal() {
                 const modal = document.getElementById('addProductModal');
                 const saveBtn = document.getElementById('saveProductBtn');
@@ -1874,7 +1936,7 @@
                     const warehouse = tableData.find(w => w.id == id);
 
                     if (warehouse) {
-                        $('#warehouseModalLabel').text('Edit Warehouse (Editar almacén)');
+                        $('#warehouseModalLabel').text('Edit Warehouse');
                         $('#warehouseId').val(warehouse.id);
                         $('#warehouseName').val(warehouse.name);
                         $('#warehouseGroup').val(warehouse.group).trigger('change');
@@ -1887,7 +1949,7 @@
                 $(document).on('click', '.delete-btn', function () {
                     const id = $(this).data('id');
 
-                    if (confirm('Are you sure you want to delete this warehouse? (¿Seguro que desea eliminar este almacén?)')) {
+                    if (confirm('Are you sure you want to delete this warehouse?')) {
                         $.ajax({
                             url: `/warehouses/${id}`,
                             type: 'DELETE',
@@ -1898,7 +1960,7 @@
                                 loadData(); // Refresh table
                             },
                             error: function (xhr) {
-                                alert('Failed to delete warehouse. (No se pudo eliminar el almacén.)');
+                                alert('Failed to delete warehouse.');
                                 console.error(xhr.responseText);
                             }
                         });
@@ -1918,7 +1980,7 @@
                         loadData(); // Refresh table
                     },
                     error: function () {
-                        alert("Failed to delete warehouse. (No se pudo eliminar el almacén.)");
+                        alert("Failed to delete warehouse.");
                     }
                 });
             }
@@ -1931,10 +1993,10 @@
                 requiredFields.forEach(id => {
                     const field = document.getElementById(id);
                     if (!field.value.trim()) {
-                        showFieldError(field, 'This field is required. (Este campo es obligatorio.)');
+                        showFieldError(field, 'This field is required.');
                         isValid = false;
                     } else if (isNaN(field.value)) {
-                        showFieldError(field, 'Must be a number. (Debe ser un número.)');
+                        showFieldError(field, 'Must be a number.');
                         isValid = false;
                     } else {
                         clearFieldError(field);
@@ -2003,8 +2065,8 @@
                     const saveBtn = document.getElementById('saveProductBtn');
                     saveBtn.disabled = true;
                     saveBtn.innerHTML = formData.operation === 'update' ?
-                        '<i class="fas fa-spinner fa-spin me-2"></i> Updating… (Actualizando…)' :
-                        '<i class="fas fa-spinner fa-spin me-2"></i> Saving… (Guardando…)';
+                        '<i class="fas fa-spinner fa-spin me-2"></i> Updating…' :
+                        '<i class="fas fa-spinner fa-spin me-2"></i> Saving…';
 
                     currentUpload = new AbortController();
                     const response = await fetch('/api/sync-sheets', {
@@ -2021,7 +2083,7 @@
                     const contentType = response.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/json')) {
                         const textResponse = await response.text();
-                        throw new Error('Server returned an HTML error page. Please check the server logs. (El servidor devolvió HTML. Revise los registros.)');
+                        throw new Error('Server returned an HTML error page. Please check the server logs.');
                     }
 
                     const data = await response.json();
@@ -2034,28 +2096,28 @@
                     sheets.forEach(sheet => {
                         const result = data.results[sheet.name];
                         if (result?.success) {
-                            updateUploadProgress(sheet.id, 100, 'Completed successfully (Completado correctamente)', true);
+                            updateUploadProgress(sheet.id, 100, 'Completed successfully', true);
                             successCount++;
                         } else {
-                            updateUploadProgress(sheet.id, 100, 'Failed (Falló)', false, result?.message);
+                            updateUploadProgress(sheet.id, 100, 'Failed', false, result?.message);
                         }
                     });
 
                     completeUpload(successCount, sheets.length);
 
                     if (successCount === sheets.length) {
-                        showAlert('success', 'All sheets updated successfully! (¡Todas las hojas se actualizaron!)');
+                        showAlert('success', 'All sheets updated successfully!');
                         return true;
                     } else {
-                        showAlert('warning', `${successCount}/${sheets.length} sheets updated successfully (${successCount}/${sheets.length} hojas actualizadas)`);
+                        showAlert('warning', `${successCount}/${sheets.length} sheets updated successfully`);
                         return false;
                     }
                 } catch (error) {
                     let errorMessage = error.message;
                     if (error.name === 'AbortError') {
-                        errorMessage = 'Request was cancelled. (Solicitud cancelada.)';
+                        errorMessage = 'Request was cancelled.';
                     } else if (error.message.includes('HTML error page')) {
-                        errorMessage = 'Server error occurred. Please try again or contact support. (Error del servidor. Inténtelo de nuevo o contacte soporte.)';
+                        errorMessage = 'Server error occurred. Please try again or contact support.';
                     }
 
                     showAlert('danger', errorMessage);
@@ -2067,8 +2129,8 @@
                     const saveBtn = document.getElementById('saveProductBtn');
                     saveBtn.disabled = false;
                     saveBtn.innerHTML = formData.operation === 'update' ?
-                        '<i class="fas fa-save me-2"></i> Update Product (Actualizar producto)' :
-                        '<i class="fas fa-save me-2"></i> Save Product (Guardar producto)';
+                        '<i class="fas fa-save me-2"></i> Update Product' :
+                        '<i class="fas fa-save me-2"></i> Save Product';
                 }
             }
 
@@ -2087,7 +2149,7 @@
                 const newSaveBtn = saveBtn.cloneNode(true);
                 saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
 
-                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Save Product (Guardar producto)';
+                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Save Product';
                 newSaveBtn.onclick = async function() {
                     if (!validateProductForm()) return;
 
@@ -2120,7 +2182,7 @@
                 newSaveBtn.setAttribute('data-original-sku', product.SKU || '');
                 newSaveBtn.setAttribute('data-original-parent', product.Parent || '');
 
-                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Update Product (Actualizar producto)';
+                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Update Product';
                 newSaveBtn.addEventListener('click', async function handleUpdate() {
                     if (!validateProductForm()) return;
 
@@ -2295,7 +2357,7 @@
                 
                 if (modalElement && modalMessage) {
                     // Set the message
-                    modalMessage.textContent = message || 'Stock updated successfully in Shopify! (¡Inventario actualizado en Shopify!)';
+                    modalMessage.textContent = message || 'Stock updated successfully in Shopify!';
                     
                     // Initialize Bootstrap modal if not already done
                     const modal = new bootstrap.Modal(modalElement, {
@@ -2316,9 +2378,6 @@
                             } else {
                                 location.reload();
                             }
-                            if (typeof loadReturnHistoryData === 'function') {
-                                loadReturnHistoryData();
-                            }
                         }, 200);
                     });
                     
@@ -2326,7 +2385,7 @@
                     modal.show();
                 } else {
                     // Fallback: use alert if modal elements don't exist
-                    alert(message || 'Stock updated successfully in Shopify! (¡Inventario actualizado en Shopify!)');
+                    alert(message || 'Stock updated successfully in Shopify!');
                     location.reload();
                 }
             }
