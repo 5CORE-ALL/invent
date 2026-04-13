@@ -197,17 +197,27 @@
                         <option value="more">More than 0</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50-60">50-60%</option>
-                        <option value="60plus">60%+</option>
-                    </select>
+                    <div class="d-flex flex-column gap-1" style="width: 130px;" title="CVR = TT L30 ÷ T views">
+                        <select id="gpft-filter" class="form-select form-select-sm">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="60plus">Above 60%</option>
+                        </select>
+                        <select id="cvr-filter" class="form-select form-select-sm">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                    </div>
 
                     <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
                         <option value="all">ROI %</option>
@@ -2427,6 +2437,7 @@
                 const rowTypeFilter = $('#row-type-filter').val();
                 const inventoryFilter = $('#inventory-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
+                const cvrFilter = $('#cvr-filter').val();
                 const roiFilter = $('#roi-filter').val();
                 const adClickFilter = $('#ad-click-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
@@ -2480,6 +2491,23 @@
                         if (gpftFilter === '60plus') return gpft >= 60;
                         const [min, max] = gpftFilter.split('-').map(Number);
                         return gpft >= min && gpft < max;
+                    });
+                }
+
+                if (cvrFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        const sold = parseFloat(data['TT L30']) || 0;
+                        const views = parseFloat(data.t_views) || 0;
+                        const cvrPercent = views > 0 ? (sold / views) * 100 : 0;
+                        const cvrRounded = Math.round(cvrPercent * 100) / 100;
+                        if (cvrFilter === '0-0') return cvrRounded === 0;
+                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
+                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                        if (cvrFilter === '13plus') return cvrRounded > 13;
+                        return true;
                     });
                 }
 
@@ -2712,7 +2740,7 @@
                 updateSummary();
             }
 
-            $('#row-type-filter, #inventory-filter, #gpft-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter')
+            $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter')
                 .on('change', function() {
                     applyFilters();
                 });

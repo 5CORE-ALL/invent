@@ -144,17 +144,26 @@
                         </select>
                     </div>
 
-                    <!-- GPFT Filter -->
-                    <div>
-                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">All GPFT%</option>
+                    <!-- GPFT + CVR (same stack as Reverb pricing) -->
+                    <div class="d-flex flex-column gap-1" style="width: 130px;">
+                        <select id="gpft-filter" class="form-select form-select-sm">
+                            <option value="all">GPFT%</option>
                             <option value="negative">Negative</option>
                             <option value="0-10">0-10%</option>
                             <option value="10-20">10-20%</option>
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
                             <option value="40-50">40-50%</option>
-                            <option value="50plus">50%+</option>
+                            <option value="60plus">Above 60%</option>
+                        </select>
+                        <select id="cvr-filter" class="form-select form-select-sm">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
                         </select>
                     </div>
 
@@ -188,22 +197,6 @@
                             <option value="up">↑ Up (CVR 30 &gt; CVR 60)</option>
                             <option value="down">↓ Down (CVR 30 &lt; CVR 60)</option>
                             <option value="equal">＝ Equal</option>
-                        </select>
-                    </div>
-
-                    <!-- CVR Filter -->
-                    <div>
-                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
-                            <option value="all">All CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0.01-1">0.01-1%</option>
-                            <option value="1-2">1-2%</option>
-                            <option value="2-3">2-3%</option>
-                            <option value="3-4">3-4%</option>
-                            <option value="0-4">0-4%</option>
-                            <option value="4-7">4-7%</option>
-                            <option value="7-10">7-10%</option>
-                            <option value="10plus">10%+</option>
                         </select>
                     </div>
 
@@ -4062,7 +4055,7 @@
                     if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
                     if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '50plus') return gpft >= 50;
+                    if (gpftFilter === '60plus') return gpft >= 60;
                     return true;
                 });
             }
@@ -4085,14 +4078,11 @@
                     const cvrRounded = Math.round(cvr * 100) / 100;
                     
                     if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0.01-1') return cvrRounded >= 0.01 && cvrRounded <= 1;
-                    if (cvrFilter === '1-2') return cvrRounded > 1 && cvrRounded <= 2;
-                    if (cvrFilter === '2-3') return cvrRounded > 2 && cvrRounded <= 3;
-                    if (cvrFilter === '3-4') return cvrRounded > 3 && cvrRounded <= 4;
-                    if (cvrFilter === '0-4') return cvrRounded >= 0 && cvrRounded <= 4;
+                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
                     if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
-                    if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
-                    if (cvrFilter === '10plus') return cvrRounded > 10;
+                    if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                    if (cvrFilter === '13plus') return cvrRounded > 13;
                     return true;
                 });
             }

@@ -270,16 +270,29 @@
                         <option value="req" selected>RL</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative (&lt;0%)</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40plus">40%+</option>
-                    </select>
+                    <div class="d-flex flex-column gap-1" style="width: auto;">
+                        <select id="gpft-filter" class="form-select form-select-sm"
+                            style="width: auto; display: inline-block;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative (&lt;0%)</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="60plus">Above 60%</option>
+                        </select>
+                        <select id="cvr-filter" class="form-select form-select-sm"
+                            style="width: auto; display: inline-block;">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                    </div>
 
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -290,19 +303,6 @@
                         <option value="125-175">125–175%</option>
                         <option value="175-250">175–250%</option>
                         <option value="gt250">&gt; 250%</option>
-                    </select>
-
-                    <select id="cvr-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">CVR</option>
-                        <option value="0-0">0 to 0.00%</option>
-                        <option value="0.01-1">0.01 - 1%</option>
-                        <option value="1-2">1-2%</option>
-                        <option value="2-3">2-3%</option>
-                        <option value="3-4">3-4%</option>
-                        <option value="4-7">4-7%</option>
-                        <option value="7-10">7-10%</option>
-                        <option value="10plus">10%+</option>
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm"
@@ -6181,12 +6181,12 @@
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         
                         if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '0-10') return gpft >= 0 && gpft <= 10;
-                        if (gpftFilter === '10-20') return gpft > 10 && gpft <= 20;
-                        if (gpftFilter === '20-30') return gpft > 20 && gpft <= 30;
-                        if (gpftFilter === '30-40') return gpft > 30 && gpft <= 40;
-                        if (gpftFilter === '40plus') return gpft > 40;
-                        
+                        if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
+                        if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
+                        if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
+                        if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
+                        if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
+                        if (gpftFilter === '60plus') return gpft >= 60;
                         return true;
                     });
                 }
@@ -6208,15 +6208,14 @@
                         const aL30 = parseFloat(data['A_L30']) || 0;
                         const sess30 = parseFloat(data['Sess30']) || 0;
                         const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                        
-                        if (cvrFilter === '0-0') return cvr === 0;
-                        if (cvrFilter === '0.01-1') return cvr > 0 && cvr <= 1;
-                        if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
-                        if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
-                        if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
-                        if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
-                        if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
-                        if (cvrFilter === '10plus') return cvr > 10;
+                        const cvrRounded = Math.round(cvr * 100) / 100;
+
+                        if (cvrFilter === '0-0') return cvrRounded === 0;
+                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
+                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                        if (cvrFilter === '13plus') return cvrRounded > 13;
                         return true;
                     });
                 }

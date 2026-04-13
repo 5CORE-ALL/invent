@@ -148,18 +148,27 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm"
-                        style="width: 130px;">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50-60">50-60%</option>
-                        <option value="60plus">60%+</option>
-                    </select>
+                    <div class="d-flex flex-column gap-1" style="width: 130px;" title="CVR matches controller: OV L30 ÷ Views">
+                        <select id="gpft-filter" class="form-select form-select-sm">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="60plus">Above 60%</option>
+                        </select>
+                        <select id="cvr-filter" class="form-select form-select-sm">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                    </div>
 
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: 130px;">
@@ -171,16 +180,6 @@
                         <option value="175-250">175–250%</option>
                         <option value="gt250">&gt; 250%</option>
                     </select>
-
-                    {{-- <select id="cvr-filter" class="form-select form-select-sm"
-                        style="width: 130px;">
-                        <option value="all">CVR%</option>
-                        <option value="0-5">0-5%</option>
-                        <option value="5-10">5-10%</option>
-                        <option value="10-15">10-15%</option>
-                        <option value="15-20">15-20%</option>
-                        <option value="20plus">20%+</option>
-                    </select> --}}
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
                     <div class="dropdown manual-dropdown-container">
@@ -1537,19 +1536,19 @@
                 });
             }
 
-            // CVR filter
             const cvrFilter = $('#cvr-filter').val();
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
                     const l30 = parseFloat(data['L30']) || 0;
                     const views = parseFloat(data['Views']) || 0;
-                    const cvr = views === 0 ? 0 : (l30 / views) * 100;
-                    
-                    if (cvrFilter === '0-5') return cvr >= 0 && cvr < 5;
-                    if (cvrFilter === '5-10') return cvr >= 5 && cvr < 10;
-                    if (cvrFilter === '10-15') return cvr >= 10 && cvr < 15;
-                    if (cvrFilter === '15-20') return cvr >= 15 && cvr < 20;
-                    if (cvrFilter === '20plus') return cvr >= 20;
+                    const cvrPercent = views > 0 ? (l30 / views) * 100 : 0;
+                    const cvrRounded = Math.round(cvrPercent * 100) / 100;
+                    if (cvrFilter === '0-0') return cvrRounded === 0;
+                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
+                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                    if (cvrFilter === '13plus') return cvrRounded > 13;
                     return true;
                 });
             }

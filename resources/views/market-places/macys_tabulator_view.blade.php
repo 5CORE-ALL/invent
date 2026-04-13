@@ -68,18 +68,29 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50-60">50-60%</option>
-                        <option value="60plus">60%+</option>
-                    </select>
+                    <div class="d-flex flex-column gap-1" style="width: auto;" title="CVR = MC L30 ÷ OV L30">
+                        <select id="gpft-filter" class="form-select form-select-sm"
+                            style="width: auto; display: inline-block;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="60plus">Above 60%</option>
+                        </select>
+                        <select id="cvr-filter" class="form-select form-select-sm"
+                            style="width: auto; display: inline-block;">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                    </div>
 
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -141,21 +152,21 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary ({{ $macysPercentage }}% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total MC L30: 0</span>
+                        <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFt: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true">Avg Price: $0</span>
+                        <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total INV: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Sold: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">MISSING: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">MAPPING: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-dil-badge" style="color: black; font-weight: bold;" aria-hidden="true">DIL%: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 d-none" id="total-cogs-badge" style="color: black; font-weight: bold;" aria-hidden="true">COGS: $0</span>
+                        <span class="badge bg-secondary fs-6 p-2 text-white" id="roi-percent-badge" style="font-weight: bold;">ROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">Missing L: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">Missing M: 0</span>
                     </div>
                 </div>
             </div>
@@ -1331,6 +1342,7 @@
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const cvrFilter = $('#cvr-filter').val();
             const roiFilter = $('#roi-filter').val();
             const dilFilter = $('#dil-filter').val();
 
@@ -1362,6 +1374,22 @@
                     table.addFilter("GPFT%", ">=", min);
                     table.addFilter("GPFT%", "<", max);
                 }
+            }
+
+            if (cvrFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const ov = parseFloat(data['L30']) || 0;
+                    const sold = parseFloat(data['MC L30']) || 0;
+                    const cvrPercent = ov > 0 ? (sold / ov) * 100 : 0;
+                    const cvrRounded = Math.round(cvrPercent * 100) / 100;
+                    if (cvrFilter === '0-0') return cvrRounded === 0;
+                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
+                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                    if (cvrFilter === '13plus') return cvrRounded > 13;
+                    return true;
+                });
             }
 
             // ROI filter
@@ -1445,7 +1473,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #dil-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 
@@ -1457,9 +1485,10 @@
             });
 
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
-            let totalInv = 0, totalL30 = 0, zeroSoldCount = 0, totalDil = 0, dilCount = 0;
+            let totalInv = 0, totalL30 = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0;
             let missingCount = 0, mappingCount = 0;
+            let lessAmzCount = 0, moreAmzCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
@@ -1467,6 +1496,13 @@
                 totalGpft += parseFloat(row['GPFT%']) || 0;
                 
                 const price = parseFloat(row['MC Price']) || 0;
+                const amazonPrice = parseFloat(row['A Price']) || 0;
+                if (amazonPrice > 0 && price > 0 && price < amazonPrice) {
+                    lessAmzCount++;
+                }
+                if (amazonPrice > 0 && price > 0 && price > amazonPrice) {
+                    moreAmzCount++;
+                }
                 const inv = parseFloat(row.INV) || 0;
                 const nrReq = row['nr_req'] || 'REQ';
                 const isMissing = (price === 0);
@@ -1482,10 +1518,13 @@
                 }
                 
                 totalInv += inv;
-                totalL30 += parseFloat(row['MC L30']) || 0;
+                const mcL30 = parseFloat(row['MC L30']) || 0;
+                totalL30 += mcL30;
                 
-                if ((parseFloat(row['MC L30']) || 0) === 0) {
+                if (mcL30 === 0) {
                     zeroSoldCount++;
+                } else if (mcL30 > 0) {
+                    moreSoldCount++;
                 }
                 
                 const dil = parseFloat(row['MC Dil%']) || 0;
@@ -1495,8 +1534,7 @@
                 }
                 
                 const lp = parseFloat(row['LP_productmaster']) || 0;
-                const l30 = parseFloat(row['MC L30']) || 0;
-                totalCogs += lp * l30;
+                totalCogs += lp * mcL30;
                 
                 const roi = parseFloat(row['ROI%']) || 0;
                 if (roi !== 0) {
@@ -1520,17 +1558,20 @@
             const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
 
             $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
-            $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
+            $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
+            $('#avg-gpft-badge').text(`GPFt: ${Math.round(avgGpft)}%`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
             $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
-            $('#total-l30-badge').text(`Total MC L30: ${totalL30.toLocaleString()}`);
+            $('#total-l30-badge').text(`Sold: ${totalL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
+            $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
             $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
-            $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
-            $('#missing-badge').text(`MISSING: ${missingCount}`);
-            $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
+            $('#roi-percent-badge').text(`ROI: ${Math.round(avgRoi)}%`);
+            $('#missing-badge').text(`Missing L: ${missingCount}`);
+            $('#mapping-badge').text(`Missing M: ${mappingCount}`);
+            $('#less-amz-badge').text(`< Amz: ${lessAmzCount.toLocaleString()}`);
+            $('#more-amz-badge').text(`> Amz: ${moreAmzCount.toLocaleString()}`);
         }
 
         // Build Column Visibility Dropdown

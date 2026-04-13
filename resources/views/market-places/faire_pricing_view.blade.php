@@ -114,17 +114,27 @@
                             <option value="zero">0 Faire stock</option>
                             <option value="more">Faire stock &gt; 0</option>
                         </select>
-                        <select id="fr-gpft-filter" class="form-select form-select-sm" style="width:130px;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0–10%</option>
-                            <option value="10-20">10–20%</option>
-                            <option value="20-30">20–30%</option>
-                            <option value="30-40">30–40%</option>
-                            <option value="40-50">40–50%</option>
-                            <option value="50-60">50–60%</option>
-                            <option value="60plus">60%+</option>
-                        </select>
+                        <div class="d-flex flex-column gap-1" style="width:130px;" title="CVR = sold (al30) ÷ OV L30">
+                            <select id="fr-gpft-filter" class="form-select form-select-sm">
+                                <option value="all">GPFT%</option>
+                                <option value="negative">Negative</option>
+                                <option value="0-10">0–10%</option>
+                                <option value="10-20">10–20%</option>
+                                <option value="20-30">20–30%</option>
+                                <option value="30-40">30–40%</option>
+                                <option value="40-50">40–50%</option>
+                                <option value="60plus">Above 60%</option>
+                            </select>
+                            <select id="fr-cvr-filter" class="form-select form-select-sm">
+                                <option value="all">All CVR%</option>
+                                <option value="0-0">0%</option>
+                                <option value="0-2">0-2%</option>
+                                <option value="2-4">2-4%</option>
+                                <option value="4-7">4-7%</option>
+                                <option value="7-13">7-13%</option>
+                                <option value="13plus">13%+</option>
+                            </select>
+                        </div>
                         <select id="fr-roi-filter" class="form-select form-select-sm" style="width:130px;">
                             <option value="all">ROI%</option>
                             <option value="lt40">&lt; 40%</option>
@@ -634,6 +644,7 @@
             const invFilter = $('#fr-inv-filter').val();
             const stockFilter = $('#fr-stock-filter').val();
             const gpftFilter = $('#fr-gpft-filter').val();
+            const cvrFilter = $('#fr-cvr-filter').val();
             const roiFilter = $('#fr-roi-filter').val();
             const fqtyFilter = $('#fr-fqty-filter').val();
             const mapFilter = $('#fr-map-filter').val();
@@ -674,6 +685,21 @@
                     if (gpftFilter === '60plus') return gpft >= 60;
                     const parts = gpftFilter.split('-').map(Number);
                     return gpft >= parts[0] && gpft < parts[1];
+                });
+            }
+            if (cvrFilter !== 'all') {
+                table.addFilter(function(d) {
+                    const ov = parseFloat(d.ov_l30) || 0;
+                    const sold = parseFloat(d.al30) || 0;
+                    const cvrPercent = ov > 0 ? (sold / ov) * 100 : 0;
+                    const cvrRounded = Math.round(cvrPercent * 100) / 100;
+                    if (cvrFilter === '0-0') return cvrRounded === 0;
+                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
+                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                    if (cvrFilter === '13plus') return cvrRounded > 13;
+                    return true;
                 });
             }
             if (roiFilter !== 'all') {
@@ -1270,7 +1296,7 @@
             });
 
             $('#fr-pricing-parent-search, #fr-pricing-sku-search').on('input', function() { applyFilters(); });
-            $('#fr-row-type-filter, #fr-inv-filter, #fr-stock-filter, #fr-gpft-filter, #fr-roi-filter, #fr-fqty-filter, #fr-map-filter').on('change', function() { applyFilters(); });
+            $('#fr-row-type-filter, #fr-inv-filter, #fr-stock-filter, #fr-gpft-filter, #fr-cvr-filter, #fr-roi-filter, #fr-fqty-filter, #fr-map-filter').on('change', function() { applyFilters(); });
 
             $(document).on('click', '.fr-dil-toggle', function(e) {
                 e.stopPropagation();

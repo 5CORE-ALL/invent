@@ -155,17 +155,27 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm"
-                        style="width: 130px;">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="60plus">Above 60%</option>
-                    </select>
+                    <div class="d-flex flex-column gap-1" style="width: 130px;">
+                        <select id="gpft-filter" class="form-select form-select-sm">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="60plus">Above 60%</option>
+                        </select>
+                        <select id="cvr-filter" class="form-select form-select-sm">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                    </div>
 
                     <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
                         <option value="all">ROI%</option>
@@ -175,16 +185,6 @@
                         <option value="125-175">125–175%</option>
                         <option value="175-250">175–250%</option>
                         <option value="gt250">&gt; 250%</option>
-                    </select>
-
-                    <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
-                        <option value="all">All CVR%</option>
-                        <option value="0-0">0%</option>
-                        <option value="0-2">0-2%</option>
-                        <option value="2-4">2-4%</option>
-                        <option value="4-7">4-7%</option>
-                        <option value="7-13">7-13%</option>
-                        <option value="13plus">13%+</option>
                     </select>
 
                     <!-- DIL Filter (Walmart-style dropdown) -->

@@ -53,17 +53,27 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50-60">50-60%</option>
-                        <option value="60plus">60%+</option>
-                    </select>
+                    <div class="d-flex flex-column gap-1" style="width: auto;" title="CVR = PP L30 ÷ OV L30">
+                        <select id="gpft-filter" class="form-select form-select-sm" style="width: auto;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="60plus">Above 60%</option>
+                        </select>
+                        <select id="cvr-filter" class="form-select form-select-sm" style="width: auto;">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                    </div>
 
                     <select id="roi-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">ROI%</option>
@@ -612,6 +622,7 @@
             const inv   = $('#inventory-filter').val();
             const nrl   = $('#nrl-filter').val();
             const gpft  = $('#gpft-filter').val();
+            const cvrF  = $('#cvr-filter').val();
             const dil   = $('#dil-filter').val();
             const roi   = $('#roi-filter').val();
             table.clearFilter();
@@ -626,6 +637,22 @@
                 if (gpft === 'negative') table.addFilter('GPFT%', '<', 0);
                 else if (gpft === '60plus') table.addFilter('GPFT%', '>=', 60);
                 else { const [min, max] = gpft.split('-').map(Number); table.addFilter('GPFT%', '>=', min); table.addFilter('GPFT%', '<', max); }
+            }
+
+            if (cvrF !== 'all') {
+                table.addFilter(function(d) {
+                    const ov = parseFloat(d.L30) || 0;
+                    const sold = parseFloat(d['PP L30']) || 0;
+                    const cvrPercent = ov > 0 ? (sold / ov) * 100 : 0;
+                    const cvrRounded = Math.round(cvrPercent * 100) / 100;
+                    if (cvrF === '0-0') return cvrRounded === 0;
+                    if (cvrF === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                    if (cvrF === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
+                    if (cvrF === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrF === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                    if (cvrF === '13plus') return cvrRounded > 13;
+                    return true;
+                });
             }
 
             // ROI% filter (same as AliExpress)
@@ -664,7 +691,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #dil-filter, #roi-filter').on('change', function() { applyFilters(); });
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter').on('change', function() { applyFilters(); });
 
         function updateSummary() {
             const data = table.getData('active').filter(r => !(r.Parent && r.Parent.startsWith('PARENT')));

@@ -78,11 +78,11 @@
                     <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge"
-                            style="color: white; font-weight: bold;">Total Orders: 0</span>
+                            style="color: white; font-weight: bold;">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge"
-                            style="color: white; font-weight: bold;">Total Quantity: 0</span>
+                            style="color: white; font-weight: bold;">Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge"
-                            style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0</span>
+                            style="background-color: #17a2b8; color: white; font-weight: bold;">Sales: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
@@ -489,9 +489,9 @@
                 const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
                 const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-                $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
-                $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-sales-badge').text('Total Sales: $' + Math.round(totalRevenue).toLocaleString());
+                $('#total-orders-badge').text('Orders: ' + totalOrders.toLocaleString());
+                $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
+                $('#total-sales-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
                 $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
                 $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());

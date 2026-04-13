@@ -305,6 +305,29 @@
                         <option value="missing">Missing Only</option>
                     </select>
 
+                    <!-- GPFT% + CVR% (Reverb-style stack; GPFT = NPFT%, CVR = Doba L30 ÷ OV L30) -->
+                    <div class="d-flex flex-column gap-1" style="width: 130px;" title="GPFT% uses NPFT%; CVR uses Doba L30 sold ÷ OV L30 (Shopify)">
+                        <select id="gpft-filter" class="form-select form-select-sm">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="60plus">Above 60%</option>
+                        </select>
+                        <select id="cvr-filter" class="form-select form-select-sm">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                    </div>
+
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" 
@@ -2191,6 +2214,38 @@
                     });
                 }
 
+                const gpftFilter = $('#gpft-filter').val();
+                if (gpftFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const gpft = parseFloat(data.NPFT_pct) || 0;
+                        if (gpftFilter === 'negative') return gpft < 0;
+                        if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
+                        if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
+                        if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
+                        if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
+                        if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
+                        if (gpftFilter === '60plus') return gpft >= 60;
+                        return true;
+                    });
+                }
+
+                const cvrFilter = $('#cvr-filter').val();
+                if (cvrFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const ovL30 = parseFloat(data.L30) || 0;
+                        const sold = parseFloat(data['doba L30']) || 0;
+                        const cvrPercent = ovL30 > 0 ? (sold / ovL30) * 100 : 0;
+                        const cvrRounded = Math.round(cvrPercent * 100) / 100;
+                        if (cvrFilter === '0-0') return cvrRounded === 0;
+                        if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                        if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
+                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                        if (cvrFilter === '13plus') return cvrRounded > 13;
+                        return true;
+                    });
+                }
+
                 // DIL Filter (based on inventory and L30)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -2363,7 +2418,7 @@
                 $('#visible-rows-badge').text('Visible Rows: ' + visibleNonParentRows.length);
             }
 
-            $('#inventory-filter, #parent-filter, #missing-filter').on('change', function() {
+            $('#inventory-filter, #parent-filter, #missing-filter, #gpft-filter, #cvr-filter').on('change', function() {
                 applyFilters();
             });
 

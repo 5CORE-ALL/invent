@@ -1462,7 +1462,9 @@ class ChannelMasterController extends Controller
             $row['L7 Sales'] = round($l7Summaries[$channelLookup] ?? 0, 2);
 
             // L7 vs "30 divide" pace: expected L7 = (L30 ÷ 30) × 7; % = (L7 − expected) / expected × 100
-            $l30ForPace = (float) str_replace(['$', ',', '%'], '', (string) ($row['L30 Sales'] ?? 0));
+            // Reverb: L30 Sales matches pricing full-table total; use rolling L30 for pace only.
+            $paceBase = $row['reverb_pace_l30_sales'] ?? $row['L30 Sales'] ?? 0;
+            $l30ForPace = (float) str_replace(['$', ',', '%'], '', (string) $paceBase);
             $l7ForPace = (float) ($row['L7 Sales'] ?? 0);
             $expectedL7FromL30 = ($l30ForPace / 30.0) * 7.0;
             $row['L7 vs 30 pace %'] = ($expectedL7FromL30 > 0)
@@ -1887,7 +1889,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Reverb: reverb_daily_data line revenue (COALESCE(amount, unit_price × quantity)) on order_date Y day.
+     * Reverb: same line revenue as /reverb-pricing (Σ quantity × amount per row).
      */
     private function computeReverbYSalesLikeAmazon(): ?float
     {
@@ -1901,7 +1903,7 @@ class ChannelMasterController extends Controller
 
         $sum = (float) DB::table('reverb_daily_data')
             ->whereDate('order_date', $yDate)
-            ->selectRaw('COALESCE(SUM(COALESCE(amount, unit_price * quantity)), 0) as revenue')
+            ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);
@@ -2423,7 +2425,7 @@ class ChannelMasterController extends Controller
         $sum = (float) DB::table('reverb_daily_data')
             ->where('order_date', '>=', $l7StartDate)
             ->where('order_date', '<=', $l7EndDate)
-            ->selectRaw('COALESCE(SUM(COALESCE(amount, unit_price * quantity)), 0) as revenue')
+            ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);
@@ -3689,118 +3691,266 @@ class ChannelMasterController extends Controller
         return $missingListingCount;
     }
 
+    /**
+     * Pacific calendar windows for Reverb daily order rows (same anchor as computeReverbL7SalesLikeAmazon).
+     */
+    private function getReverbDailyDataPacificWindows(): ?array
+    {
+        $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $l30EndDate = $latestPacific->copy()->subDay()->toDateString();
+        $l30StartDate = $latestPacific->copy()->subDay()->subDays(29)->toDateString();
+        $l60StartDate = $latestPacific->copy()->subDay()->subDays(59)->toDateString();
+
+        $prior30End = Carbon::parse($l30StartDate)->subDay()->toDateString();
+        $prior30Start = Carbon::parse($prior30End)->subDays(29)->toDateString();
+
+        return [
+            'l30_start' => $l30StartDate,
+            'l30_end' => $l30EndDate,
+            'l60_start' => $l60StartDate,
+            'l60_end' => $l30EndDate,
+            'prior30_start' => $prior30Start,
+            'prior30_end' => $prior30End,
+        ];
+    }
+
+    /**
+     * Full-table totals from reverb_daily_data — same query semantics as ReverbController::reverbDailyDataTotalsJson().
+     *
+     * @return array{sum_quantity: int, sum_qty_x_amount: float}|null
+     */
+    private function getReverbDailyDataFullTableTotals(): ?array
+    {
+        if (! Schema::hasTable('reverb_daily_data')) {
+            return null;
+        }
+
+        $agg = DB::table('reverb_daily_data')
+            ->selectRaw('COALESCE(SUM(quantity), 0) as sum_quantity')
+            ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as sum_qty_x_amount')
+            ->first();
+
+        return [
+            'sum_quantity' => (int) ($agg->sum_quantity ?? 0),
+            'sum_qty_x_amount' => (float) ($agg->sum_qty_x_amount ?? 0),
+        ];
+    }
+
+    /**
+     * Group reverb_daily_data by SKU: revenue = Σ(quantity × COALESCE(amount, 0)) like /reverb-pricing;
+     * GPFT ord–style profit = revenue − qty × (LP + Ship) from product_master.
+     *
+     * @param  \Illuminate\Database\Query\Builder  $baseQuery  query on reverb_daily_data with any date filters
+     * @param  \Illuminate\Support\Collection<string,\App\Models\ProductMaster>  $productMastersByUpperSku
+     * @return array{qty: int, sales: float, profit: float, cogs: float}
+     */
+    private function aggregateReverbDailyProfitGroupedQuery($baseQuery, $productMastersByUpperSku): array
+    {
+        $rows = (clone $baseQuery)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->groupBy('sku')
+            ->select('sku')
+            ->selectRaw('SUM(quantity) as qty')
+            ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as rev')
+            ->get();
+
+        $totalQty = 0;
+        $totalRev = 0.0;
+        $totalProfit = 0.0;
+        $totalCogs = 0.0;
+
+        foreach ($rows as $row) {
+            $sku = strtoupper(trim((string) $row->sku));
+            $qty = (int) ($row->qty ?? 0);
+            $rev = (float) ($row->rev ?? 0);
+            if ($qty <= 0 && $rev <= 0) {
+                continue;
+            }
+
+            $lp = 0.0;
+            $ship = 0.0;
+            if (isset($productMastersByUpperSku[$sku])) {
+                $pm = $productMastersByUpperSku[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $lp = isset($values['lp']) ? (float) $values['lp'] : (float) ($pm->lp ?? 0);
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($pm->ship ?? 0);
+            }
+
+            $lineCogs = $qty * ($lp + $ship);
+            $totalQty += $qty;
+            $totalRev += $rev;
+            $totalCogs += $lineCogs;
+            $totalProfit += ($rev - $lineCogs);
+        }
+
+        return [
+            'qty' => $totalQty,
+            'sales' => $totalRev,
+            'profit' => $totalProfit,
+            'cogs' => $totalCogs,
+        ];
+    }
+
+    /**
+     * Aggregate reverb_daily_data for a calendar date range (Pacific windows from getReverbDailyDataPacificWindows).
+     *
+     * @param  \Illuminate\Support\Collection<string,\App\Models\ProductMaster>  $productMastersByUpperSku
+     * @return array{qty: int, sales: float, profit: float, cogs: float}
+     */
+    private function aggregateReverbDailyProfitForWindow(
+        string $startDate,
+        string $endDate,
+        $productMastersByUpperSku
+    ): array {
+        $baseQuery = DB::table('reverb_daily_data')
+            ->whereNotNull('order_date')
+            ->whereBetween('order_date', [$startDate, $endDate]);
+
+        return $this->aggregateReverbDailyProfitGroupedQuery($baseQuery, $productMastersByUpperSku);
+    }
 
     public function getReverbChannelData(Request $request)
     {
-        $result = [];
-
-        $query = ReverbProduct::where('sku', 'not like', '%Parent%');
-
-        $l30Orders = $query->sum('r_l30');
-        $l60Orders = $query->sum('r_l60');
-        $totalQuantity = $l30Orders; // r_l30 is already units sold (quantity)
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(r_l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(r_l60 * price) as total')->value('total') ?? 0;
-
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Reverb')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'r_l30','r_l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
+        $l30Sales = 0.0;
+        $l60Sales = 0.0;
+        $l30Orders = 0;
+        $l60Orders = 0;
+        $totalQuantity = 0;
+        $totalProfit = 0.0;
+        $totalProfitL60 = 0.0;
+        $totalCogs = 0.0;
+        $totalCogsL60 = 0.0;
+        $growth = 0.0;
+        $reverbPaceL30Sales = null;
 
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->r_l30;
-            $unitsL60  = (int) $row->r_l60;
+        $useDailyData = Schema::hasTable('reverb_daily_data');
+        $windows = $useDailyData ? $this->getReverbDailyDataPacificWindows() : null;
 
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
+        if ($useDailyData && $windows !== null) {
+            $fullTotals = $this->getReverbDailyDataFullTableTotals() ?? ['sum_quantity' => 0, 'sum_qty_x_amount' => 0.0];
 
-            $lp   = 0;
-            $ship = 0;
+            $l30 = $this->aggregateReverbDailyProfitForWindow(
+                $windows['l30_start'],
+                $windows['l30_end'],
+                $productMasters
+            );
+            $l60 = $this->aggregateReverbDailyProfitForWindow(
+                $windows['l60_start'],
+                $windows['l60_end'],
+                $productMasters
+            );
 
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
+            // Master "Sales" / Orders: match Reverb pricing badges (full reverb_daily_data table).
+            $l30Sales = (float) $fullTotals['sum_qty_x_amount'];
+            $l30Orders = (int) $fullTotals['sum_quantity'];
+            $totalQuantity = $l30Orders;
 
-                $values = is_array($pm->Values) ? $pm->Values :
+            $l60Sales = $l60['sales'];
+            $l60Orders = $l60['qty'];
+
+            // GPFT ord–style margin on full-table revenue (rows without SKU have no COGS in PM).
+            $groupedAll = $this->aggregateReverbDailyProfitGroupedQuery(DB::table('reverb_daily_data'), $productMasters);
+            $orphanRev = max(0.0, $l30Sales - $groupedAll['sales']);
+            $totalProfit = $groupedAll['profit'] + $orphanRev;
+            $totalCogs = $groupedAll['cogs'];
+
+            $totalProfitL60 = $l60['profit'];
+            $totalCogsL60 = $l60['cogs'];
+
+            $priorRev = (float) DB::table('reverb_daily_data')
+                ->whereNotNull('order_date')
+                ->whereBetween('order_date', [$windows['prior30_start'], $windows['prior30_end']])
+                ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as rev')
+                ->value('rev');
+
+            $growth = $priorRev > 0
+                ? (($l30['sales'] - $priorRev) / $priorRev) * 100
+                : ($l30['sales'] > 0 ? 100.0 : 0.0);
+
+            $reverbPaceL30Sales = (int) round($l30['sales']);
+        } else {
+            // Fallback: reverb_products r_l30 × price (legacy) when daily table missing or empty
+            $query = ReverbProduct::where('sku', 'not like', '%Parent%');
+
+            $l30Orders = (int) $query->sum('r_l30');
+            $l60Orders = (int) (clone $query)->sum('r_l60');
+            $totalQuantity = $l30Orders;
+
+            $l30Sales = (float) ((clone $query)->selectRaw('SUM(r_l30 * price) as total')->value('total') ?? 0);
+            $l60Sales = (float) ((clone $query)->selectRaw('SUM(r_l60 * price) as total')->value('total') ?? 0);
+
+            $percentage = ChannelMaster::where('channel', 'Reverb')->value('channel_percentage') ?? 100;
+            $percentage = $percentage / 100;
+
+            $ebayRows = $query->get(['sku', 'price', 'r_l30', 'r_l60']);
+
+            foreach ($ebayRows as $row) {
+                $sku = strtoupper($row->sku);
+                $price = (float) $row->price;
+                $unitsL30 = (int) $row->r_l30;
+                $unitsL60 = (int) $row->r_l60;
+
+                $soldAmount = $unitsL30 * $price;
+                if ($soldAmount <= 0) {
+                    continue;
+                }
+
+                $lp = 0.0;
+                $ship = 0.0;
+                if (isset($productMasters[$sku])) {
+                    $pm = $productMasters[$sku];
+                    $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
+                    $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                }
 
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                $profitPerUnit = ($price * $percentage) - $lp - $ship;
+                $totalProfit += $profitPerUnit * $unitsL30;
+                $totalProfitL60 += $profitPerUnit * $unitsL60;
+                $totalCogs += ($unitsL30 * ($lp + $ship));
+                $totalCogsL60 += ($unitsL60 * ($lp + $ship));
             }
 
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
+            $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
         }
 
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
         $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // No Reverb ads on master: N ROI = G ROI (same as Macys / Tiendamia; N ROI = GROI - TCOS when spend > 0).
+        $nRoi = $gRoi;
 
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'Reverb')->first();
-
-        // Get Map and Miss counts from amazon_channel_summary_data table
         $mapMissCounts = $this->getMapAndMissCounts('reverb');
 
         $result[] = [
             'Channel '   => 'Reverb',
-            'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
+            'L-60 Sales' => (int) round($l60Sales),
+            'L30 Sales'  => (int) round($l30Sales),
+            'reverb_pace_l30_sales' => $reverbPaceL30Sales,
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Qty'        => intval($totalQuantity),
+            'Qty'        => (int) $totalQuantity,
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'N ROI'      => round($nRoi, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'KW Spent'   => 0,
             'PT Spent'   => 0,
