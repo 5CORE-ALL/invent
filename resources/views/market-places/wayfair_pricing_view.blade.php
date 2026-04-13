@@ -450,6 +450,54 @@
             return Math.ceil(price) - 0.01;
         }
 
+        /** SKU rows on the current pagination page only (not the whole filtered dataset). */
+        function wfVisibleSkuRows() {
+            if (!table) return [];
+            try {
+                let rows = typeof table.getRows === 'function' ? table.getRows(true) : [];
+                if (!Array.isArray(rows)) rows = [];
+                const allFiltered = typeof table.getRows === 'function' ? table.getRows() : [];
+                const pageSize = typeof table.getPageSize === 'function' ? table.getPageSize() : null;
+                const page = typeof table.getPage === 'function' ? table.getPage() : null;
+                if (
+                    pageSize && page &&
+                    rows.length === allFiltered.length &&
+                    allFiltered.length > pageSize
+                ) {
+                    const start = (page - 1) * pageSize;
+                    rows = allFiltered.slice(start, start + pageSize);
+                }
+                return rows.filter(function(row) {
+                    try {
+                        return row && typeof row.getData === 'function' && !row.getData().is_parent;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+            } catch (err) {
+                return [];
+            }
+        }
+
+        function wfSyncSelectAllHeaderCheckbox() {
+            const el = document.getElementById('wf-select-all');
+            if (!el || !table) return;
+            const skuRows = wfVisibleSkuRows();
+            if (!skuRows.length) {
+                el.checked = false;
+                el.indeterminate = false;
+                return;
+            }
+            let selected = 0;
+            skuRows.forEach(function(row) {
+                const d = row.getData();
+                const sku = d && d.sku != null ? String(d.sku) : '';
+                if (sku && wfSelectedSkus.has(sku)) selected++;
+            });
+            el.checked = selected === skuRows.length && skuRows.length > 0;
+            el.indeterminate = selected > 0 && selected < skuRows.length;
+        }
+
         function wfSyncPriceModeUi() {
             const $btn = $('#wf-price-mode-btn');
             const selectCol = table ? table.getColumn('_wf_select') : null;
@@ -506,7 +554,7 @@
         /** Clear pricing-mode SKU checkboxes when table filters change (visible row set changes). */
         function wfClearSkuSelections() {
             wfSelectedSkus.clear();
-            $('#wf-select-all').prop('checked', false);
+            $('#wf-select-all').prop('checked', false).prop('indeterminate', false);
             wfUpdateSelectedCount();
             if (table) {
                 try { table.redraw(true); } catch (err) { /* ignore */ }
@@ -844,6 +892,7 @@
                 layout: 'fitDataStretch',
                 pagination: true,
                 paginationSize: 50,
+                paginationSizeSelector: [50, 100, 150, 200],
                 initialSort: [],
                 rowFormatter: function(row) {
                     if (row.getData().is_parent === true) {
@@ -889,7 +938,7 @@
                         }
                     },
                     {
-                        title: "<input type=\"checkbox\" id=\"wf-select-all\">",
+                        title: "<input type=\"checkbox\" id=\"wf-select-all\" title=\"Select all SKUs on this page only\">",
                         field: '_wf_select',
                         hozAlign: 'center',
                         headerSort: false,
@@ -1264,18 +1313,37 @@
 
             $(document).on('change', '#wf-select-all', function() {
                 const checked = $(this).prop('checked');
-                const rows = table.getData('active').filter(function(d) { return !d.is_parent; });
-                rows.forEach(function(d) {
-                    if (checked) wfSelectedSkus.add(d.sku); else wfSelectedSkus.delete(d.sku);
+                const skuRows = wfVisibleSkuRows();
+                skuRows.forEach(function(row) {
+                    const d = row.getData();
+                    const sku = d.sku != null ? String(d.sku) : '';
+                    if (!sku) return;
+                    if (checked) wfSelectedSkus.add(sku); else wfSelectedSkus.delete(sku);
                 });
-                $('.wf-sku-chk').prop('checked', checked);
+                skuRows.forEach(function(row) {
+                    const cellEl = row.getElement();
+                    if (!cellEl) return;
+                    const chk = cellEl.querySelector('.wf-sku-chk');
+                    if (chk) chk.checked = checked;
+                });
+                const head = document.getElementById('wf-select-all');
+                if (head) head.indeterminate = false;
                 wfUpdateSelectedCount();
             });
 
             $(document).on('change', '.wf-sku-chk', function() {
                 const sku = $(this).attr('data-sku');
+                if (!sku) return;
                 if ($(this).prop('checked')) wfSelectedSkus.add(sku); else wfSelectedSkus.delete(sku);
                 wfUpdateSelectedCount();
+                wfSyncSelectAllHeaderCheckbox();
+            });
+
+            table.on('pageLoaded', function() {
+                wfSyncSelectAllHeaderCheckbox();
+            });
+            table.on('renderComplete', function() {
+                wfSyncSelectAllHeaderCheckbox();
             });
 
             table.on('cellEdited', function(cell) {
