@@ -243,11 +243,12 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Total Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Total Sales: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;" title="From reverb_daily_data on filtered rows: (Σ RD sales − Σ COGS) ÷ Σ RD sales; falls back to avg listing GPFT% when no RD sales">GPFT live: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Filtered rows: Σ[rd_qty×(RV Price×take%−LP−ship)] ÷ Σ(rd_qty×RV Price); take% from row; falls back to avg row GPFT% when no RD qty×price revenue">GPFT list: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="gpft-ord-badge" style="color: white; font-weight: bold;" title="Filtered rows: (Σ RD sales − Σ COGS) ÷ Σ RD sales using reverb_daily Σ(qty×amount) per SKU; COGS = (LP+ship)×rd_qty; falls back to avg row GPFT% when no RD sales">GPFT ord: 0%</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;" title="Σ reverb_daily_qty on filtered rows">Units (orders): 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="(Σ RD sales − COGS orders) ÷ COGS orders">ROI (orders): 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="Order dollars: (Σ RD sales − Σ COGS) ÷ Σ COGS; RD sales = per-SKU reverb_daily qty×amount">ROI (orders): 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">MISSING: 0</span>
@@ -1717,7 +1718,9 @@
             let zeroSoldCount = 0, moreSoldCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
             let missingCount = 0, invRStockCount = 0;
-            let totalRdQty = 0, totalRdSales = 0, totalRdCogs = 0;
+            let totalRdQty = 0, totalRdCogs = 0, totalRdSales = 0;
+            let totalRevenueQtyPrice = 0;
+            let totalProfitLive = 0;
 
             data.forEach(row => {
                 totalGpft += parseFloat(row['GPFT%']) || 0;
@@ -1726,9 +1729,18 @@
                 const rdSales = parseFloat(row.reverb_daily_qty_x_amount) || 0;
                 const lp = parseFloat(row['LP_productmaster']) || 0;
                 const ship = parseFloat(row['Ship_productmaster']) || 0;
+                const rvPrice = parseFloat(row['RV Price']) || 0;
+                const pct = parseFloat(row.percentage);
+                const takeRate = !isNaN(pct) && pct > 0 && pct <= 1 ? pct : 0.85;
+
                 totalRdQty += rdQty;
-                totalRdSales += rdSales;
                 totalRdCogs += (lp + ship) * rdQty;
+                totalRdSales += rdSales;
+
+                if (rdQty > 0) {
+                    totalProfitLive += rdQty * (rvPrice * takeRate - lp - ship);
+                    totalRevenueQtyPrice += rdQty * rvPrice;
+                }
 
                 if (rdQty === 0) {
                     zeroSoldCount++;
@@ -1737,7 +1749,6 @@
                 }
                 
                 // Compare RV Price with Amazon Price (must match filter logic exactly)
-                const rvPrice = parseFloat(row['RV Price']) || 0;
                 const amzPrice = parseFloat(row['A Price']) || 0;
                 
                 // Count for < Amz
@@ -1768,17 +1779,25 @@
 
             const avgGpftListing = data.length > 0 ? totalGpft / data.length : 0;
 
-            const orderMarginPct = totalRdSales > 0
+            const gpftListPct = totalRevenueQtyPrice > 0
+                ? (totalProfitLive / totalRevenueQtyPrice) * 100
+                : null;
+            const gpftOrdPct = totalRdSales > 0
                 ? ((totalRdSales - totalRdCogs) / totalRdSales) * 100
                 : null;
             const roiOrdersPct = totalRdCogs > 0
                 ? ((totalRdSales - totalRdCogs) / totalRdCogs) * 100
                 : null;
 
-            $('#avg-gpft-badge').text(
-                orderMarginPct !== null
-                    ? `GPFT live: ${Math.round(orderMarginPct)}%`
-                    : `GPFT live: ${Math.round(avgGpftListing)}% (list)`
+            $('#gpft-list-badge').text(
+                gpftListPct !== null
+                    ? `GPFT list: ${Math.round(gpftListPct)}%`
+                    : `GPFT list: ${Math.round(avgGpftListing)}% (list)`
+            );
+            $('#gpft-ord-badge').text(
+                gpftOrdPct !== null
+                    ? `GPFT ord: ${Math.round(gpftOrdPct)}%`
+                    : `GPFT ord: ${Math.round(avgGpftListing)}% (list)`
             );
             $('#total-l30-badge').text(`Units (orders): ${totalRdQty.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
