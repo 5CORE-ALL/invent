@@ -164,8 +164,7 @@
                         <option value="20-30">20-30%</option>
                         <option value="30-40">30-40%</option>
                         <option value="40-50">40-50%</option>
-                        <option value="50-60">50-60%</option>
-                        <option value="60plus">60%+</option>
+                        <option value="60plus">Above 60%</option>
                     </select>
 
                     <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
@@ -181,14 +180,11 @@
                     <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
                         <option value="all">All CVR%</option>
                         <option value="0-0">0%</option>
-                        <option value="0.01-1">0.01-1%</option>
-                        <option value="1-2">1-2%</option>
-                        <option value="2-3">2-3%</option>
-                        <option value="3-4">3-4%</option>
-                        <option value="0-4">0-4%</option>
+                        <option value="0-2">0-2%</option>
+                        <option value="2-4">2-4%</option>
                         <option value="4-7">4-7%</option>
-                        <option value="7-10">7-10%</option>
-                        <option value="10plus">10%+</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
                     </select>
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
@@ -247,8 +243,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Total Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Total Sales: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;" title="(Σ RD sales − Σ COGS) ÷ Σ RD sales on filtered rows">Order margin: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;" title="From reverb_daily_data on filtered rows: (Σ RD sales − Σ COGS) ÷ Σ RD sales; falls back to avg listing GPFT% when no RD sales">GPFT live: 0%</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;" title="Σ reverb_daily_qty on filtered rows">Units (orders): 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
@@ -1614,14 +1609,11 @@
                     const cvrPercent = views > 0 ? (wl30 / views) * 100 : 0;
 
                     if (cvrFilter === '0-0') return cvrPercent === 0;
-                    if (cvrFilter === '0.01-1') return cvrPercent >= 0.01 && cvrPercent <= 1;
-                    if (cvrFilter === '1-2') return cvrPercent > 1 && cvrPercent <= 2;
-                    if (cvrFilter === '2-3') return cvrPercent > 2 && cvrPercent <= 3;
-                    if (cvrFilter === '3-4') return cvrPercent > 3 && cvrPercent <= 4;
-                    if (cvrFilter === '0-4') return cvrPercent >= 0 && cvrPercent <= 4;
+                    if (cvrFilter === '0-2') return cvrPercent > 0 && cvrPercent <= 2;
+                    if (cvrFilter === '2-4') return cvrPercent > 2 && cvrPercent <= 4;
                     if (cvrFilter === '4-7') return cvrPercent > 4 && cvrPercent <= 7;
-                    if (cvrFilter === '7-10') return cvrPercent > 7 && cvrPercent <= 10;
-                    if (cvrFilter === '10plus') return cvrPercent > 10;
+                    if (cvrFilter === '7-13') return cvrPercent > 7 && cvrPercent <= 13;
+                    if (cvrFilter === '13plus') return cvrPercent > 13;
                     return true;
                 });
             }
@@ -1722,15 +1714,13 @@
             });
 
             let totalGpft = 0;
-            let totalInv = 0, zeroSoldCount = 0, moreSoldCount = 0;
+            let zeroSoldCount = 0, moreSoldCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
             let missingCount = 0, invRStockCount = 0;
             let totalRdQty = 0, totalRdSales = 0, totalRdCogs = 0;
 
             data.forEach(row => {
                 totalGpft += parseFloat(row['GPFT%']) || 0;
-                
-                totalInv += parseFloat(row.INV) || 0;
                 
                 const rdQty = parseInt(row.reverb_daily_qty, 10) || 0;
                 const rdSales = parseFloat(row.reverb_daily_qty_x_amount) || 0;
@@ -1787,10 +1777,9 @@
 
             $('#avg-gpft-badge').text(
                 orderMarginPct !== null
-                    ? `Order margin: ${orderMarginPct.toFixed(1)}%`
-                    : `Order margin: ${avgGpftListing.toFixed(1)}% (list)`
+                    ? `GPFT live: ${Math.round(orderMarginPct)}%`
+                    : `GPFT live: ${Math.round(avgGpftListing)}% (list)`
             );
-            $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
             $('#total-l30-badge').text(`Units (orders): ${totalRdQty.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
