@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ReverbProduct;
 use App\Models\ShopifySku;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
@@ -18,6 +19,8 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonChannelSummary;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ReverbController extends Controller
 {
@@ -717,6 +720,41 @@ class ReverbController extends Controller
         }
     }
 
+    /**
+     * Full-table totals from reverb_daily_data (matches ad-hoc SQL: all rows, not limited to SKUs on the pricing grid).
+     */
+    public function reverbDailyDataTotalsJson(): JsonResponse
+    {
+        if (! Schema::hasTable('reverb_daily_data')) {
+            return response()->json([
+                'row_count' => 0,
+                'sum_quantity' => 0,
+                'sum_quantity_x_product_subtotal' => 0,
+                'sum_quantity_x_amount' => 0,
+                'sum_product_subtotal' => 0,
+                'sum_amount' => 0,
+            ]);
+        }
+
+        $agg = DB::table('reverb_daily_data')
+            ->selectRaw('COUNT(*) as row_count')
+            ->selectRaw('COALESCE(SUM(quantity), 0) as sum_quantity')
+            ->selectRaw('COALESCE(SUM(quantity * COALESCE(product_subtotal, 0)), 0) as sum_qty_x_subtotal')
+            ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as sum_qty_x_amount')
+            ->selectRaw('COALESCE(SUM(COALESCE(product_subtotal, 0)), 0) as sum_product_subtotal')
+            ->selectRaw('COALESCE(SUM(COALESCE(amount, 0)), 0) as sum_amount')
+            ->first();
+
+        return response()->json([
+            'row_count' => (int) ($agg->row_count ?? 0),
+            'sum_quantity' => (int) ($agg->sum_quantity ?? 0),
+            'sum_quantity_x_product_subtotal' => round((float) ($agg->sum_qty_x_subtotal ?? 0), 2),
+            'sum_quantity_x_amount' => round((float) ($agg->sum_qty_x_amount ?? 0), 2),
+            'sum_product_subtotal' => round((float) ($agg->sum_product_subtotal ?? 0), 2),
+            'sum_amount' => round((float) ($agg->sum_amount ?? 0), 2),
+        ]);
+    }
+
     public function getViewReverbTabularData(Request $request)
     {
         // Get percentage from cache or database
@@ -762,6 +800,22 @@ class ReverbController extends Controller
         $amazonData = \App\Models\AmazonDatasheet::whereIn("sku", $skus)
             ->get()
             ->keyBy("sku");
+
+        // reverb_daily_data: per-SKU order aggregates (from Reverb API daily fetch, matched by sku)
+        $dailyBySku = collect();
+        if ($skus !== [] && Schema::hasTable('reverb_daily_data')) {
+            $dailyBySku = DB::table('reverb_daily_data')
+                ->whereIn('sku', $skus)
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->groupBy('sku')
+                ->select('sku')
+                ->selectRaw('SUM(quantity) as rd_qty')
+                ->selectRaw('SUM(quantity * COALESCE(product_subtotal, 0)) as rd_qty_x_subtotal')
+                ->selectRaw('SUM(quantity * COALESCE(amount, 0)) as rd_qty_x_amount')
+                ->get()
+                ->keyBy('sku');
+        }
 
         // Process data
         $processedData = [];
@@ -951,6 +1005,11 @@ class ReverbController extends Controller
             $inv = $processedItem["INV"];
             $l30 = $processedItem["L30"];
             $processedItem["RV Dil%"] = $inv > 0 ? round(($l30 / $inv) * 100, 2) : 0;
+
+            $rd = $dailyBySku[$sku] ?? null;
+            $processedItem["reverb_daily_qty"] = $rd ? (int) $rd->rd_qty : 0;
+            $processedItem["reverb_daily_qty_x_subtotal"] = $rd ? round((float) $rd->rd_qty_x_subtotal, 2) : 0;
+            $processedItem["reverb_daily_qty_x_amount"] = $rd ? round((float) $rd->rd_qty_x_amount, 2) : 0;
 
             $processedData[] = $processedItem;
         }

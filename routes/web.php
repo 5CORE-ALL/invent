@@ -2320,6 +2320,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Reverb Pricing Routes (Tabulator)
     Route::get('/reverb-pricing', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbTabulatorView'])->name('reverb.pricing');
     Route::get('/reverb-data-json', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbDataJson'])->name('reverb.data.json');
+    Route::get('/reverb-daily-data-totals-json', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbDailyDataTotalsJson'])->name('reverb.daily.data.totals.json');
     Route::post('/reverb-update-listed-live', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbListedLive'])->name('reverb.update.listed.live');
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
     Route::post('/reverb-save-recommended-bid', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveRecommendedBid'])->name('reverb.save.recommended.bid');

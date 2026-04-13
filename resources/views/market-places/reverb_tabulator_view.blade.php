@@ -245,21 +245,17 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary (85% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
+                        <span class="badge fs-6 p-2" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Total Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Total Sales: $0</span>
+                        <span class="badge bg-dark fs-6 p-2" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;" title="(Σ RD sales − Σ COGS) ÷ Σ RD sales on filtered rows">Order margin: 0%</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total RV L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;" title="Σ reverb_daily_qty on filtered rows">Units (orders): 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="(Σ RD sales − COGS orders) ÷ COGS orders">ROI (orders): 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">MISSING: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs">MAP: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs">N MAP: 0</span>
                     </div>
                 </div>
@@ -300,6 +296,7 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "reverb_tabulator_column_visibility";
+    const REVERB_DAILY_TOTALS_URL = @json(url('reverb-daily-data-totals-json'));
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -465,16 +462,6 @@
         let missingFilterActive = false;
         $('#missing-count-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            mapFilterActive = false; // Deactivate other filters
-            invRStockFilterActive = false;
-            applyFilters();
-        });
-
-        // Map badge click handler - filter SKUs where INV = R Stock
-        let mapFilterActive = false;
-        $('#map-count-badge').on('click', function() {
-            mapFilterActive = !mapFilterActive;
-            missingFilterActive = false; // Deactivate other filters
             invRStockFilterActive = false;
             applyFilters();
         });
@@ -484,7 +471,6 @@
         $('#inv-r-stock-badge').on('click', function() {
             invRStockFilterActive = !invRStockFilterActive;
             missingFilterActive = false; // Deactivate other filters
-            mapFilterActive = false;
             applyFilters();
         });
 
@@ -1007,6 +993,34 @@
                     hozAlign: "center",
                     width: 50,
                     sorter: "number"
+                },
+                {
+                    title: "RD Qty",
+                    field: "reverb_daily_qty",
+                    hozAlign: "center",
+                    width: 72,
+                    sorter: "number",
+                    headerTooltip: "Σ quantity from reverb_daily_data (orders API) for this SKU"
+                },
+                {
+                    title: "RD Σ(qty×subtotal)",
+                    field: "reverb_daily_qty_x_subtotal",
+                    hozAlign: "center",
+                    width: 110,
+                    sorter: "number",
+                    formatter: "money",
+                    formatterParams: { precision: 2, symbol: "$" },
+                    headerTooltip: "Σ quantity × product_subtotal from reverb_daily_data"
+                },
+                {
+                    title: "RD Σ(qty×amount)",
+                    field: "reverb_daily_qty_x_amount",
+                    hozAlign: "center",
+                    width: 118,
+                    sorter: "number",
+                    formatter: "money",
+                    formatterParams: { precision: 2, symbol: "$" },
+                    headerTooltip: "Σ quantity × amount (order total field) from reverb_daily_data"
                 },
                 {
                     title: "R Stock",
@@ -1627,14 +1641,14 @@
                 });
             }
 
-            // 0 Sold filter (based on RV L30) - triggered by badge click
+            // 0 Sold filter (reverb_daily_qty) - matches summary badge counts
             if (zeroSoldFilterActive) {
-                table.addFilter("RV L30", "=", 0);
+                table.addFilter("reverb_daily_qty", "=", 0);
             }
 
-            // > 0 Sold filter (based on RV L30) - triggered by badge click
+            // > 0 Sold filter (reverb_daily_qty)
             if (moreSoldFilterActive) {
-                table.addFilter("RV L30", ">", 0);
+                table.addFilter("reverb_daily_qty", ">", 0);
             }
 
             // < Amz filter - show prices less than Amazon price
@@ -1665,17 +1679,6 @@
                 });
             }
 
-            // Map filter - show SKUs where INV = R Stock (REQ items with INV > 0 and NOT Missing)
-            if (mapFilterActive) {
-                table.addFilter(function(data) {
-                    const mapValue = data['MAP'] || '';
-                    const inv = parseFloat(data['INV']) || 0;
-                    const nrReq = data['nr_req'] || 'REQ';
-                    const isMissing = (data['Missing'] || '') === 'M';
-                    return mapValue === 'Map' && nrReq === 'REQ' && inv > 0 && !isMissing;
-                });
-            }
-
             // N Map filter - show SKUs where stocks don't match (REQ items with INV > 0 and NOT Missing)
             if (invRStockFilterActive) {
                 table.addFilter(function(data) {
@@ -1694,53 +1697,53 @@
             applyFilters();
         });
 
+        /** Full reverb_daily_data table totals (matches SQL on entire table, not pricing-grid SKU sum). */
+        function loadReverbDailyTotalsBadges() {
+            $.getJSON(REVERB_DAILY_TOTALS_URL)
+                .done(function(d) {
+                    if (!d || d.error) {
+                        return;
+                    }
+                    $('#rd-sum-qty-amount-badge').text(
+                        'Total Sales: $' + Math.round(parseFloat(d.sum_quantity_x_amount) || 0).toLocaleString()
+                    );
+                    $('#rd-daily-overview-badge').text('Orders: ' + (d.sum_quantity || 0));
+                })
+                .fail(function(xhr) {
+                    console.warn('reverb-daily-data-totals-json failed', xhr && xhr.status);
+                });
+        }
+
         // Update summary badges
         function updateSummary() {
-            const inventoryFilter = $('#inventory-filter').val();
             const data = table.getData('active').filter(row => {
                 // Don't filter by INV for summary - respect the dropdown filter instead
                 return !(row.Parent && row.Parent.startsWith('PARENT'));
             });
 
-            let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
-            let totalInv = 0, totalL30 = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
-            let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0;
-            let missingCount = 0, mapCount = 0, invRStockCount = 0;
+            let totalGpft = 0;
+            let totalInv = 0, zeroSoldCount = 0, moreSoldCount = 0;
+            let lessAmzCount = 0, moreAmzCount = 0;
+            let missingCount = 0, invRStockCount = 0;
+            let totalRdQty = 0, totalRdSales = 0, totalRdCogs = 0;
 
             data.forEach(row => {
-                totalPft += parseFloat(row.Profit) || 0;
-                totalSales += parseFloat(row['Sales L30']) || 0;
                 totalGpft += parseFloat(row['GPFT%']) || 0;
                 
-                const price = parseFloat(row['RV Price']) || 0;
-                if (price > 0) {
-                    totalPrice += price;
-                    priceCount++;
-                }
-                
                 totalInv += parseFloat(row.INV) || 0;
-                totalL30 += parseFloat(row['RV L30']) || 0;
                 
-                const l30 = parseFloat(row['RV L30']) || 0;
-                if (l30 === 0) {
+                const rdQty = parseInt(row.reverb_daily_qty, 10) || 0;
+                const rdSales = parseFloat(row.reverb_daily_qty_x_amount) || 0;
+                const lp = parseFloat(row['LP_productmaster']) || 0;
+                const ship = parseFloat(row['Ship_productmaster']) || 0;
+                totalRdQty += rdQty;
+                totalRdSales += rdSales;
+                totalRdCogs += (lp + ship) * rdQty;
+
+                if (rdQty === 0) {
                     zeroSoldCount++;
                 } else {
                     moreSoldCount++;
-                }
-                
-                const dil = parseFloat(row['RV Dil%']) || 0;
-                if (dil > 0) {
-                    totalDil += dil;
-                    dilCount++;
-                }
-                
-                const lp = parseFloat(row['LP_productmaster']) || 0;
-                totalCogs += lp * l30;
-                
-                const roi = parseFloat(row['ROI%']) || 0;
-                if (roi !== 0) {
-                    totalRoi += roi;
-                    roiCount++;
                 }
                 
                 // Compare RV Price with Amazon Price (must match filter logic exactly)
@@ -1766,38 +1769,39 @@
                     missingCount++;
                 }
                 
-                // Count Map (only REQ items with INV > 0 and NOT Missing)
                 const mapValue = row['MAP'] || '';
-                if (mapValue === 'Map' && nrReq === 'REQ' && inv > 0 && !isMissing) {
-                    mapCount++;
-                }
-                
                 // Count N Map (only REQ items with INV > 0 and NOT Missing)
                 if (mapValue.includes('N Map|') && nrReq === 'REQ' && inv > 0 && !isMissing) {
                     invRStockCount++;
                 }
             });
 
-            const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
-            const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-            const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
-            const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
+            const avgGpftListing = data.length > 0 ? totalGpft / data.length : 0;
 
-            $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
-            $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
-            $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
+            const orderMarginPct = totalRdSales > 0
+                ? ((totalRdSales - totalRdCogs) / totalRdSales) * 100
+                : null;
+            const roiOrdersPct = totalRdCogs > 0
+                ? ((totalRdSales - totalRdCogs) / totalRdCogs) * 100
+                : null;
+
+            $('#avg-gpft-badge').text(
+                orderMarginPct !== null
+                    ? `Order margin: ${orderMarginPct.toFixed(1)}%`
+                    : `Order margin: ${avgGpftListing.toFixed(1)}% (list)`
+            );
             $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
-            $('#total-l30-badge').text(`Total RV L30: ${totalL30.toLocaleString()}`);
+            $('#total-l30-badge').text(`Units (orders): ${totalRdQty.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
-            $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
-            $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
-            $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
+            $('#roi-percent-badge').text(
+                roiOrdersPct !== null
+                    ? `ROI (orders): ${roiOrdersPct.toFixed(1)}%`
+                    : 'ROI (orders): —'
+            );
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
             $('#missing-count-badge').text(`MISSING: ${missingCount}`);
-            $('#map-count-badge').text(`MAP: ${mapCount}`);
             $('#inv-r-stock-badge').text(`N MAP: ${invRStockCount}`);
         }
 
@@ -1873,18 +1877,21 @@
         table.on('tableBuilt', function() {
             buildColumnDropdown();
             applyColumnVisibilityFromServer();
+            loadReverbDailyTotalsBadges();
         });
 
         table.on('dataLoaded', function() {
             setTimeout(function() {
                 applyFilters();
                 updateSummary();
+                loadReverbDailyTotalsBadges();
             }, 100);
         });
 
         table.on('renderComplete', function() {
             setTimeout(function() {
                 updateSummary();
+                loadReverbDailyTotalsBadges();
             }, 100);
         });
 
