@@ -148,21 +148,35 @@
                     </button>
                 </div>
 
-                <!-- Summary Stats -->
+                <!-- Summary: L30 order-line row + pricing-table badges -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary ({{ $macysPercentage }}% Margin)</h6>
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-2 macys-ds-badge-row">
+                        <span class="badge bg-primary fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="orders"
+                            style="color: white; font-weight: bold;">Orders: …</span>
+                        <span class="badge bg-success fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="quantity"
+                            style="color: white; font-weight: bold;">Quantity: …</span>
+                        <span class="badge fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="sales"
+                            style="background-color: #17a2b8; color: white; font-weight: bold;">Sales: …</span>
+                        <span class="badge bg-danger fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="gpft-pct"
+                            style="color: white; font-weight: bold;">GPFT %: …</span>
+                        <span class="badge fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="roi-pct"
+                            style="background-color: purple; color: white; font-weight: bold;">ROI %: …</span>
+                        <span class="badge bg-warning fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="avg-price"
+                            style="color: black; font-weight: bold;">Avg Price: …</span>
+                        <span class="badge bg-dark fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="pft-total"
+                            style="color: white; font-weight: bold;">GPFT Total: …</span>
+                        <span class="badge bg-primary fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="cogs"
+                            style="color: white; font-weight: bold;">Total COGS: …</span>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
                         <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFt: 0%</span>
                         <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true">Avg Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Sold: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                         <span class="badge bg-warning fs-6 p-2 d-none" id="avg-dil-badge" style="color: black; font-weight: bold;" aria-hidden="true">DIL%: 0%</span>
                         <span class="badge bg-info fs-6 p-2 d-none" id="total-cogs-badge" style="color: black; font-weight: bold;" aria-hidden="true">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2 text-white" id="roi-percent-badge" style="font-weight: bold;">ROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">Missing L: 0</span>
@@ -257,7 +271,95 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
+    /** Same aggregation as macys_daily_sales_data.blade.php updateSummary() — uses /macys/daily-sales-data */
+    function applyMacysDailySalesSummary(rows) {
+        if (!Array.isArray(rows)) {
+            rows = [];
+        }
+        let totalOrders = 0;
+        let totalQuantity = 0;
+        let totalRevenue = 0;
+        let totalPft = 0;
+        let totalL30Sales = 0;
+        let totalWeightedPrice = 0;
+        let totalQuantityForPrice = 0;
+        let totalCogs = 0;
+
+        rows.forEach(row => {
+            if (!row.sku || row.sku === '' || !row.order_id || row.order_id === '') {
+                return;
+            }
+
+            totalOrders++;
+            const quantity = parseInt(row.quantity, 10) || 0;
+            const unitPrice = parseFloat(row.unit_price) || 0;
+
+            if (quantity === 0) {
+                return;
+            }
+
+            totalQuantity += quantity;
+            totalRevenue += unitPrice * quantity;
+
+            if (quantity > 0 && unitPrice > 0) {
+                totalWeightedPrice += unitPrice * quantity;
+                totalQuantityForPrice += quantity;
+            }
+
+            const pft = parseFloat(row.pft) || 0;
+            const cogs = parseFloat(row.cogs) || 0;
+
+            totalPft += pft;
+            totalCogs += cogs;
+
+            totalL30Sales += quantity * unitPrice;
+        });
+
+        const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
+        const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
+        const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+
+        function setMacysDsRole(role, text) {
+            $('.macys-ds-aggregate[data-role="' + role + '"]').text(text);
+        }
+
+        setMacysDsRole('orders', 'Orders: ' + totalOrders.toLocaleString());
+        setMacysDsRole('quantity', 'Quantity: ' + totalQuantity.toLocaleString());
+        setMacysDsRole('sales', 'Sales: $' + Math.round(totalRevenue).toLocaleString());
+        setMacysDsRole('gpft-pct', 'GPFT %: ' + Math.round(pftPercentage) + '%');
+        setMacysDsRole('roi-pct', 'ROI %: ' + Math.round(roiPercentage) + '%');
+        setMacysDsRole('avg-price', 'Avg Price: $' + Math.round(avgPrice).toLocaleString());
+        setMacysDsRole('pft-total', 'GPFT Total: $' + Math.round(totalPft).toLocaleString());
+        setMacysDsRole('cogs', 'Total COGS: $' + Math.round(totalCogs).toLocaleString());
+
+        $('.macys-ds-aggregate[data-role="pft-total"]').each(function() {
+            const el = $(this);
+            if (totalPft >= 0) {
+                el.removeClass('bg-danger').addClass('bg-dark');
+            } else {
+                el.removeClass('bg-dark').addClass('bg-danger');
+            }
+        });
+    }
+
+    function loadMacysDailySalesSummary() {
+        $.getJSON('/macys/daily-sales-data')
+            .done(function(rows) {
+                applyMacysDailySalesSummary(rows);
+            })
+            .fail(function() {
+                const roles = ['orders', 'quantity', 'sales', 'gpft-pct', 'roi-pct', 'avg-price', 'pft-total', 'cogs'];
+                const labels = ['Orders', 'Quantity', 'Sales', 'GPFT %', 'ROI %', 'Avg Price', 'GPFT Total', 'Total COGS'];
+                roles.forEach(function(role, i) {
+                    $('.macys-ds-aggregate[data-role="' + role + '"]').text(labels[i] + ': —');
+                });
+                showToast('Could not load L30 daily sales summary', 'error');
+            });
+    }
+
     $(document).ready(function() {
+        loadMacysDailySalesSummary();
+
         // Discount type dropdown change handler
         $('#discount-type-select').on('change', function() {
             const discountType = $(this).val();
@@ -361,51 +463,46 @@
             clearSpriceForSelected();
         });
 
-        // 0 Sold badge click handler - filter to show only 0 sold items
+        // 0 Sold badge — filter to MC L30 = 0
         let zeroSoldFilterActive = false;
         $('#zero-sold-count-badge').on('click', function() {
             zeroSoldFilterActive = !zeroSoldFilterActive;
-            moreSoldFilterActive = false; // Deactivate the other filter
+            moreSoldFilterActive = false;
             applyFilters();
         });
 
-        // > 0 Sold badge click handler - filter to show items with sales > 0
         let moreSoldFilterActive = false;
         $('#more-sold-count-badge').on('click', function() {
             moreSoldFilterActive = !moreSoldFilterActive;
-            zeroSoldFilterActive = false; // Deactivate the other filter
+            zeroSoldFilterActive = false;
             applyFilters();
         });
 
-        // < Amz badge click handler - filter prices less than Amazon
         let lessAmzFilterActive = false;
         $('#less-amz-badge').on('click', function() {
             lessAmzFilterActive = !lessAmzFilterActive;
-            moreAmzFilterActive = false; // Deactivate the other filter
+            moreAmzFilterActive = false;
             applyFilters();
         });
 
-        // > Amz badge click handler - filter prices greater than Amazon
         let moreAmzFilterActive = false;
         $('#more-amz-badge').on('click', function() {
             moreAmzFilterActive = !moreAmzFilterActive;
-            lessAmzFilterActive = false; // Deactivate the other filter
+            lessAmzFilterActive = false;
             applyFilters();
         });
 
-        // MISSING badge click handler - filter only (no column hiding)
         let missingFilterActive = false;
         $('#missing-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            mappingFilterActive = false; // Deactivate mapping filter
+            mappingFilterActive = false;
             applyFilters();
         });
 
-        // MAPPING badge click handler - filter only (no column hiding)
         let mappingFilterActive = false;
         $('#mapping-badge').on('click', function() {
             mappingFilterActive = !mappingFilterActive;
-            missingFilterActive = false; // Deactivate missing filter
+            missingFilterActive = false;
             applyFilters();
         });
 
@@ -1418,17 +1515,14 @@
                 });
             }
 
-            // 0 Sold filter (based on MC L30) - triggered by badge click
             if (zeroSoldFilterActive) {
                 table.addFilter("MC L30", "=", 0);
             }
 
-            // > 0 Sold filter (based on MC L30) - triggered by badge click
             if (moreSoldFilterActive) {
                 table.addFilter("MC L30", ">", 0);
             }
 
-            // < Amz filter - show prices less than Amazon price
             if (lessAmzFilterActive) {
                 table.addFilter(function(data) {
                     const mcPrice = parseFloat(data['MC Price']) || 0;
@@ -1437,7 +1531,6 @@
                 });
             }
 
-            // > Amz filter - show prices greater than Amazon price
             if (moreAmzFilterActive) {
                 table.addFilter(function(data) {
                     const mcPrice = parseFloat(data['MC Price']) || 0;
@@ -1446,18 +1539,15 @@
                 });
             }
 
-            // MISSING filter - show rows with price = 0 or null (excluding NR items and INV = 0)
             if (missingFilterActive) {
                 table.addFilter(function(data) {
                     const price = parseFloat(data['MC Price']) || 0;
                     const inv = parseFloat(data['INV']) || 0;
                     const nrReq = data['nr_req'] || 'REQ';
-                    // Only show REQ items with INV > 0 and missing prices
                     return nrReq === 'REQ' && inv > 0 && price === 0;
                 });
             }
 
-            // MAPPING filter - show rows with inventory mismatch (excluding NR items, INV = 0, and Missing items)
             if (mappingFilterActive) {
                 table.addFilter(function(data) {
                     const ourInv = parseFloat(data['INV']) || 0;
@@ -1465,7 +1555,6 @@
                     const price = parseFloat(data['MC Price']) || 0;
                     const nrReq = data['nr_req'] || 'REQ';
                     const isMissing = (price === 0);
-                    // Only show REQ items with INV > 0, NOT Missing, and mapping issues (any difference)
                     return nrReq === 'REQ' && ourInv > 0 && !isMissing && ourInv !== mcInv;
                 });
             }
@@ -1477,24 +1566,20 @@
             applyFilters();
         });
 
-        // Update summary badges
         function updateSummary() {
-            const inventoryFilter = $('#inventory-filter').val();
             const data = table.getData('active').filter(row => {
                 return !(row.Parent && row.Parent.startsWith('PARENT'));
             });
 
-            let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
-            let totalInv = 0, totalL30 = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
-            let totalCogs = 0, totalRoi = 0, roiCount = 0;
+            let totalPft = 0, totalPrice = 0, priceCount = 0;
+            let totalInv = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
+            let totalCogs = 0;
             let missingCount = 0, mappingCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
-                totalSales += parseFloat(row['Sales L30']) || 0;
-                totalGpft += parseFloat(row['GPFT%']) || 0;
-                
+
                 const price = parseFloat(row['MC Price']) || 0;
                 const amazonPrice = parseFloat(row['A Price']) || 0;
                 if (amazonPrice > 0 && price > 0 && price < amazonPrice) {
@@ -1506,43 +1591,34 @@
                 const inv = parseFloat(row.INV) || 0;
                 const nrReq = row['nr_req'] || 'REQ';
                 const isMissing = (price === 0);
-                
+
                 if (price > 0) {
                     totalPrice += price;
                     priceCount++;
                 } else {
-                    // Only count missing prices for REQ items with INV > 0
                     if (nrReq === 'REQ' && inv > 0) {
                         missingCount++;
                     }
                 }
-                
+
                 totalInv += inv;
                 const mcL30 = parseFloat(row['MC L30']) || 0;
-                totalL30 += mcL30;
-                
+
                 if (mcL30 === 0) {
                     zeroSoldCount++;
                 } else if (mcL30 > 0) {
                     moreSoldCount++;
                 }
-                
+
                 const dil = parseFloat(row['MC Dil%']) || 0;
                 if (dil > 0) {
                     totalDil += dil;
                     dilCount++;
                 }
-                
+
                 const lp = parseFloat(row['LP_productmaster']) || 0;
                 totalCogs += lp * mcL30;
-                
-                const roi = parseFloat(row['ROI%']) || 0;
-                if (roi !== 0) {
-                    totalRoi += roi;
-                    roiCount++;
-                }
 
-                // Count mapping issues (any inventory mismatch, only for REQ items with INV > 0 and NOT Missing)
                 if (nrReq === 'REQ' && inv > 0 && !isMissing) {
                     const ourInv = inv;
                     const mcInv = parseFloat(row['MC INV']) || 0;
@@ -1552,22 +1628,15 @@
                 }
             });
 
-            const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
-            const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
-
             $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
-            $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#avg-gpft-badge').text(`GPFt: ${Math.round(avgGpft)}%`);
-            $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
-            $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
-            $('#total-l30-badge').text(`Sold: ${totalL30.toLocaleString()}`);
+            $('#avg-price-badge').text(`Avg Price: $${Math.round(avgPrice).toLocaleString()}`);
+            $('#total-inv-badge').text(`Total INV: ${Math.round(totalInv).toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
-            $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
+            $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
-            $('#roi-percent-badge').text(`ROI: ${Math.round(avgRoi)}%`);
             $('#missing-badge').text(`Missing L: ${missingCount}`);
             $('#mapping-badge').text(`Missing M: ${mappingCount}`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount.toLocaleString()}`);
@@ -1646,7 +1715,6 @@
         table.on('dataLoaded', function() {
             setTimeout(function() {
                 applyFilters();
-                updateSummary();
             }, 100);
         });
 
