@@ -113,17 +113,171 @@
             width: 180px;
             white-space: nowrap;
         }
+        /* Pricing Master CVR metrics (same snapshot as /pricing-master-cvr) */
+        #title-master-table thead th.title-master-pmcvr-th {
+            background: #5dbeb6 !important;
+            color: #111 !important;
+            width: 38px;
+            min-width: 38px;
+            max-width: 44px;
+            text-align: center;
+            vertical-align: middle !important;
+            padding: 6px 2px !important;
+            white-space: normal;
+        }
+        #title-master-table thead th.title-master-pmcvr-th .title-master-pmcvr-th-inner {
+            display: inline-block;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            font-weight: 700;
+            font-size: 9px;
+            letter-spacing: 0.04em;
+            line-height: 1.1;
+        }
+        #title-master-table tbody td.title-master-pmcvr-td {
+            text-align: center;
+            white-space: nowrap;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        #title-master-table thead th.title-master-pmcvr-th.title-master-sortable {
+            cursor: pointer;
+        }
+        #title-master-table thead th.title-master-pmcvr-th.title-master-sort-disabled {
+            cursor: not-allowed;
+            opacity: 0.72;
+            pointer-events: none;
+        }
+        #title-master-table thead th.title-master-pmcvr-th .title-master-pmcvr-th-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+        }
+        #title-master-table thead th.title-master-pmcvr-th .title-master-sort-icon {
+            font-size: 9px;
+            line-height: 1;
+            opacity: 0.45;
+        }
+        #title-master-table thead th.title-master-pmcvr-th.title-master-sort-active .title-master-sort-icon {
+            opacity: 1;
+            color: #0d47a1;
+        }
+        #title-master-table thead th.title-master-ai-th {
+            background: #5dbeb6 !important;
+            color: #111 !important;
+            width: 44px;
+            min-width: 44px;
+            max-width: 52px;
+            text-align: center;
+            vertical-align: middle !important;
+            padding: 6px 2px !important;
+            font-size: 9px;
+            font-weight: 700;
+        }
+        #title-master-table tbody td.title-master-ai-td {
+            text-align: center;
+            vertical-align: middle !important;
+            padding: 4px 2px !important;
+        }
+        .title-master-ai-stack-btn {
+            border: none;
+            background: transparent;
+            padding: 4px 6px;
+            cursor: pointer;
+            border-radius: 8px;
+            line-height: 1;
+            color: #4361ee;
+        }
+        .title-master-ai-stack-btn:hover {
+            background: #eef2ff;
+            color: #312e81;
+        }
+        .title-master-ai-stack-btn i {
+            font-size: 15px;
+        }
+        #tmAiStackModal .tm-ai-ref-area {
+            font-size: 0.9rem;
+            background: #f8fafc;
+        }
+        #tmAiStackModal .tm-ai-prompt-input-group textarea {
+            resize: vertical;
+            min-height: 52px;
+        }
+        #tmAiStackModal .tm-ai-prompt-input-group .input-group-text {
+            border-left: 0;
+            padding-left: 0.65rem;
+            padding-right: 0.65rem;
+        }
+        #title-master-table thead th.title-master-bs-th {
+            background: #5dbeb6 !important;
+            color: #111 !important;
+            width: 42px;
+            min-width: 42px;
+            max-width: 48px;
+            text-align: center;
+            vertical-align: middle !important;
+            padding: 6px 2px !important;
+            font-size: 9px;
+            font-weight: 700;
+        }
+        #title-master-table tbody td.title-master-bs-td {
+            text-align: center;
+            vertical-align: middle;
+            font-size: 11px;
+            line-height: 1.25;
+            padding: 4px 2px !important;
+        }
+        #title-master-table tbody td.title-master-bs-td a {
+            display: inline-block;
+            font-weight: 600;
+        }
         #title-master-table .table-img-cell {
             width: 48px;
             text-align: center;
+            overflow: visible;
+            position: relative;
         }
-        #title-master-table tbody td img {
+        #title-master-table tbody td.table-img-cell img {
             width: 36px;
             height: 36px;
             object-fit: cover;
             border-radius: 4px;
             vertical-align: middle;
             display: inline-block;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        #title-master-table tbody td.table-img-cell:hover img {
+            transform: scale(1.2);
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+            position: relative;
+            z-index: 20;
+        }
+        .title-master-img-hover-preview {
+            position: fixed;
+            z-index: 10600;
+            padding: 6px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 16px 48px rgba(15, 23, 42, 0.22);
+            border: 1px solid #e2e8f0;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.12s ease, visibility 0.12s;
+            box-sizing: border-box;
+        }
+        .title-master-img-hover-preview.is-visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        .title-master-img-hover-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            display: block;
         }
 
         .table-responsive tbody tr:nth-child(even) {
@@ -623,6 +777,12 @@
                                 <option value="75" selected>75</option>
                                 <option value="100">100</option>
                             </select>
+                            <label class="small text-muted mb-0 ms-2 me-1" for="filterTitleInv">Inv</label>
+                            <select id="filterTitleInv" class="form-select form-select-sm" style="width:130px;display:inline-block;vertical-align:middle;" title="Filter by inventory (snapshot → Shopify → stock mapping)">
+                                <option value="gt_zero" selected>Inv &gt; 0</option>
+                                <option value="zero">Inv = 0</option>
+                                <option value="all">Inv = all</option>
+                            </select>
                     </div>
 
                     <div class="table-responsive">
@@ -648,6 +808,40 @@
                                         </div>
                                         <input type="text" id="skuSearch" class="form-control-sm"
                                             placeholder="Search SKU">
+                                    </th>
+                                    <th class="title-master-bs-th"
+                                        title="Buyer / Seller links from amazon_data_view (same as Amazon FBM tabulator Links: B Link = buyer, S Link = seller).">
+                                        B/S
+                                    </th>
+                                    <th class="title-master-pmcvr-th title-master-sortable" data-tm-sort="inv"
+                                        title="INV from latest Pricing Master CVR snapshot (and Shopify fallbacks). Click to sort.">
+                                        <div class="title-master-pmcvr-th-wrap">
+                                            <span class="title-master-pmcvr-th-inner">INV</span>
+                                            <i class="fas fa-sort title-master-sort-icon" aria-hidden="true"></i>
+                                        </div>
+                                    </th>
+                                    <th class="title-master-pmcvr-th title-master-sortable" data-tm-sort="dil"
+                                        title="Dil % from snapshot / Shopify. Click to sort.">
+                                        <div class="title-master-pmcvr-th-wrap">
+                                            <span class="title-master-pmcvr-th-inner">Dil %</span>
+                                            <i class="fas fa-sort title-master-sort-icon" aria-hidden="true"></i>
+                                        </div>
+                                    </th>
+                                    <th class="title-master-pmcvr-th title-master-sortable @if (! \Illuminate\Support\Facades\Schema::hasTable('pricing_master_daily_snapshots_sku')) title-master-sort-disabled @endif" data-tm-sort="cvr"
+                                        title="{{ \Illuminate\Support\Facades\Schema::hasTable('pricing_master_daily_snapshots_sku') ? 'CVR % from latest Pricing Master CVR snapshot. Click to sort.' : 'CVR % sorting needs the pricing_master_daily_snapshots_sku table (open /pricing-master-cvr).' }}">
+                                        <div class="title-master-pmcvr-th-wrap">
+                                            <span class="title-master-pmcvr-th-inner">CVR %</span>
+                                            @if (\Illuminate\Support\Facades\Schema::hasTable('pricing_master_daily_snapshots_sku'))
+                                                <i class="fas fa-sort title-master-sort-icon" aria-hidden="true"></i>
+                                            @endif
+                                        </div>
+                                    </th>
+                                    <th class="title-master-pmcvr-th"
+                                        title="Listing Quality Score from Jungle Scout (junglescout_product_data JSON listing_quality_score). Latest row by SKU, else by Parent.">
+                                        <span class="title-master-pmcvr-th-inner">LQS</span>
+                                    </th>
+                                    <th class="title-master-ai-th" title="Open AI workspace: Title 150 reference + 3 draft fields (100–150 chars each).">
+                                        AI
                                     </th>
                                     <th>
                                         <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
@@ -691,6 +885,10 @@
                             </thead>
                             <tbody id="table-body"></tbody>
                         </table>
+                    </div>
+
+                    <div id="titleMasterImgPreview" class="title-master-img-hover-preview" aria-hidden="true">
+                        <img src="" alt="">
                     </div>
 
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2 px-1" id="tmPaginationWrap">
@@ -834,6 +1032,50 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold">Title 60</label>
                         <div class="form-control-plaintext border rounded p-2" id="viewTitle60" style="min-height: 50px; white-space: pre-wrap; word-wrap: break-word;"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Title Master: AI stack — Title 150 reference + 3 draft fields (100–150 chars) -->
+    <div class="modal fade" id="tmAiStackModal" tabindex="-1" aria-labelledby="tmAiStackModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="tmAiStackModalLabel">
+                        <i class="fas fa-wand-magic-sparkles me-2"></i>AI workspace
+                        <span class="fs-6 fw-normal ms-2 text-white-50" id="tmAiStackSkuWrap">SKU: <span id="tmAiStackSkuLabel"></span></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3 mb-md-2"><strong>AI Prompt</strong> is editable (optional instructions for AI). <strong>Title 150</strong> from the grid is read-only below. Three draft fields allow up to <strong>150</strong> characters each (target <strong>100–150</strong>).</p>
+                    <div class="mb-4">
+                        <label class="form-label fw-bold" for="tmAiStackAiPrompt">AI Prompt</label>
+                        <div class="input-group tm-ai-prompt-input-group">
+                            <textarea id="tmAiStackAiPrompt" class="form-control" rows="2" maxlength="2000" placeholder="Optional: describe tone, keywords, or constraints for AI"></textarea>
+                            <span class="input-group-text" title="AI"><i class="fas fa-wand-magic-sparkles text-info fs-5" aria-hidden="true"></i></span>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-bold" for="tmAiStackTitle150Ref">Title 150 <span class="text-muted fw-normal" id="tmAiStackTitle150RefCount">0 chars</span></label>
+                        <textarea id="tmAiStackTitle150Ref" class="form-control tm-ai-ref-area" rows="4" readonly aria-readonly="true"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" for="tmAiStackVariant1">Draft 1 <span class="text-muted fw-normal small" id="tmAiStackVariant1Count">0/150</span></label>
+                        <textarea id="tmAiStackVariant1" class="form-control" rows="3" maxlength="150" placeholder="100–150 characters (max 150)"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" for="tmAiStackVariant2">Draft 2 <span class="text-muted fw-normal small" id="tmAiStackVariant2Count">0/150</span></label>
+                        <textarea id="tmAiStackVariant2" class="form-control" rows="3" maxlength="150" placeholder="100–150 characters (max 150)"></textarea>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label fw-bold" for="tmAiStackVariant3">Draft 3 <span class="text-muted fw-normal small" id="tmAiStackVariant3Count">0/150</span></label>
+                        <textarea id="tmAiStackVariant3" class="form-control" rows="3" maxlength="150" placeholder="100–150 characters (max 150)"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1391,10 +1633,15 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
+        window.titleMasterHasPricingCvrSnapshot = @json(\Illuminate\Support\Facades\Schema::hasTable('pricing_master_daily_snapshots_sku'));
+        window.titleMasterDataUrl = @json(route('title.master.data', [], false));
+    </script>
+    <script>
         @verbatim
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         let tableData = [];
         let listMeta = { current_page: 1, last_page: 1, per_page: 75, total: 0, from: null, to: null };
+        let titleMasterSort = { column: 'sku', dir: 'asc' };
         let titleMasterLoadAbort = null;
         const titleFormatCache = new Map();
         let titleModal;
@@ -1407,6 +1654,7 @@
         let currentAIGeneratedTitles80 = [];
         let aiTitle60ModalInstance;
         let currentAIGeneratedTitles60 = [];
+        let tmAiStackModalInstance = null;
 
         /** NBSP + collapsed whitespace (same idea as product-master SKU search). */
         function normalizeForTextSearch(s) {
@@ -1416,6 +1664,65 @@
                 .replace(/\s+/g, ' ')
                 .trim()
                 .toLowerCase();
+        }
+
+        function setupTitleMasterImageHoverPreview() {
+            const table = document.getElementById('title-master-table');
+            const layer = document.getElementById('titleMasterImgPreview');
+            const layerImg = layer ? layer.querySelector('img') : null;
+            if (!table || !layer || !layerImg) return;
+
+            let hideTimer = null;
+            function hidePreview() {
+                layer.classList.remove('is-visible');
+                layer.setAttribute('aria-hidden', 'true');
+            }
+
+            function positionPreview(anchorImg) {
+                const r = anchorImg.getBoundingClientRect();
+                const maxW = Math.min(280, Math.floor(window.innerWidth * 0.85));
+                const maxH = Math.min(280, Math.floor(window.innerHeight * 0.55));
+                const size = Math.min(maxW, maxH);
+                let left = r.left + (r.width / 2) - (size / 2);
+                let top = r.bottom + 10;
+                left = Math.max(10, Math.min(left, window.innerWidth - size - 10));
+                if (top + size > window.innerHeight - 10) {
+                    top = Math.max(10, r.top - size - 10);
+                }
+                layer.style.width = size + 'px';
+                layer.style.height = size + 'px';
+                layer.style.left = left + 'px';
+                layer.style.top = top + 'px';
+            }
+
+            table.addEventListener('mouseover', function(e) {
+                const img = e.target.closest('td.table-img-cell img');
+                if (!img) return;
+                const src = img.getAttribute('src');
+                if (!src || src === '') return;
+                clearTimeout(hideTimer);
+                layerImg.src = src;
+                positionPreview(img);
+                layer.classList.add('is-visible');
+                layer.setAttribute('aria-hidden', 'false');
+            });
+
+            table.addEventListener('mouseout', function(e) {
+                const img = e.target.closest('td.table-img-cell img');
+                if (!img) return;
+                const rel = e.relatedTarget;
+                if (rel && img.contains(rel)) return;
+                hideTimer = setTimeout(hidePreview, 60);
+            });
+
+            window.addEventListener(
+                'scroll',
+                function() {
+                    clearTimeout(hideTimer);
+                    hidePreview();
+                },
+                true
+            );
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -1429,6 +1736,18 @@
             if (aiTitle80ModalEl) aiTitle80ModalInstance = new bootstrap.Modal(aiTitle80ModalEl);
             const aiTitle60ModalEl = document.getElementById('aiTitle60Modal');
             if (aiTitle60ModalEl) aiTitle60ModalInstance = new bootstrap.Modal(aiTitle60ModalEl);
+            const tmAiStackModalEl = document.getElementById('tmAiStackModal');
+            if (tmAiStackModalEl) tmAiStackModalInstance = new bootstrap.Modal(tmAiStackModalEl);
+            [1, 2, 3].forEach(function(i) {
+                const ta = document.getElementById('tmAiStackVariant' + i);
+                if (!ta) return;
+                ta.addEventListener('input', function() {
+                    const c = document.getElementById('tmAiStackVariant' + i + 'Count');
+                    if (c) c.textContent = ta.value.length + '/150';
+                });
+            });
+            setupTitleMasterColumnSort();
+            setupTitleMasterImageHoverPreview();
             loadTitleData(1);
             document.getElementById('perPageSelect')?.addEventListener('change', function() { loadTitleData(1); });
             setupSearchHandlers();
@@ -2343,11 +2662,48 @@
             if (aiTitle60ModalInstance) aiTitle60ModalInstance.show();
         }
 
+        function updateTitleMasterSortUi() {
+            document.querySelectorAll('#title-master-table thead th[data-tm-sort]').forEach(function(th) {
+                const col = th.getAttribute('data-tm-sort');
+                const icon = th.querySelector('.title-master-sort-icon');
+                th.classList.remove('title-master-sort-active');
+                if (icon) {
+                    icon.classList.remove('fa-sort-up', 'fa-sort-down');
+                    icon.classList.add('fa-sort');
+                }
+                if (col && titleMasterSort.column === col && icon) {
+                    th.classList.add('title-master-sort-active');
+                    icon.classList.remove('fa-sort');
+                    icon.classList.add(titleMasterSort.dir === 'desc' ? 'fa-sort-down' : 'fa-sort-up');
+                }
+            });
+        }
+
+        function setupTitleMasterColumnSort() {
+            document.querySelectorAll('#title-master-table thead th[data-tm-sort]').forEach(function(th) {
+                th.addEventListener('click', function() {
+                    const col = th.getAttribute('data-tm-sort');
+                    if (!col) return;
+                    if (col === 'cvr' && !window.titleMasterHasPricingCvrSnapshot) return;
+                    if (titleMasterSort.column === col) {
+                        titleMasterSort.dir = titleMasterSort.dir === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        titleMasterSort.column = col;
+                        titleMasterSort.dir = 'asc';
+                    }
+                    updateTitleMasterSortUi();
+                    loadTitleData(1);
+                });
+            });
+        }
+
         function buildTitleMasterQueryParams(forPage) {
             const params = new URLSearchParams();
             const perPage = document.getElementById('perPageSelect')?.value || 75;
             params.set('per_page', String(perPage));
             params.set('page', String(forPage != null ? forPage : 1));
+            params.set('tm_sort', titleMasterSort.column);
+            params.set('tm_dir', titleMasterSort.dir);
             const qParent = normalizeForTextSearch(document.getElementById('parentSearch')?.value || '');
             const qSku = normalizeForTextSearch(document.getElementById('skuSearch')?.value || '');
             if (qParent) params.set('q_parent', qParent);
@@ -2360,6 +2716,8 @@
             if (f100 && f100 !== 'all') params.set('filter_title100', f100);
             if (f80 && f80 !== 'all') params.set('filter_title80', f80);
             if (f60 && f60 !== 'all') params.set('filter_title60', f60);
+            const fInv = document.getElementById('filterTitleInv')?.value || 'gt_zero';
+            params.set('filter_inv', fInv);
             return params;
         }
 
@@ -2417,7 +2775,7 @@
             const params = buildTitleMasterQueryParams(p);
             document.getElementById('rainbow-loader').style.display = 'block';
 
-            fetch('/title-master-data?' + params.toString(), {
+            fetch((window.titleMasterDataUrl || '/title-master-data') + '?' + params.toString(), {
                 signal: titleMasterLoadAbort.signal,
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             })
@@ -2429,7 +2787,16 @@
                     const data = response.data;
                     if (data && Array.isArray(data)) {
                         tableData = data;
-                        listMeta = response.meta || listMeta;
+                        listMeta = response.meta ? Object.assign({}, listMeta, response.meta) : listMeta;
+                        if (response.meta) {
+                            if (typeof response.meta.tm_sort === 'string' && response.meta.tm_sort) {
+                                titleMasterSort.column = response.meta.tm_sort;
+                            }
+                            if (response.meta.tm_dir === 'asc' || response.meta.tm_dir === 'desc') {
+                                titleMasterSort.dir = response.meta.tm_dir;
+                            }
+                        }
+                        updateTitleMasterSortUi();
                         renderTable(tableData);
                         updateCountsFromStats(response.stats);
                         renderPagination();
@@ -2551,13 +2918,101 @@
             return out;
         }
 
+        const titleMasterDarkMustard = '#ff9c00';
+        function styleForTitleMasterCvrColor(c) {
+            if (!c) return 'font-weight:600;';
+            if (c === '#ffc107') return 'color:' + titleMasterDarkMustard + ';font-weight:600;';
+            return 'color:' + c + ';font-weight:600;';
+        }
+        /** INV / Dil% / CVR% — same daily snapshot as /pricing-master-cvr (pricing_master_daily_snapshots_sku). */
+        const titleMasterPmcvrMissingTip = 'No data: refresh /pricing-master-cvr once to save a snapshot, or link this SKU in Shopify / stock mappings. CVR% only comes from that snapshot.';
+        function formatTitleMasterInvCell(item) {
+            const v = item.pricing_cvr_inventory;
+            if (v === null || v === undefined) {
+                return '<span class="text-muted" title="' + titleMasterPmcvrMissingTip.replace(/"/g, '&quot;') + '">—</span>';
+            }
+            const n = parseInt(v, 10) || 0;
+            const numHtml = n === 0
+                ? '<span style="color:#dc3545;font-weight:600;">0</span>'
+                : '<span style="font-weight:600;">' + n + '</span>';
+            return numHtml + ' <i class="fas fa-circle ms-1" style="color:#4361ee;font-size:7px;vertical-align:middle;" aria-hidden="true" title="Pricing Master CVR snapshot"></i>';
+        }
+        function formatTitleMasterDilCell(item) {
+            const v = item.pricing_cvr_dil_percent;
+            if (v === null || v === undefined) {
+                return '<span class="text-muted" title="' + titleMasterPmcvrMissingTip.replace(/"/g, '&quot;') + '">—</span>';
+            }
+            const value = parseFloat(v) || 0;
+            let color = '#6c757d';
+            if (value === 0) color = '#6c757d';
+            else if (value < 16.7) color = '#a00211';
+            else if (value >= 16.7 && value < 25) color = '#ffc107';
+            else if (value >= 25 && value < 50) color = '#28a745';
+            else color = '#e83e8c';
+            const html = '<span style="' + styleForTitleMasterCvrColor(color) + '">' + Math.round(value) + '%</span>';
+            return html + ' <i class="fas fa-circle ms-1" style="color:#0d6efd;font-size:7px;vertical-align:middle;" aria-hidden="true" title="Pricing Master CVR snapshot"></i>';
+        }
+        function formatTitleMasterCvrCell(item) {
+            const v = item.pricing_cvr_avg_cvr;
+            if (v === null || v === undefined) {
+                return '<span class="text-muted" title="' + titleMasterPmcvrMissingTip.replace(/"/g, '&quot;') + '">—</span>';
+            }
+            const value = parseFloat(v) || 0;
+            let color = '#6c757d';
+            if (value === 0) color = '#6c757d';
+            else if (value < 1) color = '#a00211';
+            else if (value >= 1 && value < 3) color = '#ffc107';
+            else if (value >= 3 && value < 5) color = '#28a745';
+            else color = '#e83e8c';
+            const html = '<span style="' + styleForTitleMasterCvrColor(color) + '">' + String(Math.round(value)) + '%</span>';
+            return html + ' <i class="fas fa-circle ms-1" style="color:#ff9c00;font-size:7px;vertical-align:middle;" aria-hidden="true" title="Pricing Master CVR snapshot"></i>';
+        }
+        const titleMasterLqsMissingTip = 'No Jungle Scout row for this SKU/parent, or listing_quality_score missing in junglescout_product_data.data.';
+        function formatTitleMasterLqsCell(item) {
+            const v = item.lqs;
+            if (v === null || v === undefined) {
+                return '<span class="text-muted" title="' + titleMasterLqsMissingTip.replace(/"/g, '&quot;') + '">—</span>';
+            }
+            const value = parseFloat(v);
+            if (Number.isNaN(value)) {
+                return '<span class="text-muted" title="' + titleMasterLqsMissingTip.replace(/"/g, '&quot;') + '">—</span>';
+            }
+            let color = '#6c757d';
+            if (value < 4) color = '#a00211';
+            else if (value < 6) color = '#ffc107';
+            else if (value < 8) color = '#28a745';
+            else color = '#157347';
+            return '<span style="' + styleForTitleMasterCvrColor(color) + '">' + String(Math.round(value)) + '</span>'
+                + ' <i class="fas fa-leaf ms-1" style="color:#2d6a4f;font-size:7px;vertical-align:middle;" aria-hidden="true" title="Jungle Scout LQS"></i>';
+        }
+
+        const titleMasterBsMissingTip = 'No buyer/seller links in amazon_data_view for this SKU (same source as Amazon FBM tabulator).';
+        function formatTitleMasterBsCell(item) {
+            const b = item.amazon_buyer_link;
+            const s = item.amazon_seller_link;
+            const bOk = b != null && String(b).trim() !== '';
+            const sOk = s != null && String(s).trim() !== '';
+            if (!bOk && !sOk) {
+                return '<span class="text-muted" title="' + titleMasterBsMissingTip.replace(/"/g, '&quot;') + '">—</span>';
+            }
+            let html = '<div style="display:flex;flex-direction:column;gap:3px;align-items:center;">';
+            if (sOk) {
+                html += '<a href="' + escapeHtml(String(s).trim()) + '" target="_blank" rel="noopener noreferrer" class="text-info" title="Seller (Seller Central)">S</a>';
+            }
+            if (bOk) {
+                html += '<a href="' + escapeHtml(String(b).trim()) + '" target="_blank" rel="noopener noreferrer" class="text-success" title="Buyer (Amazon listing)">B</a>';
+            }
+            html += '</div>';
+            return html;
+        }
+
         function renderTable(data) {
             titleFormatCache.clear();
             const tbody = document.getElementById('table-body');
             const frag = document.createDocumentFragment();
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="13" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="19" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -2567,7 +3022,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="13" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="19" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -2599,6 +3054,38 @@
                 const skuCell = document.createElement('td');
                 skuCell.textContent = (item.SKU != null && item.SKU !== '') ? String(item.SKU) : '-';
                 row.appendChild(skuCell);
+
+                const bsCell = document.createElement('td');
+                bsCell.className = 'title-master-bs-td';
+                bsCell.innerHTML = formatTitleMasterBsCell(item);
+                row.appendChild(bsCell);
+
+                const invCell = document.createElement('td');
+                invCell.className = 'title-master-pmcvr-td';
+                invCell.innerHTML = formatTitleMasterInvCell(item);
+                row.appendChild(invCell);
+
+                const dilCell = document.createElement('td');
+                dilCell.className = 'title-master-pmcvr-td';
+                dilCell.innerHTML = formatTitleMasterDilCell(item);
+                row.appendChild(dilCell);
+
+                const cvrCell = document.createElement('td');
+                cvrCell.className = 'title-master-pmcvr-td';
+                cvrCell.innerHTML = formatTitleMasterCvrCell(item);
+                row.appendChild(cvrCell);
+
+                const lqsCell = document.createElement('td');
+                lqsCell.className = 'title-master-pmcvr-td';
+                lqsCell.innerHTML = formatTitleMasterLqsCell(item);
+                row.appendChild(lqsCell);
+
+                const aiCell = document.createElement('td');
+                aiCell.className = 'title-master-ai-td';
+                aiCell.innerHTML = '<button type="button" class="title-master-ai-stack-btn tm-ai-stack-open-btn" data-sku="' + escapeHtml(item.SKU) + '" title="AI workspace: Title 150 + 3 drafts (100–150 chars)" aria-label="Open AI workspace for this SKU">' +
+                    '<i class="fas fa-wand-magic-sparkles text-info" aria-hidden="true"></i>' +
+                    '</button>';
+                row.appendChild(aiCell);
 
                 // Title 150 (Amazon title with ✅/❌ and (+X) excess, tooltip with char count)
                 const title150Formatted = formatTitleWithIndicator(item.amazon_title);
@@ -2696,6 +3183,7 @@
 
             setupEditButtons();
             setupViewButtons();
+            setupTmAiStackButtons();
             setupPushAmazonButtons();
             setupIndividualMarketplaceButtons();
             updateSelectedCount();
@@ -2839,6 +3327,48 @@
                 btn.addEventListener('click', function() {
                     const sku = this.getAttribute('data-sku');
                     openViewModal(sku);
+                });
+            });
+        }
+
+        function getTitleMasterTitle150ForAiStack(item) {
+            if (!item) return '';
+            const a = item.amazon_title;
+            if (a != null && String(a).trim() !== '') return String(a);
+            const t = item.title150;
+            if (t != null && String(t).trim() !== '') return String(t);
+            return '';
+        }
+
+        function openTmAiStackModal(sku) {
+            if (!tmAiStackModalInstance) return;
+            const item = tableData.find(function(x) { return x.SKU === sku; });
+            const title150 = getTitleMasterTitle150ForAiStack(item);
+            const skuEl = document.getElementById('tmAiStackSkuLabel');
+            if (skuEl) skuEl.textContent = sku || '—';
+            const refTa = document.getElementById('tmAiStackTitle150Ref');
+            if (refTa) {
+                refTa.value = title150;
+            }
+            const refCount = document.getElementById('tmAiStackTitle150RefCount');
+            if (refCount) refCount.textContent = title150.length + ' chars';
+            const aiPromptTa = document.getElementById('tmAiStackAiPrompt');
+            if (aiPromptTa) aiPromptTa.value = '';
+            [1, 2, 3].forEach(function(i) {
+                const ta = document.getElementById('tmAiStackVariant' + i);
+                const c = document.getElementById('tmAiStackVariant' + i + 'Count');
+                if (ta) ta.value = '';
+                if (c) c.textContent = '0/150';
+            });
+            tmAiStackModalInstance.show();
+        }
+
+        function setupTmAiStackButtons() {
+            document.querySelectorAll('.tm-ai-stack-open-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    const sku = btn.getAttribute('data-sku');
+                    if (sku) openTmAiStackModal(sku);
                 });
             });
         }
@@ -3221,7 +3751,7 @@
             const loader = document.getElementById('rainbow-loader');
             if (loader) loader.style.display = 'block';
 
-            fetch('/title-master-data?' + params.toString(), {
+            fetch((window.titleMasterDataUrl || '/title-master-data') + '?' + params.toString(), {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             })
                 .then(function(response) {
@@ -3241,6 +3771,16 @@
                             return {
                                 'Parent': item.Parent || '',
                                 'SKU': item.SKU || '',
+                                'B/S': (function() {
+                                    const p = [];
+                                    if (item.amazon_seller_link) p.push('S: ' + String(item.amazon_seller_link).trim());
+                                    if (item.amazon_buyer_link) p.push('B: ' + String(item.amazon_buyer_link).trim());
+                                    return p.join(' | ');
+                                })(),
+                                'INV': item.pricing_cvr_inventory != null ? item.pricing_cvr_inventory : '',
+                                'Dil %': item.pricing_cvr_dil_percent != null ? item.pricing_cvr_dil_percent : '',
+                                'CVR %': item.pricing_cvr_avg_cvr != null ? Math.round(Number(item.pricing_cvr_avg_cvr)) : '',
+                                'LQS': item.lqs != null ? item.lqs : '',
                                 'Title 150': (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || ''),
                                 'Title 100': item.title100 || '',
                                 'Title 80': item.title80 || '',
@@ -3565,6 +4105,10 @@
             });
 
             document.getElementById('filterTitle60').addEventListener('change', function() {
+                loadTitleData(1);
+            });
+
+            document.getElementById('filterTitleInv')?.addEventListener('change', function() {
                 loadTitleData(1);
             });
         }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -35,6 +36,14 @@ class TitleMasterDataService
         return $e;
     }
 
+    /**
+     * Match snapshot keys the same way CVR Master saves SKUs: trim + NBSP→space + collapse spaces.
+     */
+    private function sqlSkuKeyForSnapshotJoin(string $sqlExpr): string
+    {
+        return 'TRIM('.$this->sqlWhitespaceCollapsed($sqlExpr).')';
+    }
+
     private function likeContainsPattern(string $normalized): string
     {
         $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $normalized);
@@ -48,6 +57,74 @@ class TitleMasterDataService
     }
 
     /**
+     * Match ShopifySku::normalizeSkuForShopifyLookup in SQL (NBSP → space, collapse spaces, uppercase).
+     * Used so INV / Dil% sorting uses the same Shopify row as mapByProductSkus(), not only exact sku strings.
+     */
+    private function sqlTitleMasterShopifySkuNormKey(string $aliasDotSkuColumn): string
+    {
+        $collapsed = $this->sqlWhitespaceCollapsed($aliasDotSkuColumn);
+
+        return 'UPPER(TRIM('.$collapsed.'))';
+    }
+
+    /**
+     * One Shopify row per normalized SKU (lowest id) so joins cannot multiply Title Master rows.
+     *
+     * @param  \Illuminate\Database\Query\Builder  $base
+     */
+    private function joinShopifySkusForTitleMaster($base): void
+    {
+        if (! Schema::hasTable('shopify_skus')) {
+            return;
+        }
+
+        if (! $this->isMysql()) {
+            $base->leftJoin('shopify_skus as ss', 'ss.sku', '=', 'skus.sku');
+
+            return;
+        }
+
+        $normInner = $this->sqlTitleMasterShopifySkuNormKey('ss_pick.sku');
+        $pickIds = DB::table('shopify_skus as ss_pick')
+            ->select(DB::raw('MIN(ss_pick.id) as pick_id'))
+            ->whereNotNull('ss_pick.sku')
+            ->where('ss_pick.sku', '!=', '')
+            ->groupBy(DB::raw($normInner));
+
+        $ssOne = DB::table('shopify_skus as ss')
+            ->joinSub($pickIds, 'pick', function ($join) {
+                $join->on('ss.id', '=', 'pick.pick_id');
+            })
+            ->select('ss.*', DB::raw($this->sqlTitleMasterShopifySkuNormKey('ss.sku').' as ss_norm_key'));
+
+        $base->leftJoinSub($ssOne, 'ss', function ($join) {
+            $skuNorm = $this->sqlTitleMasterShopifySkuNormKey('skus.sku');
+            $join->whereRaw('ss.ss_norm_key = '.$skuNorm);
+        });
+    }
+
+    /**
+     * Hide open-box SKUs: suffix "open box" / "open-box" / "openbox" (case-insensitive, NBSP normalized).
+     *
+     * @param  \Illuminate\Database\Query\Builder  $query
+     */
+    private function applyExcludeOpenBoxSuffixSku($query, string $skuColumn = 'sku'): void
+    {
+        $trimmed = "RTRIM(TRIM(REPLACE(COALESCE({$skuColumn}, ''), UNHEX('C2A0'), ' ')))";
+        $lower = "LOWER({$trimmed})";
+
+        if ($this->isMysql()) {
+            $query->whereRaw("{$lower} NOT REGEXP '(open[[:space:]_-]+box|openbox)[[:space:]]*$'");
+
+            return;
+        }
+
+        $query->whereRaw("NOT (LENGTH({$trimmed}) >= 8 AND LOWER(SUBSTR({$trimmed}, -8)) = 'open box')")
+            ->whereRaw("NOT (LENGTH({$trimmed}) >= 9 AND LOWER(SUBSTR({$trimmed}, -9)) IN ('open-box', 'open_box'))")
+            ->whereRaw("NOT (LENGTH({$trimmed}) >= 7 AND LOWER(SUBSTR({$trimmed}, -7)) = 'openbox')");
+    }
+
+    /**
      * Distinct SKUs for Title Master: mappings table plus product_master rows that are not in mappings
      * (so titles can be edited even before inventory sync creates a psm row).
      */
@@ -55,16 +132,19 @@ class TitleMasterDataService
     {
         $notParent = "UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'";
 
-        return DB::table('product_stock_mappings')
+        $fromMappings = DB::table('product_stock_mappings')
             ->select('sku')
             ->whereNotNull('sku')
-            ->whereRaw($notParent)
-            ->union(
-                DB::table('product_master')
-                    ->select('sku')
-                    ->whereNotNull('sku')
-                    ->whereRaw($notParent)
-            );
+            ->whereRaw($notParent);
+        $this->applyExcludeOpenBoxSuffixSku($fromMappings, 'sku');
+
+        $fromMaster = DB::table('product_master')
+            ->select('sku')
+            ->whereNotNull('sku')
+            ->whereRaw($notParent);
+        $this->applyExcludeOpenBoxSuffixSku($fromMaster, 'sku');
+
+        return $fromMappings->union($fromMaster);
     }
 
     public function getList(Request $request)
@@ -103,6 +183,10 @@ class TitleMasterDataService
             ? 'image12'
             : (Schema::hasColumn('product_master', 'images12') ? 'images12' : null);
 
+        $hasPricingCvrSnapshot = Schema::hasTable('pricing_master_daily_snapshots_sku');
+        $hasJungleScoutProductData = Schema::hasTable('junglescout_product_data');
+        $hasAmazonDataView = Schema::hasTable('amazon_data_view');
+
         $base = DB::query()
             ->fromSub($this->titleMasterSkuUnion(), 'skus')
             ->leftJoin('product_stock_mappings as psm', 'psm.sku', '=', 'skus.sku')
@@ -110,10 +194,58 @@ class TitleMasterDataService
             ->leftJoinSub($latestAmazonBySku, 'alr', function ($join) {
                 $join->on('alr.seller_sku', '=', 'skus.sku');
             })
-            ->leftJoin('amazon_datsheets as ads', 'ads.sku', '=', 'skus.sku')
-            ->leftJoin('shopify_skus as ss', 'ss.sku', '=', 'skus.sku');
+            ->leftJoin('amazon_datsheets as ads', 'ads.sku', '=', 'skus.sku');
+        $this->joinShopifySkusForTitleMaster($base);
 
-        $this->applyFilters($base, $request);
+        if ($hasAmazonDataView) {
+            $base->leftJoin('amazon_data_view as adv', 'adv.sku', '=', 'skus.sku');
+        }
+
+        if ($hasJungleScoutProductData) {
+            $jsMaxPerSku = DB::table('junglescout_product_data')
+                ->select('sku', DB::raw('MAX(id) as max_id'))
+                ->whereNotNull('sku')
+                ->groupBy('sku');
+            $jsLatestBySku = DB::table('junglescout_product_data as j2')
+                ->joinSub($jsMaxPerSku, 'mx', function ($join) {
+                    $join->on('j2.sku', '=', 'mx.sku')->on('j2.id', '=', 'mx.max_id');
+                })
+                ->select('j2.sku', 'j2.data');
+
+            $jsMaxPerParent = DB::table('junglescout_product_data')
+                ->select('parent', DB::raw('MAX(id) as max_id'))
+                ->whereNotNull('parent')
+                ->groupBy('parent');
+            $jsLatestByParent = DB::table('junglescout_product_data as j2')
+                ->joinSub($jsMaxPerParent, 'mx', function ($join) {
+                    $join->on('j2.parent', '=', 'mx.parent')->on('j2.id', '=', 'mx.max_id');
+                })
+                ->select('j2.parent', 'j2.data');
+
+            $base->leftJoinSub($jsLatestBySku, 'js_sku', function ($join) {
+                $join->on('js_sku.sku', '=', 'skus.sku');
+            });
+            $base->leftJoinSub($jsLatestByParent, 'js_parent', function ($join) {
+                $join->on('js_parent.parent', '=', 'pm.parent');
+            });
+        }
+
+        if ($hasPricingCvrSnapshot) {
+            if ($this->isMysql()) {
+                $skuKey = $this->sqlSkuKeyForSnapshotJoin('skus.sku');
+                $base->leftJoin('pricing_master_daily_snapshots_sku as pmds', function ($join) use ($skuKey) {
+                    $join->whereRaw("pmds.sku = {$skuKey}")
+                        ->whereRaw("pmds.snapshot_date = (SELECT MAX(p2.snapshot_date) FROM pricing_master_daily_snapshots_sku AS p2 WHERE p2.sku = {$skuKey})");
+                });
+            } else {
+                $base->leftJoin('pricing_master_daily_snapshots_sku as pmds', function ($join) {
+                    $join->on('pmds.sku', '=', 'skus.sku')
+                        ->whereRaw('pmds.snapshot_date = (SELECT MAX(p2.snapshot_date) FROM pricing_master_daily_snapshots_sku AS p2 WHERE p2.sku = skus.sku)');
+                });
+            }
+        }
+
+        $this->applyFilters($base, $request, $hasPricingCvrSnapshot);
 
         $stats = $this->aggregateStats($base);
 
@@ -123,13 +255,22 @@ class TitleMasterDataService
             $pmImage9Column,
             $pmImage10Column,
             $pmImage11Column,
-            $pmImage12Column
+            $pmImage12Column,
+            $hasPricingCvrSnapshot,
+            $hasJungleScoutProductData,
+            $hasAmazonDataView
         );
 
         $dataQuery = $base->clone()->select($selectColumns);
 
+        $sortMeta = $this->parseTitleMasterSortRequest($request);
+        if ($sortMeta['column'] === 'cvr' && ! $hasPricingCvrSnapshot) {
+            $sortMeta['column'] = 'sku';
+        }
+
         if ($export) {
-            $listings = $dataQuery->orderBy('skus.sku')->limit(15000)->get();
+            $this->applyTitleMasterSort($dataQuery, $request, $hasPricingCvrSnapshot);
+            $listings = $dataQuery->limit(15000)->get();
             $result = $this->mapListings($listings);
 
             return response()->json([
@@ -140,7 +281,8 @@ class TitleMasterDataService
             ]);
         }
 
-        $paginator = $dataQuery->orderBy('skus.sku')->paginate($perPage, ['*'], 'page', $page);
+        $this->applyTitleMasterSort($dataQuery, $request, $hasPricingCvrSnapshot);
+        $paginator = $dataQuery->paginate($perPage, ['*'], 'page', $page);
         $result = $this->mapListings($paginator->items());
 
         return response()->json([
@@ -154,6 +296,8 @@ class TitleMasterDataService
                 'total' => $paginator->total(),
                 'from' => $paginator->firstItem(),
                 'to' => $paginator->lastItem(),
+                'tm_sort' => $sortMeta['column'],
+                'tm_dir' => $sortMeta['dir'],
             ],
             'status' => 200,
         ]);
@@ -178,7 +322,104 @@ class TitleMasterDataService
         return response()->json(['data' => $skus]);
     }
 
-    private function applyFilters($query, Request $request): void
+    /**
+     * INV used for filtering: snapshot first, then Shopify, then product_stock_mappings.inventory_shopify (same order as display fallback).
+     */
+    private function sqlTitleMasterEffectiveInvExpr(bool $hasPricingCvrSnapshot): string
+    {
+        $parts = ['ss.inv'];
+        if ($hasPricingCvrSnapshot) {
+            array_unshift($parts, 'pmds.inventory');
+        }
+        if (Schema::hasColumn('product_stock_mappings', 'inventory_shopify')) {
+            $parts[] = 'psm.inventory_shopify';
+        }
+
+        return 'COALESCE('.implode(', ', $parts).')';
+    }
+
+    /** Numeric ordering for sort (avoids string sort on varchar inventory fields). */
+    private function sqlTitleMasterNumericSortWrap(string $expr): string
+    {
+        if ($this->isMysql()) {
+            return 'CAST(('.$expr.') AS DECIMAL(20,4))';
+        }
+
+        return 'CAST(('.$expr.') AS REAL)';
+    }
+
+    /**
+     * Dil% for SQL sort: snapshot first, else Shopify OV L30 / INV (same idea as CVR Master).
+     */
+    private function sqlTitleMasterEffectiveDilSortExpr(bool $hasPricingCvrSnapshot): string
+    {
+        $shopifyDil = 'CASE WHEN ss.inv IS NOT NULL AND CAST(ss.inv AS DECIMAL(20,4)) > 0'
+            .' THEN (CAST(ss.quantity AS DECIMAL(20,4)) / CAST(ss.inv AS DECIMAL(20,4))) * 100 ELSE NULL END';
+        if ($hasPricingCvrSnapshot) {
+            return 'COALESCE(pmds.dil_percent, '.$shopifyDil.')';
+        }
+
+        return $shopifyDil;
+    }
+
+    /**
+     * @return array{column: string, dir: string}
+     */
+    private function parseTitleMasterSortRequest(Request $request): array
+    {
+        $sort = strtolower(trim((string) $request->query('tm_sort', 'sku')));
+        if (! in_array($sort, ['sku', 'inv', 'dil', 'cvr'], true)) {
+            $sort = 'sku';
+        }
+        $dir = strtolower(trim((string) $request->query('tm_dir', 'asc')));
+        if ($dir !== 'desc') {
+            $dir = 'asc';
+        }
+
+        return ['column' => $sort, 'dir' => $dir];
+    }
+
+    private function applyTitleMasterSort($query, Request $request, bool $hasPricingCvrSnapshot): void
+    {
+        $parsed = $this->parseTitleMasterSortRequest($request);
+        $sort = $parsed['column'];
+        $dir = strtoupper($parsed['dir']);
+        if ($sort === 'cvr' && ! $hasPricingCvrSnapshot) {
+            $sort = 'sku';
+        }
+
+        $nullsLast = '(CASE WHEN (%1$s) IS NULL THEN 1 ELSE 0 END) ASC';
+
+        if ($sort === 'inv') {
+            $e = $this->sqlTitleMasterEffectiveInvExpr($hasPricingCvrSnapshot);
+            $eNum = $this->sqlTitleMasterNumericSortWrap($e);
+            $query->orderByRaw(sprintf($nullsLast.', (%2$s) %3$s, skus.sku ASC', $e, $eNum, $dir));
+
+            return;
+        }
+
+        if ($sort === 'dil') {
+            $e = $this->sqlTitleMasterEffectiveDilSortExpr($hasPricingCvrSnapshot);
+            $eNum = $this->sqlTitleMasterNumericSortWrap($e);
+            $query->orderByRaw(sprintf($nullsLast.', (%2$s) %3$s, skus.sku ASC', $e, $eNum, $dir));
+
+            return;
+        }
+
+        if ($sort === 'cvr') {
+            $e = 'pmds.avg_cvr';
+            $eNum = $this->isMysql()
+                ? 'CAST(('.$e.') AS DECIMAL(20,8))'
+                : 'CAST(('.$e.') AS REAL)';
+            $query->orderByRaw(sprintf($nullsLast.', (%2$s) %3$s, skus.sku ASC', $e, $eNum, $dir));
+
+            return;
+        }
+
+        $query->orderBy('skus.sku', $dir === 'DESC' ? 'desc' : 'asc');
+    }
+
+    private function applyFilters($query, Request $request, bool $hasPricingCvrSnapshot): void
     {
         $qParent = $this->normalizeSearchWhitespace((string) $request->query('q_parent', ''));
         $qSku = $this->normalizeSearchWhitespace((string) $request->query('q_sku', ''));
@@ -223,6 +464,19 @@ class TitleMasterDataService
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title100', 'all'), 'pm.title100');
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title80', 'all'), 'pm.title80');
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title60', 'all'), 'pm.title60');
+
+        $fInv = strtolower(trim((string) $request->query('filter_inv', 'gt_zero')));
+        if ($fInv === '') {
+            $fInv = 'gt_zero';
+        }
+        if ($fInv !== 'all') {
+            $invExpr = $this->sqlTitleMasterEffectiveInvExpr($hasPricingCvrSnapshot);
+            if ($fInv === 'zero' || $fInv === '0') {
+                $query->whereRaw("COALESCE({$invExpr}, 0) = 0");
+            } elseif ($fInv === 'gt_zero' || $fInv === 'gt0' || $fInv === '>0') {
+                $query->whereRaw("({$invExpr}) > 0");
+            }
+        }
     }
 
     private function applyPmTitleMissingFilter($query, string $mode, string $column): void
@@ -268,7 +522,10 @@ class TitleMasterDataService
         ?string $pmImage9Column,
         ?string $pmImage10Column,
         ?string $pmImage11Column,
-        ?string $pmImage12Column
+        ?string $pmImage12Column,
+        bool $hasPricingCvrSnapshot = false,
+        bool $hasJungleScoutProductData = false,
+        bool $hasAmazonDataView = false
     ): array {
         $select = [
             'pm.id as pm_id',
@@ -337,7 +594,104 @@ class TitleMasterDataService
             $add[] = DB::raw('NULL as image12');
         }
 
+        if ($hasPricingCvrSnapshot) {
+            $add[] = 'pmds.inventory as pricing_snapshot_inv';
+            $add[] = 'pmds.dil_percent as pricing_snapshot_dil_percent';
+            $add[] = 'pmds.avg_cvr as pricing_snapshot_avg_cvr';
+        } else {
+            $add[] = DB::raw('NULL as pricing_snapshot_inv');
+            $add[] = DB::raw('NULL as pricing_snapshot_dil_percent');
+            $add[] = DB::raw('NULL as pricing_snapshot_avg_cvr');
+        }
+
+        if (Schema::hasColumn('product_stock_mappings', 'inventory_shopify')) {
+            $add[] = 'psm.inventory_shopify as tm_psm_inventory_shopify';
+        } else {
+            $add[] = DB::raw('NULL as tm_psm_inventory_shopify');
+        }
+
+        if ($hasJungleScoutProductData) {
+            $add[] = DB::raw('COALESCE(js_sku.data, js_parent.data) as jspd_merged_data');
+        } else {
+            $add[] = DB::raw('NULL as jspd_merged_data');
+        }
+
+        if ($hasAmazonDataView) {
+            if ($this->isMysql()) {
+                $add[] = DB::raw('NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(adv.value, \'$.buyer_link\'))), \'\') as tm_adv_buyer_link');
+                $add[] = DB::raw('NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(adv.value, \'$.seller_link\'))), \'\') as tm_adv_seller_link');
+                $add[] = DB::raw('NULL as tm_adv_value');
+            } else {
+                $add[] = DB::raw('NULL as tm_adv_buyer_link');
+                $add[] = DB::raw('NULL as tm_adv_seller_link');
+                $add[] = 'adv.value as tm_adv_value';
+            }
+        } else {
+            $add[] = DB::raw('NULL as tm_adv_buyer_link');
+            $add[] = DB::raw('NULL as tm_adv_seller_link');
+            $add[] = DB::raw('NULL as tm_adv_value');
+        }
+
         return array_merge($select, $add);
+    }
+
+    /**
+     * @param  mixed  $jspdMergedData  JSON text from junglescout_product_data.data (SKU row preferred, else parent row).
+     */
+    /**
+     * Buyer / Seller links from amazon_data_view.value (same fields as Amazon FBM tabulator Links column).
+     *
+     * @return array{0: ?string, 1: ?string} [buyer_link, seller_link]
+     */
+    private function parseAmazonDataViewBsLinks(object $listing): array
+    {
+        $b = isset($listing->tm_adv_buyer_link) && $listing->tm_adv_buyer_link !== null && trim((string) $listing->tm_adv_buyer_link) !== ''
+            ? trim((string) $listing->tm_adv_buyer_link)
+            : null;
+        $s = isset($listing->tm_adv_seller_link) && $listing->tm_adv_seller_link !== null && trim((string) $listing->tm_adv_seller_link) !== ''
+            ? trim((string) $listing->tm_adv_seller_link)
+            : null;
+
+        if ($b === null && $s === null && isset($listing->tm_adv_value) && $listing->tm_adv_value !== null && $listing->tm_adv_value !== '') {
+            $raw = $listing->tm_adv_value;
+            if (is_array($raw)) {
+                $decoded = $raw;
+            } else {
+                $decoded = json_decode((string) $raw, true);
+            }
+            if (is_array($decoded)) {
+                $bRaw = $decoded['buyer_link'] ?? null;
+                $sRaw = $decoded['seller_link'] ?? null;
+                $b = $bRaw !== null && trim((string) $bRaw) !== '' ? trim((string) $bRaw) : null;
+                $s = $sRaw !== null && trim((string) $sRaw) !== '' ? trim((string) $sRaw) : null;
+            }
+        }
+
+        return [$b, $s];
+    }
+
+    private function parseJungleScoutListingQualityScore($jspdMergedData): ?int
+    {
+        if ($jspdMergedData === null || $jspdMergedData === '') {
+            return null;
+        }
+        if (is_array($jspdMergedData)) {
+            $decoded = $jspdMergedData;
+        } else {
+            $decoded = json_decode((string) $jspdMergedData, true);
+        }
+        if (! is_array($decoded) || ! array_key_exists('listing_quality_score', $decoded)) {
+            return null;
+        }
+        $v = $decoded['listing_quality_score'];
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (is_string($v) && ! is_numeric(trim($v))) {
+            return null;
+        }
+
+        return (int) round((float) $v);
     }
 
     /**
@@ -415,9 +769,120 @@ class TitleMasterDataService
                 $row['image_path'] = $row['image_path'] ?? $listing->main_image ?? $listing->psm_image ?? null;
             }
 
+            $row['pricing_cvr_inventory'] = isset($listing->pricing_snapshot_inv) && $listing->pricing_snapshot_inv !== null
+                ? (int) $listing->pricing_snapshot_inv
+                : null;
+            $row['pricing_cvr_dil_percent'] = isset($listing->pricing_snapshot_dil_percent) && $listing->pricing_snapshot_dil_percent !== null
+                ? round((float) $listing->pricing_snapshot_dil_percent, 2)
+                : null;
+            $row['pricing_cvr_avg_cvr'] = isset($listing->pricing_snapshot_avg_cvr) && $listing->pricing_snapshot_avg_cvr !== null
+                ? (int) round((float) $listing->pricing_snapshot_avg_cvr)
+                : null;
+
+            $row['lqs'] = $this->parseJungleScoutListingQualityScore($listing->jspd_merged_data ?? null);
+
+            [$row['amazon_buyer_link'], $row['amazon_seller_link']] = $this->parseAmazonDataViewBsLinks($listing);
+
+            $row['_tm_psm_shopify_inv'] = isset($listing->tm_psm_inventory_shopify) && $listing->tm_psm_inventory_shopify !== null
+                ? (int) $listing->tm_psm_inventory_shopify
+                : null;
+
             $result[] = $row;
         }
 
+        $this->applyPricingCvrLiveFallbacks($result);
+
+        foreach ($result as &$r) {
+            unset($r['_tm_psm_shopify_inv']);
+        }
+        unset($r);
+
         return $result;
+    }
+
+    /**
+     * When no pricing snapshot row exists (or join missed), use the same Shopify INV / OV L30 as CVR Master
+     * (ShopifySku::mapByProductSkus), then optional product_stock_mappings.inventory_shopify for INV only.
+     * Avg CVR% stays null without a snapshot — it needs multi-marketplace views.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function applyPricingCvrLiveFallbacks(array &$rows): void
+    {
+        $needSkus = [];
+        foreach ($rows as $r) {
+            if ($this->rowNeedsPricingCvrLiveFallback($r)) {
+                $sku = $r['SKU'] ?? '';
+                if ($sku !== '') {
+                    $needSkus[$sku] = true;
+                }
+            }
+        }
+
+        if ($needSkus === []) {
+            return;
+        }
+
+        $shopifyByPmSku = ShopifySku::mapByProductSkus(array_keys($needSkus));
+
+        foreach ($rows as &$r) {
+            if (! $this->rowNeedsPricingCvrLiveFallback($r)) {
+                continue;
+            }
+
+            $sku = (string) ($r['SKU'] ?? '');
+            $hit = $shopifyByPmSku->get($sku);
+            if ($hit !== null) {
+                $inv = (int) ($hit->inv ?? 0);
+                $ov = (float) ($hit->quantity ?? 0);
+                $r['pricing_cvr_inventory'] = $inv;
+                $r['pricing_cvr_dil_percent'] = $inv > 0 ? round(($ov / $inv) * 100, 2) : 0.0;
+
+                continue;
+            }
+
+            $psmInv = $r['_tm_psm_shopify_inv'] ?? null;
+            if ($psmInv !== null) {
+                $r['pricing_cvr_inventory'] = (int) $psmInv;
+                if ((int) $psmInv === 0) {
+                    $r['pricing_cvr_dil_percent'] = 0.0;
+                }
+            }
+        }
+        unset($r);
+
+        foreach ($rows as &$r) {
+            if (($r['pricing_cvr_inventory'] ?? null) !== null && ($r['pricing_cvr_dil_percent'] ?? null) !== null) {
+                continue;
+            }
+            $invFromVals = array_key_exists('shopify_inv', $r) && $r['shopify_inv'] !== null && $r['shopify_inv'] !== ''
+                ? (int) round((float) $r['shopify_inv'])
+                : null;
+            $ovFromVals = array_key_exists('shopify_quantity', $r) && $r['shopify_quantity'] !== null && $r['shopify_quantity'] !== ''
+                ? (float) $r['shopify_quantity']
+                : null;
+            if ($invFromVals === null && $ovFromVals === null) {
+                continue;
+            }
+            if (($r['pricing_cvr_inventory'] ?? null) === null && $invFromVals !== null) {
+                $r['pricing_cvr_inventory'] = $invFromVals;
+            }
+            if (($r['pricing_cvr_dil_percent'] ?? null) === null) {
+                $invUse = (int) ($r['pricing_cvr_inventory'] ?? $invFromVals ?? 0);
+                $ov = $ovFromVals ?? 0.0;
+                $r['pricing_cvr_dil_percent'] = $invUse > 0 ? round(($ov / $invUse) * 100, 2) : 0.0;
+            }
+        }
+        unset($r);
+    }
+
+    /**
+     * @param  array<string, mixed>  $r
+     */
+    private function rowNeedsPricingCvrLiveFallback(array $r): bool
+    {
+        return ($r['pricing_cvr_inventory'] ?? null) === null
+            && ($r['pricing_cvr_dil_percent'] ?? null) === null
+            && ($r['pricing_cvr_avg_cvr'] ?? null) === null;
     }
 }
