@@ -457,7 +457,7 @@ class TitleMasterDataService
             );
         } elseif ($f150 === 'exceeds') {
             $query->whereRaw(
-                'CHAR_LENGTH(IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), ""))) > 150'
+                'CHAR_LENGTH(IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), ""))) > 170'
             );
         }
 
@@ -498,7 +498,7 @@ class TitleMasterDataService
                 'SUM(CASE WHEN (IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), "")) IS NULL OR IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), "")) = "") THEN 1 ELSE 0 END) as m150'
             )
             ->selectRaw(
-                'SUM(CASE WHEN CHAR_LENGTH(IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), ""))) > 150 THEN 1 ELSE 0 END) as exceeds_150'
+                'SUM(CASE WHEN CHAR_LENGTH(IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), ""))) > 170 THEN 1 ELSE 0 END) as exceeds_150'
             )
             ->selectRaw('SUM(CASE WHEN (pm.title100 IS NULL OR TRIM(IFNULL(pm.title100, "")) = "") THEN 1 ELSE 0 END) as m100')
             ->selectRaw('SUM(CASE WHEN (pm.title80 IS NULL OR TRIM(IFNULL(pm.title80, "")) = "") THEN 1 ELSE 0 END) as m80')

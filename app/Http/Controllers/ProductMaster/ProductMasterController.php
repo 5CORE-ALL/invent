@@ -11,6 +11,8 @@ use App\Models\EbayMetric;
 use App\Models\MarketplacePushLog;
 use App\Models\Permission;
 use App\Models\ProductMaster;
+use App\Models\ShopifySku;
+use App\Models\User;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
@@ -21,17 +23,15 @@ use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\ShopifyApiService;
 use App\Services\TemuApiService;
+use App\Services\TitleMasterDataService;
 use App\Services\WalmartService;
 use App\Services\WayfairApiService;
-use App\Models\ShopifySku;
-use App\Models\User;
-use App\Services\TitleMasterDataService;
+use App\Support\OpenAiRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductMasterController extends Controller
@@ -882,7 +882,7 @@ class ProductMasterController extends Controller
             $data = [$headers, $exampleRow];
 
             // Create Excel file in memory
-            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet;
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->fromArray($data, null, 'A1');
 
@@ -1005,7 +1005,7 @@ class ProductMasterController extends Controller
             Log::info('Excel Headers Found: '.implode(', ', $headers));
             Log::info('Columns Mapped: '.implode(', ', array_keys($columnIndices)));
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'SKU column not found in the Excel file. Found headers: '.implode(', ', $headers),
@@ -1027,6 +1027,7 @@ class ProductMasterController extends Controller
                     // Skip empty rows
                     if (empty($row[$columnIndices['sku']])) {
                         $skipped++;
+
                         continue;
                     }
 
@@ -1037,15 +1038,16 @@ class ProductMasterController extends Controller
 
                     // Find product by SKU - try exact match first, then case-insensitive
                     $product = ProductMaster::where('sku', $sku)->first();
-                    
-                    if (!$product) {
+
+                    if (! $product) {
                         // Try case-insensitive match
                         $product = ProductMaster::whereRaw('LOWER(sku) = ?', [strtolower($sku)])->first();
                     }
 
-                    if (!$product) {
+                    if (! $product) {
                         $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
                         Log::warning("Bulk Update: SKU not found - '{$sku}'");
+
                         continue;
                     }
 
@@ -1061,13 +1063,13 @@ class ProductMasterController extends Controller
 
                     // Get existing Values
                     $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                    if (!is_array($values)) {
+                    if (! is_array($values)) {
                         $values = [];
                     }
 
                     // Log existing keys for debugging
                     $existingKeys = array_keys($values);
-                    Log::info("Before Update - SKU '{$sku}' has ".count($existingKeys)." fields: ".implode(', ', $existingKeys));
+                    Log::info("Before Update - SKU '{$sku}' has ".count($existingKeys).' fields: '.implode(', ', $existingKeys));
 
                     // Update parent if provided (not in Values JSON)
                     if (isset($columnIndices['parent']) && isset($row[$columnIndices['parent']])) {
@@ -1083,8 +1085,8 @@ class ProductMasterController extends Controller
                     // Update ALL fields from Excel (except INV and SKU)
                     foreach ($columnIndices as $field => $colIndex) {
                         // Skip SKU (used for matching), parent (handled above), and inventory fields
-                        if ($field === 'sku' || $field === 'parent' || 
-                            $field === 'shopify_inv' || $field === 'shopify_quantity' || 
+                        if ($field === 'sku' || $field === 'parent' ||
+                            $field === 'shopify_inv' || $field === 'shopify_quantity' ||
                             $field === 'inv' || $field === 'ov_l30') {
                             continue; // Skip inventory columns - NEVER update these
                         }
@@ -1118,7 +1120,7 @@ class ProductMasterController extends Controller
 
                     // Log what fields remain after update
                     $finalKeys = array_keys($values);
-                    Log::info("After Update - SKU '{$sku}' now has ".count($finalKeys)." fields: ".implode(', ', $finalKeys));
+                    Log::info("After Update - SKU '{$sku}' now has ".count($finalKeys).' fields: '.implode(', ', $finalKeys));
 
                     // Save updated Values
                     $product->Values = $values;
@@ -1126,7 +1128,7 @@ class ProductMasterController extends Controller
                     $updated++;
 
                     // Log what was updated
-                    if (!empty($fieldsUpdated)) {
+                    if (! empty($fieldsUpdated)) {
                         Log::info("Bulk Update: SKU '{$sku}' updated - ".implode(', ', $fieldsUpdated));
                         $updateDetails[] = [
                             'sku' => $sku,
@@ -1138,7 +1140,7 @@ class ProductMasterController extends Controller
                 }
 
                 // Store backup in session for restore functionality
-                if (!empty($backups)) {
+                if (! empty($backups)) {
                     session(['product_update_backup' => [
                         'timestamp' => now()->toDateTimeString(),
                         'data' => $backups,
@@ -1165,7 +1167,7 @@ class ProductMasterController extends Controller
                     'skipped' => $skipped,
                     'errors' => $errors,
                     'details' => $updateDetails, // Show what was updated
-                    'backup_available' => !empty($backups),
+                    'backup_available' => ! empty($backups),
                 ]);
 
             } catch (\Exception $e) {
@@ -1174,11 +1176,11 @@ class ProductMasterController extends Controller
             }
 
         } catch (\Exception $e) {
-            Log::error('Bulk Update All Error: ' . $e->getMessage());
+            Log::error('Bulk Update All Error: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Update failed: ' . $e->getMessage(),
+                'message' => 'Update failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1191,7 +1193,7 @@ class ProductMasterController extends Controller
         try {
             $backup = session('product_update_backup');
 
-            if (!$backup) {
+            if (! $backup) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No backup data found. Restore is only available immediately after an update.',
@@ -1207,8 +1209,9 @@ class ProductMasterController extends Controller
                 foreach ($backup['data'] as $backupItem) {
                     $product = ProductMaster::where('sku', $backupItem['sku'])->first();
 
-                    if (!$product) {
+                    if (! $product) {
                         $errors[] = "SKU '{$backupItem['sku']}' not found for restore";
+
                         continue;
                     }
 
@@ -1237,11 +1240,11 @@ class ProductMasterController extends Controller
             }
 
         } catch (\Exception $e) {
-            Log::error('Restore Bulk Update Error: ' . $e->getMessage());
+            Log::error('Restore Bulk Update Error: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Restore failed: ' . $e->getMessage(),
+                'message' => 'Restore failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1627,6 +1630,7 @@ class ProductMasterController extends Controller
                         if ($operation['operation'] === 'set') {
                             $product->parent = $value;
                         }
+
                         continue;
                     }
 
@@ -1810,7 +1814,7 @@ class ProductMasterController extends Controller
     }
 
     /**
-     * Generate improved titles (150, 100, 80, 60 chars) using Claude/Anthropic API for the Edit modal "Improve with AI".
+     * Generate improved titles (Amazon up to 170, 100, 80, 60 chars) using Claude/Anthropic API for the Edit modal "Improve with AI".
      */
     public function generateTitlesWithAI(Request $request)
     {
@@ -1824,6 +1828,7 @@ class ProductMasterController extends Controller
         $apiKey = config('services.anthropic.key');
         if (! $apiKey) {
             Log::warning('AI generate titles: ANTHROPIC_API_KEY not configured');
+
             return response()->json([
                 'success' => false,
                 'message' => 'ANTHROPIC_API_KEY is not configured.',
@@ -1847,7 +1852,7 @@ Product category: {$parentCategory}
 
 Requirements:
 
-Title 150 (Amazon): Max 150 chars - SEO optimized, include key features, brand name
+Amazon title (title150 field): Max 170 chars - SEO optimized, include key features, brand name
 Title 100 (Shopify): Max 100 chars - Catchy, concise, focus on main selling points
 Title 80 (eBay/Walmart): Max 80 chars - Short, keyword-rich, attention-grabbing
 Title 60 (Other platforms): Max 60 chars - Ultra concise, core product name + key feature
@@ -1888,6 +1893,7 @@ PROMPT;
                     'request_id' => $requestId,
                     'error' => $bodyJson['error'] ?? $bodyRaw,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'AI service error: '.$errorMsg,
@@ -1908,7 +1914,7 @@ PROMPT;
                 ], 422);
             }
 
-            $data['title150'] = mb_substr(trim($data['title150'] ?? ''), 0, 150);
+            $data['title150'] = mb_substr(trim($data['title150'] ?? ''), 0, 170);
             $data['title100'] = mb_substr(trim($data['title100'] ?? ''), 0, 100);
             $data['title80'] = mb_substr(trim($data['title80'] ?? ''), 0, 80);
             $data['title60'] = mb_substr(trim($data['title60'] ?? ''), 0, 60);
@@ -1935,7 +1941,7 @@ PROMPT;
     }
 
     /**
-     * Generate a single Title 150 (120-150 chars) using Claude for the "Improve with AI" preview popup.
+     * Generate four Amazon-title options (length band from request, default ~140–170 chars) using Claude for the "Improve with AI" preview popup.
      */
     public function generateTitle150WithAI(Request $request)
     {
@@ -1943,13 +1949,14 @@ PROMPT;
             'sku' => 'nullable|string',
             'current_title' => 'required|string',
             'parent_category' => 'nullable|string',
-            'min_length' => 'nullable|integer|min:80|max:150',
-            'max_length' => 'nullable|integer|min:80|max:150',
+            'min_length' => 'nullable|integer|min:80|max:170',
+            'max_length' => 'nullable|integer|min:80|max:170',
         ]);
 
         $apiKey = config('services.anthropic.key');
         if (! $apiKey) {
             Log::warning('AI generate title 150: ANTHROPIC_API_KEY not configured');
+
             return response()->json([
                 'success' => false,
                 'message' => 'ANTHROPIC_API_KEY is not configured.',
@@ -1960,9 +1967,9 @@ PROMPT;
         $sku = $request->input('sku', '');
         $parentCategory = $request->input('parent_category', '');
         $minLen = (int) $request->input('min_length', 140);
-        $maxLen = (int) $request->input('max_length', 150);
-        $minLen = max(80, min(150, $minLen));
-        $maxLen = max($minLen, min(150, $maxLen));
+        $maxLen = (int) $request->input('max_length', 170);
+        $minLen = max(80, min(170, $minLen));
+        $maxLen = max($minLen, min(170, $maxLen));
 
         $model = 'claude-sonnet-4-20250514';
         Log::info('AI generate title 150 (4 options): start', ['sku' => $sku, 'model' => $model]);
@@ -2015,6 +2022,7 @@ PROMPT;
                     'status' => $response->status(),
                     'error' => $bodyJson['error'] ?? $response->body(),
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'AI service error: '.$errorMsg,
@@ -2027,6 +2035,7 @@ PROMPT;
             $arr = json_decode($text, true);
             if (! is_array($arr) || count($arr) < 4) {
                 Log::warning('AI generate title 150: invalid response', ['preview' => mb_substr($text, 0, 300)]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid AI response: expected 4 titles with scores.',
@@ -2063,6 +2072,262 @@ PROMPT;
                 'message' => 'Error: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Title Master AI workspace: three draft titles (150–175 characters each).
+     * Uses Claude / Anthropic (CLAUDE_API_KEY or ANTHROPIC_API_KEY) first, then OpenAI (OPENAI_API_KEY) if that fails or is unset.
+     */
+    public function generateTitleMasterAiStackDrafts(Request $request)
+    {
+        $request->validate([
+            'sku' => 'nullable|string|max:255',
+            'buyer_link' => 'nullable|string|max:2048',
+            'title_reference' => 'required|string|max:4000',
+            'user_prompt' => 'nullable|string|max:15000',
+        ]);
+
+        $hasClaude = (bool) $this->anthropicApiKeyForTitleMaster();
+        $hasOpenai = (bool) config('services.openai.key');
+        if (! $hasClaude && ! $hasOpenai) {
+            return response()->json([
+                'success' => false,
+                'message' => 'AI is not configured. Set CLAUDE_API_KEY or ANTHROPIC_API_KEY in .env (recommended), or OPENAI_API_KEY as fallback.',
+            ], 503);
+        }
+
+        $titleRef = trim($request->input('title_reference', ''));
+        if ($titleRef === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Title reference is empty.',
+            ], 422);
+        }
+
+        $userPrompt = trim((string) $request->input('user_prompt', ''));
+        $sku = trim((string) $request->input('sku', ''));
+        $buyerLink = trim((string) $request->input('buyer_link', ''));
+        $openaiModel = (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini');
+
+        $refQuoted = json_encode($titleRef, JSON_UNESCAPED_UNICODE);
+        $userQuoted = json_encode($userPrompt, JSON_UNESCAPED_UNICODE);
+        $buyerQuoted = json_encode($buyerLink, JSON_UNESCAPED_UNICODE);
+        $skuLine = $sku !== '' ? "SKU: {$sku}\n" : '';
+        $skuSuffixRule = $sku !== ''
+            ? "Each title must end with this exact SKU at the very end (after a space if needed for readability): {$sku}"
+            : 'No SKU was provided; do not invent a trailing SKU code.';
+
+        $prompt = <<<PROMPT
+You are an expert Amazon listing copywriter. You cannot browse the web or fetch URLs—use only the text below (buyer link string, reference title, user instructions, SKU).
+
+{$skuLine}Buyer link from B/S column (may be empty):
+{$buyerQuoted}
+
+Reference product title (preserve factual accuracy; improve SEO and readability):
+{$refQuoted}
+
+User instructions (follow closely):
+{$userQuoted}
+
+Technical requirements for EACH of the 3 strings in the JSON "drafts" array:
+- Length between 150 and 175 characters inclusive (adjust wording to stay in this band).
+- ALWAYS include the brand name: 5 Core (natural placement, beginning or middle is fine).
+- {$skuSuffixRule}
+- Amazon-style: keyword-rich, readable, conversion-focused. Do NOT use | or / in titles; minimize excessive commas; avoid duplicate words; no ALL CAPS sentences; Amazon-compliant (no spammy promos).
+
+Return ONLY valid JSON with this exact shape (no markdown, no commentary):
+{"drafts":["first title","second title","third title"]}
+The "drafts" array must contain exactly 3 non-empty strings meeting all rules.
+PROMPT;
+
+        try {
+            $out = null;
+            $lastError = '';
+
+            if ($hasClaude) {
+                Log::info('Title Master AI stack drafts: trying Claude', ['sku' => $sku]);
+                [$out, $claudeErr] = $this->requestTitleMasterAiStackDraftsFromClaude($prompt, $sku);
+                if ($out === null && $claudeErr !== '') {
+                    $lastError = $claudeErr;
+                }
+            }
+
+            if ($out === null && $hasOpenai) {
+                Log::info('Title Master AI stack drafts: trying OpenAI', ['sku' => $sku, 'model' => $openaiModel]);
+                [$out, $openaiErr] = $this->requestTitleMasterAiStackDraftsFromOpenAi($prompt, $openaiModel, $sku);
+                if ($out === null && $openaiErr !== '') {
+                    $lastError = $openaiErr;
+                }
+            }
+
+            if ($out === null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $lastError !== '' ? $lastError : 'Could not generate drafts. Check logs and API keys.',
+                ], 502);
+            }
+
+            Log::info('Title Master AI stack drafts: success', ['sku' => $sku]);
+
+            return response()->json([
+                'success' => true,
+                'drafts' => $out,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Title Master AI stack drafts: exception', ['message' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Same as other Title Master AI flows: prefer CLAUDE_API_KEY, else ANTHROPIC_API_KEY.
+     */
+    private function anthropicApiKeyForTitleMaster(): ?string
+    {
+        $k = config('services.claude.key') ?: config('services.anthropic.key');
+
+        return is_string($k) && $k !== '' ? $k : null;
+    }
+
+    private function normalizeTitleMasterAiStackDraftsList(?array $drafts): ?array
+    {
+        if (! is_array($drafts) || count($drafts) < 3) {
+            return null;
+        }
+        $out = [];
+        for ($i = 0; $i < 3; $i++) {
+            $s = isset($drafts[$i]) ? trim((string) $drafts[$i]) : '';
+            if (mb_strlen($s) > 175) {
+                $s = mb_substr($s, 0, 175);
+            }
+            $out[] = $s;
+        }
+        if ($out[0] === '' && $out[1] === '' && $out[2] === '') {
+            return null;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<int, string>|null
+     */
+    private function decodeTitleMasterAiStackDraftsFromModelText(string $text): ?array
+    {
+        $text = trim($text);
+        $text = preg_replace('/^```\w*\s*|\s*```$/m', '', $text) ?? '';
+        $data = json_decode($text, true);
+        if (! is_array($data) || ! isset($data['drafts']) || ! is_array($data['drafts'])) {
+            Log::warning('Title Master AI stack drafts: invalid JSON', ['preview' => mb_substr($text, 0, 400)]);
+
+            return null;
+        }
+
+        return $this->normalizeTitleMasterAiStackDraftsList($data['drafts']);
+    }
+
+    /**
+     * @return array{0: array<int, string>|null, 1: string}
+     */
+    private function requestTitleMasterAiStackDraftsFromClaude(string $prompt, string $sku): array
+    {
+        $apiKey = $this->anthropicApiKeyForTitleMaster();
+        if (! $apiKey) {
+            return [null, ''];
+        }
+
+        $response = Http::timeout(90)
+            ->withHeaders([
+                'x-api-key' => $apiKey,
+                'anthropic-version' => '2023-06-01',
+                'content-type' => 'application/json',
+            ])
+            ->post('https://api.anthropic.com/v1/messages', [
+                'model' => 'claude-sonnet-4-20250514',
+                'max_tokens' => 1024,
+                'messages' => [
+                    [
+                        'role' => 'user',
+                        'content' => $prompt,
+                    ],
+                ],
+            ]);
+
+        if (! $response->successful()) {
+            $bodyJson = $response->json();
+            $errorMsg = $bodyJson['error']['message'] ?? $response->body();
+            Log::warning('Title Master AI stack drafts: Claude error', [
+                'sku' => $sku,
+                'status' => $response->status(),
+                'error' => $bodyJson['error'] ?? $response->body(),
+            ]);
+
+            return [null, 'Claude error: '.(is_string($errorMsg) ? $errorMsg : 'Request failed')];
+        }
+
+        $body = $response->json();
+        $text = trim($body['content'][0]['text'] ?? '');
+        $out = $this->decodeTitleMasterAiStackDraftsFromModelText($text);
+        if ($out === null) {
+            return [null, 'Could not parse 3 drafts from Claude. Please try again.'];
+        }
+
+        return [$out, ''];
+    }
+
+    /**
+     * @return array{0: array<int, string>|null, 1: string} [drafts or null, user-facing error or '']
+     */
+    private function requestTitleMasterAiStackDraftsFromOpenAi(string $prompt, string $model, string $sku): array
+    {
+        $response = Http::timeout(90)
+            ->withHeaders(OpenAiRequest::authHeaders())
+            ->post('https://api.openai.com/v1/chat/completions', [
+                'model' => $model,
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'You output only valid JSON objects with a "drafts" array of exactly 3 strings (each 150–175 characters per the user message). No markdown, no commentary.',
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => $prompt,
+                    ],
+                ],
+                'max_tokens' => 800,
+                'temperature' => 0.75,
+                'response_format' => ['type' => 'json_object'],
+            ]);
+
+        if (! $response->successful()) {
+            $bodyJson = $response->json();
+            $errorMsg = $bodyJson['error']['message'] ?? $response->body();
+            Log::warning('Title Master AI stack drafts: OpenAI error', [
+                'sku' => $sku,
+                'status' => $response->status(),
+                'error' => $bodyJson['error'] ?? $response->body(),
+            ]);
+            $hint = '';
+            if (is_string($errorMsg) && str_contains($errorMsg, 'Incorrect API key')) {
+                $hint = ' Confirm the key at platform.openai.com, run `php artisan config:clear`, restart `php artisan serve`, and check for duplicate OPENAI_API_KEY lines in .env. For org/project keys, set OPENAI_ORGANIZATION (org_…) and OPENAI_PROJECT (proj_…) from the OpenAI dashboard.';
+            }
+
+            return [null, 'OpenAI error: '.$errorMsg.$hint];
+        }
+
+        $body = $response->json();
+        $text = trim($body['choices'][0]['message']['content'] ?? '');
+
+        $out = $this->decodeTitleMasterAiStackDraftsFromModelText($text);
+        if ($out === null) {
+            return [null, 'Could not parse 3 drafts from the model. Please try again.'];
+        }
+
+        return [$out, ''];
     }
 
     /**
@@ -2174,6 +2439,7 @@ PROMPT;
                 if (! $valid) {
                     $invalidCount++;
                     Log::info('AI generate title 100: title '.($i + 1).' out of range (discarded)', ['len' => $len, 'min' => $minLen, 'max' => $maxLen]);
+
                     continue;
                 }
                 $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(10, (int) $raw['score'])) : null;
@@ -2312,6 +2578,7 @@ PROMPT;
                 if (! $valid) {
                     $invalidCount++;
                     Log::info('AI generate title 80: title '.($i + 1).' out of range (discarded)', ['len' => $len, 'min' => $minLen, 'max' => $maxLen]);
+
                     continue;
                 }
                 $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(100, (int) $raw['score'])) : null;
@@ -2361,6 +2628,7 @@ PROMPT;
         $apiKey = config('services.anthropic.key');
         if (! $apiKey) {
             Log::warning('AI generate title 60: ANTHROPIC_API_KEY not configured');
+
             return response()->json([
                 'success' => false,
                 'message' => 'ANTHROPIC_API_KEY is not configured.',
@@ -2418,6 +2686,7 @@ PROMPT;
             if (! $response->successful()) {
                 $bodyJson = $response->json();
                 $errorMsg = $bodyJson['error']['message'] ?? $response->body();
+
                 return response()->json([
                     'success' => false,
                     'message' => 'AI service error: '.$errorMsg,
@@ -2431,6 +2700,7 @@ PROMPT;
 
             if (! is_array($arr) || count($arr) < 4) {
                 Log::warning('AI generate title 60: invalid response format', ['preview' => mb_substr($text, 0, 300)]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid AI response: expected 4 titles with scores.',
@@ -2447,6 +2717,7 @@ PROMPT;
                 $len = mb_strlen($t);
                 if ($len < $minLen || $len > $maxLen) {
                     $invalidCount++;
+
                     continue;
                 }
                 $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(100, (int) $raw['score'])) : 90;
@@ -2461,6 +2732,7 @@ PROMPT;
             }
 
             Log::info('✅ AI Title 60 generation success', ['sku' => $sku, 'titles' => count($validItems)]);
+
             return response()->json([
                 'success' => true,
                 'titles' => $validItems,
@@ -2468,6 +2740,7 @@ PROMPT;
             ]);
         } catch (\Exception $e) {
             Log::error('AI generate title 60: exception', ['message' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error: '.$e->getMessage(),
@@ -2476,7 +2749,7 @@ PROMPT;
     }
 
     /**
-     * Push Title 150 to Amazon for a single SKU via SP-API Listings Items API.
+     * Push Amazon title (title150, up to 170 chars) to Amazon for a single SKU via SP-API Listings Items API.
      */
     public function pushTitleToAmazon(Request $request)
     {
@@ -2656,7 +2929,7 @@ PROMPT;
     }
 
     /**
-     * Push Title 150 to all 4 marketplaces (Amazon, Temu, Reverb, Wayfair) for a single SKU.
+     * Push Amazon title (title150) to all 4 marketplaces (Amazon, Temu, Reverb, Wayfair) for a single SKU.
      * Logs each attempt to marketplace_push_logs and returns per-marketplace results.
      */
     public function pushTitleToAllMarketplaces(Request $request)
@@ -2766,7 +3039,7 @@ PROMPT;
         if ($titleType === '150' && ! in_array($marketplace, ['amazon', 'temu', 'reverb', 'wayfair', 'walmart'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Title 150 is only valid for Amazon, Temu, Reverb, Wayfair, Walmart.',
+                'message' => 'Amazon title (type 150) is only valid for Amazon, Temu, Reverb, Wayfair, Walmart.',
             ], 422);
         }
         if ($titleType === '100' && ! in_array($marketplace, ['shopify', 'shopify_main', 'shopify_pls', 'doba'], true)) {
@@ -3049,7 +3322,7 @@ PROMPT;
     }
 
     /**
-     * Bulk push Title 150 to all 4 marketplaces for multiple SKUs.
+     * Bulk push Amazon title (title150) to all 4 marketplaces for multiple SKUs.
      */
     public function pushBulkToAllMarketplaces(Request $request)
     {
@@ -3067,6 +3340,7 @@ PROMPT;
         }
         $items = array_filter(array_map(function ($sku) use ($titles) {
             $title = $titles[$sku] ?? '';
+
             return empty($title) ? null : ['sku' => $sku, 'title' => $title];
         }, $skus));
 
@@ -4044,9 +4318,11 @@ PROMPT;
         try {
             $service = app(WalmartService::class);
             $res = $service->updateTitle((string) $sku, (string) $title);
+
             return (bool) ($res['success'] ?? false);
         } catch (\Throwable $e) {
             Log::error("❌ Walmart title update failed - SKU: {$sku}, Error: ".$e->getMessage());
+
             return false;
         }
     }
@@ -4680,9 +4956,11 @@ GRAPHQL;
         try {
             $service = app(MacysApiService::class);
             $res = $service->updateTitle((string) $sku, (string) $newTitle);
+
             return (bool) ($res['success'] ?? false);
         } catch (\Throwable $e) {
             Log::error('❌ Macy push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
             return false;
         }
     }
@@ -5770,7 +6048,7 @@ GRAPHQL;
     }
 
     // AI Title Generator Methods
-    
+
     public function aiTitleManager()
     {
         return view('product-master.ai-title-manager');
@@ -5789,11 +6067,11 @@ GRAPHQL;
             // Decode JSON values
             $values = json_decode($product->values, true);
             $imagePath = $values['image_path'] ?? null;
-            
+
             // Get all marketplace data for this SKU
             $marketplaces = $this->getMarketplaceData($product->sku, $product->parent);
 
-            if (!empty($marketplaces)) {
+            if (! empty($marketplaces)) {
                 // Group all marketplaces for single SKU
                 $data[] = [
                     'id' => $product->id,
@@ -5814,7 +6092,7 @@ GRAPHQL;
         $marketplaces = [];
         $searchSku = $sku ?: $parent;
 
-        if (!$searchSku) {
+        if (! $searchSku) {
             return $marketplaces;
         }
 
@@ -5897,22 +6175,22 @@ GRAPHQL;
             $keywords = $validated['keywords'] ?? '';
             $currentTitle = $validated['current_title'] ?? '';
             $mode = $validated['mode'];
-            
+
             $maxChars = config("marketplaces.character_limits.{$marketplace}", 150);
 
-            $title = $mode === 'improve' 
+            $title = $mode === 'improve'
                 ? $this->improveTitle($marketplace, $description, $keywords, $currentTitle, $maxChars)
                 : $this->generateTitle($marketplace, $description, $keywords, $maxChars);
 
             if ($title === null) {
                 Log::error('AI title generation returned null', [
                     'marketplace' => $marketplace,
-                    'mode' => $mode
+                    'mode' => $mode,
                 ]);
-                
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Temporary issue, please retry. Check logs for details.'
+                    'message' => 'Temporary issue, please retry. Check logs for details.',
                 ], 500);
             }
 
@@ -5932,19 +6210,20 @@ GRAPHQL;
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::error('Validation error in generateAiTitle', ['errors' => $e->errors()]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Validation error: ' . json_encode($e->errors())
+                'message' => 'Validation error: '.json_encode($e->errors()),
             ], 422);
         } catch (\Exception $e) {
             Log::error('Exception in generateAiTitle', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Server error: ' . $e->getMessage()
+                'message' => 'Server error: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -5986,15 +6265,19 @@ Return ONLY the optimized title (no quotes, no explanation).";
         // Try Claude first (working API key)
         if (config('services.claude.key')) {
             $title = $this->callClaudeAI($prompt, $maxChars);
-            if ($title) return $title;
+            if ($title) {
+                return $title;
+            }
         }
-        
+
         // Try OpenAI
         if (config('services.openai.key')) {
             $title = $this->callOpenAI($prompt, $maxChars);
-            if ($title) return $title;
+            if ($title) {
+                return $title;
+            }
         }
-        
+
         // Use fallback if both fail
         return $this->generateFallbackTitle($description, $keywords, $maxChars);
     }
@@ -6002,44 +6285,44 @@ Return ONLY the optimized title (no quotes, no explanation).";
     private function generateFallbackTitle($description, $keywords, $maxChars)
     {
         Log::warning('Using fallback title generation (API not available)');
-        
+
         // Extract key information from description
         $words = explode(' ', $description);
-        
+
         // Power words to add variety
         $powerWords = ['Premium', 'Professional', 'Heavy Duty', 'High Quality', 'Universal', 'Adjustable', 'Portable'];
         $randomPowerWord = $powerWords[array_rand($powerWords)];
-        
+
         // Rearrange and optimize
         $brand = '';
         $productType = '';
         $features = [];
-        
+
         // Extract brand (usually first 1-2 words or words with "Core" in them)
         foreach ($words as $word) {
             if (stripos($word, 'Core') !== false) {
-                $brand = $word . ' ' . ($words[0] ?? '');
+                $brand = $word.' '.($words[0] ?? '');
                 break;
             }
         }
-        
+
         // Build optimized title with variation
         $variations = [
             "{$brand} {$randomPowerWord} {$description}",
             "{$brand} {$description} | {$randomPowerWord} Quality",
             "{$randomPowerWord} {$description} - {$brand}",
         ];
-        
+
         $title = $variations[array_rand($variations)];
-        
+
         // Add keywords if not present
         $keywordList = array_filter(array_map('trim', explode(',', $keywords)));
         foreach ($keywordList as $keyword) {
             if (stripos($title, $keyword) === false && strlen($title) + strlen($keyword) < $maxChars - 3) {
-                $title .= ' ' . ucwords($keyword);
+                $title .= ' '.ucwords($keyword);
             }
         }
-        
+
         // Trim to max length
         if (strlen($title) > $maxChars) {
             $title = substr($title, 0, $maxChars);
@@ -6048,7 +6331,7 @@ Return ONLY the optimized title (no quotes, no explanation).";
                 $title = substr($title, 0, $lastSpace);
             }
         }
-        
+
         return trim($title);
     }
 
@@ -6079,15 +6362,19 @@ Return ONLY the dramatically improved title without quotes.";
         // Try Claude first (working API key)
         if (config('services.claude.key')) {
             $title = $this->callClaudeAI($prompt, $maxChars);
-            if ($title) return $title;
+            if ($title) {
+                return $title;
+            }
         }
-        
+
         // Try OpenAI
         if (config('services.openai.key')) {
             $title = $this->callOpenAI($prompt, $maxChars);
-            if ($title) return $title;
+            if ($title) {
+                return $title;
+            }
         }
-        
+
         // Use fallback if both fail
         return $this->generateFallbackTitle($description, $keywords, $maxChars);
     }
@@ -6095,7 +6382,7 @@ Return ONLY the dramatically improved title without quotes.";
     private function callClaudeAI($prompt, $maxChars)
     {
         $apiKey = config('services.claude.key');
-        if (!$apiKey) {
+        if (! $apiKey) {
             return null;
         }
 
@@ -6114,8 +6401,8 @@ Return ONLY the dramatically improved title without quotes.";
                     'messages' => [
                         [
                             'role' => 'user',
-                            'content' => $prompt
-                        ]
+                            'content' => $prompt,
+                        ],
                     ],
                 ]);
 
@@ -6123,11 +6410,11 @@ Return ONLY the dramatically improved title without quotes.";
                 $responseData = $response->json();
                 $title = trim($responseData['content'][0]['text'] ?? '');
                 $title = trim($title, '"\'');
-                
+
                 // Remove any explanatory text
                 $lines = explode("\n", $title);
                 $title = trim($lines[0]);
-                
+
                 if (strlen($title) > $maxChars) {
                     $title = substr($title, 0, $maxChars);
                     $lastSpace = strrpos($title, ' ');
@@ -6135,16 +6422,19 @@ Return ONLY the dramatically improved title without quotes.";
                         $title = substr($title, 0, $lastSpace);
                     }
                 }
-                
+
                 Log::info('✓ Claude AI title generated', ['length' => strlen($title), 'title' => $title]);
+
                 return $title;
             }
 
             Log::error('Claude API Error', ['status' => $response->status(), 'body' => $response->body()]);
+
             return null;
 
         } catch (\Exception $e) {
             Log::error('Claude API Exception', ['message' => $e->getMessage()]);
+
             return null;
         }
     }
@@ -6152,8 +6442,9 @@ Return ONLY the dramatically improved title without quotes.";
     private function callOpenAI($prompt, $maxChars)
     {
         $apiKey = config('services.openai.key');
-        if (!$apiKey) {
+        if (! $apiKey) {
             Log::warning('OpenAI API key not configured - using fallback');
+
             return null;
         }
 
@@ -6167,21 +6458,18 @@ Return ONLY the dramatically improved title without quotes.";
 
             try {
                 $response = Http::timeout(60)
-                    ->withHeaders([
-                        'Authorization' => 'Bearer ' . $apiKey,
-                        'Content-Type' => 'application/json',
-                    ])
+                    ->withHeaders(OpenAiRequest::authHeaders())
                     ->post('https://api.openai.com/v1/chat/completions', [
                         'model' => 'gpt-4o',
                         'messages' => [
                             [
                                 'role' => 'system',
-                                'content' => 'You are an expert at writing SEO-optimized product titles for e-commerce marketplaces. Create compelling, keyword-rich titles that rank well in search. Always follow character limits strictly and return ONLY the title text without any quotes or extra text.'
+                                'content' => 'You are an expert at writing SEO-optimized product titles for e-commerce marketplaces. Create compelling, keyword-rich titles that rank well in search. Always follow character limits strictly and return ONLY the title text without any quotes or extra text.',
                             ],
                             [
                                 'role' => 'user',
-                                'content' => $prompt
-                            ]
+                                'content' => $prompt,
+                            ],
                         ],
                         'max_tokens' => 200,
                         'temperature' => 0.8,
@@ -6191,11 +6479,11 @@ Return ONLY the dramatically improved title without quotes.";
                     $responseData = $response->json();
                     $title = trim($responseData['choices'][0]['message']['content'] ?? '');
                     $title = trim($title, '"\'');
-                    
+
                     // Remove any explanatory text (sometimes AI adds context)
                     $lines = explode("\n", $title);
                     $title = trim($lines[0]);
-                    
+
                     if (strlen($title) > $maxChars) {
                         $title = substr($title, 0, $maxChars);
                         $lastSpace = strrpos($title, ' ');
@@ -6203,12 +6491,13 @@ Return ONLY the dramatically improved title without quotes.";
                             $title = substr($title, 0, $lastSpace);
                         }
                     }
-                    
+
                     Log::info('✓ OpenAI title generated successfully', [
                         'length' => strlen($title),
                         'model' => 'gpt-4o',
-                        'title' => $title
+                        'title' => $title,
                     ]);
+
                     return $title;
                 }
 
@@ -6216,13 +6505,14 @@ Return ONLY the dramatically improved title without quotes.";
                 Log::error('✗ OpenAI API Error', [
                     'status' => $response->status(),
                     'body' => substr($response->body(), 0, 500),
-                    'attempt' => $attempt
+                    'attempt' => $attempt,
                 ]);
 
                 if ($response->status() === 429 || $response->status() >= 500) {
                     if ($attempt < $maxRetries) {
                         Log::info("Retrying OpenAI API (attempt {$attempt})...");
                         sleep(2 * $attempt);
+
                         continue;
                     }
                 }
@@ -6233,18 +6523,21 @@ Return ONLY the dramatically improved title without quotes.";
                 Log::error('✗ OpenAI API Exception', [
                     'message' => $e->getMessage(),
                     'attempt' => $attempt,
-                    'trace' => substr($e->getTraceAsString(), 0, 500)
+                    'trace' => substr($e->getTraceAsString(), 0, 500),
                 ]);
-                
+
                 if ($attempt < $maxRetries) {
                     sleep(2 * $attempt);
+
                     continue;
                 }
+
                 return null;
             }
         }
 
         Log::error('OpenAI API failed after all retries');
+
         return null;
     }
 
@@ -6254,48 +6547,48 @@ Return ONLY the dramatically improved title without quotes.";
         $titleLower = strtolower($title);
         $improvements = [];
         $seoKeywords = [];
-        
+
         // Stop words to ignore (common filler words)
-        $stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
-                      'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been'];
-        
+        $stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+            'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been'];
+
         // Extract all words from title
         $words = str_word_count($title, 1);
         $wordFrequency = [];
-        
+
         foreach ($words as $word) {
             $wordLower = strtolower($word);
-            
+
             // Skip stop words and very short words
             if (in_array($wordLower, $stopWords) || strlen($wordLower) < 3) {
                 continue;
             }
-            
+
             // Count frequency
-            if (!isset($wordFrequency[$wordLower])) {
+            if (! isset($wordFrequency[$wordLower])) {
                 $wordFrequency[$wordLower] = 0;
             }
             $wordFrequency[$wordLower]++;
         }
-        
+
         // Sort by frequency and take top keywords
         arsort($wordFrequency);
         $topKeywords = array_slice($wordFrequency, 0, 8, true);
-        
+
         foreach ($topKeywords as $keyword => $count) {
             $seoKeywords[ucwords($keyword)] = $count;
         }
-        
+
         // Extract numbers and specs (sizes, quantities, etc.)
         preg_match_all('/\b\d+[\w]*\b/i', $title, $matches);
-        if (!empty($matches[0])) {
+        if (! empty($matches[0])) {
             $specs = array_unique($matches[0]);
             $seoKeywords['📏 Specs/Numbers'] = count($specs);
         }
-        
+
         // Count power words
-        $powerWords = ['premium', 'professional', 'heavy duty', 'high quality', 'universal', 
-                       'adjustable', 'portable', 'durable', 'best', 'top', 'pro'];
+        $powerWords = ['premium', 'professional', 'heavy duty', 'high quality', 'universal',
+            'adjustable', 'portable', 'durable', 'best', 'top', 'pro'];
         $powerWordCount = 0;
         foreach ($powerWords as $pw) {
             if (stripos($title, $pw) !== false) {
@@ -6311,13 +6604,13 @@ Return ONLY the dramatically improved title without quotes.";
         // 1. Keyword usage (40 points)
         $keywordsFound = 0;
         foreach ($keywordList as $keyword) {
-            if (!empty($keyword) && strpos($titleLower, $keyword) !== false) {
+            if (! empty($keyword) && strpos($titleLower, $keyword) !== false) {
                 $keywordsFound++;
             }
         }
         $keywordScore = count($keywordList) > 0 ? ($keywordsFound / count($keywordList)) * 40 : 20;
         $score += $keywordScore;
-        
+
         if ($keywordScore < 30) {
             $improvements[] = 'Add more target keywords';
         }
@@ -6326,7 +6619,7 @@ Return ONLY the dramatically improved title without quotes.";
         $titleLength = strlen($title);
         $optimalMin = $maxChars * 0.7;
         $optimalMax = $maxChars * 0.95;
-        
+
         if ($titleLength >= $optimalMin && $titleLength <= $optimalMax) {
             $score += 20;
         } elseif ($titleLength > $optimalMax && $titleLength <= $maxChars) {
@@ -6358,7 +6651,7 @@ Return ONLY the dramatically improved title without quotes.";
                 break;
             }
         }
-        if (!$hasPowerWord) {
+        if (! $hasPowerWord) {
             $improvements[] = 'Add power words';
         }
 
@@ -6366,13 +6659,13 @@ Return ONLY the dramatically improved title without quotes.";
         $words = explode(' ', $title);
         $properlyCapitalized = 0;
         foreach ($words as $word) {
-            if (!empty($word) && (ucfirst(strtolower($word)) === $word || strtoupper($word) === $word)) {
+            if (! empty($word) && (ucfirst(strtolower($word)) === $word || strtoupper($word) === $word)) {
                 $properlyCapitalized++;
             }
         }
         $capScore = count($words) > 0 ? ($properlyCapitalized / count($words)) * 10 : 0;
         $score += $capScore;
-        
+
         if ($capScore < 8) {
             $improvements[] = 'Fix capitalization';
         }
@@ -6380,20 +6673,20 @@ Return ONLY the dramatically improved title without quotes.";
         // 6. Punctuation (10 points)
         $punctuationCount = preg_match_all('/[!?.,;:]/', $title);
         $score += $punctuationCount <= 3 ? 10 : ($punctuationCount <= 5 ? 5 : 0);
-        
+
         if ($punctuationCount > 5) {
             $improvements[] = 'Too much punctuation';
         }
 
         // 7. Check for brand name at start
-        if (!preg_match('/^[A-Z0-9]/', $title)) {
+        if (! preg_match('/^[A-Z0-9]/', $title)) {
             $improvements[] = 'Start with brand name';
         }
 
         return [
             'score' => min(100, round($score)),
             'seo_keywords' => $seoKeywords,
-            'improvements_needed' => empty($improvements) ? ['Looks good!'] : $improvements
+            'improvements_needed' => empty($improvements) ? ['Looks good!'] : $improvements,
         ];
     }
 
@@ -6410,12 +6703,12 @@ Return ONLY the dramatically improved title without quotes.";
         $parent = $validated['parent'];
         $marketplace = $validated['marketplace'];
         $title = $validated['title'];
-        
+
         $searchSku = $sku ?: $parent;
         $table = config("marketplaces.tables.{$marketplace}");
         $titleColumn = config("marketplaces.title_columns.{$marketplace}");
 
-        if (!$table || !$titleColumn) {
+        if (! $table || ! $titleColumn) {
             return response()->json(['success' => false, 'message' => 'Invalid marketplace'], 400);
         }
 
@@ -6424,7 +6717,7 @@ Return ONLY the dramatically improved title without quotes.";
                 ->where('sku', $searchSku)
                 ->update([
                     $titleColumn => $title,
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
             if ($updated > 0) {
@@ -6435,6 +6728,7 @@ Return ONLY the dramatically improved title without quotes.";
 
         } catch (\Exception $e) {
             Log::error('Push title error', ['error' => $e->getMessage()]);
+
             return response()->json(['success' => false, 'message' => 'Failed to update title'], 500);
         }
     }

@@ -485,8 +485,11 @@ return [
     |--------------------------------------------------------------------------
     */
     'openai' => [
-        'key' => env('OPENAI_API_KEY'),
+        'key' => \App\Support\OpenAiRequest::normalizeApiKey(env('OPENAI_API_KEY')),
         'packing_vision_model' => env('OPENAI_PACKING_VISION_MODEL', 'gpt-4o-mini'),
+        'title_master_stack_model' => env('OPENAI_TITLE_MASTER_STACK_MODEL', 'gpt-4o-mini'),
+        'organization' => ($o = env('OPENAI_ORGANIZATION')) === null || $o === '' ? null : trim($o),
+        'project' => ($p = env('OPENAI_PROJECT')) === null || $p === '' ? null : trim($p),
     ],
 
     'anthropic' => [

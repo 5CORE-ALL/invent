@@ -44,6 +44,19 @@
         #title-master-table thead th {
             vertical-align: middle !important;
         }
+        #title-master-table thead th.title-master-action-th {
+            text-align: center;
+            width: 44px;
+            max-width: 52px;
+            padding-left: 6px;
+            padding-right: 6px;
+        }
+        #title-master-table thead th.title-master-action-th .fa-eye {
+            font-size: 15px;
+            color: #fff;
+            line-height: 1;
+            vertical-align: middle;
+        }
         .table-responsive thead th {
             position: sticky;
             top: 0;
@@ -199,16 +212,110 @@
         }
         #tmAiStackModal .tm-ai-ref-area {
             font-size: 0.9rem;
-            background: #f8fafc;
+            background: #fff;
+            min-height: 2.25rem;
         }
-        #tmAiStackModal .tm-ai-prompt-input-group textarea {
-            resize: vertical;
-            min-height: 52px;
+        #tmAiStackModal .tm-ai-prompt-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
         }
-        #tmAiStackModal .tm-ai-prompt-input-group .input-group-text {
-            border-left: 0;
-            padding-left: 0.65rem;
-            padding-right: 0.65rem;
+        #tmAiStackModal .tm-ai-prompt-toolbar .tm-ai-prompt-actions {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        #tmAiStackModal .tm-ai-prompt-icon-btn {
+            width: 2.5rem;
+            height: 2.5rem;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border-radius: 0.375rem;
+            box-sizing: border-box;
+        }
+        #tmAiStackModal .tm-ai-prompt-icon-btn i {
+            font-size: 1.05rem;
+            line-height: 1;
+        }
+        #tmAiStackModal .tm-ai-prompt-icon-btn .tm-ai-stack-generate-spinner {
+            width: 1.05rem;
+            height: 1.05rem;
+            border-width: 0.14em;
+        }
+        #tmAiStackModal .tm-ai-prompt-icon-btn-eye {
+            color: #495057;
+            background: #fff;
+            border: 2px solid #6c757d;
+        }
+        #tmAiStackModal .tm-ai-prompt-icon-btn-eye:hover {
+            background: #f8f9fa;
+            color: #212529;
+            border-color: #495057;
+        }
+        #tmAiStackModal .tm-ai-prompt-icon-btn-wand {
+            color: #fff;
+            background: #0d6efd;
+            border: 2px solid #0d6efd;
+        }
+        #tmAiStackModal .tm-ai-prompt-icon-btn-wand:hover:not(:disabled) {
+            background: #0b5ed7;
+            border-color: #0a58ca;
+            color: #fff;
+        }
+        #tmAiStackModal .tm-ai-prompt-icon-btn-wand:disabled {
+            opacity: 0.65;
+        }
+        #tmAiStackPromptEditorModal {
+            z-index: 1060;
+        }
+        #tmAiStackModal .tm-ai-stack-draft-row textarea {
+            min-height: 56px;
+        }
+        #tmAiStackModal .tm-ai-stack-apply-btn {
+            min-width: 44px;
+        }
+        /* Tall modals: stay within viewport; scroll inside body (no whole-page scroll) */
+        #titleModal .modal-dialog,
+        #viewTitleModal .modal-dialog,
+        #tmAiStackModal .modal-dialog,
+        #tmAiStackPromptEditorModal .modal-dialog {
+            height: auto;
+            max-height: calc(100vh - 1.25rem);
+            margin: 0.625rem auto;
+        }
+        #titleModal .modal-content,
+        #viewTitleModal .modal-content,
+        #tmAiStackModal .modal-content,
+        #tmAiStackPromptEditorModal .modal-content {
+            max-height: calc(100vh - 1.25rem);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #titleModal .modal-header,
+        #titleModal .modal-footer,
+        #viewTitleModal .modal-header,
+        #viewTitleModal .modal-footer,
+        #tmAiStackModal .modal-header,
+        #tmAiStackModal .modal-footer,
+        #tmAiStackPromptEditorModal .modal-header,
+        #tmAiStackPromptEditorModal .modal-footer {
+            flex-shrink: 0;
+        }
+        #titleModal .modal-body,
+        #viewTitleModal .modal-body,
+        #tmAiStackModal .modal-body,
+        #tmAiStackPromptEditorModal .modal-body {
+            overflow-y: auto;
+            flex: 1 1 auto;
+            min-height: 0;
+            -webkit-overflow-scrolling: touch;
         }
         #title-master-table thead th.title-master-bs-th {
             background: #5dbeb6 !important;
@@ -295,52 +402,51 @@
             white-space: nowrap;
         }
 
-        .title-indicator {
-            display: inline-block;
-            margin-right: 4px;
-            font-size: 14px;
+        #title-master-table thead th.title-master-title-dot-th {
+            width: 1%;
+            min-width: 48px;
+            max-width: 64px;
+            text-align: center;
+            vertical-align: middle !important;
+            padding: 6px 4px !important;
         }
-        .title-indicator.success {
-            color: #28a745;
-            filter: drop-shadow(0 0 2px rgba(40, 167, 69, 0.3));
+        #title-master-table thead th.title-master-title-dot-th .form-control,
+        #title-master-table thead th.title-master-title-dot-th select {
+            font-size: 9px;
+            padding: 2px 4px;
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
         }
-        .title-indicator.danger {
-            color: #dc3545;
-            filter: drop-shadow(0 0 2px rgba(220, 53, 69, 0.3));
-        }
-        .excess-badge {
-            display: inline-block;
-            background-color: #dc3545;
-            color: white;
-            font-size: 11px;
-            font-weight: bold;
-            padding: 2px 6px;
-            border-radius: 12px;
-            margin-right: 6px;
-            letter-spacing: 0.5px;
-        }
-        .title-cell {
+        #title-master-table tbody td.title-master-title-dot-td {
+            width: 1%;
+            text-align: center;
+            vertical-align: middle !important;
+            padding: 6px 4px !important;
             cursor: help;
-            max-width: 300px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
         }
-        .title-cell:hover {
-            overflow: visible;
-            white-space: normal;
-            word-wrap: break-word;
-            background-color: #f8f9fa;
-            position: relative;
-            z-index: 100;
+        .title-master-title-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            vertical-align: middle;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
         }
+        .title-master-title-dot--has {
+            background-color: #28a745;
+        }
+        .title-master-title-dot--empty {
+            background-color: #dc3545;
+        }
+
         .info-icon {
             cursor: help;
             opacity: 0.85;
             font-size: 12px;
         }
 
-        /* Action column: View + Edit side by side */
+        /* Action column: View */
         .action-buttons-cell {
             white-space: nowrap;
             vertical-align: middle !important;
@@ -377,13 +483,13 @@
         #title-master-table .marketplaces-100-cell,
         #title-master-table .marketplaces-80-cell {
             vertical-align: middle !important;
-            padding: 10px 8px !important;
+            padding: 6px 8px !important;
             min-width: 148px;
         }
         #title-master-table .marketplaces-dots-wrapper {
             width: 100%;
-            margin-bottom: 12px;
-            padding-bottom: 2px;
+            margin-bottom: 3px;
+            padding-bottom: 0;
             box-sizing: border-box;
         }
         #title-master-table .marketplaces-150-cell .marketplaces-dots,
@@ -499,39 +605,42 @@
         .view-btn {
             background: #17a2b8;
             color: white;
+            padding: 6px 8px;
+            justify-content: center;
+            min-width: 34px;
+        }
+        .view-btn i {
+            font-size: 14px;
         }
         .view-btn:hover {
             background: #138496;
             color: white;
             box-shadow: 0 2px 6px rgba(23, 162, 184, 0.3);
         }
-        .edit-btn {
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%);
-            color: white;
-        }
-        .edit-btn:hover {
-            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%);
-            color: white;
-            box-shadow: 0 2px 6px rgba(44, 110, 213, 0.35);
-        }
         .push-button-cell {
             vertical-align: middle !important;
-            min-width: 95px;
+            min-width: 52px;
         }
         .push-amazon-btn {
             width: 100%;
+            min-width: 44px;
+            min-height: 36px;
             background: #ff9900;
             color: #232f3e;
-            padding: 5px 10px;
+            padding: 6px 8px;
             font-size: 11px;
             font-weight: 600;
             border: none;
-            border-radius: 6px;
+            border-radius: 999px;
             white-space: nowrap;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 4px;
+        }
+        .push-amazon-btn .tm-push-all-icon {
+            width: 20px;
+            height: 20px;
         }
         .push-amazon-btn:hover {
             background: #e88b00;
@@ -544,9 +653,9 @@
         }
         @media (max-width: 768px) {
             .action-buttons-group { flex-direction: column; gap: 4px; }
-            .push-button-cell { min-width: 85px; }
+            .push-button-cell { min-width: 48px; }
         }
-        /* Marketplaces column: dot indicators (default; Title Master overrides with grid) */
+        /* Market column: dot indicators (default; Title Master overrides with grid) */
         .marketplaces-cell { white-space: nowrap; vertical-align: middle !important; }
         .marketplaces-dots { display: flex; align-items: center; justify-content: center; gap: 6px; }
         .mp-dot {
@@ -571,10 +680,39 @@
             background: #ff9900 !important;
             color: #232f3e !important;
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
         .btn-push-all:hover {
             background: #e88b00 !important;
             color: white !important;
+        }
+        .tm-push-all-icon {
+            width: 16px;
+            height: 16px;
+            object-fit: contain;
+            flex-shrink: 0;
+            vertical-align: middle;
+        }
+        .push-all-th-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            line-height: 1.15;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .push-to-all-th .tm-push-all-icon {
+            width: 20px;
+            height: 20px;
+        }
+        #pushSelectedBtn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
 
         #rainbow-loader {
@@ -762,10 +900,10 @@
                                 <i class="fas fa-upload"></i> Import
                             </button>
                             <button id="pushAllBtn" class="btn btn-push-all">
-                                <i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces
+                                <img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="16" height="16"> Distribute ALL to All Markets
                             </button>
                             <button id="pushSelectedBtn" class="btn btn-secondary" style="display:none;">
-                                <i class="fas fa-cloud-upload-alt"></i> Push Selected (<span id="pushSelectedCount">0</span>) to All
+                                <img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="16" height="16"> Distribute Selected (<span id="pushSelectedCount">0</span>) to All Markets
                             </button>
                             <button id="updateAmazonBtn" class="btn btn-warning" style="display:none;">
                                 <i class="fas fa-sync"></i> Update Titles (<span id="selectedCount">0</span> selected)
@@ -840,47 +978,55 @@
                                         title="Listing Quality Score from Jungle Scout (junglescout_product_data JSON listing_quality_score). Latest row by SKU, else by Parent.">
                                         <span class="title-master-pmcvr-th-inner">LQS</span>
                                     </th>
-                                    <th class="title-master-ai-th" title="Open AI workspace: Title 150 reference + 3 draft fields (100–150 chars each).">
+                                    <th class="title-master-ai-th" title="Open AI workspace: Title 170 + Title 100/80/60 references and 3 AI drafts (150–175 chars when generated).">
                                         AI
                                     </th>
-                                    <th>
-                                        <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
-                                            <span>Title 150</span>
-                                            <span id="title150MissingCount" class="text-danger" style="font-weight: bold;">(0 missing)</span>
-                                            <span class="info-icon" title="✅ = within 150 chars | ❌ (+X) = exceeds by X chars">ⓘ</span>
+                                    <th class="title-master-title-dot-th">
+                                        <div style="display: flex; align-items: center; justify-content: center; gap: 3px; flex-wrap: wrap;">
+                                            <span style="font-size: 9px;">170</span>
+                                            <span id="title150MissingCount" class="text-warning" style="font-weight: bold; font-size: 9px;">(0)</span>
+                                            <span class="info-icon" style="font-size: 10px;" title="Green dot = title present, red = missing. Hover dot for full text. Filters include Exceeds 170 chars.">ⓘ</span>
                                         </div>
-                                        <select id="filterTitle150" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                            <option value="exceeds">Exceeds 150 chars</option>
+                                        <select id="filterTitle150" class="form-control form-control-sm mt-1">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="exceeds">Exceeds</option>
                                         </select>
                                     </th>
-                                    <th>
-                                        <div>Title 100 <span id="title100MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterTitle100" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
+                                    <th class="title-master-title-dot-th">
+                                        <div style="font-size: 9px;">100 <span id="title100MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTitle100" class="form-control form-control-sm mt-1">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th>
-                                        <div>Title 80 <span id="title80MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterTitle80" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
+                                    <th class="title-master-title-dot-th">
+                                        <div style="font-size: 9px;">80 <span id="title80MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTitle80" class="form-control form-control-sm mt-1">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th>
-                                        <div>Title 60 <span id="title60MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
-                                        <select id="filterTitle60" class="form-control form-control-sm mt-1" style="font-size: 11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
+                                    <th class="title-master-title-dot-th">
+                                        <div style="font-size: 9px;">60 <span id="title60MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTitle60" class="form-control form-control-sm mt-1">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th>ACTION</th>
-                                    <th title="Amazon, Temu, Reverb">MARKETPLACES (150)</th>
-                                    <th title="Shopify Main, Shopify PLS, Macy's (Title 60 push)">MARKETPLACES (100)</th>
-                                    <th title="eBay 1 (AmarjitK), eBay 2 (ProLight), eBay 3 (KaneerKa)">MARKETPLACES (80)</th>
-                                    <th>PUSH TO ALL</th>
+                                    <th class="title-master-action-th" scope="col" title="View title details">
+                                        <i class="fas fa-eye" aria-hidden="true"></i>
+                                        <span class="visually-hidden">View</span>
+                                    </th>
+                                    <th title="Amazon, Temu, Reverb">MARKET (170)</th>
+                                    <th title="Shopify Main, Shopify PLS, Macy's (Title 60 push)">MARKET (100)</th>
+                                    <th title="eBay 1 (AmarjitK), eBay 2 (ProLight), eBay 3 (KaneerKa)">MARKET (80)</th>
+                                    <th class="push-to-all-th" title="Push Title 170 to Amazon, Temu, Reverb">
+                                        <div class="push-all-th-inner">
+                                            <img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="20" height="20">
+                                            <span>PUSH</span>
+                                        </div>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -907,9 +1053,9 @@
         </div>
     </div>
 
-    <!-- Add/Edit Title Modal -->
+    <!-- Add Title Modal -->
     <div class="modal fade" id="titleModal" tabindex="-1" aria-labelledby="titleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title" id="titleModalLabel">
@@ -930,13 +1076,13 @@
 
                         <div class="mb-3">
                             <label for="title150" class="form-label">
-                                Title 150 <span class="char-counter" id="counter150">0/150</span>
+                                Title 170 <span class="char-counter" id="counter150">0/170</span>
                             </label>
-                            <textarea class="form-control" id="title150" name="title150" rows="3" maxlength="500" data-max-display="150"></textarea>
+                            <textarea class="form-control" id="title150" name="title150" rows="3" maxlength="500" data-max-display="170"></textarea>
                         </div>
 
                         <div class="mb-3">
-                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn" title="Generate Title 150 (120-150 chars) with AI and review in popup">
+                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn" title="Generate Title 170 (about 120–170 characters) with AI and review in popup">
                                 <i class="fas fa-magic"></i> Improve with AI
                             </button>
                         </div>
@@ -992,7 +1138,7 @@
 
     <!-- View Title Modal -->
     <div class="modal fade" id="viewTitleModal" tabindex="-1" aria-labelledby="viewTitleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title" id="viewTitleModalLabel">
@@ -1018,7 +1164,7 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Title 150</label>
+                        <label class="form-label fw-bold">Title 170</label>
                         <div class="form-control-plaintext border rounded p-2" id="viewTitle150" style="min-height: 60px; white-space: pre-wrap; word-wrap: break-word;"></div>
                     </div>
                     <div class="mb-3">
@@ -1041,9 +1187,9 @@
         </div>
     </div>
 
-    <!-- Title Master: AI stack — Title 150 reference + 3 draft fields (100–150 chars) -->
+    <!-- Title Master: AI stack — Title 170 + Title 100/80/60 refs + 3 draft fields (150–175 chars for AI drafts) -->
     <div class="modal fade" id="tmAiStackModal" tabindex="-1" aria-labelledby="tmAiStackModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title" id="tmAiStackModalLabel">
@@ -1053,33 +1199,95 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3 mb-md-2"><strong>AI Prompt</strong> is editable (optional instructions for AI). <strong>Title 150</strong> from the grid is read-only below. Three draft fields allow up to <strong>150</strong> characters each (target <strong>100–150</strong>).</p>
-                    <div class="mb-4">
-                        <label class="form-label fw-bold" for="tmAiStackAiPrompt">AI Prompt</label>
-                        <div class="input-group tm-ai-prompt-input-group">
-                            <textarea id="tmAiStackAiPrompt" class="form-control" rows="2" maxlength="2000" placeholder="Optional: describe tone, keywords, or constraints for AI"></textarea>
-                            <span class="input-group-text" title="AI"><i class="fas fa-wand-magic-sparkles text-info fs-5" aria-hidden="true"></i></span>
+                    <div id="tmAiStackAiAlert" class="alert alert-danger py-2 small d-none mb-2" role="alert"></div>
+                    <div class="mb-2 tm-ai-prompt-toolbar">
+                        <label class="form-label fw-bold mb-0 text-nowrap flex-shrink-0">AI Prompt</label>
+                        <span class="text-muted small flex-shrink-0" id="tmAiStackPromptSummary" title="">No prompt</span>
+                        <div class="tm-ai-prompt-actions">
+                            <button type="button" class="btn tm-ai-prompt-icon-btn tm-ai-prompt-icon-btn-eye" id="tmAiStackPromptOpenBtn" title="View / edit full AI prompt">
+                                <i class="fas fa-eye" aria-hidden="true"></i>
+                                <span class="visually-hidden">View or edit AI prompt</span>
+                            </button>
+                            <button type="button" class="btn tm-ai-prompt-icon-btn tm-ai-prompt-icon-btn-wand" id="tmAiStackGenerateBtn" title="Generate 3 drafts with AI">
+                                <span class="tm-ai-stack-generate-spinner spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                <i class="fas fa-wand-magic-sparkles tm-ai-stack-generate-icon" aria-hidden="true"></i>
+                                <span class="visually-hidden">Generate drafts</span>
+                            </button>
+                        </div>
+                        <textarea id="tmAiStackAiPrompt" class="d-none" maxlength="15000" tabindex="-1" aria-hidden="true"></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold mb-1" for="tmAiStackTitle150Ref">Title 170 (ref) <span class="text-muted fw-normal" id="tmAiStackTitle150RefCount">0 chars</span></label>
+                        <div class="d-flex gap-2 align-items-start">
+                            <textarea id="tmAiStackTitle150Ref" class="form-control tm-ai-ref-area flex-grow-1" rows="2" maxlength="500" placeholder="Edit Title 170 (max 170 applied to grid)"></textarea>
+                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-ref-field="title150" title="Apply this Title 170 text to the grid (max 170 chars). Persist with Add Title → Save."><span class="visually-hidden">Apply Title 170 to grid</span><i class="fas fa-check" aria-hidden="true"></i></button>
                         </div>
                     </div>
-                    <div class="mb-4">
-                        <label class="form-label fw-bold" for="tmAiStackTitle150Ref">Title 150 <span class="text-muted fw-normal" id="tmAiStackTitle150RefCount">0 chars</span></label>
-                        <textarea id="tmAiStackTitle150Ref" class="form-control tm-ai-ref-area" rows="4" readonly aria-readonly="true"></textarea>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold mb-1" for="tmAiStackTitle100Ref">Title 100 (ref) <span class="text-muted fw-normal" id="tmAiStackTitle100RefCount">0 chars</span></label>
+                        <div class="d-flex gap-2 align-items-start">
+                            <textarea id="tmAiStackTitle100Ref" class="form-control tm-ai-ref-area flex-grow-1" rows="1" maxlength="105" placeholder="Max 105 chars — or leave empty and Apply prefills from Title 170"></textarea>
+                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-ref-field="title100" title="Apply this Title 100 to the grid (max 105). If empty, prefill from Title 170 (truncated) then apply."><span class="visually-hidden">Apply Title 100 to grid</span><i class="fas fa-check" aria-hidden="true"></i></button>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold" for="tmAiStackVariant1">Draft 1 <span class="text-muted fw-normal small" id="tmAiStackVariant1Count">0/150</span></label>
-                        <textarea id="tmAiStackVariant1" class="form-control" rows="3" maxlength="150" placeholder="100–150 characters (max 150)"></textarea>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold mb-1" for="tmAiStackTitle80Ref">Title 80 (ref) <span class="text-muted fw-normal" id="tmAiStackTitle80RefCount">0 chars</span></label>
+                        <div class="d-flex gap-2 align-items-start">
+                            <textarea id="tmAiStackTitle80Ref" class="form-control tm-ai-ref-area flex-grow-1" rows="1" maxlength="80" placeholder="Max 80 chars — or leave empty and Apply prefills from Title 170"></textarea>
+                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-ref-field="title80" title="Apply this Title 80 to the grid (max 80). If empty, prefill from Title 170 (truncated) then apply."><span class="visually-hidden">Apply Title 80 to grid</span><i class="fas fa-check" aria-hidden="true"></i></button>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold" for="tmAiStackVariant2">Draft 2 <span class="text-muted fw-normal small" id="tmAiStackVariant2Count">0/150</span></label>
-                        <textarea id="tmAiStackVariant2" class="form-control" rows="3" maxlength="150" placeholder="100–150 characters (max 150)"></textarea>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold mb-1" for="tmAiStackTitle60Ref">Title 60 (ref) <span class="text-muted fw-normal" id="tmAiStackTitle60RefCount">0 chars</span></label>
+                        <div class="d-flex gap-2 align-items-start">
+                            <textarea id="tmAiStackTitle60Ref" class="form-control tm-ai-ref-area flex-grow-1" rows="1" maxlength="60" placeholder="Max 60 chars — or leave empty and Apply prefills from Title 170"></textarea>
+                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-ref-field="title60" title="Apply this Title 60 to the grid (max 60). If empty, prefill from Title 170 (truncated) then apply."><span class="visually-hidden">Apply Title 60 to grid</span><i class="fas fa-check" aria-hidden="true"></i></button>
+                        </div>
                     </div>
-                    <div class="mb-0">
-                        <label class="form-label fw-bold" for="tmAiStackVariant3">Draft 3 <span class="text-muted fw-normal small" id="tmAiStackVariant3Count">0/150</span></label>
-                        <textarea id="tmAiStackVariant3" class="form-control" rows="3" maxlength="150" placeholder="100–150 characters (max 150)"></textarea>
+                    <div class="mb-2 tm-ai-stack-draft-row">
+                        <label class="form-label fw-bold mb-1" for="tmAiStackVariant1">Draft 1 <span class="text-muted fw-normal small" id="tmAiStackVariant1Count">0/175</span></label>
+                        <div class="d-flex gap-2 align-items-start">
+                            <textarea id="tmAiStackVariant1" class="form-control flex-grow-1" rows="2" maxlength="175" placeholder="150–175 characters (max 175)"></textarea>
+                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-draft="1" title="Apply draft 1 to Title 170 (grid; use Add Title → Save to store in database)"><span class="visually-hidden">Apply draft 1 to Title 170</span><i class="fas fa-check" aria-hidden="true"></i></button>
+                        </div>
+                    </div>
+                    <div class="mb-2 tm-ai-stack-draft-row">
+                        <label class="form-label fw-bold mb-1" for="tmAiStackVariant2">Draft 2 <span class="text-muted fw-normal small" id="tmAiStackVariant2Count">0/175</span></label>
+                        <div class="d-flex gap-2 align-items-start">
+                            <textarea id="tmAiStackVariant2" class="form-control flex-grow-1" rows="2" maxlength="175" placeholder="150–175 characters (max 175)"></textarea>
+                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-draft="2" title="Apply draft 2 to Title 170 (grid; use Add Title → Save to store in database)"><span class="visually-hidden">Apply draft 2 to Title 170</span><i class="fas fa-check" aria-hidden="true"></i></button>
+                        </div>
+                    </div>
+                    <div class="mb-0 tm-ai-stack-draft-row">
+                        <label class="form-label fw-bold mb-1" for="tmAiStackVariant3">Draft 3 <span class="text-muted fw-normal small" id="tmAiStackVariant3Count">0/175</span></label>
+                        <div class="d-flex gap-2 align-items-start">
+                            <textarea id="tmAiStackVariant3" class="form-control flex-grow-1" rows="2" maxlength="175" placeholder="150–175 characters (max 175)"></textarea>
+                            <button type="button" class="btn btn-outline-primary tm-ai-stack-apply-btn align-self-stretch" data-tm-apply-draft="3" title="Apply draft 3 to Title 170 (grid; use Add Title → Save to store in database)"><span class="visually-hidden">Apply draft 3 to Title 170</span><i class="fas fa-check" aria-hidden="true"></i></button>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Title Master AI workspace: full AI prompt view / edit (opened from eye icon) -->
+    <div class="modal fade" id="tmAiStackPromptEditorModal" tabindex="-1" aria-labelledby="tmAiStackPromptEditorModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="tmAiStackPromptEditorModalLabel"><i class="fas fa-eye me-2"></i>AI prompt</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Edit the instructions sent to the model. Changes apply when you click <strong>Done</strong> or type (kept in sync automatically).</p>
+                    <textarea id="tmAiStackAiPromptEditor" class="form-control font-monospace small" rows="18" maxlength="15000" placeholder="AI prompt…"></textarea>
+                    <p class="small text-muted mb-0 mt-2" id="tmAiStackAiPromptEditorCount">0 characters</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
                 </div>
             </div>
         </div>
@@ -1279,8 +1487,8 @@
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                    <h5 class="modal-title" id="aiTitleModalLabel">
-                        <i class="fas fa-magic me-2"></i>AI Generated Titles (4 Options)
+                    <h5 class="modal-title" id="aiTitleModalLabel" title="Target up to 170 characters for Amazon-style titles.">
+                        <i class="fas fa-magic me-2"></i>AI Generated Titles (4 options, up to 170 chars)
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1290,7 +1498,7 @@
                         <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
                         <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-badge badge">0/170 chars</span>
                             <span class="ai-char-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="0"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
@@ -1300,7 +1508,7 @@
                         <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
                         <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-badge badge">0/170 chars</span>
                             <span class="ai-char-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="1"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
@@ -1310,7 +1518,7 @@
                         <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
                         <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-badge badge">0/170 chars</span>
                             <span class="ai-char-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="2"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
@@ -1320,7 +1528,7 @@
                         <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
                         <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-badge badge">0/170 chars</span>
                             <span class="ai-char-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="3"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
@@ -1360,7 +1568,7 @@
                                     <label class="form-check-label w-100" for="platform_amazon">
                                         <i class="fab fa-amazon platform-icon text-warning"></i>
                                         <strong>Amazon</strong>
-                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                        <span class="badge bg-primary platform-badge">Title 170</span>
                                     </label>
                                 </div>
                             </div>
@@ -1458,7 +1666,7 @@
                                     <label class="form-check-label w-100" for="platform_temu">
                                         <i class="fas fa-shopping-bag platform-icon text-danger"></i>
                                         <strong>Temu</strong>
-                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                        <span class="badge bg-primary platform-badge">Title 170</span>
                                     </label>
                                 </div>
                             </div>
@@ -1486,7 +1694,7 @@
                                     <label class="form-check-label w-100" for="platform_shein">
                                         <i class="fas fa-shopping-bag platform-icon text-danger"></i>
                                         <strong>Shein</strong>
-                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                        <span class="badge bg-primary platform-badge">Title 170</span>
                                     </label>
                                 </div>
                             </div>
@@ -1500,7 +1708,7 @@
                                     <label class="form-check-label w-100" for="platform_wayfair">
                                         <i class="fas fa-home platform-icon text-info"></i>
                                         <strong>Wayfair</strong>
-                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                        <span class="badge bg-primary platform-badge">Title 170</span>
                                     </label>
                                 </div>
                             </div>
@@ -1514,7 +1722,7 @@
                                     <label class="form-check-label w-100" for="platform_reverb">
                                         <i class="fas fa-guitar platform-icon text-warning"></i>
                                         <strong>Reverb</strong>
-                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                        <span class="badge bg-primary platform-badge">Title 170</span>
                                     </label>
                                 </div>
                             </div>
@@ -1555,7 +1763,7 @@
                                     <label class="form-check-label w-100" for="platform_aliexpress">
                                         <i class="fas fa-shopping-cart platform-icon text-danger"></i>
                                         <strong>Aliexpress</strong>
-                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                        <span class="badge bg-primary platform-badge">Title 170</span>
                                     </label>
                                 </div>
                             </div>
@@ -1569,7 +1777,7 @@
                                     <label class="form-check-label w-100" for="platform_tiktok">
                                         <i class="fab fa-tiktok platform-icon text-dark"></i>
                                         <strong>TikTok</strong>
-                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                        <span class="badge bg-primary platform-badge">Title 170</span>
                                     </label>
                                 </div>
                             </div>
@@ -1590,39 +1798,39 @@
         </div>
     </div>
 
-    <!-- Push to All Marketplaces Confirmation Modal -->
+    <!-- Distribute to All Markets confirmation modal -->
     <div class="modal fade" id="pushConfirmModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #ff9900; color: white;">
-                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Push to All Marketplaces</h5>
+                    <h5 class="modal-title d-flex align-items-center gap-2 mb-0"><img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="18" height="18"> Distribute to All Markets</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p id="pushConfirmMessage">Push 0 titles to Amazon, Temu, Reverb &amp; Wayfair? This may take several minutes.</p>
+                    <p id="pushConfirmMessage">Distribute 0 titles to Amazon, Temu, Reverb &amp; Wayfair? This may take several minutes.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="pushConfirmBtn" style="background-color: #ff9900;">
-                        <i class="fas fa-cloud-upload-alt me-1"></i> Push to All
+                    <button type="button" class="btn btn-primary d-inline-flex align-items-center gap-1" id="pushConfirmBtn" style="background-color: #ff9900;">
+                        <img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="16" height="16"> Distribute All
                     </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Push to All Marketplaces Progress Modal -->
+    <!-- Distribute to All Markets progress modal -->
     <div class="modal fade" id="pushProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #ff9900; color: white;">
-                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Pushing to All Marketplaces</h5>
+                    <h5 class="modal-title d-flex align-items-center gap-2 mb-0"><img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="18" height="18"> Distributing to All Markets</h5>
                 </div>
                 <div class="modal-body">
                     <div class="progress mb-2" style="height: 25px;">
                         <div id="pushProgressBar" class="progress-bar" role="progressbar" style="width: 0%;">0%</div>
                     </div>
-                    <p id="pushProgressText" class="mb-0">Pushing 0/0...</p>
+                    <p id="pushProgressText" class="mb-0">Distributing 0/0...</p>
                 </div>
             </div>
         </div>
@@ -1635,15 +1843,98 @@
     <script>
         window.titleMasterHasPricingCvrSnapshot = @json(\Illuminate\Support\Facades\Schema::hasTable('pricing_master_daily_snapshots_sku'));
         window.titleMasterDataUrl = @json(route('title.master.data', [], false));
+        window.titleMasterAiStackConfigured = @json((bool) (config('services.claude.key') || config('services.anthropic.key') || config('services.openai.key')));
+        window.titleMasterAiStackDraftsUrl = @json(route('title.master.ai.stack.drafts', [], false));
+        window.titleMasterPushAllIconUrl = @json(asset('images/title-master/distribute-all-icon.png'));
     </script>
     <script>
         @verbatim
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const TM_PUSH_ALL_ICON_URL = typeof window.titleMasterPushAllIconUrl === 'string' ? window.titleMasterPushAllIconUrl : '';
+        const TM_AI_STACK_DRAFT_MAX = 175;
+        /** Amazon / Title column display limit (✅/❌ and “Exceeds N chars” filter). */
+        const TITLE_MASTER_AMAZON_TITLE_MAX = 170;
+        /** Title 100 field max in Edit modal (matches maxlength on #title100). */
+        const TITLE_MASTER_TITLE100_UI_MAX = 105;
+
+        function titleMasterTitleCounterSuffix(fieldId) {
+            if (fieldId === 'title100') return 100;
+            if (fieldId === 'title150') return 150;
+            return parseInt(fieldId.replace('title', ''), 10);
+        }
+
+        function titleMasterTitleMaxLen(fieldId) {
+            if (fieldId === 'title150') return TITLE_MASTER_AMAZON_TITLE_MAX;
+            if (fieldId === 'title100') return 105;
+            return parseInt(fieldId.replace('title', ''), 10);
+        }
+
+        function buildTmAiStackDefaultPrompt(sku, buyerLink) {
+            const b = (buyerLink != null && String(buyerLink).trim() !== '') ? String(buyerLink).trim() : '(none — use reference title and SKU only; you cannot fetch URLs)';
+            const s = (sku != null && String(sku).trim() !== '') ? String(sku).trim() : '(none)';
+            const skuJsonNote = (s !== '(none)')
+                ? 'Each string in "drafts" must end with the SKU "' + s + '" at the very end.'
+                : 'No SKU in input; do not invent a trailing SKU.';
+            return [
+                'You are an Amazon SEO expert and high-conversion copywriter.',
+                '',
+                'Your task is to analyze the product listing context from the Buyer Link (B/S column), the reference title the app provides separately, and the SKU—then generate 3 optimized Amazon title variations.',
+                '',
+                'INPUT DATA:',
+                '- Buyer Link (B/S): ' + b,
+                '- SKU: ' + s,
+                '',
+                'INSTRUCTIONS:',
+                '',
+                '1. Analyze the Buyer Link and context:',
+                '   - You cannot open URLs or fetch the live web; infer cues from the URL text (e.g. ASIN patterns), path, and the reference title supplied by the app.',
+                '   - Understand product type, features, specs, use-case, and target audience as far as the text allows.',
+                '   - Note keywords implied by the reference title; identify gaps where high-volume Amazon search terms could help.',
+                '',
+                '2. Competitor-style analysis (without live browsing):',
+                '   - Reason about how strong competing listings for similar products are typically structured on Amazon.',
+                '   - Favor high-performing patterns: primary keyword early, clear benefits, specs, compatibility, and trust cues.',
+                '',
+                '3. Keyword optimization:',
+                '   - Add high-volume, relevant Amazon search keywords where they fit naturally.',
+                '   - Use long-tail keywords where beneficial.',
+                '   - Avoid keyword stuffing and repetition.',
+                '',
+                '4. Title creation rules:',
+                '   - Generate EXACTLY 3 different title options.',
+                '   - Each title must be between 150 and 175 characters (inclusive).',
+                '   - Start with the primary keyword (important for SEO).',
+                '   - Maintain readability and conversion focus.',
+                '   - Use proper capitalization (Amazon style).',
+                '   - Include key features (size, material, use-case, compatibility, etc.).',
+                '',
+                '5. Branding rules:',
+                '   - ALWAYS include brand name: "5 Core".',
+                '   - Brand should appear naturally (preferably toward the beginning or middle).',
+                '   - ALWAYS append the SKU at the very end of each title when SKU is provided above (not "(none)").',
+                '',
+                '6. Conversion optimization:',
+                '   - Focus on benefits, not just features.',
+                '   - Improve click-through rate (CTR).',
+                '   - Make titles appealing and clear.',
+                '',
+                '7. Output format (required — the app only accepts JSON):',
+                'Return ONLY valid JSON, no markdown, no labels like "Option 1:", no extra keys, exactly:',
+                '{"drafts":["<Optimized Title 1>","<Optimized Title 2>","<Optimized Title 3>"]}',
+                skuJsonNote,
+                '',
+                'IMPORTANT:',
+                '- Do NOT exceed 175 characters per title.',
+                '- Do NOT go below 150 characters per title.',
+                '- Do NOT include special characters like |, /, or excessive commas.',
+                '- Avoid duplicate words.',
+                '- Ensure titles are Amazon-compliant.'
+            ].join('\n');
+        }
         let tableData = [];
         let listMeta = { current_page: 1, last_page: 1, per_page: 75, total: 0, from: null, to: null };
         let titleMasterSort = { column: 'sku', dir: 'asc' };
         let titleMasterLoadAbort = null;
-        const titleFormatCache = new Map();
         let titleModal;
         let platformModal;
         let aiTitleModalInstance;
@@ -1655,6 +1946,7 @@
         let aiTitle60ModalInstance;
         let currentAIGeneratedTitles60 = [];
         let tmAiStackModalInstance = null;
+        let tmAiStackPromptEditorModalInstance = null;
 
         /** NBSP + collapsed whitespace (same idea as product-master SKU search). */
         function normalizeForTextSearch(s) {
@@ -1738,14 +2030,23 @@
             if (aiTitle60ModalEl) aiTitle60ModalInstance = new bootstrap.Modal(aiTitle60ModalEl);
             const tmAiStackModalEl = document.getElementById('tmAiStackModal');
             if (tmAiStackModalEl) tmAiStackModalInstance = new bootstrap.Modal(tmAiStackModalEl);
+            const tmAiStackPromptEditorModalEl = document.getElementById('tmAiStackPromptEditorModal');
+            if (tmAiStackPromptEditorModalEl) {
+                tmAiStackPromptEditorModalInstance = new bootstrap.Modal(tmAiStackPromptEditorModalEl);
+            }
             [1, 2, 3].forEach(function(i) {
                 const ta = document.getElementById('tmAiStackVariant' + i);
                 if (!ta) return;
                 ta.addEventListener('input', function() {
                     const c = document.getElementById('tmAiStackVariant' + i + 'Count');
-                    if (c) c.textContent = ta.value.length + '/150';
+                    if (c) c.textContent = ta.value.length + '/' + TM_AI_STACK_DRAFT_MAX;
                 });
             });
+            setupTmAiStackPromptEditor();
+            setupTmAiStackGenerateButton();
+            setupTmAiStackRefFieldCharCounts();
+            setupTmAiStackApplyButtons();
+            updateTmAiStackPromptSummary();
             setupTitleMasterColumnSort();
             setupTitleMasterImageHoverPreview();
             loadTitleData(1);
@@ -1776,10 +2077,10 @@
                         return { sku: item.SKU, title: (item.amazon_title || item.title150 || '').toString().trim() };
                     });
                     if (items.length === 0) {
-                        alert('No titles to push. Ensure rows have Title 150 data.');
+                        alert('No titles to distribute. Ensure rows have Title 170 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' title(s) on this page to Amazon, Temu & Reverb? This may take several minutes.';
+                    document.getElementById('pushConfirmMessage').textContent = 'Distribute ' + items.length + ' title(s) on this page to Amazon, Temu & Reverb? This may take several minutes.';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -1802,10 +2103,10 @@
                         return { sku: sku, title: t };
                     }).filter(function(x) { return x.title.length > 0; });
                     if (items.length === 0) {
-                        alert('No titles to push. Selected rows need Title 150 data.');
+                        alert('No titles to distribute. Selected rows need Title 170 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' selected title(s) on this page to Amazon, Temu & Reverb?';
+                    document.getElementById('pushConfirmMessage').textContent = 'Distribute ' + items.length + ' selected title(s) on this page to Amazon, Temu & Reverb?';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -1930,22 +2231,22 @@
 
             // Platform display names
             const platformNames = {
-                'amazon': 'Amazon (Title 150)',
+                'amazon': 'Amazon (Title 170)',
                 'shopify_main': 'Shopify Main (Title 100)',
                 'shopify_pls': 'Shopify PLS (Title 100)',
                 'ebay1': 'eBay 1 (Title 80)',
                 'ebay2': 'eBay 2 (Title 80)',
                 'ebay3': 'eBay 3 (Title 80)',
-                'walmart': 'Walmart (Title 150)',
-                'temu': 'Temu (Title 150)',
+                'walmart': 'Walmart (Title 170)',
+                'temu': 'Temu (Title 170)',
                 'doba': 'Doba (Title 100)',
-                'shein': 'Shein (Title 150)',
-                'wayfair': 'Wayfair (Title 150)',
-                'reverb': 'Reverb (Title 150)',
+                'shein': 'Shein (Title 170)',
+                'wayfair': 'Wayfair (Title 170)',
+                'reverb': 'Reverb (Title 170)',
                 'macy': "Macy's (Title 60)",
                 'faire': 'Faire (Title 60)',
-                'aliexpress': 'Aliexpress (Title 150)',
-                'tiktok': 'TikTok (Title 150)'
+                'aliexpress': 'Aliexpress (Title 170)',
+                'tiktok': 'TikTok (Title 170)'
             };
 
             const platformList = platforms.map(p => platformNames[p]).join('\n');
@@ -2058,13 +2359,13 @@
             const updateBtn = document.getElementById('updateAmazonBtn');
             if (updateBtn) updateBtn.style.display = count > 0 ? 'inline-block' : 'none';
             const pushSelectedBtn = document.getElementById('pushSelectedBtn');
-            if (pushSelectedBtn) pushSelectedBtn.style.display = count > 0 ? 'inline-block' : 'none';
+            if (pushSelectedBtn) pushSelectedBtn.style.display = count > 0 ? 'inline-flex' : 'none';
         }
 
         function updateModalCounter(fieldId) {
             const input = document.getElementById(fieldId);
-            const maxLen = parseInt(fieldId.replace('title', ''), 10);
-            const counter = document.getElementById('counter' + (fieldId === 'title100' ? 100 : maxLen));
+            const maxLen = titleMasterTitleMaxLen(fieldId);
+            const counter = document.getElementById('counter' + titleMasterTitleCounterSuffix(fieldId));
             if (!input || !counter) return;
             const len = input.value.length;
             counter.classList.remove('error', 'warning', 'success', 'opacity-75');
@@ -2101,9 +2402,9 @@
             // Character counters
             const fields = ['title150', 'title100', 'title80', 'title60'];
             fields.forEach(field => {
-                const maxLength = parseInt(field.replace('title', ''));
+                const maxLength = titleMasterTitleMaxLen(field);
                 const input = document.getElementById(field);
-                const counter = document.getElementById('counter' + maxLength);
+                const counter = document.getElementById('counter' + titleMasterTitleCounterSuffix(field));
                 
                 input.addEventListener('input', function() {
                     const length = this.value.length;
@@ -2127,7 +2428,7 @@
                 saveTitleFromModal();
             });
 
-            // Improve with AI button (generates only Title 150, shows in popup)
+            // Improve with AI button (generates Amazon title, shows in popup)
             const aiImproveBtn = document.getElementById('aiImproveBtn');
             if (aiImproveBtn) {
                 aiImproveBtn.addEventListener('click', function() {
@@ -2139,7 +2440,7 @@
                     const parentCategory = (item && item.Parent) ? item.Parent : '';
 
                     if (!currentTitle150) {
-                        alert('Please enter or load a Title 150 (e.g. open Edit with a row that has an Amazon title) before using Improve with AI.');
+                        alert('Please enter or load Title 170 (e.g. use Add Title or AI workspace) before using Improve with AI.');
                         return;
                     }
 
@@ -2156,8 +2457,8 @@
                             sku: sku,
                             current_title: currentTitle150,
                             parent_category: parentCategory,
-                            min_length: 140,
-                            max_length: 150
+                            min_length: 120,
+                            max_length: TITLE_MASTER_AMAZON_TITLE_MAX
                         })
                     })
                     .then(response => response.json())
@@ -2196,7 +2497,7 @@
                     const category = (item && item.Parent) ? item.Parent : '';
 
                     if (!title150) {
-                        alert('Please enter or load a Title 150 before using Improve with AI for Title 100.');
+                        alert('Please enter or load Title 170 before using Improve with AI for Title 100.');
                         return;
                     }
 
@@ -2272,7 +2573,7 @@
                     const category = (item && item.Parent) ? item.Parent : '';
 
                     if (!title150) {
-                        alert('Please enter or load a Title 150 before using Improve with AI for Title 80.');
+                        alert('Please enter or load Title 170 before using Improve with AI for Title 80.');
                         return;
                     }
 
@@ -2352,7 +2653,7 @@
                     const category = (item && item.Parent) ? item.Parent : '';
 
                     if (!title150) {
-                        alert('Please enter or load a Title 150 before using Improve with AI for Title 60.');
+                        alert('Please enter or load Title 170 before using Improve with AI for Title 60.');
                         return;
                     }
 
@@ -2430,7 +2731,7 @@
                         updateModalCounter('title150');
                     }
                     if (aiTitleModalInstance) aiTitleModalInstance.hide();
-                    alert('Title applied to Title 150 field. Click Save to store.');
+                    alert('Title applied to Title 170 in Add Title. Click Save to store.');
                 });
             });
             const aiRegenBtn = document.getElementById('aiRegenerateBtn');
@@ -2451,7 +2752,7 @@
             });
             const options = document.querySelectorAll('#aiTitleOption1, #aiTitleOption2, #aiTitleOption3, #aiTitleOption4');
             const minLen = 140;
-            const maxLen = 150;
+            const maxLen = TITLE_MASTER_AMAZON_TITLE_MAX;
             options.forEach(function(opt, i) {
                 const item = items[i];
                 const title = (item && (typeof item === 'string' ? item : item.title)) || '';
@@ -2467,7 +2768,7 @@
                     else scoreEl.textContent = '';
                 }
                 if (badgeEl) {
-                    badgeEl.textContent = len + '/150 chars';
+                    badgeEl.textContent = len + '/' + maxLen + ' chars';
                     badgeEl.className = 'badge ai-char-badge ';
                     if (len > maxLen) badgeEl.classList.add('bg-danger');
                     else if (len < minLen) badgeEl.classList.add('bg-warning', 'text-dark');
@@ -2475,7 +2776,7 @@
                 }
                 if (statusEl) {
                     if (len > maxLen) statusEl.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> Too long</span>';
-                    else if (len < minLen) statusEl.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Too short (aim 140-150)</span>';
+                    else if (len < minLen) statusEl.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Too short (aim 140–' + maxLen + ')</span>';
                     else statusEl.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> ✓</span>';
                 }
             });
@@ -2725,7 +3026,7 @@
             if (!stats) return;
             document.getElementById('parentCount').textContent = '(' + (stats.distinct_parents != null ? stats.distinct_parents : 0) + ')';
             document.getElementById('skuCount').textContent = '(' + (stats.total_rows != null ? stats.total_rows : 0) + ')';
-            document.getElementById('title150MissingCount').textContent = '(' + (stats.title150_missing != null ? stats.title150_missing : 0) + ' missing)';
+            document.getElementById('title150MissingCount').textContent = '(' + (stats.title150_missing != null ? stats.title150_missing : 0) + ')';
             document.getElementById('title100MissingCount').textContent = '(' + (stats.title100_missing != null ? stats.title100_missing : 0) + ')';
             document.getElementById('title80MissingCount').textContent = '(' + (stats.title80_missing != null ? stats.title80_missing : 0) + ')';
             document.getElementById('title60MissingCount').textContent = '(' + (stats.title60_missing != null ? stats.title60_missing : 0) + ')';
@@ -2891,31 +3192,19 @@
             initMarketplaceTooltips(wrapper100);
         }
 
-        function formatTitleWithIndicator(title) {
-            if (!title || (typeof title === 'string' && title.trim() === '')) {
-                return { html: '-', tooltip: '' };
-            }
-            const key = typeof title === 'string' ? title : String(title);
-            if (titleFormatCache.has(key)) {
-                return titleFormatCache.get(key);
-            }
-            const maxLength = 150;
-            const totalChars = title.length;
-            const excess = totalChars - maxLength;
-            let out;
-            if (totalChars <= maxLength) {
-                out = {
-                    html: '<span class="title-indicator success">✅</span> ' + escapeHtml(title),
-                    tooltip: '✓ ' + totalChars + '/' + maxLength + ' characters — within limit\n\n' + title
-                };
-            } else {
-                out = {
-                    html: '<span class="title-indicator danger">❌</span> <span class="excess-badge">(+' + excess + ')</span> ' + escapeHtml(title),
-                    tooltip: '⚠️ ' + totalChars + '/' + maxLength + ' characters\n' + excess + ' characters above limit\n\nFull title:\n' + title
-                };
-            }
-            titleFormatCache.set(key, out);
-            return out;
+        function titleMasterGetTitle170Text(item) {
+            if (!item) return '';
+            const a = item.amazon_title;
+            if (a != null && String(a).trim() !== '') return String(a);
+            const t = item.title150;
+            if (t != null && String(t).trim() !== '') return String(t);
+            return '';
+        }
+
+        function titleMasterFillTitleDotCell(td, hasData, emptyTooltip, fullText) {
+            td.className = 'title-master-title-dot-td';
+            td.innerHTML = '<span class="title-master-title-dot ' + (hasData ? 'title-master-title-dot--has' : 'title-master-title-dot--empty') + '" role="img" aria-label="' + (hasData ? 'Has title' : 'No title') + '"></span>';
+            td.title = hasData ? fullText : emptyTooltip;
         }
 
         const titleMasterDarkMustard = '#ff9c00';
@@ -3007,7 +3296,6 @@
         }
 
         function renderTable(data) {
-            titleFormatCache.clear();
             const tbody = document.getElementById('table-body');
             const frag = document.createDocumentFragment();
 
@@ -3082,67 +3370,56 @@
 
                 const aiCell = document.createElement('td');
                 aiCell.className = 'title-master-ai-td';
-                aiCell.innerHTML = '<button type="button" class="title-master-ai-stack-btn tm-ai-stack-open-btn" data-sku="' + escapeHtml(item.SKU) + '" title="AI workspace: Title 150 + 3 drafts (100–150 chars)" aria-label="Open AI workspace for this SKU">' +
+                aiCell.innerHTML = '<button type="button" class="title-master-ai-stack-btn tm-ai-stack-open-btn" data-sku="' + escapeHtml(item.SKU) + '" title="AI workspace: Title 170 + Title 100/80/60 refs + 3 drafts (150–175 chars when AI-generated)" aria-label="Open AI workspace for this SKU">' +
                     '<i class="fas fa-wand-magic-sparkles text-info" aria-hidden="true"></i>' +
                     '</button>';
                 row.appendChild(aiCell);
 
-                // Title 150 (Amazon title with ✅/❌ and (+X) excess, tooltip with char count)
-                const title150Formatted = formatTitleWithIndicator(item.amazon_title);
+                const t170 = titleMasterGetTitle170Text(item);
                 const title150Cell = document.createElement('td');
-                title150Cell.className = 'title-text title-cell';
-                title150Cell.innerHTML = title150Formatted.html;
-                const tooltipText = title150Formatted.tooltip || item.amazon_title || '';
-                title150Cell.setAttribute('title', tooltipText.replace(/"/g, '&quot;').replace(/</g, '&lt;'));
+                titleMasterFillTitleDotCell(title150Cell, t170.trim() !== '', 'No Title 170', t170);
                 row.appendChild(title150Cell);
 
-                // Title 100
+                const t100 = item.title100 != null ? String(item.title100) : '';
                 const title100Cell = document.createElement('td');
-                title100Cell.className = 'title-text';
-                title100Cell.textContent = item.title100 || '-';
-                title100Cell.title = item.title100 || '';
+                titleMasterFillTitleDotCell(title100Cell, t100.trim() !== '', 'No Title 100', t100);
                 row.appendChild(title100Cell);
 
-                // Title 80
+                const t80 = item.title80 != null ? String(item.title80) : '';
                 const title80Cell = document.createElement('td');
-                title80Cell.className = 'title-text';
-                title80Cell.textContent = item.title80 || '-';
-                title80Cell.title = item.title80 || '';
+                titleMasterFillTitleDotCell(title80Cell, t80.trim() !== '', 'No Title 80', t80);
                 row.appendChild(title80Cell);
 
-                // Title 60
+                const t60 = item.title60 != null ? String(item.title60) : '';
                 const title60Cell = document.createElement('td');
-                title60Cell.className = 'title-text';
-                title60Cell.textContent = item.title60 || '-';
-                title60Cell.title = item.title60 || '';
+                titleMasterFillTitleDotCell(title60Cell, t60.trim() !== '', 'No Title 60', t60);
                 row.appendChild(title60Cell);
 
-                // ACTION column: View + Edit side by side
+                // View column (header: eye icon)
                 const actionCell = document.createElement('td');
                 actionCell.className = 'action-buttons-cell';
                 actionCell.innerHTML = '<div class="action-buttons-group">' +
-                    '<button type="button" class="action-btn view-btn" data-sku="' + escapeHtml(item.SKU) + '" title="View title details"><i class="fas fa-eye"></i> View</button>' +
-                    '<button type="button" class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Edit title"><i class="fas fa-edit"></i> Edit</button>' +
+                    '<button type="button" class="action-btn view-btn" data-sku="' + escapeHtml(item.SKU) + '" title="View title details" aria-label="View title details"><i class="fas fa-eye" aria-hidden="true"></i></button>' +
                     '</div>';
                 row.appendChild(actionCell);
 
-                // MARKETPLACES (150): Amazon, Temu, Reverb only
+                // MARKET (150): Amazon, Temu, Reverb only
                 const marketplaces150Cell = document.createElement('td');
                 marketplaces150Cell.className = 'marketplaces-cell marketplaces-150-cell';
                 const skuEscaped = escapeHtml(item.SKU);
-                const hasTitle150 = !!(item.amazon_title && String(item.amazon_title).trim() !== '');
+                const hasTitle150 = t170.trim() !== '';
                 let mp150Html = '<div class="marketplaces-dots-wrapper">' +
                     renderMarketplaceDots(skuEscaped, null) +
                     '</div>';
                 mp150Html += '<div class="marketplace-buttons">';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-amazon" data-sku="' + skuEscaped + '" data-marketplace="amazon" data-title-type="150" title="Amazon (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fab fa-amazon"></i></button>';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-temu" data-sku="' + skuEscaped + '" data-marketplace="temu" data-title-type="150" title="Temu (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '>T</button>';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-reverb" data-sku="' + skuEscaped + '" data-marketplace="reverb" data-title-type="150" title="Reverb (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fas fa-guitar"></i></button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-amazon" data-sku="' + skuEscaped + '" data-marketplace="amazon" data-title-type="150" title="Amazon (Title 170)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fab fa-amazon"></i></button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-temu" data-sku="' + skuEscaped + '" data-marketplace="temu" data-title-type="150" title="Temu (Title 170)" ' + (hasTitle150 ? '' : 'disabled') + '>T</button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-reverb" data-sku="' + skuEscaped + '" data-marketplace="reverb" data-title-type="150" title="Reverb (Title 170)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fas fa-guitar"></i></button>';
                 mp150Html += '</div>';
                 marketplaces150Cell.innerHTML = mp150Html;
                 row.appendChild(marketplaces150Cell);
 
-                // MARKETPLACES (100): Shopify Main, PLS + Macy's (Title 60 push)
+                // MARKET (100): Shopify Main, PLS + Macy's (Title 60 push)
                 const marketplaces100Cell = document.createElement('td');
                 marketplaces100Cell.className = 'marketplaces-100-cell';
                 const hasTitle100 = !!(item.title100 && String(item.title100).trim() !== '');
@@ -3156,7 +3433,7 @@
                 marketplaces100Cell.innerHTML = mp100Html;
                 row.appendChild(marketplaces100Cell);
 
-                // MARKETPLACES (80): status dots + E1, E2, E3 buttons (eBay 1, 2, 3)
+                // MARKET (80): status dots + E1, E2, E3 buttons (eBay 1, 2, 3)
                 const marketplaces80Cell = document.createElement('td');
                 marketplaces80Cell.className = 'marketplaces-80-cell';
                 const hasTitle80 = !!(item.title80 && String(item.title80).trim() !== '');
@@ -3169,10 +3446,10 @@
                 marketplaces80Cell.innerHTML = mp80Html;
                 row.appendChild(marketplaces80Cell);
 
-                // PUSH TO ALL MARKETPLACES column
+                // Distribute to all markets column
                 const pushCell = document.createElement('td');
                 pushCell.className = 'push-button-cell';
-                pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 150 to Amazon, Temu, Reverb"><i class="fas fa-cloud-upload-alt"></i> Push to All</button>';
+                pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 170 to Amazon, Temu, Reverb" aria-label="Push Title 170 to Amazon, Temu, Reverb"><img src="' + escapeHtml(TM_PUSH_ALL_ICON_URL) + '" alt="" class="tm-push-all-icon" width="20" height="20"></button>';
                 row.appendChild(pushCell);
 
                 frag.appendChild(row);
@@ -3181,7 +3458,6 @@
             tbody.innerHTML = '';
             tbody.appendChild(frag);
 
-            setupEditButtons();
             setupViewButtons();
             setupTmAiStackButtons();
             setupPushAmazonButtons();
@@ -3220,7 +3496,7 @@
                     const item = tableData.find(x => x.SKU === sku);
                     let title = '';
                     if (item) {
-                        if (titleType === '150') title = item.amazon_title || '';
+                        if (titleType === '150') title = titleMasterGetTitle170Text(item);
                         else if (titleType === '100') title = item.title100 || '';
                         else if (titleType === '80') title = item.title80 || '';
                         else if (titleType === '60') title = item.title60 || '';
@@ -3313,15 +3589,6 @@
             });
         }
 
-        function setupEditButtons() {
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const sku = this.getAttribute('data-sku');
-                    openModal('edit', sku);
-                });
-            });
-        }
-
         function setupViewButtons() {
             document.querySelectorAll('.view-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -3344,6 +3611,7 @@
             if (!tmAiStackModalInstance) return;
             const item = tableData.find(function(x) { return x.SKU === sku; });
             const title150 = getTitleMasterTitle150ForAiStack(item);
+            const buyerLink = item && item.amazon_buyer_link ? String(item.amazon_buyer_link).trim() : '';
             const skuEl = document.getElementById('tmAiStackSkuLabel');
             if (skuEl) skuEl.textContent = sku || '—';
             const refTa = document.getElementById('tmAiStackTitle150Ref');
@@ -3352,13 +3620,36 @@
             }
             const refCount = document.getElementById('tmAiStackTitle150RefCount');
             if (refCount) refCount.textContent = title150.length + ' chars';
+            const t100 = item && item.title100 != null ? String(item.title100) : '';
+            const t80 = item && item.title80 != null ? String(item.title80) : '';
+            const t60 = item && item.title60 != null ? String(item.title60) : '';
+            const ref100 = document.getElementById('tmAiStackTitle100Ref');
+            const ref100Count = document.getElementById('tmAiStackTitle100RefCount');
+            if (ref100) ref100.value = t100;
+            if (ref100Count) ref100Count.textContent = t100.length + ' chars';
+            const ref80 = document.getElementById('tmAiStackTitle80Ref');
+            const ref80Count = document.getElementById('tmAiStackTitle80RefCount');
+            if (ref80) ref80.value = t80;
+            if (ref80Count) ref80Count.textContent = t80.length + ' chars';
+            const ref60 = document.getElementById('tmAiStackTitle60Ref');
+            const ref60Count = document.getElementById('tmAiStackTitle60RefCount');
+            if (ref60) ref60.value = t60;
+            if (ref60Count) ref60Count.textContent = t60.length + ' chars';
             const aiPromptTa = document.getElementById('tmAiStackAiPrompt');
-            if (aiPromptTa) aiPromptTa.value = '';
+            if (aiPromptTa) aiPromptTa.value = buildTmAiStackDefaultPrompt(sku || '', buyerLink);
+            updateTmAiStackPromptSummary();
+            const modalEl = document.getElementById('tmAiStackModal');
+            if (modalEl) modalEl.dataset.tmBuyerLink = buyerLink;
+            const aiAlert = document.getElementById('tmAiStackAiAlert');
+            if (aiAlert) {
+                aiAlert.textContent = '';
+                aiAlert.classList.add('d-none');
+            }
             [1, 2, 3].forEach(function(i) {
                 const ta = document.getElementById('tmAiStackVariant' + i);
                 const c = document.getElementById('tmAiStackVariant' + i + 'Count');
                 if (ta) ta.value = '';
-                if (c) c.textContent = '0/150';
+                if (c) c.textContent = '0/' + TM_AI_STACK_DRAFT_MAX;
             });
             tmAiStackModalInstance.show();
         }
@@ -3370,6 +3661,360 @@
                     const sku = btn.getAttribute('data-sku');
                     if (sku) openTmAiStackModal(sku);
                 });
+            });
+        }
+
+        function updateTmAiStackPromptSummary() {
+            const ta = document.getElementById('tmAiStackAiPrompt');
+            const sum = document.getElementById('tmAiStackPromptSummary');
+            if (!ta || !sum) return;
+            const n = ta.value.length;
+            sum.title = ta.value ? (ta.value.slice(0, 800) + (ta.value.length > 800 ? '…' : '')) : 'No prompt — open the eye to edit';
+            if (n === 0) {
+                sum.textContent = 'No prompt';
+            } else {
+                sum.textContent = n.toLocaleString() + ' chars';
+            }
+        }
+
+        function setupTmAiStackPromptEditor() {
+            const openBtn = document.getElementById('tmAiStackPromptOpenBtn');
+            const hiddenTa = document.getElementById('tmAiStackAiPrompt');
+            const editorTa = document.getElementById('tmAiStackAiPromptEditor');
+            const countEl = document.getElementById('tmAiStackAiPromptEditorCount');
+            if (!openBtn || !hiddenTa || !editorTa) return;
+
+            function updateEditorCount() {
+                if (countEl) countEl.textContent = editorTa.value.length.toLocaleString() + ' / 15,000 characters';
+            }
+
+            openBtn.addEventListener('click', function() {
+                editorTa.value = hiddenTa.value;
+                updateEditorCount();
+                if (tmAiStackPromptEditorModalInstance) {
+                    tmAiStackPromptEditorModalInstance.show();
+                }
+            });
+
+            editorTa.addEventListener('input', function() {
+                hiddenTa.value = editorTa.value;
+                updateEditorCount();
+                updateTmAiStackPromptSummary();
+            });
+
+            const editorModalEl = document.getElementById('tmAiStackPromptEditorModal');
+            if (editorModalEl) {
+                editorModalEl.addEventListener('hidden.bs.modal', function() {
+                    hiddenTa.value = editorTa.value;
+                    updateTmAiStackPromptSummary();
+                });
+            }
+        }
+
+        function titleMasterEscapeSkuForSelector(sku) {
+            if (sku == null || sku === '') return '';
+            var s = String(sku);
+            if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+                return CSS.escape(s);
+            }
+            return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        }
+
+        function getTmAiStackActiveSku() {
+            var skuEl = document.getElementById('tmAiStackSkuLabel');
+            var sku = skuEl ? String(skuEl.textContent || '').trim() : '';
+            if (sku === '—' || sku === '\u2014') sku = '';
+            return sku;
+        }
+
+        function tmAiStackSyncEditModalField(sku, fieldId, value) {
+            var modalEl = document.getElementById('titleModal');
+            if (!modalEl || !modalEl.classList.contains('show')) return;
+            var editSku = document.getElementById('editSku');
+            if (!editSku || String(editSku.value) !== String(sku)) return;
+            var input = document.getElementById(fieldId);
+            if (input) {
+                input.value = value;
+                if (typeof updateModalCounter === 'function') updateModalCounter(fieldId);
+            }
+        }
+
+        function patchTitleMasterGridRowTitlesFromTableData(sku) {
+            var item = (typeof tableData !== 'undefined' && tableData) ? tableData.find(function(x) { return x.SKU === sku; }) : null;
+            var row = document.querySelector('#title-master-table tbody tr[data-sku="' + titleMasterEscapeSkuForSelector(sku) + '"]');
+            if (!item || !row || !row.cells || row.cells.length < 14) return;
+            var tds = row.cells;
+            var t170p = titleMasterGetTitle170Text(item);
+            var c170 = tds[10];
+            if (c170) titleMasterFillTitleDotCell(c170, t170p.trim() !== '', 'No Title 170', t170p);
+            var t100p = item.title100 != null ? String(item.title100) : '';
+            var c100 = tds[11];
+            if (c100) titleMasterFillTitleDotCell(c100, t100p.trim() !== '', 'No Title 100', t100p);
+            var t80p = item.title80 != null ? String(item.title80) : '';
+            var c80 = tds[12];
+            if (c80) titleMasterFillTitleDotCell(c80, t80p.trim() !== '', 'No Title 80', t80p);
+            var t60p = item.title60 != null ? String(item.title60) : '';
+            var c60 = tds[13];
+            if (c60) titleMasterFillTitleDotCell(c60, t60p.trim() !== '', 'No Title 60', t60p);
+            var hasTitle150 = titleMasterGetTitle170Text(item).trim() !== '';
+            var hasTitle100 = !!(item.title100 && String(item.title100).trim() !== '');
+            var hasTitle80 = !!(item.title80 && String(item.title80).trim() !== '');
+            var hasTitle60 = !!(item.title60 && String(item.title60).trim() !== '');
+            row.querySelectorAll('.marketplace-btn-150').forEach(function(btn) { btn.disabled = !hasTitle150; });
+            row.querySelectorAll('.marketplace-btn-100').forEach(function(btn) {
+                var isMacy = btn.classList.contains('btn-macy');
+                btn.disabled = isMacy ? !hasTitle60 : !hasTitle100;
+            });
+            row.querySelectorAll('.marketplace-btn-80').forEach(function(btn) { btn.disabled = !hasTitle80; });
+        }
+
+        function tmAiStackFlashApplyButton(btn) {
+            var original = btn.getAttribute('data-tm-apply-original-html');
+            if (!original) {
+                original = btn.innerHTML;
+                btn.setAttribute('data-tm-apply-original-html', original);
+            }
+            btn.innerHTML = '<span class="visually-hidden">Applied</span><i class="fas fa-check text-success" aria-hidden="true"></i>';
+            setTimeout(function() {
+                btn.innerHTML = btn.getAttribute('data-tm-apply-original-html') || original;
+            }, 1400);
+        }
+
+        function tmAiStackNotifyApplied(msg) {
+            if (typeof showToast === 'function') {
+                showToast('success', msg);
+            }
+        }
+
+        function tmAiStackApplyDraftToTitle170(draftIndex) {
+            var sku = getTmAiStackActiveSku();
+            if (!sku) {
+                alert('No SKU for this workspace.');
+                return false;
+            }
+            var ta = document.getElementById('tmAiStackVariant' + draftIndex);
+            var text = ta && ta.value ? ta.value.trim() : '';
+            if (!text) {
+                alert('Draft ' + draftIndex + ' is empty.');
+                return false;
+            }
+            if (text.length > TITLE_MASTER_AMAZON_TITLE_MAX) {
+                text = text.substring(0, TITLE_MASTER_AMAZON_TITLE_MAX);
+            }
+            var refTa = document.getElementById('tmAiStackTitle150Ref');
+            var refCount = document.getElementById('tmAiStackTitle150RefCount');
+            if (refTa) refTa.value = text;
+            if (refCount) refCount.textContent = text.length + ' chars';
+            var idx = tableData.findIndex(function(x) { return x.SKU === sku; });
+            if (idx !== -1) {
+                tableData[idx].title150 = text;
+                tableData[idx].amazon_title = text;
+            }
+            tmAiStackSyncEditModalField(sku, 'title150', text);
+            patchTitleMasterGridRowTitlesFromTableData(sku);
+            tmAiStackNotifyApplied('Title 170 updated in the grid. Use Add Title → Save to persist in the database.');
+            return true;
+        }
+
+        function tmAiStackApplyRefFieldToGrid(fieldKey) {
+            var sku = getTmAiStackActiveSku();
+            if (!sku) {
+                alert('No SKU for this workspace.');
+                return false;
+            }
+            if (fieldKey === 'title150') {
+                var ta150 = document.getElementById('tmAiStackTitle150Ref');
+                var text150 = ta150 && ta150.value ? ta150.value.trim() : '';
+                if (!text150) {
+                    alert('Title 170 is empty.');
+                    return false;
+                }
+                if (text150.length > TITLE_MASTER_AMAZON_TITLE_MAX) {
+                    text150 = text150.substring(0, TITLE_MASTER_AMAZON_TITLE_MAX);
+                    if (ta150) ta150.value = text150;
+                }
+                var c150 = document.getElementById('tmAiStackTitle150RefCount');
+                if (c150) c150.textContent = text150.length + ' chars';
+                var idx150 = tableData.findIndex(function(x) { return x.SKU === sku; });
+                if (idx150 !== -1) {
+                    tableData[idx150].title150 = text150;
+                    tableData[idx150].amazon_title = text150;
+                }
+                tmAiStackSyncEditModalField(sku, 'title150', text150);
+                patchTitleMasterGridRowTitlesFromTableData(sku);
+                tmAiStackNotifyApplied('Title 170 updated in the grid. Use Add Title → Save to persist in the database.');
+                return true;
+            }
+            var shortCfg = {
+                title100: { refId: 'tmAiStackTitle100Ref', countId: 'tmAiStackTitle100RefCount', max: TITLE_MASTER_TITLE100_UI_MAX, editId: 'title100', label: 'Title 100' },
+                title80: { refId: 'tmAiStackTitle80Ref', countId: 'tmAiStackTitle80RefCount', max: 80, editId: 'title80', label: 'Title 80' },
+                title60: { refId: 'tmAiStackTitle60Ref', countId: 'tmAiStackTitle60RefCount', max: 60, editId: 'title60', label: 'Title 60' }
+            };
+            var sc = shortCfg[fieldKey];
+            if (!sc) return false;
+            var refEl = document.getElementById(sc.refId);
+            var text = refEl && refEl.value ? refEl.value.trim() : '';
+            if (text === '') {
+                var ref170 = document.getElementById('tmAiStackTitle150Ref');
+                var from170 = ref170 && ref170.value ? ref170.value.trim() : '';
+                if (!from170) {
+                    alert('This field is empty and Title 170 is empty. Type text or fill Title 170 first.');
+                    return false;
+                }
+                text = from170.length > sc.max ? from170.substring(0, sc.max) : from170;
+                if (refEl) refEl.value = text;
+            } else if (text.length > sc.max) {
+                text = text.substring(0, sc.max);
+                if (refEl) refEl.value = text;
+            }
+            var countEl = document.getElementById(sc.countId);
+            if (countEl) countEl.textContent = text.length + ' chars';
+            var idx = tableData.findIndex(function(x) { return x.SKU === sku; });
+            if (idx !== -1) {
+                tableData[idx][fieldKey] = text;
+            }
+            tmAiStackSyncEditModalField(sku, sc.editId, text);
+            patchTitleMasterGridRowTitlesFromTableData(sku);
+            tmAiStackNotifyApplied(sc.label + ' updated in the grid. Use Add Title → Save to persist.');
+            return true;
+        }
+
+        function setupTmAiStackRefFieldCharCounts() {
+            [['tmAiStackTitle150Ref', 'tmAiStackTitle150RefCount'], ['tmAiStackTitle100Ref', 'tmAiStackTitle100RefCount'], ['tmAiStackTitle80Ref', 'tmAiStackTitle80RefCount'], ['tmAiStackTitle60Ref', 'tmAiStackTitle60RefCount']].forEach(function(pair) {
+                var ta = document.getElementById(pair[0]);
+                if (!ta) return;
+                ta.addEventListener('input', function() {
+                    var c = document.getElementById(pair[1]);
+                    if (c) c.textContent = (ta.value ? ta.value.length : 0) + ' chars';
+                });
+            });
+        }
+
+        function setupTmAiStackApplyButtons() {
+            var modal = document.getElementById('tmAiStackModal');
+            if (!modal || modal.getAttribute('data-tm-apply-delegation') === '1') return;
+            modal.setAttribute('data-tm-apply-delegation', '1');
+            modal.addEventListener('click', function(ev) {
+                var btn = ev.target.closest('.tm-ai-stack-apply-btn');
+                if (!btn || !modal.contains(btn)) return;
+                ev.preventDefault();
+                var draftAttr = btn.getAttribute('data-tm-apply-draft');
+                var refField = btn.getAttribute('data-tm-apply-ref-field');
+                if (draftAttr !== null && draftAttr !== '') {
+                    var di = parseInt(draftAttr, 10);
+                    if (di >= 1 && di <= 3 && tmAiStackApplyDraftToTitle170(di)) {
+                        tmAiStackFlashApplyButton(btn);
+                    }
+                } else if (refField === 'title150' || refField === 'title100' || refField === 'title80' || refField === 'title60') {
+                    if (tmAiStackApplyRefFieldToGrid(refField)) {
+                        tmAiStackFlashApplyButton(btn);
+                    }
+                }
+            });
+        }
+
+        function setupTmAiStackGenerateButton() {
+            const btn = document.getElementById('tmAiStackGenerateBtn');
+            if (!btn) return;
+            btn.addEventListener('click', function() {
+                if (typeof window.titleMasterAiStackConfigured !== 'undefined' && !window.titleMasterAiStackConfigured) {
+                    const alertEl = document.getElementById('tmAiStackAiAlert');
+                    if (alertEl) {
+                        alertEl.textContent = 'AI is not configured. Set CLAUDE_API_KEY or ANTHROPIC_API_KEY in .env (recommended), or OPENAI_API_KEY as fallback.';
+                        alertEl.classList.remove('d-none');
+                    } else {
+                        alert('AI is not configured. Set CLAUDE_API_KEY or ANTHROPIC_API_KEY in .env (recommended), or OPENAI_API_KEY as fallback.');
+                    }
+                    return;
+                }
+                const refTa = document.getElementById('tmAiStackTitle150Ref');
+                const titleRef = refTa && refTa.value ? refTa.value.trim() : '';
+                if (!titleRef) {
+                    const alertEl = document.getElementById('tmAiStackAiAlert');
+                    if (alertEl) {
+                        alertEl.textContent = 'Title 170 reference is empty. Open the AI workspace from a row that already has Title 170.';
+                        alertEl.classList.remove('d-none');
+                    } else {
+                        alert('Title 170 reference is empty.');
+                    }
+                    return;
+                }
+                const aiPromptTa = document.getElementById('tmAiStackAiPrompt');
+                const userPrompt = aiPromptTa ? aiPromptTa.value : '';
+                const skuEl = document.getElementById('tmAiStackSkuLabel');
+                let sku = skuEl ? String(skuEl.textContent || '').trim() : '';
+                if (sku === '—' || sku === '\u2014') sku = '';
+                const modalEl = document.getElementById('tmAiStackModal');
+                const buyerLink = modalEl && modalEl.dataset.tmBuyerLink ? String(modalEl.dataset.tmBuyerLink) : '';
+                const url = window.titleMasterAiStackDraftsUrl || '/title-master/ai/generate-ai-stack-drafts';
+                const alertEl = document.getElementById('tmAiStackAiAlert');
+                if (alertEl) {
+                    alertEl.textContent = '';
+                    alertEl.classList.add('d-none');
+                }
+                const spin = btn.querySelector('.tm-ai-stack-generate-spinner');
+                const icon = btn.querySelector('.tm-ai-stack-generate-icon');
+                btn.disabled = true;
+                if (spin) spin.classList.remove('d-none');
+                if (icon) icon.classList.add('d-none');
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        sku: sku,
+                        buyer_link: buyerLink,
+                        title_reference: titleRef,
+                        user_prompt: userPrompt
+                    })
+                })
+                    .then(function(response) {
+                        return response.json().then(function(data) {
+                            return { ok: response.ok, status: response.status, data: data };
+                        }).catch(function() {
+                            return { ok: false, status: response.status, data: { message: 'Invalid server response' } };
+                        });
+                    })
+                    .then(function(res) {
+                        btn.disabled = false;
+                        if (spin) spin.classList.add('d-none');
+                        if (icon) icon.classList.remove('d-none');
+                        if (res.data && res.data.success && Array.isArray(res.data.drafts) && res.data.drafts.length >= 3) {
+                            res.data.drafts.forEach(function(text, idx) {
+                                const ta = document.getElementById('tmAiStackVariant' + (idx + 1));
+                                if (ta) {
+                                    ta.value = text != null ? String(text) : '';
+                                    const c = document.getElementById('tmAiStackVariant' + (idx + 1) + 'Count');
+                                    if (c) c.textContent = ta.value.length + '/' + TM_AI_STACK_DRAFT_MAX;
+                                }
+                            });
+                            return;
+                        }
+                        const msg = (res.data && res.data.message) ? res.data.message : ('Request failed' + (res.status ? ' (' + res.status + ')' : ''));
+                        if (alertEl) {
+                            alertEl.textContent = msg;
+                            alertEl.classList.remove('d-none');
+                        } else {
+                            alert(msg);
+                        }
+                    })
+                    .catch(function(err) {
+                        btn.disabled = false;
+                        if (spin) spin.classList.add('d-none');
+                        if (icon) icon.classList.remove('d-none');
+                        const msg = (err && err.message) ? err.message : 'Network error';
+                        if (alertEl) {
+                            alertEl.textContent = msg;
+                            alertEl.classList.remove('d-none');
+                        } else {
+                            alert(msg);
+                        }
+                    });
             });
         }
 
@@ -3388,7 +4033,7 @@
                         title = item ? (item.amazon_title || item.title150 || '').toString().trim() : '';
                     }
                     if (!title) {
-                        alert('No title to push. Edit the row and set Title 150 first.');
+                        alert('No title to distribute. Set Title 170 (Add Title or AI workspace) first.');
                         return;
                     }
                     pushToAllMarketplaces(this, sku, title);
@@ -3425,7 +4070,7 @@
                     const r = data.results;
                     const ok = [r.amazon, r.temu, r.reverb].filter(x => x && x.status === 'success').length;
                     const fail = [r.amazon, r.temu, r.reverb].filter(x => x && x.status === 'failed').length;
-                    alert('Push completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
+                    alert('Distribute completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
                 } else {
                     if (row) {
                         const cell = row.querySelector('.marketplaces-150-cell');
@@ -3464,13 +4109,13 @@
             const progressBar = document.getElementById('pushProgressBar');
             const progressText = document.getElementById('pushProgressText');
             progressModal.show();
-            progressText.textContent = 'Pushing to Amazon, Temu, Reverb...';
+            progressText.textContent = 'Distributing to Amazon, Temu, Reverb...';
 
             function updateProgress(done) {
                 const pct = total ? Math.round((done / total) * 100) : 0;
                 progressBar.style.width = pct + '%';
                 progressBar.textContent = pct + '%';
-                progressText.textContent = 'Pushing ' + done + '/' + total + ' to all marketplaces...';
+                progressText.textContent = 'Distributing ' + done + '/' + total + ' to all markets...';
             }
 
             function updateRowDots(sku, results) {
@@ -3547,8 +4192,8 @@
             viewModal.show();
         }
 
-        function openModal(mode, sku = null) {
-            const modal = document.getElementById('titleModal');
+        function openModal(mode) {
+            if (mode !== 'add') return;
             const modalTitle = document.getElementById('modalTitle');
             const selectSku = document.getElementById('selectSku');
             const editSku = document.getElementById('editSku');
@@ -3565,91 +4210,59 @@
             // Reset form
             document.getElementById('titleForm').reset();
             ['title150', 'title100', 'title80', 'title60'].forEach(field => {
-                const maxLength = parseInt(field.replace('title', ''));
-                document.getElementById('counter' + maxLength).textContent = '0/' + maxLength;
-                document.getElementById('counter' + maxLength).classList.remove('error');
+                const maxLength = titleMasterTitleMaxLen(field);
+                const c = document.getElementById('counter' + titleMasterTitleCounterSuffix(field));
+                if (c) {
+                    c.textContent = '0/' + maxLength;
+                    c.classList.remove('error');
+                }
             });
 
-            if (mode === 'add') {
-                modalTitle.textContent = 'Add Title';
-                selectSku.style.display = 'block';
-                selectSku.required = true;
-                editSku.value = '';
+            modalTitle.textContent = 'Add Title';
+            selectSku.style.display = 'block';
+            selectSku.required = true;
+            editSku.value = '';
 
-                if ($(selectSku).hasClass('select2-hidden-accessible')) {
-                    $(selectSku).select2('destroy');
-                }
-
-                selectSku.innerHTML = '<option value="">Loading SKUs...</option>';
-
-                fetch('/title-master/sku-options', {
-                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                    .then(function(r) { return r.json(); })
-                    .then(function(resp) {
-                        const skus = resp.data || [];
-                        selectSku.innerHTML = '<option value="">Choose SKU...</option>';
-                        skus.forEach(function(skuVal) {
-                            const s = String(skuVal);
-                            if (s && !s.toUpperCase().includes('PARENT')) {
-                                selectSku.innerHTML += '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>';
-                            }
-                        });
-                    })
-                    .catch(function(err) {
-                        console.error('sku-options:', err);
-                        selectSku.innerHTML = '<option value="">Choose SKU...</option>';
-                        tableData.forEach(function(item) {
-                            if (item.SKU && !item.SKU.toUpperCase().includes('PARENT')) {
-                                selectSku.innerHTML += '<option value="' + escapeHtml(item.SKU) + '">' + escapeHtml(item.SKU) + '</option>';
-                            }
-                        });
-                    })
-                    .finally(function() {
-                        $(selectSku).select2({
-                            theme: 'bootstrap-5',
-                            placeholder: 'Choose SKU...',
-                            allowClear: true,
-                            width: '100%',
-                            dropdownParent: $('#titleModal')
-                        });
-                        attachSelect2DestroyOnHide();
-                        titleModal.show();
-                    });
-                return;
-            } else if (mode === 'edit' && sku) {
-                modalTitle.textContent = 'Edit Title';
-                selectSku.style.display = 'none';
-                selectSku.required = false;
-                editSku.value = sku;
-                
-                // Destroy Select2 if initialized
-                if ($(selectSku).hasClass('select2-hidden-accessible')) {
-                    $(selectSku).select2('destroy');
-                }
-                
-                // Load existing data (Title 150 = Amazon title; Title 100/80/60 = Product Master)
-                const item = tableData.find(d => d.SKU === sku);
-                if (item) {
-                    const title150Input = document.getElementById('title150');
-                    const cleanTitle150 = (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || '');
-                    title150Input.value = cleanTitle150;
-                    const len150 = cleanTitle150.length;
-                    const counter150 = document.getElementById('counter150');
-                    counter150.textContent = len150 + '/150';
-                    if (len150 > 150) counter150.classList.add('error'); else counter150.classList.remove('error');
-                    ['title100', 'title80', 'title60'].forEach(field => {
-                        const input = document.getElementById(field);
-                        input.value = item[field] || '';
-                        const maxLength = parseInt(field.replace('title', ''));
-                        const length = input.value.length;
-                        document.getElementById('counter' + maxLength).textContent = length + '/' + maxLength;
-                    });
-                }
+            if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                $(selectSku).select2('destroy');
             }
 
-            attachSelect2DestroyOnHide();
-            titleModal.show();
+            selectSku.innerHTML = '<option value="">Loading SKUs...</option>';
+
+            fetch('/title-master/sku-options', {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function(r) { return r.json(); })
+                .then(function(resp) {
+                    const skus = resp.data || [];
+                    selectSku.innerHTML = '<option value="">Choose SKU...</option>';
+                    skus.forEach(function(skuVal) {
+                        const s = String(skuVal);
+                        if (s && !s.toUpperCase().includes('PARENT')) {
+                            selectSku.innerHTML += '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>';
+                        }
+                    });
+                })
+                .catch(function(err) {
+                    console.error('sku-options:', err);
+                    selectSku.innerHTML = '<option value="">Choose SKU...</option>';
+                    tableData.forEach(function(item) {
+                        if (item.SKU && !item.SKU.toUpperCase().includes('PARENT')) {
+                            selectSku.innerHTML += '<option value="' + escapeHtml(item.SKU) + '">' + escapeHtml(item.SKU) + '</option>';
+                        }
+                    });
+                })
+                .finally(function() {
+                    $(selectSku).select2({
+                        theme: 'bootstrap-5',
+                        placeholder: 'Choose SKU...',
+                        allowClear: true,
+                        width: '100%',
+                        dropdownParent: $('#titleModal')
+                    });
+                    attachSelect2DestroyOnHide();
+                    titleModal.show();
+                });
         }
 
         function resetTitleModalForm() {
@@ -3669,10 +4282,10 @@
                 selectSku.selectedIndex = 0;
             }
             ['title150', 'title100', 'title80', 'title60'].forEach(function(field) {
-                const maxLength = field === 'title150' ? 150 : parseInt(field.replace('title', ''), 10);
-                const counter = document.getElementById('counter' + maxLength);
+                const maxLength = titleMasterTitleMaxLen(field);
+                const counter = document.getElementById('counter' + titleMasterTitleCounterSuffix(field));
                 if (counter) {
-                    counter.textContent = '0/' + (field === 'title150' ? 150 : maxLength);
+                    counter.textContent = '0/' + maxLength;
                     counter.classList.remove('error');
                 }
             });
@@ -3781,7 +4394,7 @@
                                 'Dil %': item.pricing_cvr_dil_percent != null ? item.pricing_cvr_dil_percent : '',
                                 'CVR %': item.pricing_cvr_avg_cvr != null ? Math.round(Number(item.pricing_cvr_avg_cvr)) : '',
                                 'LQS': item.lqs != null ? item.lqs : '',
-                                'Title 150': (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || ''),
+                                'Title 170': (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || ''),
                                 'Title 100': item.title100 || '',
                                 'Title 80': item.title80 || '',
                                 'Title 60': item.title60 || ''
@@ -3990,7 +4603,7 @@
                     return;
                 }
 
-                const title150 = titleColumns.title150 ? (row[titleColumns.title150] || '').toString().substring(0, 150) : '';
+                const title150 = titleColumns.title150 ? (row[titleColumns.title150] || '').toString().substring(0, 170) : '';
                 const title100 = titleColumns.title100 ? (row[titleColumns.title100] || '').toString().substring(0, 100) : '';
                 const title80 = titleColumns.title80 ? (row[titleColumns.title80] || '').toString().substring(0, 80) : '';
                 const title60 = titleColumns.title60 ? (row[titleColumns.title60] || '').toString().substring(0, 60) : '';

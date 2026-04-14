@@ -13,8 +13,6 @@ use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayControlle
 use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingController;
 use App\Http\Controllers\ArrivedContainerController;
 use App\Http\Controllers\Auth\UserController;
-use App\Http\Controllers\UserRRPortfolioController;
-use App\Http\Controllers\ResourcesMasterController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
 use App\Http\Controllers\Campaigns\AmazonCampaignReportsController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
@@ -223,11 +221,11 @@ use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\WalmartZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\YamibuyZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\ZendropZeroController;
 use App\Http\Controllers\ProductMaster\BulletPointMasterController;
-use App\Http\Controllers\ProductMaster\ImageMasterController;
 use App\Http\Controllers\ProductMaster\CostpriceAnalysisController;
 use App\Http\Controllers\ProductMaster\DescriptionMaster2Controller;
 use App\Http\Controllers\ProductMaster\DescriptionMasterController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
+use App\Http\Controllers\ProductMaster\ImageMasterController;
 use App\Http\Controllers\ProductMaster\MovementAnalysisController;
 use App\Http\Controllers\ProductMaster\PrAnalysisController;
 use App\Http\Controllers\ProductMaster\PricingAnalysisController;
@@ -238,17 +236,17 @@ use App\Http\Controllers\ProductMaster\StockAnalysisController;
 use App\Http\Controllers\ProductMaster\ToBeDCController;
 use App\Http\Controllers\ProductMaster\ToOrderAnalysisController;
 use App\Http\Controllers\PurchaseMaster\CategoryController;
-use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
-use App\Http\Controllers\PurchaseMaster\QcImprovementReqBeforeItemPkgController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
+use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
 use App\Http\Controllers\PurchaseMaster\LedgerMasterController;
 use App\Http\Controllers\PurchaseMaster\MFRGInProgressController;
 use App\Http\Controllers\PurchaseMaster\OnRoadTransitController;
 use App\Http\Controllers\PurchaseMaster\OnSeaTransitController;
 use App\Http\Controllers\PurchaseMaster\PurchaseController;
 use App\Http\Controllers\PurchaseMaster\PurchaseOrderController;
+use App\Http\Controllers\PurchaseMaster\QcImprovementReqBeforeItemPkgController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
 use App\Http\Controllers\PurchaseMaster\RFQController;
@@ -256,6 +254,7 @@ use App\Http\Controllers\PurchaseMaster\SourcingController;
 use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
+use App\Http\Controllers\ResourcesMasterController;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\AmazonSalesDataTestController;
@@ -267,6 +266,7 @@ use App\Http\Controllers\Sales\WayfairSalesController;
 use App\Http\Controllers\ShopifyController;
 use App\Http\Controllers\SkuMatchController;
 use App\Http\Controllers\TemuAdsController;
+use App\Http\Controllers\UserRRPortfolioController;
 use App\Http\Controllers\Warehouse\WarehouseController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -1156,30 +1156,69 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
         $file = $request->file('file');
         $handle = fopen($file->getRealPath(), 'r');
-        $headers = null; $inserted = 0; $skipped = 0; $errors = [];
+        $headers = null;
+        $inserted = 0;
+        $skipped = 0;
+        $errors = [];
         $user = auth()->user();
-        $createdBy = trim((string)($user?->name ?? 'System')) ?: 'System';
-        $map = ['sku'=>['sku'],'qty'=>['qty','quantity'],'order_qty'=>['order_qty','order qty'],'parent'=>['parent'],'marketplace_1'=>['marketplace_1','mkt1'],'marketplace_2'=>['marketplace_2','mkt2'],'what_happened'=>['what_happened','what?','what happened'],'action_1'=>['action_1','action','action 1'],'action_1_remark'=>['action_1_remark','action remark'],'replacement_tracking'=>['replacement_tracking','replacement tracking'],'issue'=>['issue','root_cause_found','root cause found'],'issue_remark'=>['issue_remark','root cause remark'],'c_action_1'=>['c_action_1','root_cause_fixed','root cause fixed'],'c_action_1_remark'=>['c_action_1_remark','root cause fixed remark']];
+        $createdBy = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $map = ['sku' => ['sku'], 'qty' => ['qty', 'quantity'], 'order_qty' => ['order_qty', 'order qty'], 'parent' => ['parent'], 'marketplace_1' => ['marketplace_1', 'mkt1'], 'marketplace_2' => ['marketplace_2', 'mkt2'], 'what_happened' => ['what_happened', 'what?', 'what happened'], 'action_1' => ['action_1', 'action', 'action 1'], 'action_1_remark' => ['action_1_remark', 'action remark'], 'replacement_tracking' => ['replacement_tracking', 'replacement tracking'], 'issue' => ['issue', 'root_cause_found', 'root cause found'], 'issue_remark' => ['issue_remark', 'root cause remark'], 'c_action_1' => ['c_action_1', 'root_cause_fixed', 'root cause fixed'], 'c_action_1_remark' => ['c_action_1_remark', 'root cause fixed remark']];
         while (($row = fgetcsv($handle)) !== false) {
-            if ($headers === null) { $headers = array_map(fn($h)=>strtolower(trim((string)$h)),$row); continue; }
-            if (!array_filter($row,fn($v)=>trim((string)$v)!=='')) continue;
+            if ($headers === null) {
+                $headers = array_map(fn ($h) => strtolower(trim((string) $h)), $row);
+
+                continue;
+            }
+            if (! array_filter($row, fn ($v) => trim((string) $v) !== '')) {
+                continue;
+            }
             $data = array_combine($headers, array_pad($row, count($headers), ''));
-            $get = function($f) use($data,$map){ foreach($map[$f]??[$f] as $a){ if(array_key_exists($a,$data)&&trim((string)$data[$a])!=='') return trim((string)$data[$a]); } return null; };
-            $sku=$get('sku'); if(!$sku){$skipped++;$errors[]='Row skipped: SKU empty.';continue;}
-            $qty=$get('qty'); if($qty===null||!is_numeric($qty)){$skipped++;$errors[]="Row skipped (SKU=$sku): invalid QTY.";continue;}
-            $issue=$get('issue'); if(!$issue){$skipped++;$errors[]="Row skipped (SKU=$sku): Root Cause Found required.";continue;}
+            $get = function ($f) use ($data, $map) {
+                foreach ($map[$f] ?? [$f] as $a) {
+                    if (array_key_exists($a, $data) && trim((string) $data[$a]) !== '') {
+                        return trim((string) $data[$a]);
+                    }
+                }
+
+                return null;
+            };
+            $sku = $get('sku');
+            if (! $sku) {
+                $skipped++;
+                $errors[] = 'Row skipped: SKU empty.';
+
+                continue;
+            }
+            $qty = $get('qty');
+            if ($qty === null || ! is_numeric($qty)) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU=$sku): invalid QTY.";
+
+                continue;
+            }
+            $issue = $get('issue');
+            if (! $issue) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU=$sku): Root Cause Found required.";
+
+                continue;
+            }
             try {
-                $now=now();
-                $payload=['sku'=>$sku,'qty'=>(float)$qty,'order_qty'=>$get('order_qty')!==null?(float)$get('order_qty'):null,'parent'=>$get('parent'),'marketplace_1'=>$get('marketplace_1'),'marketplace_2'=>$get('marketplace_2'),'what_happened'=>$get('what_happened'),'issue'=>$issue,'issue_remark'=>$get('issue_remark'),'action_1'=>$get('action_1'),'action_1_remark'=>$get('action_1_remark'),'replacement_tracking'=>$get('replacement_tracking'),'c_action_1'=>$get('c_action_1'),'c_action_1_remark'=>$get('c_action_1_remark'),'created_by'=>$createdBy,'created_by_user_id'=>$user?->id,'created_at'=>$now,'updated_at'=>$now];
-                \Illuminate\Support\Facades\DB::transaction(function() use($payload,$now){
-                    $id=\Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->insertGetId($payload);
-                    \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert(array_merge($payload,['orders_on_hold_issue_id'=>$id,'event_type'=>'created','revision_no'=>0,'logged_at'=>$now]));
+                $now = now();
+                $payload = ['sku' => $sku, 'qty' => (float) $qty, 'order_qty' => $get('order_qty') !== null ? (float) $get('order_qty') : null, 'parent' => $get('parent'), 'marketplace_1' => $get('marketplace_1'), 'marketplace_2' => $get('marketplace_2'), 'what_happened' => $get('what_happened'), 'issue' => $issue, 'issue_remark' => $get('issue_remark'), 'action_1' => $get('action_1'), 'action_1_remark' => $get('action_1_remark'), 'replacement_tracking' => $get('replacement_tracking'), 'c_action_1' => $get('c_action_1'), 'c_action_1_remark' => $get('c_action_1_remark'), 'created_by' => $createdBy, 'created_by_user_id' => $user?->id, 'created_at' => $now, 'updated_at' => $now];
+                \Illuminate\Support\Facades\DB::transaction(function () use ($payload, $now) {
+                    $id = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->insertGetId($payload);
+                    \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert(array_merge($payload, ['orders_on_hold_issue_id' => $id, 'event_type' => 'created', 'revision_no' => 0, 'logged_at' => $now]));
                 });
                 $inserted++;
-            } catch(\Throwable $e){ $skipped++; $errors[]="Row failed (SKU=$sku): ".$e->getMessage(); }
+            } catch (\Throwable $e) {
+                $skipped++;
+                $errors[] = "Row failed (SKU=$sku): ".$e->getMessage();
+            }
         }
         fclose($handle);
-        return response()->json(['message'=>"{$inserted} record(s) imported, {$skipped} skipped.",'inserted'=>$inserted,'skipped'=>$skipped,'errors'=>array_slice($errors,0,20)]);
+
+        return response()->json(['message' => "{$inserted} record(s) imported, {$skipped} skipped.", 'inserted' => $inserted, 'skipped' => $skipped, 'errors' => array_slice($errors, 0, 20)]);
     })->name('customer.care.orders.on.hold.issues.import');
     Route::get('/customer-care/carrier-issue', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'index'])
         ->name('customer.care.carrier.issue');
@@ -1353,7 +1392,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) {
                 return $p;
             }
-            return '/' . ltrim($p, '/');
+
+            return '/'.ltrim($p, '/');
         };
 
         $values = [];
@@ -1527,7 +1567,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'issue_ref' => ($row->orders_on_hold_issue_id
                     ? (
                         ((int) ($row->revision_no ?? 0) > 0)
-                            ? ((string) $row->orders_on_hold_issue_id . '.' . (string) ((int) $row->revision_no))
+                            ? ((string) $row->orders_on_hold_issue_id.'.'.(string) ((int) $row->revision_no))
                             : (string) $row->orders_on_hold_issue_id
                     )
                     : null),
@@ -1873,7 +1913,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     })->name('customer.care.qc.and.packing.issues.archive');
     Route::get('/customer-care/qc-and-packing/dropdown-options', function (\Illuminate\Http\Request $request) {
         $fieldType = trim((string) $request->query('field_type', ''));
-        if (!in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
+        if (! in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
             return response()->json(['message' => 'Invalid field type.'], 422);
         }
 
@@ -1893,7 +1933,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ]);
 
         $fieldType = trim((string) $validated['field_type']);
-        if (!in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
+        if (! in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
             return response()->json(['message' => 'Invalid field type.'], 422);
         }
         $optionValue = trim((string) $validated['option_value']);
@@ -1929,7 +1969,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ]);
 
         $fieldType = trim((string) $validated['field_type']);
-        if (!in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
+        if (! in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
             return response()->json(['message' => 'Invalid field type.'], 422);
         }
         $optionValue = trim((string) $validated['option_value']);
@@ -1947,30 +1987,69 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
         $file = $request->file('file');
         $handle = fopen($file->getRealPath(), 'r');
-        $headers = null; $inserted = 0; $skipped = 0; $errors = [];
+        $headers = null;
+        $inserted = 0;
+        $skipped = 0;
+        $errors = [];
         $user = auth()->user();
-        $createdBy = trim((string)($user?->name ?? 'System')) ?: 'System';
-        $map = ['sku'=>['sku'],'qty'=>['qty','quantity'],'order_qty'=>['order_qty','order qty'],'parent'=>['parent'],'marketplace_1'=>['marketplace_1','mkt1'],'marketplace_2'=>['marketplace_2','mkt2'],'what_happened'=>['what_happened','what?','what happened'],'action_1'=>['action_1','action','action 1'],'action_1_remark'=>['action_1_remark','action remark'],'replacement_tracking'=>['replacement_tracking','replacement tracking'],'issue'=>['issue','root_cause_found','root cause found'],'issue_remark'=>['issue_remark','root cause remark'],'c_action_1'=>['c_action_1','root_cause_fixed','root cause fixed'],'c_action_1_remark'=>['c_action_1_remark','root cause fixed remark'],'department'=>['department','dept']];
+        $createdBy = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $map = ['sku' => ['sku'], 'qty' => ['qty', 'quantity'], 'order_qty' => ['order_qty', 'order qty'], 'parent' => ['parent'], 'marketplace_1' => ['marketplace_1', 'mkt1'], 'marketplace_2' => ['marketplace_2', 'mkt2'], 'what_happened' => ['what_happened', 'what?', 'what happened'], 'action_1' => ['action_1', 'action', 'action 1'], 'action_1_remark' => ['action_1_remark', 'action remark'], 'replacement_tracking' => ['replacement_tracking', 'replacement tracking'], 'issue' => ['issue', 'root_cause_found', 'root cause found'], 'issue_remark' => ['issue_remark', 'root cause remark'], 'c_action_1' => ['c_action_1', 'root_cause_fixed', 'root cause fixed'], 'c_action_1_remark' => ['c_action_1_remark', 'root cause fixed remark'], 'department' => ['department', 'dept']];
         while (($row = fgetcsv($handle)) !== false) {
-            if ($headers === null) { $headers = array_map(fn($h)=>strtolower(trim((string)$h)),$row); continue; }
-            if (!array_filter($row,fn($v)=>trim((string)$v)!=='')) continue;
+            if ($headers === null) {
+                $headers = array_map(fn ($h) => strtolower(trim((string) $h)), $row);
+
+                continue;
+            }
+            if (! array_filter($row, fn ($v) => trim((string) $v) !== '')) {
+                continue;
+            }
             $data = array_combine($headers, array_pad($row, count($headers), ''));
-            $get = function($f) use($data,$map){ foreach($map[$f]??[$f] as $a){ if(array_key_exists($a,$data)&&trim((string)$data[$a])!=='') return trim((string)$data[$a]); } return null; };
-            $sku=$get('sku'); if(!$sku){$skipped++;$errors[]='Row skipped: SKU empty.';continue;}
-            $qty=$get('qty'); if($qty===null||!is_numeric($qty)){$skipped++;$errors[]="Row skipped (SKU=$sku): invalid QTY.";continue;}
-            $issue=$get('issue'); if(!$issue){$skipped++;$errors[]="Row skipped (SKU=$sku): Root Cause Found required.";continue;}
+            $get = function ($f) use ($data, $map) {
+                foreach ($map[$f] ?? [$f] as $a) {
+                    if (array_key_exists($a, $data) && trim((string) $data[$a]) !== '') {
+                        return trim((string) $data[$a]);
+                    }
+                }
+
+                return null;
+            };
+            $sku = $get('sku');
+            if (! $sku) {
+                $skipped++;
+                $errors[] = 'Row skipped: SKU empty.';
+
+                continue;
+            }
+            $qty = $get('qty');
+            if ($qty === null || ! is_numeric($qty)) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU=$sku): invalid QTY.";
+
+                continue;
+            }
+            $issue = $get('issue');
+            if (! $issue) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU=$sku): Root Cause Found required.";
+
+                continue;
+            }
             try {
-                $now=now();
-                $payload=['sku'=>$sku,'qty'=>(float)$qty,'order_qty'=>$get('order_qty')!==null?(float)$get('order_qty'):null,'parent'=>$get('parent'),'marketplace_1'=>$get('marketplace_1'),'marketplace_2'=>$get('marketplace_2'),'what_happened'=>$get('what_happened'),'issue'=>$issue,'issue_remark'=>$get('issue_remark'),'action_1'=>$get('action_1'),'action_1_remark'=>$get('action_1_remark'),'replacement_tracking'=>$get('replacement_tracking'),'c_action_1'=>$get('c_action_1'),'c_action_1_remark'=>$get('c_action_1_remark'),'department'=>$get('department'),'created_by'=>$createdBy,'created_by_user_id'=>$user?->id,'created_at'=>$now,'updated_at'=>$now];
-                \Illuminate\Support\Facades\DB::transaction(function() use($payload,$now){
-                    $id=\Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->insertGetId($payload);
-                    \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')->insert(array_merge($payload,['orders_on_hold_issue_id'=>$id,'event_type'=>'created','revision_no'=>0,'logged_at'=>$now]));
+                $now = now();
+                $payload = ['sku' => $sku, 'qty' => (float) $qty, 'order_qty' => $get('order_qty') !== null ? (float) $get('order_qty') : null, 'parent' => $get('parent'), 'marketplace_1' => $get('marketplace_1'), 'marketplace_2' => $get('marketplace_2'), 'what_happened' => $get('what_happened'), 'issue' => $issue, 'issue_remark' => $get('issue_remark'), 'action_1' => $get('action_1'), 'action_1_remark' => $get('action_1_remark'), 'replacement_tracking' => $get('replacement_tracking'), 'c_action_1' => $get('c_action_1'), 'c_action_1_remark' => $get('c_action_1_remark'), 'department' => $get('department'), 'created_by' => $createdBy, 'created_by_user_id' => $user?->id, 'created_at' => $now, 'updated_at' => $now];
+                \Illuminate\Support\Facades\DB::transaction(function () use ($payload, $now) {
+                    $id = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->insertGetId($payload);
+                    \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')->insert(array_merge($payload, ['orders_on_hold_issue_id' => $id, 'event_type' => 'created', 'revision_no' => 0, 'logged_at' => $now]));
                 });
                 $inserted++;
-            } catch(\Throwable $e){ $skipped++; $errors[]="Row failed (SKU=$sku): ".$e->getMessage(); }
+            } catch (\Throwable $e) {
+                $skipped++;
+                $errors[] = "Row failed (SKU=$sku): ".$e->getMessage();
+            }
         }
         fclose($handle);
-        return response()->json(['message'=>"{$inserted} record(s) imported, {$skipped} skipped.",'inserted'=>$inserted,'skipped'=>$skipped,'errors'=>array_slice($errors,0,20)]);
+
+        return response()->json(['message' => "{$inserted} record(s) imported, {$skipped} skipped.", 'inserted' => $inserted, 'skipped' => $skipped, 'errors' => array_slice($errors, 0, 20)]);
     })->name('customer.care.qc.and.packing.issues.import');
 
     Route::post('/customer-care/carrier-issue/import-csv', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'importCsv'])
@@ -2551,6 +2630,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/title-master/ai/generate-title-100', [ProductMasterController::class, 'generateTitle100WithAI'])->name('title.master.ai.generate.title100');
     Route::post('/title-master/ai/generate-title-80', [ProductMasterController::class, 'generateTitle80WithAI'])->name('title.master.ai.generate.title80');
     Route::post('/title-master/ai/generate-title-60', [ProductMasterController::class, 'generateTitle60WithAI'])->name('title.master.ai.generate.title60');
+    Route::post('/title-master/ai/generate-ai-stack-drafts', [ProductMasterController::class, 'generateTitleMasterAiStackDrafts'])->name('title.master.ai.stack.drafts');
     Route::post('/api/amazon/push-title', [ProductMasterController::class, 'pushTitleToAmazon'])->name('amazon.push.title');
     Route::post('/api/amazon/push-bulk', [ProductMasterController::class, 'pushBulkToAmazon'])->name('amazon.push.bulk');
     Route::post('/api/marketplaces/push-title', [ProductMasterController::class, 'pushTitleToAllMarketplaces'])->name('marketplaces.push.title');
@@ -3634,7 +3714,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/faire/pricing-column-visibility', [FaireController::class, 'getFairePricingColumnVisibility'])->name('faire.pricing.column.get');
     Route::post('/faire/pricing-column-visibility', [FaireController::class, 'setFairePricingColumnVisibility'])->name('faire.pricing.column.set');
 
-    //pls
+    // pls
     Route::get('plsAnalysis', action: [PlsController::class, 'overallPls']);
     Route::get('/pls/view-data', [PlsController::class, 'getViewPlsData']);
     Route::get('plsPricingCVR', [PlsController::class, 'plsPricingCVR'])->name('pls.pricing.cvr');
@@ -4827,17 +4907,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // REVIEW INTELLIGENCE MASTER SYSTEM
     // =========================================================================
     Route::prefix('reviews')->name('reviews.')->group(function () {
-        Route::get('/',                          [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'index'])->name('index');
-        Route::get('/data',                      [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'getData'])->name('data');
-        Route::get('/sku/{sku}/detail',          [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'skuDetail'])->name('sku.detail');
-        Route::get('/supplier-intelligence',     [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'supplierIntelligence'])->name('supplier-intelligence');
-        Route::get('/ai-insights',               [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'aiInsights'])->name('ai-insights');
-        Route::get('/alerts',                    [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'alerts'])->name('alerts');
-        Route::post('/alerts/{id}/resolve',      [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'resolveAlert'])->name('alerts.resolve');
-        Route::post('/upload-csv',               [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'uploadCsv'])->name('upload-csv');
-        Route::post('/{id}/generate-reply',      [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'generateReply'])->name('generate-reply');
-        Route::post('/trigger-fetch',            [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'triggerFetch'])->name('trigger-fetch');
-        Route::post('/refresh-summary',          [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'refreshSummary'])->name('refresh-summary');
+        Route::get('/', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'index'])->name('index');
+        Route::get('/data', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'getData'])->name('data');
+        Route::get('/sku/{sku}/detail', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'skuDetail'])->name('sku.detail');
+        Route::get('/supplier-intelligence', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'supplierIntelligence'])->name('supplier-intelligence');
+        Route::get('/ai-insights', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'aiInsights'])->name('ai-insights');
+        Route::get('/alerts', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'alerts'])->name('alerts');
+        Route::post('/alerts/{id}/resolve', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'resolveAlert'])->name('alerts.resolve');
+        Route::post('/upload-csv', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'uploadCsv'])->name('upload-csv');
+        Route::post('/{id}/generate-reply', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'generateReply'])->name('generate-reply');
+        Route::post('/trigger-fetch', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'triggerFetch'])->name('trigger-fetch');
+        Route::post('/refresh-summary', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'refreshSummary'])->name('refresh-summary');
     });
 
     Route::get('', [RoutingController::class, 'index'])->name('root');

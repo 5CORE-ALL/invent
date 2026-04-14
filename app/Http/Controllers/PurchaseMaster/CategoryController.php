@@ -10,15 +10,16 @@ use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\FbaShipCalculation;
 use App\Models\FbaTable;
+use App\Models\InstructionsItemPkg;
 use App\Models\ProductCategory;
 use App\Models\ProductGroup;
-use App\Models\InstructionsItemPkg;
-use App\Models\QcImprovementReqBeforeItemPkg;
 use App\Models\ProductMaster;
+use App\Models\QcImprovementReqBeforeItemPkg;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\EbayApiService;
 use App\Services\WalmartApiService;
+use App\Support\OpenAiRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -2517,7 +2518,7 @@ If the image is unclear, say so in summary and lower confidence.
 PROMPT;
 
         try {
-            $response = Http::withToken($apiKey)
+            $response = Http::withHeaders(OpenAiRequest::authHeaders())
                 ->timeout(120)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model' => $model,
