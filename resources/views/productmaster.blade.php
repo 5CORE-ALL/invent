@@ -1654,6 +1654,18 @@
             // Store current filter values globally to preserve them across data reloads
             let currentFilterValues = {};
 
+            /** NBSP + collapsed whitespace so SKU/parent search matches DB (e.g. Excel/import double spaces, \u00a0). */
+            function normalizeForTextSearch(s) {
+                if (s == null || s === '') {
+                    return '';
+                }
+                return String(s)
+                    .replace(/\u00a0/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase();
+            }
+
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
@@ -3529,10 +3541,10 @@
 
             // Live search for archived products
             $(document).on('keyup', '#archivedSearch', function() {
-                const searchValue = $(this).val().toLowerCase().trim();
+                const searchValue = normalizeForTextSearch($(this).val());
 
                 $('#archivedProductsTable tbody tr').each(function() {
-                    const sku = $(this).find('td:nth-child(2)').text().toLowerCase();
+                    const sku = normalizeForTextSearch($(this).find('td:nth-child(2)').text());
                     $(this).toggle(sku.includes(searchValue));
                 });
             });
@@ -3541,19 +3553,19 @@
 
             // Global applyFilters function that can be called from anywhere
             function applyFilters() {
-                const parentValue = (document.getElementById('parentSearch')?.value || '').toLowerCase().trim();
-                const skuValue = (document.getElementById('skuSearch')?.value || '').toLowerCase().trim();
+                const parentValue = normalizeForTextSearch(document.getElementById('parentSearch')?.value || '');
+                const skuValue = normalizeForTextSearch(document.getElementById('skuSearch')?.value || '');
                 let filteredData = [...tableData];
 
                 if (parentValue) {
                     filteredData = filteredData.filter(item =>
-                        ((item.Parent || item.parent || '') + '').toLowerCase().includes(parentValue)
+                        normalizeForTextSearch(item.Parent || item.parent || '').includes(parentValue)
                     );
                 }
 
                 if (skuValue) {
                     filteredData = filteredData.filter(item =>
-                        ((item.SKU || item.sku || '') + '').toLowerCase().includes(skuValue)
+                        normalizeForTextSearch(item.SKU || item.sku || '').includes(skuValue)
                     );
                 }
 
@@ -5209,8 +5221,8 @@
             // Get current filter values
             function getCurrentFilters() {
                 return {
-                    parent: document.getElementById('parentSearch').value.toLowerCase().trim(),
-                    sku: document.getElementById('skuSearch').value.toLowerCase().trim(),
+                    parent: normalizeForTextSearch(document.getElementById('parentSearch').value),
+                    sku: normalizeForTextSearch(document.getElementById('skuSearch').value),
                     global: ''
                 };
             }
@@ -5221,13 +5233,13 @@
 
                 if (filters.parent) {
                     filteredData = filteredData.filter(item =>
-                        (item.Parent || '').toLowerCase().includes(filters.parent)
+                        normalizeForTextSearch(item.Parent || item.parent || '').includes(filters.parent)
                     );
                 }
 
                 if (filters.sku) {
                     filteredData = filteredData.filter(item =>
-                        (item.SKU || '').toLowerCase().includes(filters.sku)
+                        normalizeForTextSearch(item.SKU || item.sku || '').includes(filters.sku)
                     );
                 }
 
