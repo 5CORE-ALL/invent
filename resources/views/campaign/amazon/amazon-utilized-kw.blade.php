@@ -327,11 +327,11 @@
                                         <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
-                                        <select id="status-filter" class="form-select form-select-sm w-100">
+                                        <select id="status-filter" class="form-select form-select-sm w-100 amazon-utilized-kw-status-select">
                                             <option value="ALL">All</option>
                                             <option value="ENABLED" selected>Enabled</option>
                                             <option value="PAUSED">Paused</option>
-                                            <option value="ENDED">Ended</option>
+                                            <option value="ENDED">Archive</option>
                                         </select>
                                     </div>
                                     <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
@@ -628,6 +628,24 @@
         </div>
     </div>
 
+    <!-- Parent group: amazon_datsheets rows matched by product_master SKUs -->
+    <div class="modal fade" id="parentDatsheetInfoModal" tabindex="-1" aria-labelledby="parentDatsheetInfoModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="parentDatsheetInfoModalLabel">Amazon datasheet (parent group)</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-3" id="parentDatsheetInfoModalBody">
+                    <p class="text-muted mb-0">Loading…</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="progress-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 9999;">
         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
             <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
@@ -675,6 +693,123 @@
                 if (percent >= 25 && percent < 50) return 'green';
                 return 'pink';
             };
+
+            function getParentGroupKeyForDatsheet(row) {
+                const sku = (row.sku || '').trim();
+                const isParent = row.is_parent !== undefined ? !!row.is_parent : sku.toUpperCase().includes('PARENT');
+                const p = row.parent ? String(row.parent).trim() : '';
+                // Parent aggregate row: use its SKU ("PARENT A-54"). Child: use PM parent ("A-54" or "PARENT A-54") — backend aliases unify both.
+                if (isParent) {
+                    return sku || p;
+                }
+                return p || sku || '';
+            }
+
+            function escapeHtmlUtil(s) {
+                return String(s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            function renderParentDatsheetModalBody(payload) {
+                const items = payload.items || [];
+                const label = (payload.parent || '');
+                const titleEl = document.getElementById('parentDatsheetInfoModalLabel');
+                if (titleEl) {
+                    titleEl.textContent = 'Child SKUs — sold (amazon_datsheets)' + (label ? ' · ' + label : '');
+                }
+                const bodyEl = document.getElementById('parentDatsheetInfoModalBody');
+                if (!bodyEl) {
+                    return;
+                }
+                if (items.length === 0) {
+                    bodyEl.innerHTML = '<p class="text-muted mb-0">No child SKUs in product_master for this parent, or none linked in amazon_datsheets yet.</p>';
+                    return;
+                }
+                const allKeys = new Set();
+                items.forEach(function (it) {
+                    if (it.amazon_datsheet && typeof it.amazon_datsheet === 'object') {
+                        Object.keys(it.amazon_datsheet).forEach(function (k) { allKeys.add(k); });
+                    }
+                });
+                allKeys.delete('sold');
+                const preferred = ['asin', 'price', 'amazon_title', 'listing_status', 'units_ordered_l30', 'units_ordered_l7'];
+                const rest = Array.from(allKeys).filter(function (k) { return preferred.indexOf(k) === -1; });
+                rest.sort();
+                const keyOrder = preferred.filter(function (k) { return allKeys.has(k); }).concat(rest);
+                let thead = '<thead class="table-light"><tr><th>SKU</th><th class="text-end">Sold</th><th>PM parent</th>';
+                keyOrder.forEach(function (k) { thead += '<th>' + escapeHtmlUtil(k) + '</th>'; });
+                thead += '</tr></thead>';
+                let tbody = '<tbody>';
+                items.forEach(function (it) {
+                    const d = it.amazon_datsheet;
+                    let soldDisp = '';
+                    if (it.sold !== undefined && it.sold !== null && it.sold !== '') {
+                        soldDisp = it.sold;
+                    } else if (d && d.sold !== undefined && d.sold !== null && d.sold !== '') {
+                        soldDisp = d.sold;
+                    } else {
+                        soldDisp = '—';
+                    }
+                    tbody += '<tr><td class="text-start text-nowrap fw-semibold">' + escapeHtmlUtil(it.sku || '') + '</td>';
+                    tbody += '<td class="text-end">' + escapeHtmlUtil(String(soldDisp)) + '</td>';
+                    tbody += '<td class="text-start">' + escapeHtmlUtil(it.product_master_parent || '') + '</td>';
+                    keyOrder.forEach(function (k) {
+                        let v = '';
+                        if (d && d[k] !== undefined && d[k] !== null) {
+                            v = d[k];
+                            if (typeof v === 'object') {
+                                v = JSON.stringify(v);
+                            }
+                        }
+                        tbody += '<td class="text-start small">' + escapeHtmlUtil(String(v)) + '</td>';
+                    });
+                    tbody += '</tr>';
+                });
+                tbody += '</tbody>';
+                bodyEl.innerHTML =
+                    '<p class="small text-muted mb-2">Child SKUs for this family; <strong>sold</strong> from <code>amazon_datsheets</code>.</p>' +
+                    '<div class="table-responsive" style="max-height:70vh"><table class="table table-sm table-bordered table-striped mb-0">' +
+                    thead + tbody + '</table></div>';
+            }
+
+            function openParentDatsheetInfoModal(parentKey) {
+                const bodyEl = document.getElementById('parentDatsheetInfoModalBody');
+                if (bodyEl) {
+                    bodyEl.innerHTML = '<p class="text-muted mb-0">Loading…</p>';
+                }
+                const url = '/amazon/utilized/kw/parent-datsheet-info?parent=' + encodeURIComponent(parentKey);
+                fetch(url, { headers: { 'Accept': 'application/json' } })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (!data.ok) {
+                            if (bodyEl) {
+                                bodyEl.innerHTML = '<p class="text-danger mb-0">' + escapeHtmlUtil(data.message || 'Request failed') + '</p>';
+                            }
+                            return;
+                        }
+                        renderParentDatsheetModalBody(data);
+                        const el = document.getElementById('parentDatsheetInfoModal');
+                        if (el && typeof bootstrap !== 'undefined') {
+                            var inst = bootstrap.Modal.getInstance(el);
+                            if (!inst) { inst = new bootstrap.Modal(el); }
+                            inst.show();
+                        }
+                    })
+                    .catch(function () {
+                        if (bodyEl) {
+                            bodyEl.innerHTML = '<p class="text-danger mb-0">Could not load datasheet info.</p>';
+                        }
+                        const el = document.getElementById('parentDatsheetInfoModal');
+                        if (el && typeof bootstrap !== 'undefined') {
+                            var instErr = bootstrap.Modal.getInstance(el);
+                            if (!instErr) { instErr = new bootstrap.Modal(el); }
+                            instErr.show();
+                        }
+                    });
+            }
 
             // Function to update button counts from table data (calculated directly from frontend)
             // Counts are based on filtered data (respects INV, NRA, status, search filters)
@@ -787,10 +922,11 @@
                         return;
                     }
                     
-                    // Status filter: default ENABLED only; use "All" to see all campaigns
-                    let statusVal = $("#status-filter").val() || 'ENABLED';
-                    if (statusVal !== 'ALL' && row.campaignStatus !== statusVal) {
-                        return;
+                    // Status filter: same rules as combinedFilter (ENABLED requires hasCampaign)
+                    let statusVal = $('.amazon-utilized-kw-status-select').val() || 'ENABLED';
+                    if (statusVal !== 'ALL') {
+                        if (statusVal === 'ENABLED' && !hasCampaign) return;
+                        if (row.campaignStatus !== statusVal) return;
                     }
                     
                     // Count zero/negative inventory (INV <= 0) AFTER search and status filters
@@ -973,8 +1109,12 @@
                 searchVal = searchVal || tableSearchVal;
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
-                    let statusVal = $("#status-filter").val() || 'ENABLED';
-                    if (statusVal !== 'ALL' && row.campaignStatus !== statusVal) return;
+                    const hasCampaignAcos = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    let statusVal = $('.amazon-utilized-kw-status-select').val() || 'ENABLED';
+                    if (statusVal !== 'ALL') {
+                        if (statusVal === 'ENABLED' && !hasCampaignAcos) return;
+                        if (row.campaignStatus !== statusVal) return;
+                    }
                     
                     let invFilterVal = $("#inv-filter").val() || '';
                     if (invFilterVal === "OTHERS") {
@@ -1124,8 +1264,12 @@
                 searchVal = searchVal || tableSearchVal;
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
-                    let statusVal = $("#status-filter").val() || 'ENABLED';
-                    if (statusVal !== 'ALL' && row.campaignStatus !== statusVal) return;
+                    const hasCampaignPrice = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    let statusVal = $('.amazon-utilized-kw-status-select').val() || 'ENABLED';
+                    if (statusVal !== 'ALL') {
+                        if (statusVal === 'ENABLED' && !hasCampaignPrice) return;
+                        if (row.campaignStatus !== statusVal) return;
+                    }
                     
                     let invFilterVal = $("#inv-filter").val() || '';
                     if (invFilterVal === "OTHERS") {
@@ -1193,8 +1337,12 @@
                 searchVal = searchVal || tableSearchVal;
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
-                    let statusVal = $("#status-filter").val() || 'ENABLED';
-                    if (statusVal !== 'ALL' && row.campaignStatus !== statusVal) return;
+                    const hasCampaignRating = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    let statusVal = $('.amazon-utilized-kw-status-select').val() || 'ENABLED';
+                    if (statusVal !== 'ALL') {
+                        if (statusVal === 'ENABLED' && !hasCampaignRating) return;
+                        if (row.campaignStatus !== statusVal) return;
+                    }
                     
                     let invFilterVal = $("#inv-filter").val() || '';
                     if (invFilterVal === "OTHERS") {
@@ -1235,6 +1383,8 @@
                     ratingSelect.options[3].text = `4 - 4.5 (${rating4_45})`;
                     ratingSelect.options[4].text = `≥ 4.5 (${ratingGte45})`;
                 }
+
+                updateStatusFilterOptionCounts();
             }
 
             // Total campaign card click handler
@@ -1550,6 +1700,33 @@
                         width: 50
                     },
                     {
+                        title: "Info",
+                        field: "_infoDot",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 56,
+                        download: false,
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            const parentKey = getParentGroupKeyForDatsheet(row);
+                            if (!parentKey) {
+                                return '<span class="text-muted" title="No parent group">—</span>';
+                            }
+                            return '<span class="parent-datsheet-info-dot" role="button" tabindex="0" title="Amazon datasheet (all SKUs in this parent group)" ' +
+                                'style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#6366f1;cursor:pointer;box-shadow:0 0 0 1px rgba(99,102,241,0.35);"></span>';
+                        },
+                        cellClick: function (e, cell) {
+                            if (!e.target || !e.target.classList || !e.target.classList.contains('parent-datsheet-info-dot')) {
+                                return;
+                            }
+                            const row = cell.getRow().getData();
+                            const parentKey = getParentGroupKeyForDatsheet(row);
+                            if (parentKey) {
+                                openParentDatsheetInfoModal(parentKey);
+                            }
+                        }
+                    },
+                    {
                         title: "Parent SKU",
                         field: "parent",
                         hozAlign: "left",
@@ -1795,351 +1972,6 @@
                         hozAlign: "center"
                     },
                     {
-                        title: "Price",
-                        field: "price",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var value = parseFloat(cell.getValue() || 0);
-                            var tpft = parseFloat(row.PFT || 0);
-                            var roi = parseFloat(row.roi || 0);
-                            var tooltipText = "PFT%: " + tpft.toFixed(2) + "%\nROI%: " + roi.toFixed(2) + "%";
-                            
-                            return `<div class="text-center">$${value.toFixed(2)}<i class="bi bi-info-circle ms-1 info-icon-price-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
-                        },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "GPFT",
-                        field: "GPFT",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
-                            let color = '';
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        sorter: "number",
-                        width: 80
-                    },
-                    {
-                        title: "PFT%",
-                        field: "PFT",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '0%';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '0%';
-                            let color = '';
-                            
-                            // getPftColor logic from inc/dec page (same as eBay)
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        sorter: "number",
-                        width: 80
-                    },
-                    {
-                        title: "ROI%",
-                        field: "roi",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '0%';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '0%';
-                            let color = '';
-                            
-                            // getRoiColor logic from inc/dec page (same as eBay)
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        sorter: "number",
-                        width: 80
-                    },
-                    {
-                        title: "SPRICE",
-                        field: "SPRICE",
-                        hozAlign: "center",
-                        editor: "input",
-                        editorParams: {
-                            elementAttributes: {
-                                maxlength: "10"
-                            }
-                        },
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const rowData = cell.getRow().getData();
-                            const hasCustomSprice = rowData.has_custom_sprice;
-                            const currentPrice = parseFloat(rowData.price) || 0;
-                            const sprice = parseFloat(value) || 0;
-                            
-                            if (!value) return '';
-                            
-                            // ONLY condition: Show blank if price and SPRICE match
-                            if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
-                                return '';
-                            }
-                            
-                            // Show SPRICE when it's different from current price
-                            const formattedValue = `$${parseFloat(value).toFixed(2)}`;
-                            
-                            // If using default price (not custom), show in blue
-                            if (hasCustomSprice === false) {
-                                return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
-                            }
-                            
-                            return formattedValue;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "Accept",
-                        field: "_accept",
-                        hozAlign: "center",
-                        headerSort: false,
-                        visible: false,
-                        titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
-                                <span>Accept</span>
-                                <button type="button" class="btn btn-sm apply-all-prices-btn" title="Apply All Selected Prices to Amazon" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;" onclick="event.stopPropagation(); if(typeof applyAllSelectedPrices === 'function') { applyAllSelectedPrices(); }">
-                                    <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
-                                </button>
-                            </div>`;
-                        },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const sku = rowData.sku;
-                            const sprice = parseFloat(rowData.SPRICE) || 0;
-                            const status = rowData.SPRICE_STATUS || null;
-                            
-                            if (!sprice || sprice === 0) {
-                                return '<span style="color: #999;">N/A</span>';
-                            }
-                            
-                            // Determine icon and color based on status
-                            let icon = '<i class="fas fa-check"></i>';
-                            let iconColor = '#28a745'; // Green for apply
-                            let titleText = 'Apply Price to Amazon';
-                            
-                            if (status === 'pushed') {
-                                icon = '<i class="fa-solid fa-check-double"></i>';
-                                iconColor = '#28a745'; // Green
-                                titleText = 'Price pushed to Amazon (Double-click to mark as Applied)';
-                            } else if (status === 'applied') {
-                                icon = '<i class="fa-solid fa-check-double"></i>';
-                                iconColor = '#28a745'; // Green
-                                titleText = 'Price applied to Amazon (Double-click to change)';
-                            } else if (status === 'error') {
-                                icon = '<i class="fa-solid fa-x"></i>';
-                                iconColor = '#dc3545'; // Red
-                                titleText = 'Error applying price to Amazon';
-                            } else if (status === 'processing') {
-                                icon = '<i class="fas fa-spinner fa-spin"></i>';
-                                iconColor = '#ffc107'; // Yellow
-                                titleText = 'Price pushing in progress...';
-                            }
-                            
-                            // Show only icon with color, no background
-                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${sku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
-                                ${icon}
-                            </button>`;
-                        },
-                        cellClick: function(e, cell) {
-                            // Handle button click directly in cellClick
-                            const $target = $(e.target);
-                            if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
-                                e.stopPropagation();
-                                const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
-                                const sku = $btn.attr('data-sku') || $btn.data('sku');
-                                const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
-                                
-                                if (!sku || !price || price <= 0 || isNaN(price)) {
-                                    showToast('error', 'Invalid SKU or price');
-                                    return;
-                                }
-                                
-                                // Disable button and show loading state (only clock icon)
-                                $btn.prop('disabled', true);
-                                // Ensure circular styling
-                                $btn.css({
-                                    'border-radius': '50%',
-                                    'width': '35px',
-                                    'height': '35px',
-                                    'padding': '0',
-                                    'display': 'flex',
-                                    'align-items': 'center',
-                                    'justify-content': 'center'
-                                });
-                                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
-                                
-                                // Use retry function
-                                applyPriceWithRetry(sku, price, cell, 5, 5000)
-                                    .then((result) => {
-                                        // Success - update row data with pushed status
-                                        const row = cell.getRow();
-                                        const rowData = row.getData();
-                                        rowData.SPRICE_STATUS = 'pushed';
-                                        row.update(rowData);
-                                        
-                                        $btn.prop('disabled', false);
-                                        // Show green tick icon in circular button
-                                        $btn.html('<i class="fas fa-check-circle" style="color: black; font-size: 1.1em;"></i>');
-                                    })
-                                    .catch((error) => {
-                                        // Update row data with error status
-                                        const row = cell.getRow();
-                                        const rowData = row.getData();
-                                        rowData.SPRICE_STATUS = 'error';
-                                        row.update(rowData);
-                                        
-                                        $btn.prop('disabled', false);
-                                        // Show error icon in circular button
-                                        $btn.html('<i class="fas fa-times" style="color: black;"></i>');
-                                        
-                                        console.error('Apply price failed after retries:', error);
-                                    });
-                                return;
-                            }
-                            // Don't stop propagation for other clicks
-                            e.stopPropagation();
-                        },
-                        cellDblClick: function(e, cell) {
-                            // Handle double-click to manually set status to 'applied'
-                            const $target = $(e.target);
-                            if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
-                                e.stopPropagation();
-                                const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
-                                const sku = $btn.attr('data-sku') || $btn.data('sku');
-                                const currentStatus = $btn.attr('data-status') || '';
-                                
-                                // Only allow setting to 'applied' if current status is 'pushed'
-                                if (currentStatus === 'pushed') {
-                                    $.ajax({
-                                        url: '/update-sprice-status',
-                                        method: 'POST',
-                                        headers: {
-                                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                                        },
-                                        data: {
-                                            sku: sku,
-                                            status: 'applied'
-                                        },
-                                        success: function(response) {
-                                            // Update row data
-                                            const row = cell.getRow();
-                                            const rowData = row.getData();
-                                            rowData.SPRICE_STATUS = 'applied';
-                                            row.update(rowData);
-                                            showToast('success', 'Status updated to Applied');
-                                        },
-                                        error: function(xhr) {
-                                            showToast('error', 'Failed to update status');
-                                        }
-                                    });
-                                } else if (currentStatus === 'applied') {
-                                    // If already applied, show message
-                                    showToast('info', 'Price is already marked as Applied');
-                                } else {
-                                    showToast('info', 'Please push the price first before marking as Applied');
-                                }
-                            }
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "S GPFT",
-                        field: "SGPFT",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
-                            let color = '';
-                            // Same as GPFT% color logic
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "S PFT",
-                        field: "Spft%",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
-                            let color = '';
-                            // Same as PFT% color logic
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "SROI",
-                        field: "SROI",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
-                            let color = '';
-                            // Same as ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 80
-                    },
-                    {
                         title: "FBA",
                         field: "FBA",
                         formatter: function(cell) {
@@ -2240,6 +2072,77 @@
                             return `<div class="text-center">${acosDisplay}<i class="bi bi-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
                         },
                         sorter: "number"
+                    },
+                    {
+                        title: "CVR L30",
+                        field: "CVR_L30",
+                        hozAlign: "center",
+                        headerSort: true,
+                        minWidth: 72,
+                        width: 65,
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            const sku = (row.sku || '').trim();
+                            const aL30 = parseFloat(row.A_L30) || 0;
+                            const sess30 = parseFloat(row.Sess30) || 0;
+                            const aL60 = parseFloat(row.units_ordered_l60) || 0;
+                            const sess60 = parseFloat(row.sessions_l60) || 0;
+                            const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                            const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                            const tol = 0.1;
+                            let arrowHtml = '';
+                            if (sku) {
+                                let arrowColor = '#6c757d';
+                                let arrowIcon = 'fa-minus';
+                                if (cvrL30 > cvrL60 + tol) {
+                                    arrowColor = '#28a745';
+                                    arrowIcon = 'fa-arrow-up';
+                                } else if (cvrL30 < cvrL60 - tol) {
+                                    arrowColor = '#a00211';
+                                    arrowIcon = 'fa-arrow-down';
+                                }
+                                arrowHtml = ' <i class="fas ' + arrowIcon + '" style="color: ' + arrowColor + '; font-size: 12px;" title="CVR L60: ' + cvrL60.toFixed(1) + '%"></i>';
+                            }
+                            if (sess30 === 0) {
+                                return '<span style="color: #a00211; font-weight: 600;">0.0%</span>' + arrowHtml;
+                            }
+                            const cvr = cvrL30;
+                            let color = '';
+                            if (cvr <= 4) color = '#a00211';
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                            else color = '#e83e8c';
+                            return '<span style="color: ' + color + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>' + arrowHtml;
+                        },
+                        sorter: function (a, b, aRow, bRow) {
+                            const calcCVR = function (row) {
+                                const a30 = parseFloat(row.A_L30) || 0;
+                                const s30 = parseFloat(row.Sess30) || 0;
+                                return s30 === 0 ? 0 : (a30 / s30) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        }
+                    },
+                    {
+                        title: "KW 7 UB%",
+                        field: "l7_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function (cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l7_spend = parseFloat(row.l7_spend) || 0;
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub7 >= 66 && ub7 <= 99) td.classList.add('green-bg');
+                            else if (ub7 > 99) td.classList.add('pink-bg');
+                            else if (ub7 < 66) td.classList.add('red-bg');
+                            return ub7.toFixed(0) + '%';
+                        }
                     },
                     {
                         title: "Clicks L7",
@@ -2503,6 +2406,27 @@
                         },
                         sorter: "number",
                         width: 90
+                    },
+                    {
+                        title: "2 UB%",
+                        field: "l2_spend",
+                        hozAlign: "right",
+                        visible: true,
+                        minWidth: 72,
+                        formatter: function (cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l2_spend = parseFloat(row.l2_spend) || 0;
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub2 >= 66 && ub2 <= 99) td.classList.add('green-bg');
+                            else if (ub2 > 99) td.classList.add('pink-bg');
+                            else if (ub2 < 66) td.classList.add('red-bg');
+                            return ub2.toFixed(0) + '%';
+                        }
                     },
                     {
                         title: "7 UB%",
@@ -3077,8 +3001,8 @@
                 return 'r';
             }
 
-            // Combined filter function
-            function combinedFilter(data) {
+            // Combined filter function (optional second arg: status bucket string for counts; Tabulator may pass extra args — only use override when it is a string)
+            function combinedFilter(data, statusOverride) {
                 const skuStr = (data.sku != null) ? (data.sku + '') : '';
                 const isParentRow = data.is_parent !== undefined ? !!data.is_parent : skuStr.toUpperCase().includes('PARENT');
                 const typeFilter = $("#sku-type-filter").val() || '';
@@ -3163,7 +3087,12 @@
                 }
 
                 // Status filter: default ENABLED only; use "All" to see all campaigns
-                let statusVal = $("#status-filter").val() || 'ENABLED';
+                let statusVal;
+                if (typeof statusOverride === 'string' && statusOverride !== '') {
+                    statusVal = statusOverride;
+                } else {
+                    statusVal = $('.amazon-utilized-kw-status-select').val() || 'ENABLED';
+                }
                 if (statusVal !== 'ALL') {
                     if (statusVal === 'ENABLED' && !hasCampaign) return false;
                     if (data.campaignStatus !== statusVal) return false;
@@ -3350,61 +3279,32 @@
                 return true;
             }
 
-            // Handle SPRICE cell editing - attach right after table initialization
-            table.on('cellEdited', function(cell) {
-                var row = cell.getRow();
-                var data = row.getData();
-                var field = cell.getColumn().getField();
-                var value = cell.getValue();
-
-                if (field === 'SPRICE') {
-                    const sku = data.sku;
-                    // Clean the value - remove $ sign and any whitespace
-                    let cleanValue = String(value).replace(/[$\s]/g, '');
-                    cleanValue = parseFloat(cleanValue) || 0;
-                    
-                    $.ajax({
-                        url: '/save-amazon-sprice',
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                        },
-                        data: {
-                            sku: sku,
-                            sprice: cleanValue
-                        },
-                        success: function(response) {
-                            showToast('success', 'SPRICE updated successfully');
-                            
-                            // Update row data with new values
-                            const updateData = {
-                                'SPRICE': cleanValue,
-                                'has_custom_sprice': true,
-                                'SPRICE_STATUS': null // Reset status so formatter shows/hides based on price match
-                            };
-                            
-                            if (response.sgpft_percent !== undefined) {
-                                updateData['SGPFT'] = response.sgpft_percent;
-                            }
-                            if (response.spft_percent !== undefined) {
-                                updateData['Spft%'] = response.spft_percent;
-                            }
-                            if (response.sroi_percent !== undefined) {
-                                updateData['SROI'] = response.sroi_percent;
-                            }
-                            
-                            // Update row with all data at once
-                            row.update(updateData);
-                            
-                            // Force redraw of the entire row to ensure all formatters run
-                            row.reformat();
-                        },
-                        error: function(xhr) {
-                            showToast('error', 'Failed to update SPRICE');
-                        }
+            // Per-status row counts for Status dropdown (scoped select; avoids duplicate id="status-filter" elsewhere in the app)
+            function updateStatusFilterOptionCounts() {
+                if (typeof table === 'undefined' || !table) return;
+                const sel = document.querySelector('select.amazon-utilized-kw-status-select');
+                if (!sel || !sel.options || !sel.options.length) return;
+                const allData = table.getData('all');
+                const modes = ['ALL', 'ENABLED', 'PAUSED', 'ENDED'];
+                const counts = { ALL: 0, ENABLED: 0, PAUSED: 0, ENDED: 0 };
+                const labels = { ALL: 'All', ENABLED: 'Enabled', PAUSED: 'Paused', ENDED: 'Archive' };
+                try {
+                    allData.forEach(function(data) {
+                        modes.forEach(function(mode) {
+                            if (combinedFilter(data, mode)) counts[mode]++;
+                        });
                     });
+                    const prevValue = sel.value;
+                    for (let i = 0; i < sel.options.length; i++) {
+                        const opt = sel.options[i];
+                        const v = opt.value;
+                        opt.text = (labels[v] || v) + ' (' + (counts[v] || 0) + ')';
+                    }
+                    sel.value = prevValue;
+                } catch (e) {
+                    console.error('updateStatusFilterOptionCounts', e);
                 }
-            });
+            }
 
             // Handle SBID M cell edit
             table.on("cellEdited", function(cell) {
@@ -3573,33 +3473,6 @@
                             }
                         });
                     }
-                    // Price info icon toggle for PFT%, ROI%, GPFT, SPRICE, Accept, S GPFT, S PFT, SROI
-                    if (e.target.classList.contains('info-icon-price-toggle')) {
-                        e.stopPropagation();
-                        var pftCol = table.getColumn('PFT');
-                        var roiCol = table.getColumn('roi');
-                        
-                        // Toggle visibility
-                        if (pftCol.isVisible()) {
-                            table.hideColumn('PFT');
-                            table.hideColumn('roi');
-                            table.hideColumn('GPFT');
-                            table.hideColumn('SPRICE');
-                            table.hideColumn('_accept');
-                            table.hideColumn('SGPFT');
-                            table.hideColumn('Spft%');
-                            table.hideColumn('SROI');
-                        } else {
-                            table.showColumn('PFT');
-                            table.showColumn('roi');
-                            table.showColumn('GPFT');
-                            table.showColumn('SPRICE');
-                            table.showColumn('_accept');
-                            table.showColumn('SGPFT');
-                            table.showColumn('Spft%');
-                            table.showColumn('SROI');
-                        }
-                    }
                     
                     // INV info icon toggle for extra columns (FBA_INV, L30, DIL%, etc.)
                     if (e.target.classList.contains('info-icon-inv-toggle')) {
@@ -3664,7 +3537,7 @@
                     }
                 });
 
-                $("#status-filter, #inv-filter, #sku-type-filter, #nra-filter, #sbgt-filter, #price-slab-filter, #rating-filter").on("change", function() {
+                $(".amazon-utilized-kw-status-select, #inv-filter, #sku-type-filter, #nra-filter, #sbgt-filter, #price-slab-filter, #rating-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {
@@ -4835,87 +4708,6 @@
                 });
             }
         });
-        }
-
-        // Retry function for applying price with up to 5 attempts
-        function applyPriceWithRetry(sku, price, cell, maxRetries = 5, delay = 5000) {
-            return new Promise((resolve, reject) => {
-                let attempt = 0;
-                
-                function attemptApply() {
-                    attempt++;
-                    
-                    $.ajax({
-                        url: '/apply-amazon-price',
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                        },
-                        data: {
-                            sku: sku,
-                            price: price
-                        },
-                        success: function(response) {
-                            // Check for errors in response
-                            if (response.errors && response.errors.length > 0) {
-                                const errorMsg = response.errors[0].message || 'Unknown error';
-                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
-                                
-                                // Check if it's an authentication error - don't retry immediately
-                                if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || errorMsg.includes('Client authentication failed')) {
-                                    // For auth errors, wait longer before retry (10 seconds)
-                                    if (attempt < maxRetries) {
-                                        console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
-                                        setTimeout(attemptApply, 10000);
-                                    } else {
-                                        console.error(`Max retries reached for SKU ${sku} due to auth error`);
-                                        reject({ error: true, response: response, isAuthError: true });
-                                    }
-                                } else {
-                                    // For other errors, retry with normal delay
-                                    if (attempt < maxRetries) {
-                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                        setTimeout(attemptApply, delay);
-                                    } else {
-                                        console.error(`Max retries reached for SKU ${sku}`);
-                                        reject({ error: true, response: response });
-                                    }
-                                }
-                            } else {
-                                // Success
-                                resolve({ success: true, response: response });
-                            }
-                        },
-                        error: function(xhr) {
-                            const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseText || 'Network error';
-                            console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
-                            
-                            // Check if it's an authentication error
-                            if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || xhr.status === 401 || errorMsg.includes('Client authentication failed')) {
-                                // For auth errors, wait longer before retry
-                                if (attempt < maxRetries) {
-                                    console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
-                                    setTimeout(attemptApply, 10000);
-                                } else {
-                                    console.error(`Max retries reached for SKU ${sku} due to auth error`);
-                                    reject({ error: true, xhr: xhr, isAuthError: true });
-                                }
-                            } else {
-                                // For other errors, retry with normal delay
-                                if (attempt < maxRetries) {
-                                    console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                    setTimeout(attemptApply, delay);
-                                } else {
-                                    console.error(`Max retries reached for SKU ${sku}`);
-                                    reject({ error: true, xhr: xhr });
-                                }
-                            }
-                        }
-                    });
-                }
-                
-                attemptApply();
-            });
         }
 
         // Toast notification function

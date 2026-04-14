@@ -2665,7 +2665,7 @@ class OverallAmazonController extends Controller
             $campaignForRow = $campaignForDisplay ?? $campaignsForThisSkuOnly->first();
 
             // KW page fields: use L30 campaign for campaign_id, campaignName, campaignStatus.
-            // When matchedCampaignsKwL30 is not empty, always populate campaign_id/campaignName so KW Ads section shows all 198 rows.
+            // When matchedCampaignsKwL30 is not empty, always populate campaign_id/campaignName so the tabulator can show all matching rows.
             if ($matchedCampaignsKwL30->isNotEmpty() && $campaignForRow) {
                 $row['campaignBudgetAmount'] = $campaignForRow->campaignBudgetAmount ?? ($matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0));
                 $row['utilization_budget'] = $row['campaignBudgetAmount'];
@@ -2923,7 +2923,7 @@ class OverallAmazonController extends Controller
                 $row['hl_sales_L30'] = 0;
             }
 
-            // --- HL Campaign Details (for HL Ads section) ---
+            // --- HL Campaign Details (tabulator HL columns) ---
             // Match HL L7 / L1 with same name rules as L30; prefer ENABLED row for budget/CPC, else any status (paused campaigns still show metrics).
             $matchedCampaignsHlL7 = $amazonHlL7->filter($hlCampaignMatchesHlL30);
             $matchedHlL7 = $matchedCampaignsHlL7->first(function ($item) {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
@@ -1958,6 +1959,111 @@ class AmazonSpBudgetController extends Controller
         return $this->getAmazonUtilizedAdsData($request);
     }
 
+    /**
+     * Child product_master SKUs for a parent family with amazon_datsheets rows (incl. sold).
+     * Matches both "PARENT A-54" and "A-54" so parent aggregate rows and children share one group.
+     */
+    public function getAmazonUtilizedParentDatsheetInfo(Request $request)
+    {
+        $raw = $request->query('parent', '');
+        if ($raw === null || trim((string) $raw) === '') {
+            return response()->json(['ok' => false, 'message' => 'parent is required'], 422);
+        }
+
+        $normalize = function (?string $s): string {
+            if ($s === null || $s === '') {
+                return '';
+            }
+            $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $s);
+            $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
+
+            return strtoupper(trim($normalizedSku));
+        };
+
+        $parentKey = $normalize((string) $raw);
+        if ($parentKey === '') {
+            return response()->json(['ok' => false, 'message' => 'parent is invalid'], 422);
+        }
+
+        // Same family whether keyed as "A-54" or "PARENT A-54" (product_master.parent often omits PREFIX)
+        $aliasKeys = [$parentKey];
+        if (preg_match('/^PARENT\s+(.+)$/i', $parentKey, $m)) {
+            $base = $normalize($m[1]);
+            if ($base !== '') {
+                $aliasKeys[] = $base;
+            }
+        } else {
+            $aliasKeys[] = $normalize('PARENT ' . $parentKey);
+        }
+        $aliasKeys = array_values(array_unique(array_filter($aliasKeys, fn ($a) => $a !== '')));
+
+        $productMasters = ProductMaster::whereNull('deleted_at')->get(['sku', 'parent']);
+
+        $groupSkuToPmParent = [];
+        foreach ($productMasters as $pm) {
+            $skuNorm = $normalize($pm->sku ?? '');
+            $parNorm = $normalize($pm->parent ?? '');
+            foreach ($aliasKeys as $ak) {
+                if ($skuNorm === $ak || $parNorm === $ak) {
+                    $groupSkuToPmParent[$pm->sku] = $pm->parent;
+                    break;
+                }
+            }
+        }
+
+        // Modal lists children only (exclude "PARENT ..." aggregate rows from product_master)
+        $groupSkuToPmParent = array_filter(
+            $groupSkuToPmParent,
+            function ($_, string $origSku): bool {
+                return ! preg_match('/^PARENT\s+/i', trim((string) $origSku));
+            },
+            ARRAY_FILTER_USE_BOTH
+        );
+
+        $skuList = array_keys($groupSkuToPmParent);
+        usort($skuList, 'strcasecmp');
+
+        if ($skuList === []) {
+            return response()->json([
+                'ok' => true,
+                'parent' => $parentKey,
+                'items' => [],
+            ]);
+        }
+
+        $sheets = AmazonDatasheet::whereIn('sku', $skuList)->get();
+        $byNorm = [];
+        foreach ($sheets as $row) {
+            $byNorm[$normalize($row->sku ?? '')] = $row;
+        }
+
+        $items = [];
+        foreach ($skuList as $origSku) {
+            $norm = $normalize($origSku);
+            $sheet = $byNorm[$norm] ?? null;
+            if (! $sheet) {
+                $sheet = AmazonDatasheet::whereRaw('UPPER(TRIM(sku)) = ?', [$norm])->first();
+                if ($sheet) {
+                    $byNorm[$normalize($sheet->sku ?? '')] = $sheet;
+                }
+            }
+
+            $ds = $sheet ? $sheet->toArray() : null;
+            $items[] = [
+                'sku' => $origSku,
+                'product_master_parent' => $groupSkuToPmParent[$origSku] ?? null,
+                'sold' => $ds['sold'] ?? null,
+                'amazon_datsheet' => $ds,
+            ];
+        }
+
+        return response()->json([
+            'ok' => true,
+            'parent' => $parentKey,
+            'items' => $items,
+        ]);
+    }
+
     public function getAmazonUtilizedHlAdsData(Request $request)
     {
         $request->merge(['type' => 'HL']);
@@ -1967,7 +2073,10 @@ class AmazonSpBudgetController extends Controller
     public function getAmazonUtilizedAdsData(Request $request)
     {
         $campaignType = $request->get('type', 'KW'); // KW, PT, or HL
-        
+
+        // Same row payload as /amazon-tabulator-view (getViewAmazonData) for FBM / datasheet / inventory fields
+        $amazonTabulatorMainBySku = $this->indexAmazonTabulatorMainRowsByChildSku($request);
+
         // Get all product masters excluding soft deleted ones
         $productMasters = ProductMaster::whereNull('deleted_at')
             ->orderBy('parent', 'asc')
@@ -2457,9 +2566,13 @@ class AmazonSpBudgetController extends Controller
         }
 
         // For PARENT rows: INV, OV L30, AL 30 = sum of child SKUs' values (so "PARENT 10 FR" shows total of its children)
+        // Same for CVR L30 / L60 inputs: sessions_l30, sessions_l60, units_ordered_l60 (amazon_datsheets)
         $childInvSumByParent = [];
         $childL30SumByParent = [];
         $childAL30SumByParent = [];
+        $childSess30SumByParent = [];
+        $childSess60SumByParent = [];
+        $childAL60SumByParent = [];
         foreach ($productMasters as $pm) {
             $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
             $norm = preg_replace('/\s+/', ' ', $norm);
@@ -2476,6 +2589,9 @@ class AmazonSpBudgetController extends Controller
             $inv = ($shopify && isset($shopify->inv)) ? (int) $shopify->inv : 0;
             $l30 = ($shopify && isset($shopify->quantity)) ? (int) $shopify->quantity : 0;
             $al30 = ($amazonSheetChild && isset($amazonSheetChild->units_ordered_l30)) ? (int) $amazonSheetChild->units_ordered_l30 : 0;
+            $sess30 = ($amazonSheetChild && isset($amazonSheetChild->sessions_l30)) ? (int) $amazonSheetChild->sessions_l30 : 0;
+            $sess60 = ($amazonSheetChild && isset($amazonSheetChild->sessions_l60)) ? (int) $amazonSheetChild->sessions_l60 : 0;
+            $al60 = ($amazonSheetChild && isset($amazonSheetChild->units_ordered_l60)) ? (int) $amazonSheetChild->units_ordered_l60 : 0;
             if (!isset($childInvSumByParent[$p])) {
                 $childInvSumByParent[$p] = 0;
             }
@@ -2488,6 +2604,18 @@ class AmazonSpBudgetController extends Controller
                 $childAL30SumByParent[$p] = 0;
             }
             $childAL30SumByParent[$p] += $al30;
+            if (!isset($childSess30SumByParent[$p])) {
+                $childSess30SumByParent[$p] = 0;
+            }
+            $childSess30SumByParent[$p] += $sess30;
+            if (!isset($childSess60SumByParent[$p])) {
+                $childSess60SumByParent[$p] = 0;
+            }
+            $childSess60SumByParent[$p] += $sess60;
+            if (!isset($childAL60SumByParent[$p])) {
+                $childAL60SumByParent[$p] = 0;
+            }
+            $childAL60SumByParent[$p] += $al60;
         }
 
         // For PARENT rows: avg price = average of child SKUs' prices (from amazon datashheet, or ProductMaster Values as fallback)
@@ -3016,6 +3144,9 @@ class AmazonSpBudgetController extends Controller
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => (stripos($sku, 'PARENT') !== false) ? (int)($childL30SumByParent[$parent] ?? 0) : (($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0),
                     'A_L30' => (stripos($sku, 'PARENT') !== false) ? (int)($childAL30SumByParent[$parent] ?? 0) : (($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0),
+                    'Sess30' => (stripos($sku, 'PARENT') !== false) ? (int)($childSess30SumByParent[$parent] ?? 0) : (($amazonSheet && isset($amazonSheet->sessions_l30)) ? (int)$amazonSheet->sessions_l30 : 0),
+                    'sessions_l60' => (stripos($sku, 'PARENT') !== false) ? (int)($childSess60SumByParent[$parent] ?? 0) : (($amazonSheet && isset($amazonSheet->sessions_l60)) ? (int)$amazonSheet->sessions_l60 : 0),
+                    'units_ordered_l60' => (stripos($sku, 'PARENT') !== false) ? (int)($childAL60SumByParent[$parent] ?? 0) : (($amazonSheet && isset($amazonSheet->units_ordered_l60)) ? (int)$amazonSheet->units_ordered_l60 : 0),
                     'price' => $price,
                     'ratings' => $junglescoutData[$sku] ?? null,
                     'reviews' => $junglescoutReviews[$sku] ?? null,
@@ -3699,6 +3830,9 @@ class AmazonSpBudgetController extends Controller
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => (int)($childL30SumByParent[$pm->parent ?? ''] ?? 0),
                     'A_L30' => (int)($childAL30SumByParent[$pm->parent ?? ''] ?? 0),
+                    'Sess30' => (int)($childSess30SumByParent[$pm->parent ?? ''] ?? 0),
+                    'sessions_l60' => (int)($childSess60SumByParent[$pm->parent ?? ''] ?? 0),
+                    'units_ordered_l60' => (int)($childAL60SumByParent[$pm->parent ?? ''] ?? 0),
                     'l7_spend' => $l7Spend,
                     'l7_cpc' => $l7Cpc,
                     'l1_spend' => $l1Spend,
@@ -4177,6 +4311,9 @@ class AmazonSpBudgetController extends Controller
                 'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                 'L30' => (stripos($sku, 'PARENT') !== false) ? (int)($childL30SumByParent[$pm->parent ?? ''] ?? 0) : (($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0),
                 'A_L30' => (stripos($sku, 'PARENT') !== false) ? (int)($childAL30SumByParent[$pm->parent ?? ''] ?? 0) : (($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0),
+                'Sess30' => (stripos($sku, 'PARENT') !== false) ? (int)($childSess30SumByParent[$pm->parent ?? ''] ?? 0) : (($amazonSheet && isset($amazonSheet->sessions_l30)) ? (int)$amazonSheet->sessions_l30 : 0),
+                'sessions_l60' => (stripos($sku, 'PARENT') !== false) ? (int)($childSess60SumByParent[$pm->parent ?? ''] ?? 0) : (($amazonSheet && isset($amazonSheet->sessions_l60)) ? (int)$amazonSheet->sessions_l60 : 0),
+                'units_ordered_l60' => (stripos($sku, 'PARENT') !== false) ? (int)($childAL60SumByParent[$pm->parent ?? ''] ?? 0) : (($amazonSheet && isset($amazonSheet->units_ordered_l60)) ? (int)$amazonSheet->units_ordered_l60 : 0),
                 'l7_spend' => $l7Spend,
                 'l7_cpc' => $l7Cpc,
                 'l1_spend' => $l1Spend,
@@ -4595,6 +4732,9 @@ class AmazonSpBudgetController extends Controller
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => (int)($childL30SumByParent[$pm->parent ?? ''] ?? 0),
                     'A_L30' => (int)($childAL30SumByParent[$pm->parent ?? ''] ?? 0),
+                    'Sess30' => (int)($childSess30SumByParent[$pm->parent ?? ''] ?? 0),
+                    'sessions_l60' => (int)($childSess60SumByParent[$pm->parent ?? ''] ?? 0),
+                    'units_ordered_l60' => (int)($childAL60SumByParent[$pm->parent ?? ''] ?? 0),
                     'l7_spend' => $l7Spend,
                     'l7_cpc' => $l7Cpc,
                     'l1_spend' => $l1Spend,
@@ -4742,6 +4882,9 @@ class AmazonSpBudgetController extends Controller
                     $row['FBA_INV'] = 0;
                     $row['L30'] = 0;
                     $row['A_L30'] = 0;
+                    $row['Sess30'] = 0;
+                    $row['sessions_l60'] = 0;
+                    $row['units_ordered_l60'] = 0;
                     $row['l7_spend'] = $matchedCampaignL7->cost ?? 0;
                     $row['l7_cpc'] = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0) ? ($matchedCampaignL7->cost / $matchedCampaignL7->clicks) : 0;
                     $row['l7_clicks'] = (int)($matchedCampaignL7->clicks ?? 0);
@@ -4950,6 +5093,9 @@ class AmazonSpBudgetController extends Controller
                     $row['FBA_INV'] = 0;
                     $row['L30'] = 0;
                     $row['A_L30'] = 0;
+                    $row['Sess30'] = 0;
+                    $row['sessions_l60'] = 0;
+                    $row['units_ordered_l60'] = 0;
                     $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
                     $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
                     $row['l7_clicks'] = (int)($matchedCampaignL7->clicks ?? 0);
@@ -5191,6 +5337,12 @@ class AmazonSpBudgetController extends Controller
             }
         }
 
+        if ($amazonTabulatorMainBySku !== []) {
+            foreach ($result as $item) {
+                $this->mergeAmazonTabulatorMainIntoUtilizedRow($item, $amazonTabulatorMainBySku);
+            }
+        }
+
         // Calculate and save SBID for yesterday's actual date records (not L1)
         // This is saved for tracking: to compare calculated SBID with what was actually updated on Amazon
         // When cron runs and new data comes, page will refresh, so we need to save SBID to database
@@ -5218,6 +5370,76 @@ class AmazonSpBudgetController extends Controller
             'total_sku_count' => $totalSkuCount,
             'status' => 200,
         ]);
+    }
+
+    /**
+     * Index rows from OverallAmazonController::getViewAmazonData (same as /amazon-data-json) by (Child) sku.
+     */
+    private function indexAmazonTabulatorMainRowsByChildSku(Request $request): array
+    {
+        try {
+            $controller = app(OverallAmazonController::class);
+            $resp = $controller->getViewAmazonData($request);
+            $payload = json_decode($resp->getContent(), true);
+        } catch (\Throwable $e) {
+            FacadesLog::error('Utilized ads: amazon tabulator main source failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        $index = [];
+        foreach ($payload['data'] ?? [] as $row) {
+            $r = is_array($row) ? $row : json_decode(json_encode($row), true);
+            if (! is_array($r)) {
+                continue;
+            }
+            $child = $r['(Child) sku'] ?? null;
+            if ($child === null || $child === '') {
+                continue;
+            }
+            $norm = strtoupper(preg_replace('/\s+/', ' ', trim(str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', (string) $child))));
+            $index[$norm] = $r;
+            $noSpace = str_replace(' ', '', $norm);
+            if ($noSpace !== '' && $noSpace !== $norm) {
+                $index[$noSpace] = $r;
+            }
+        }
+
+        return $index;
+    }
+
+    /**
+     * Overlay FBM / amazon_datsheets / inventory fields from the tabulator main source onto utilized rows.
+     * Campaign / ACOS / spend columns stay from this controller.
+     */
+    private function mergeAmazonTabulatorMainIntoUtilizedRow(object $item, array $mainBySku): void
+    {
+        $sku = (string) ($item->sku ?? '');
+        if ($sku === '') {
+            return;
+        }
+        $norm = strtoupper(preg_replace('/\s+/', ' ', trim(str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
+        $main = $mainBySku[$norm] ?? $mainBySku[str_replace(' ', '', $norm)] ?? null;
+        if (! is_array($main)) {
+            return;
+        }
+
+        $keys = [
+            'A_L30', 'A_L15', 'A_L7', 'Sess30', 'Sess7', 'sessions_l60', 'units_ordered_l60',
+            'INV_AMZ', 'FBA_Quantity', 'FBA_SKU', 'is_missing_amazon',
+            'rating', 'reviews', 'l2_spend',
+            'INV', 'L30', 'price', 'price_lmpa',
+        ];
+        foreach ($keys as $k) {
+            if (! array_key_exists($k, $main)) {
+                continue;
+            }
+            $v = $main[$k];
+            if (($k === 'price' || $k === 'price_lmpa') && ($v === '' || $v === null)) {
+                continue;
+            }
+            $item->{$k} = $v;
+        }
     }
 
     /**

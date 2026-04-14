@@ -4086,6 +4086,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // Consolidated Amazon Utilized pages (KW, PT, HL)
         Route::get('/amazon/utilized/kw', 'amazonUtilizedView')->name('amazon.utilized.kw');
         Route::get('/amazon/utilized/kw/ads/data', 'getAmazonUtilizedKwAdsData');
+        Route::get('/amazon/utilized/kw/parent-datsheet-info', 'getAmazonUtilizedParentDatsheetInfo');
         Route::get('/amazon/utilized/pt', 'amazonUtilizedPtView')->name('amazon.utilized.pt');
         Route::get('/amazon/utilized/pt/ads/data', 'getAmazonUtilizedPtAdsData');
         Route::get('/amazon/get-utilization-counts', 'getAmazonUtilizationCounts');

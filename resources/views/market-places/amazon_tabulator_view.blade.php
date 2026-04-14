@@ -359,16 +359,6 @@
                         <option value="blank">Blank S PRC only</option>
                     </select>
 
-                    <select id="section-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">Section</option>
-                        <option value="missing">listing</option>
-                        <option value="pricing">Pricing</option>
-                        <option value="kw-ads">KW Ads</option>
-                        <option value="pt-ads">PT Ads</option>
-                        <option value="hl-ads">HL Ads</option>
-                    </select>
-
                     <!-- KW Page Filters -->
                     <select id="utilization-type-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -513,7 +503,7 @@
                     </a>
 
                     <button id="section-export-btn" class="btn btn-sm btn-primary">
-                        <i class="fas fa-download"></i> Section Export
+                        <i class="fas fa-download"></i> Export view
                     </button>
 
                     <a href="{{ url('/amazon-export-sprice-upload') }}" class="btn btn-sm btn-info">
@@ -1291,13 +1281,6 @@
 
         const amzPctMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
         const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend', 'total_pft', 'total_sales', 'total_spend'];
-
-        // Section column lists (defined once for faster section switching)
-        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'FBA_Quantity', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'l2_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'l2_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
-        const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'fba_price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'FBA_Quantity', 'A_L30'];
-        const SECTION_MISSING_COLUMNS = ['image_path', '(Child) sku', 'NR', 'is_missing', 'inv_map', 'FBA_Quantity', 'variation_dot'];
-        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'FBA_Quantity', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_2ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_l2_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
-        const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'FBA_Quantity', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
 
         /** Set false to silence [amazon-tabulator] browser console debug lines */
         const AMAZON_TABULATOR_DEBUG_LOG = true;
@@ -5200,18 +5183,11 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
-                            var currentSection = $('#section-filter').val();
-                            // KW Ads: show SBID when KW campaign exists (campaign_id/name + kw_campaign_status) and is ENABLED
-                            var hasCampaign = false;
-                            if (currentSection === 'kw-ads') {
-                                hasCampaign = !!((row.campaign_id || row.campaignName) && (row.kw_campaign_status || '').toUpperCase() !== '');
-                            } else {
-                                hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                            }
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             if (!hasCampaign) return '-';
                             
-                            // Check if campaign is PAUSED - don't show SBID for paused campaigns; KW Ads: use only kw_campaign_status (from L30)
-                            var kwStatus = (currentSection === 'kw-ads' ? (row.kw_campaign_status || '') : (row.kw_campaign_status || row.campaignStatus || '')).toUpperCase();
+                            // Check if campaign is PAUSED - don't show SBID for paused campaigns
+                            var kwStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
                             if (kwStatus !== 'ENABLED') {
                                 return '<span style="color: #999;">-</span>';
                             }
@@ -5248,52 +5224,25 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var sku = row['(Child) sku'] || '';
-                            var currentSection = $('#section-filter').val();
                             
-                            // Check if has campaign - section-aware
-                            var hasCampaign = false;
-                            if (currentSection === 'hl-ads') {
-                                // HL Ads: strict - L30 confirms campaign (has_own_hl_campaign) and campaign_id/name present
-                                hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
-                            } else if (currentSection === 'pt-ads') {
-                                // PT Ads: strict - L30 confirms campaign (has_own_pt_campaign) and campaign_id/name present
-                                hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
-                            } else {
-                                // KW Ads: any row with KW campaign (campaign_id/name + kw_campaign_status) shows toggle
-                                if (currentSection === 'kw-ads') {
-                                    hasCampaign = !!((row.campaign_id || row.campaignName) && (row.kw_campaign_status || '').toUpperCase() !== '');
-                                } else {
-                                    hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                                }
-                            }
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             
                             if (!hasCampaign) {
                                 return '<span style="color: #999;">-</span>';
                             }
                             
                             // Section-aware campaign status and campaign ID
-                            // For KW Ads: only show Active when campaign exists in L30 and status === ENABLED (no fallback to campaignStatus)
                             var isEnabled = false;
                             var campaignId = '';
                             var sectionKey = 'kw';
-                            if (currentSection === 'hl-ads') {
+                            if (row.hl_campaign_id && row.has_own_hl_campaign) {
                                 var hlStatus = (row.hl_campaign_status || '').toUpperCase();
-                                isEnabled = hlStatus === 'ENABLED' && !!(row.hl_campaign_id && row.has_own_hl_campaign);
+                                isEnabled = hlStatus === 'ENABLED';
                                 campaignId = row.hl_campaign_id || '';
                                 sectionKey = 'hl';
-                            } else if (currentSection === 'pt-ads') {
-                                var ptStatus = (row.pt_campaign_status || '').toUpperCase();
-                                isEnabled = ptStatus === 'ENABLED' && !!(row.pt_campaign_id && row.has_own_pt_campaign);
-                                campaignId = row.pt_campaign_id || '';
-                                sectionKey = 'pt';
                             } else {
                                 var kwStatus = (row.kw_campaign_status || '').toUpperCase();
-                                // KW Ads: toggle checked when status === ENABLED and campaign exists
-                                if (currentSection === 'kw-ads') {
-                                    isEnabled = kwStatus === 'ENABLED' && !!(row.campaign_id || row.campaignName);
-                                } else {
-                                    isEnabled = kwStatus === 'ENABLED';
-                                }
+                                isEnabled = kwStatus === 'ENABLED';
                                 campaignId = row.campaign_id || '';
                             }
 
@@ -5330,22 +5279,9 @@
                         width: 60,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var currentSection = $('#section-filter').val();
                             
                             // Missing AD dots: campaign exists = green; no campaign + NRA green (RA) = red; no campaign + NRA red (NRA) = yellow
-                            // KW Ads: strict - green only when L30 confirms own KW campaign (has_own_kw_campaign) and campaign_id/name present
-                            var hasOwnCampaign = false;
-                            if (currentSection === 'hl-ads') {
-                                // HL Ads: strict - green only when L30 confirms own HL campaign
-                                hasOwnCampaign = !!row.has_own_hl_campaign && !!(row.hl_campaign_id || row.hl_campaignName);
-                            } else if (currentSection === 'pt-ads') {
-                                // PT Ads: strict - green only when L30 confirms own PT campaign
-                                hasOwnCampaign = !!row.has_own_pt_campaign && !!(row.pt_campaign_id || row.pt_campaignName);
-                            } else if (currentSection === 'kw-ads') {
-                                hasOwnCampaign = !!row.has_own_kw_campaign && !!(row.campaign_id || row.campaignName);
-                            } else {
-                                hasOwnCampaign = (!!row.has_own_kw_campaign || !!row.has_own_pt_campaign) && !!(row.campaign_id || row.campaignName || row.pt_campaign_id || row.pt_campaignName);
-                            }
+                            var hasOwnCampaign = (!!row.has_own_kw_campaign || !!row.has_own_pt_campaign || !!row.has_own_hl_campaign) && !!(row.campaign_id || row.campaignName || row.pt_campaign_id || row.pt_campaignName || row.hl_campaign_id || row.hl_campaignName);
                             
                             if (hasOwnCampaign) {
                                 return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #28a745;"></span>';
@@ -5789,156 +5725,17 @@
                 return 'r';
             }
 
-            // Update utilization dropdown option counts
-            // Uses getData() (all data) + manual filter checks - same approach as KW/PT utilized pages
+            // Utilization combo counts in the dropdown were tied to removed HL Ads section; keep labels without counts.
             function updateUtilizationCounts() {
                 if (!table) return;
-                
-                var currentSection = $('#section-filter').val();
                 var comboLabels = {
                     'gg': 'Green+Green', 'gp': 'Green+Pink', 'gr': 'Green+Red',
                     'pg': 'Pink+Green', 'pp': 'Pink+Pink', 'pr': 'Pink+Red',
                     'rg': 'Red+Green', 'rp': 'Red+Pink', 'rr': 'Red+Red'
                 };
-                
-                if (currentSection !== 'kw-ads' && currentSection !== 'pt-ads' && currentSection !== 'hl-ads') {
-                    // Reset counts when not in KW/PT/HL section
-                    $('#utilization-type-filter option').each(function() {
-                        var val = $(this).val();
-                        $(this).text(val === 'all' ? 'All Utilization' : (comboLabels[val] || val));
-                    });
-                    return;
-                }
-                
-                // Use ALL data and manually apply filters (same approach as KW/PT utilized pages)
-                // getData("all") returns ALL rows regardless of Tabulator filters
-                var allData = table.getData("all");
-                var comboCounts = {gg:0, gp:0, gr:0, pg:0, pp:0, pr:0, rg:0, rp:0, rr:0};
-                
-                // Read current filter values for manual filtering
-                var invFilterVal = $('#inventory-filter').val() || '';
-                var nraFilterVal = $('#nra-filter').val() || '';
-                var campaignStatusVal = $('#campaign-status-filter').val() || '';
-                var parentFilterVal = $('#parent-filter').val() || 'all';
-                var searchVal = ($('#sku-search').val() || '').toLowerCase();
-                
-                allData.forEach(function(row) {
-                    var sku = (row['(Child) sku'] || row.sku || '').toString();
-                    var isParent = row.is_parent_summary === true;
-                    
-                    // HL Ads section: only parent rows (HL utilized page only has parents)
-                    if (currentSection === 'hl-ads' && !isParent) return;
-                    
-                    // Parent filter (for non-HL sections)
-                    if (currentSection !== 'hl-ads') {
-                        if (parentFilterVal === 'parents' && !isParent) return;
-                        if (parentFilterVal === 'skus' && isParent) return;
-                    }
-                    
-                    // Search filter: SKU + KW / PT / HL campaign name (any of the three)
-                    if (searchVal) {
-                        var skuLower = sku.toLowerCase();
-                        var kwCamp = (row.campaignName || '').toLowerCase();
-                        var ptCamp = (row.pt_campaignName || '').toLowerCase();
-                        var hlCamp = (row.hl_campaignName || '').toLowerCase();
-                        var matchSku = skuLower.indexOf(searchVal) !== -1;
-                        var matchCamp = kwCamp.indexOf(searchVal) !== -1 || ptCamp.indexOf(searchVal) !== -1 || hlCamp.indexOf(searchVal) !== -1;
-                        if (!matchSku && !matchCamp) return;
-                    }
-                    
-                    // Inventory filter
-                    var inv = parseFloat(row.INV) || 0;
-                    if (invFilterVal === 'zero' && inv !== 0) return;
-                    if (invFilterVal === 'more' && inv <= 0) return;
-                    
-                    // NRA filter - skip when "all" (show all in counts)
-                    if (nraFilterVal && nraFilterVal !== '' && nraFilterVal !== 'all') {
-                        var rowNra = (row.NRA || '').toString().trim();
-                        if (!rowNra) {
-                            var nrlVal = (row.NRL || 'REQ').toString().trim();
-                            rowNra = (nrlVal === 'NRL') ? 'NRA' : 'RA';
-                        }
-                        if (nraFilterVal === 'RA') {
-                            if (rowNra === 'NRA') return;
-                        } else {
-                            if (rowNra !== nraFilterVal) return;
-                        }
-                    }
-                    
-                    // Campaign status filter
-                    if (campaignStatusVal && campaignStatusVal !== '' && campaignStatusVal !== 'ALL') {
-                        if (!isParent) {
-                            var csEnabled = false;
-                            if (currentSection === 'hl-ads') {
-                                csEnabled = (row.hl_campaign_status || '').toUpperCase() === 'ENABLED' && !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
-                            } else if (currentSection === 'pt-ads') {
-                                csEnabled = (row.pt_campaign_status || '').toUpperCase() === 'ENABLED' && !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
-                            } else {
-                                if (currentSection === 'kw-ads') {
-                                    csEnabled = (row.kw_campaign_status || '').toUpperCase() === 'ENABLED' && !!(row.campaign_id || row.campaignName);
-                                } else {
-                                    var ks = (row.kw_campaign_status || '').toUpperCase();
-                                    var ps = (row.pt_campaign_status || '').toUpperCase();
-                                    var gs = (row.campaignStatus || '').toUpperCase();
-                                    csEnabled = ks === 'ENABLED' || ps === 'ENABLED' || gs === 'ENABLED';
-                                }
-                            }
-                            if (campaignStatusVal === 'ENABLED' && !csEnabled) return;
-                            if (campaignStatusVal === 'PAUSED' && csEnabled) return;
-                        }
-                    }
-                    
-                    // Same eligibility as KW 2 UB% / KW 1 UB% columns: hasCampaign only (no ENABLED requirement)
-                    // Combo: 2UB+1UB for KW/PT, 7UB+1UB for HL
-                    var hasCampaign, l2_spend, l1_spend, l7_spend, budget;
-                    
-                    if (currentSection === 'hl-ads') {
-                        hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
-                        if (!hasCampaign) return;
-                        l7_spend = parseFloat(row.hl_spend_L7) || 0;
-                        l1_spend = parseFloat(row.hl_spend_L1) || 0;
-                        budget = parseFloat(row.hl_campaignBudgetAmount) || 0;
-                        l2_spend = 0;
-                    } else if (currentSection === 'pt-ads') {
-                        hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
-                        if (!hasCampaign) return;
-                        l2_spend = parseFloat(row.pt_spend_L2) || 0;
-                        l1_spend = parseFloat(row.pt_spend_L1) || 0;
-                        budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
-                        l7_spend = 0;
-                    } else {
-                        hasCampaign = !!(row.campaign_id || row.campaignName);
-                        if (!hasCampaign) return;
-                        l2_spend = parseFloat(row.l2_spend) || 0;
-                        l1_spend = parseFloat(row.l1_spend) || 0;
-                        budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                        l7_spend = 0;
-                    }
-                    
-                    if (budget === undefined || budget === null || isNaN(budget)) budget = 0;
-                    var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
-                    var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                    var combo;
-                    if (currentSection === 'hl-ads') {
-                        var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                        combo = ubZone(ub7) + ubZone(ub1);
-                    } else {
-                        combo = ubZone(ub2) + ubZone(ub1);
-                    }
-                    
-                    if (comboCounts.hasOwnProperty(combo)) {
-                        comboCounts[combo]++;
-                    }
-                });
-                
-                // Update dropdown option text with counts
                 $('#utilization-type-filter option').each(function() {
                     var val = $(this).val();
-                    if (val === 'all') {
-                        $(this).text('All Utilization');
-                    } else if (comboLabels[val]) {
-                        $(this).text(comboLabels[val] + ' (' + (comboCounts[val] || 0) + ')');
-                    }
+                    $(this).text(val === 'all' ? 'All Utilization' : (comboLabels[val] || val));
                 });
             }
 
@@ -6081,8 +5878,7 @@
                 const dilFilter = $('#dil-filter').val();
                 const ratingFilter = $('#rating-filter').val();
                 const parentFilter = $('#parent-filter').val();
-                const sectionFilter = $('#section-filter').val();
-                const parentRowsBypassDataFilters = (parentFilter === 'parents' || sectionFilter === 'hl-ads');
+                const parentRowsBypassDataFilters = (parentFilter === 'parents');
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
@@ -6090,18 +5886,13 @@
                 const rangeMax = parseFloat($('#range-max').val()) || null;
                 const rangeColumn = $('#range-column-select').val() || '';
                 
-                // New KW filters
-                const utilizationTypeFilter = $('#utilization-type-filter').val();
                 const campaignStatusFilter = $('#campaign-status-filter').val();
                 const nraFilter = $('#nra-filter').val();
                 const priceSlabFilter = $('#price-slab-filter').val();
-                const acosSlabFilter = $('#acos-slab-filter').val();
                 const ub7Min = parseFloat($('#7ub-min').val()) || null;
                 const ub7Max = parseFloat($('#7ub-max').val()) || null;
                 const ub1Min = parseFloat($('#1ub-min').val()) || null;
                 const ub1Max = parseFloat($('#1ub-max').val()) || null;
-                const acosRangeMin = parseFloat($('#acos-range-min').val()) || null;
-                const acosRangeMax = parseFloat($('#acos-range-max').val()) || null;
 
                 table.clearFilter(true);
 
@@ -6277,11 +6068,7 @@
 
                 // Filter Rows: parents, skus, or all (skip when Play is active - show current parent group only)
                 if (!isProductNavigationActive) {
-                    if (sectionFilter === 'hl-ads') {
-                        table.addFilter(function(data) {
-                            return data.is_parent_summary === true;
-                        });
-                    } else if (parentFilter === 'parents') {
+                    if (parentFilter === 'parents') {
                         table.addFilter(function(data) {
                             return data.is_parent_summary === true;
                         });
@@ -6457,28 +6244,13 @@
                 if (campaignStatusFilter && campaignStatusFilter !== '' && campaignStatusFilter !== 'ALL') {
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var currentSection = $('#section-filter').val();
                         var isEnabled = false;
                         var hasCampaignInSection = false;
 
-                        if (currentSection === 'hl-ads') {
-                            hasCampaignInSection = !!(data.has_own_hl_campaign && (data.hl_campaign_id || data.hl_campaignName));
-                            isEnabled = (data.hl_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
-                        } else if (currentSection === 'pt-ads') {
-                            hasCampaignInSection = !!(data.has_own_pt_campaign && (data.pt_campaign_id || data.pt_campaignName));
-                            isEnabled = (data.pt_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
-                        } else {
-                            // KW Ads or default: row must have campaign (campaign_id/name + status) to count as having campaign
-                            if (currentSection === 'kw-ads') {
-                                hasCampaignInSection = !!((data.campaign_id || data.campaignName) && (data.kw_campaign_status || '').toUpperCase() !== '');
-                                isEnabled = (data.kw_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
-                            } else {
-                                var campaignName = (data.campaignName || '').trim();
-                                hasCampaignInSection = data.hasCampaign !== undefined ? !!data.hasCampaign : !!(data.campaign_id && campaignName);
-                                var kwStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
-                                isEnabled = hasCampaignInSection && kwStatus === 'ENABLED';
-                            }
-                        }
+                        var campaignName = (data.campaignName || '').trim();
+                        hasCampaignInSection = data.hasCampaign !== undefined ? !!data.hasCampaign : !!(data.campaign_id && campaignName);
+                        var kwStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
+                        isEnabled = hasCampaignInSection && kwStatus === 'ENABLED';
 
                         // FBA-suffix child SKU + FBA inv 0: never treat as "active" (aligns with server overlay + toggle lock)
                         if (rowFbaSuffixZeroFbaInvLocksAds(data)) {
@@ -6526,46 +6298,12 @@
                     });
                 }
 
-                // ACOS Slab filter - section-aware; buckets match SBGT (10 / 5 / 2): &lt;20%, 20–30%, ≥30%
-                if (acosSlabFilter && acosSlabFilter !== '' && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var currentSection = sectionFilter;
-                        var acos = 0;
-                        if (currentSection === 'hl-ads') {
-                            var hlSpend30 = parseFloat(data.hl_spend_L30 || 0);
-                            var hlSales30 = parseFloat(data.hl_sales_L30 || 0);
-                            acos = (hlSpend30 > 0 && hlSales30 > 0) ? (hlSpend30 / hlSales30) * 100 : (hlSpend30 > 0 ? 100 : 0);
-                        } else if (currentSection === 'pt-ads') {
-                            var ptSpend30 = parseFloat(data.pt_spend_L30 || 0);
-                            var ptSales30 = parseFloat(data.pt_sales_L30 || 0);
-                            acos = ptSales30 > 0 ? (ptSpend30 / ptSales30) * 100 : 0;
-                        } else {
-                            acos = parseFloat(data.ACOS || data.acos) || 0;
-                        }
-                        if (acosSlabFilter === '10') return acos < 20;
-                        if (acosSlabFilter === '5') return acos >= 20 && acos < 30;
-                        if (acosSlabFilter === '2') return acos >= 30;
-                        return true;
-                    });
-                }
-
                 // 7UB Range filter - section-aware
                 if (ub7Min !== null || ub7Max !== null) {
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var currentSection = $('#section-filter').val();
-                        var l7_spend, budget;
-                        if (currentSection === 'hl-ads') {
-                            l7_spend = parseFloat(data.hl_spend_L7) || 0;
-                            budget = parseFloat(data.hl_campaignBudgetAmount) || 0;
-                        } else if (currentSection === 'pt-ads') {
-                            l7_spend = parseFloat(data.pt_spend_L7) || 0;
-                            budget = parseFloat(data.pt_campaignBudgetAmount) || 0;
-                        } else {
-                            l7_spend = parseFloat(data.l7_spend) || 0;
-                            budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
-                        }
+                        var l7_spend = parseFloat(data.l7_spend) || 0;
+                        var budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
                         var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                         
                         if (ub7Min !== null && ub7 < ub7Min) return false;
@@ -6578,18 +6316,8 @@
                 if (ub1Min !== null || ub1Max !== null) {
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var currentSection = $('#section-filter').val();
-                        var l1_spend, budget;
-                        if (currentSection === 'hl-ads') {
-                            l1_spend = parseFloat(data.hl_spend_L1) || 0;
-                            budget = parseFloat(data.hl_campaignBudgetAmount) || 0;
-                        } else if (currentSection === 'pt-ads') {
-                            l1_spend = parseFloat(data.pt_spend_L1) || 0;
-                            budget = parseFloat(data.pt_campaignBudgetAmount) || 0;
-                        } else {
-                            l1_spend = parseFloat(data.l1_spend) || 0;
-                            budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
-                        }
+                        var l1_spend = parseFloat(data.l1_spend) || 0;
+                        var budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
                         var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
                         
                         if (ub1Min !== null && ub1 < ub1Min) return false;
@@ -6598,93 +6326,7 @@
                     });
                 }
 
-                // ACOS Range filter - section-aware; apply to ALL rows so table actually filters
-                if ((acosRangeMin !== null || acosRangeMax !== null) && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var currentSection = sectionFilter;
-                        var acos = 0;
-                        if (currentSection === 'hl-ads') {
-                            var hlSpend = parseFloat(data.hl_spend_L30 || 0);
-                            var hlSales = parseFloat(data.hl_sales_L30 || 0);
-                            acos = (hlSpend > 0 && hlSales > 0) ? (hlSpend / hlSales) * 100 : (hlSpend > 0 ? 100 : 0);
-                        } else if (currentSection === 'pt-ads') {
-                            var ptSpend = parseFloat(data.pt_spend_L30 || 0);
-                            var ptSales = parseFloat(data.pt_sales_L30 || 0);
-                            acos = ptSales > 0 ? (ptSpend / ptSales) * 100 : 0;
-                        } else {
-                            acos = parseFloat(data.ACOS || data.acos) || 0;
-                        }
-                        
-                        if (acosRangeMin !== null && acos < acosRangeMin) return false;
-                        if (acosRangeMax !== null && acos > acosRangeMax) return false;
-                        return true;
-                    });
-                }
-
-                // Update utilization counts AFTER all other filters (except NRA section & utilization) are applied
-                // Counts include NRA rows - same as KW/PT utilized pages where NRA defaults to "All"
                 updateUtilizationCounts();
-
-                // Apply section-specific NRA filter ONLY when user selects RA (exclude NRA)
-                // When NRA = "All" or empty, show all rows including NRA so KW Ads section shows full 198 count
-                if ((sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads') && nraFilter === 'RA' && (!utilizationTypeFilter || utilizationTypeFilter === 'all')) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var nraValue = (data.NRA || '').toString().trim();
-                        if (!nraValue) {
-                            var nrlValue = (data.NRL || 'REQ').toString().trim();
-                            nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
-                        }
-                        return nraValue !== 'NRA';
-                    });
-                }
-
-                // Utilization Type filter: tied to KW 2 UB% and KW 1 UB% columns (same formula and zones)
-                // Only when an ads section is selected; apply to ALL rows (parent + child) so table actually filters
-                if (utilizationTypeFilter && utilizationTypeFilter !== 'all' && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var currentSection = sectionFilter;
-                        var hasCampaign, l2_spend, l1_spend, l7_spend, budget;
-                        // Same logic as KW 2 UB% / KW 1 UB% column formatters: budget and hasCampaign
-                        if (currentSection === 'hl-ads') {
-                            hasCampaign = !!(data.has_own_hl_campaign && (data.hl_campaign_id || data.hl_campaignName));
-                            if (!hasCampaign) return false;
-                            l7_spend = parseFloat(data.hl_spend_L7) || 0;
-                            l1_spend = parseFloat(data.hl_spend_L1) || 0;
-                            budget = parseFloat(data.hl_campaignBudgetAmount) || 0;
-                            l2_spend = 0;
-                        } else if (currentSection === 'pt-ads') {
-                            hasCampaign = !!(data.has_own_pt_campaign && (data.pt_campaign_id || data.pt_campaignName));
-                            if (!hasCampaign) return false;
-                            l2_spend = parseFloat(data.pt_spend_L2) || 0;
-                            l1_spend = parseFloat(data.pt_spend_L1) || 0;
-                            budget = parseFloat(data.pt_campaignBudgetAmount) || 0;
-                            l7_spend = 0;
-                        } else {
-                            // KW: same as column formatter - hasCampaign = campaign_id || campaignName
-                            hasCampaign = !!(data.campaign_id || data.campaignName);
-                            if (!hasCampaign) return false;
-                            l2_spend = parseFloat(data.l2_spend) || 0;
-                            l1_spend = parseFloat(data.l1_spend) || 0;
-                            budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
-                            l7_spend = 0;
-                        }
-                        // Same formula as columns: when budget 0 show 0% (red)
-                        if (budget === undefined || budget === null || isNaN(budget)) budget = 0;
-                        var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
-                        var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                        var combo;
-                        if (currentSection === 'hl-ads') {
-                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                            combo = ubZone(ub7) + ubZone(ub1);
-                        } else {
-                            combo = ubZone(ub2) + ubZone(ub1);
-                        }
-                        return combo === utilizationTypeFilter;
-                    });
-                }
 
                 updateCalcValues();
                 updateSummary();
@@ -6802,299 +6444,7 @@
                 applyFilters();
             });
 
-            // Section filter - show/hide columns based on section
-            $('#section-filter').on('change', function() {
-                var section = $(this).val();
-                
-                // Show loading overlay
-                $('#section-loading-overlay').remove();
-                var sectionLabel = section === 'kw-ads' ? 'KW Ads' : section === 'pt-ads' ? 'PT Ads' : section === 'hl-ads' ? 'HL Ads' : section === 'pricing' ? 'Pricing' : section === 'missing' ? 'listing' : 'All';
-                var sectionColor = section === 'kw-ads' ? '#4361ee' : section === 'pt-ads' ? '#7209b7' : section === 'hl-ads' ? '#f72585' : section === 'pricing' ? '#2ec4b6' : section === 'missing' ? '#dc3545' : '#4361ee';
-                $('body').append(
-                    '<div id="section-loading-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.45);backdrop-filter:blur(3px);z-index:99999;display:flex;align-items:center;justify-content:center;animation:secFadeIn .15s ease;">' +
-                        '<div style="background:#fff;border-radius:16px;padding:36px 52px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.15);border-top:4px solid ' + sectionColor + ';">' +
-                            '<div style="position:relative;width:48px;height:48px;margin:0 auto 16px;">' +
-                                '<div style="width:48px;height:48px;border:4px solid #e2e8f0;border-top-color:' + sectionColor + ';border-radius:50%;animation:secSpin .7s linear infinite;"></div>' +
-                            '</div>' +
-                            '<p style="margin:0 0 4px;font-weight:700;font-size:15px;color:#1e293b;letter-spacing:-.2px;">Switching to ' + sectionLabel + '</p>' +
-                            '<p style="margin:0;font-size:12px;color:#94a3b8;">Updating columns & filters</p>' +
-                        '</div>' +
-                    '</div>' +
-                    '<style>' +
-                        '@keyframes secSpin{to{transform:rotate(360deg)}}' +
-                        '@keyframes secFadeIn{from{opacity:0}to{opacity:1}}' +
-                    '</style>'
-                );
-                
-                // Defer heavy operations to allow overlay to render; use blockRedraw to batch updates
-                setTimeout(function() {
-                try {
-                if (typeof table.blockRedraw === 'function') table.blockRedraw();
-                
-                var columnsToShow;
-                if (section === 'pricing') {
-                    columnsToShow = SECTION_PRICING_COLUMNS;
-                } else if (section === 'missing') {
-                    columnsToShow = SECTION_MISSING_COLUMNS;
-                } else if (section === 'kw-ads') {
-                    columnsToShow = SECTION_KW_ADS_COLUMNS;
-                } else if (section === 'pt-ads') {
-                    columnsToShow = SECTION_PT_ADS_COLUMNS;
-                } else if (section === 'hl-ads') {
-                    columnsToShow = SECTION_HL_ADS_COLUMNS;
-                }
-                
-                if (section !== 'all' && columnsToShow) {
-                    amazonTabulatorDebug('section column whitelist', {
-                        section: section,
-                        fbaQuantityInWhitelist: columnsToShow.indexOf('FBA_Quantity') !== -1,
-                        whitelistLength: columnsToShow.length
-                    });
-                }
-                
-                if (section === 'all') {
-                    amazonTabulatorDebug('section all', { mode: 'default column visibility from definitions' });
-                    // Reset to default visibility based on column definitions
-                    table.getColumns().forEach(function(col) {
-                        var def = col.getDefinition();
-                        var field = def.field;
-                        if (!field) return;
-                        
-                        // Always keep row_select column visible
-                        if (field === 'row_select') {
-                            table.showColumn(field);
-                            return;
-                        }
-                        
-                        // Show columns that don't have visible: false in their definition
-                        // Hide columns that have visible: false
-                        if (def.visible === false) {
-                            table.hideColumn(field);
-                        } else {
-                            table.showColumn(field);
-                        }
-                    });
-                    // Reset parent filter (may have been set to 'parents' by HL section)
-                    $('#parent-filter').val('all');
-                    // Reset utilization filter and re-apply filters
-                    $('#utilization-type-filter').val('all');
-                    table.clearFilter();
-                    applyFilters();
-                    if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
-                    requestAnimationFrame(function() {
-                        var $overlay = $('#section-loading-overlay');
-                        if ($overlay.length) {
-                            $overlay.css({transition: 'opacity .2s ease', opacity: 0});
-                            setTimeout(function() { $overlay.remove(); }, 220);
-                        }
-                    });
-                    return;
-                }
-                
-                // Get all column field names (columnsToShow already set above for this section)
-                var allColumns = table.getColumns().map(function(col) {
-                    return col.getField();
-                }).filter(Boolean);
-                
-                // Hide all columns first (except row_select checkbox column)
-                allColumns.forEach(function(col) {
-                    if (table.getColumn(col) && col !== 'row_select') {
-                        table.hideColumn(col);
-                    }
-                });
-                
-                // Show only the columns for the selected section
-                columnsToShow.forEach(function(col) {
-                    if (table.getColumn(col)) {
-                        table.showColumn(col);
-                    }
-                });
-                
-                // Always keep row_select column visible
-                if (table.getColumn('row_select')) {
-                    table.showColumn('row_select');
-                }
-                // Re-show Select column if Price % (Decrease/Increase) mode is active
-                if (decreaseModeActive || increaseModeActive) {
-                    const selCol = table.getColumn('_select');
-                    if (selCol) selCol.show();
-                }
-                
-                if (section === 'missing') {
-                    $('#parent-filter').val('all');
-                    $('#utilization-type-filter').val('all');
-                    table.clearFilter();
-                    applyFilters();
-                    // Do not show Missing Ads column when listing filter is applied
-                    if (table.getColumn('missing_ad')) {
-                        table.hideColumn('missing_ad');
-                    }
-                }
-                
-                // For KW Ads section: sort by ACOS descending and show all rows including parents
-                if (section === 'kw-ads') {
-                    // Default Active filter to "Active" so inactive rows don't show
-                    if (!$('#campaign-status-filter').val() || $('#campaign-status-filter').val() === 'ALL') {
-                        $('#campaign-status-filter').val('ENABLED');
-                    }
-                    // Move columns in order after SKU: ACOS, Spend, Clicks, CVR, Reviews, then NRA, then Active toggle, then Missing AD
-                    table.moveColumn("acos", "(Child) sku", true);      // KW ACOS after SKU
-                    table.moveColumn("l30_spend", "acos", true);        // KW Spend after ACOS
-                    table.moveColumn("l30_clicks", "l30_spend", true);  // KW Clicks after Spend
-                    table.moveColumn("ad_cvr", "l30_clicks", true);     // KW CVR after Clicks
-                    table.moveColumn("rating", "ad_cvr", true);         // Reviews after CVR
-                    table.moveColumn("NRA", "NRL", true);               // KW NRA after NRL
-                    table.moveColumn("active_toggle", "NRA", true);     // Active toggle after NRA
-                    table.moveColumn("missing_ad", "active_toggle", true); // Missing AD after Active
-                    
-                    table.setSort("acos", "desc");
-                    // Reset parent filter (may have been set to 'parents' by HL section)
-                    $('#parent-filter').val('all');
-                    // Reset utilization filter, clear any filters and re-apply with section rules
-                    $('#utilization-type-filter').val('all');
-                    table.clearFilter();
-                    applyFilters(); // Re-apply all filters including section-specific rules
-                }
-                
-                // For PT Ads section: SAME sequence as KW Ads
-                if (section === 'pt-ads') {
-                    // Move columns in EXACT same sequence as KW Ads
-                    // 1-6: SKU, ACOS, Spend L30, Clicks L30, CVR, Rating
-                    table.moveColumn("pt_acos", "(Child) sku", true);        // 2. PT ACOS after SKU
-                    table.moveColumn("pt_spend_L30", "pt_acos", true);       // 3. PT Spend L30
-                    table.moveColumn("pt_clicks_L30", "pt_spend_L30", true); // 4. PT Clicks L30
-                    table.moveColumn("pt_ad_cvr", "pt_clicks_L30", true);    // 5. PT CVR
-                    table.moveColumn("rating", "pt_ad_cvr", true);           // 6. Rating
-                    
-                    // 7-13: INV, FBA INV, OV L30, DIL%, A L30, A DIL%, NRL
-                    table.moveColumn("INV", "rating", true);                 // 7. INV
-                    table.moveColumn("FBA_Quantity", "INV", true);          // 8. FBA INV
-                    table.moveColumn("L30", "FBA_Quantity", true);           // 9. OV L30
-                    table.moveColumn("E Dil%", "L30", true);                 // 10. DIL %
-                    table.moveColumn("A_L30", "E Dil%", true);               // 11. A L30
-                    table.moveColumn("A DIL %", "A_L30", true);              // 12. A DIL %
-                    table.moveColumn("NRL", "A DIL %", true);                // 13. NRL
-                    
-                    // 14-17: NRA, Active, Missing AD, Price
-                    table.moveColumn("NRA", "NRL", true);                    // 14. NRA
-                    table.moveColumn("active_toggle", "NRA", true);          // 15. Active
-                    table.moveColumn("missing_ad", "active_toggle", true);   // 16. Missing AD
-                    table.moveColumn("price", "missing_ad", true);           // 17. Price
-                    
-                    // 18-19: BGT, SBGT
-                    table.moveColumn("pt_campaignBudgetAmount", "price", true); // 18. PT BGT
-                    table.moveColumn("pt_sbgt", "pt_campaignBudgetAmount", true); // 19. PT SBGT
-                    
-                    // 20-21: L30 detail columns
-                    table.moveColumn("pt_sales_L30", "pt_sbgt", true);       // 20. Sales L30
-                    table.moveColumn("pt_sold_L30", "pt_sales_L30", true);   // 21. Ad Sold L30
-                    
-                    // Utilization, CPC, SBID columns
-                    table.moveColumn("pt_7ub", "pt_sold_L30", true);         // PT 7 UB%
-                    table.moveColumn("pt_1ub", "pt_7ub", true);              // 26. PT 1 UB%
-                    table.moveColumn("pt_avg_cpc", "pt_1ub", true);          // 27. PT AVG CPC
-                    table.moveColumn("pt_l7_cpc", "pt_avg_cpc", true);       // 28. PT L7 CPC
-                    table.moveColumn("pt_l1_cpc", "pt_l7_cpc", true);        // 29. PT L1 CPC
-                    table.moveColumn("pt_2ub", "pt_l1_cpc", true);          // 30. PT 2 UB%
-                    table.moveColumn("pt_l2_cpc", "pt_2ub", true);           // 31. PT L2 CPC
-                    table.moveColumn("pt_last_sbid", "pt_l2_cpc", true);     // 32. PT Last SBID
-                    table.moveColumn("pt_sbid", "pt_last_sbid", true);       // 33. PT SBID
-                    table.moveColumn("pt_sbid_m", "pt_sbid", true);          // 34. PT SBID M
-                    table.moveColumn("pt_apr_bid", "pt_sbid_m", true);       // 33. PT APR BID
-                    
-                    // 34-35: Campaign and TPFT at the end
-                    table.moveColumn("pt_campaignName", "pt_apr_bid", true); // 34. PT CAMPAIGN
-                    table.moveColumn("TPFT", "pt_campaignName", true);       // 35. TPFT%
-                    
-                    // Sort by PT ACOS descending (like KW page sorts by ACOS)
-                    table.setSort([
-                        {column:"pt_acos", dir:"desc"}
-                    ]);
-                    
-                    // Reset parent filter (may have been set to 'parents' by HL section)
-                    $('#parent-filter').val('all');
-                    // Reset utilization filter, clear any filters and re-apply with section rules
-                    $('#utilization-type-filter').val('all');
-                    table.clearFilter();
-                    applyFilters(); // Re-apply all filters including section-specific rules
-                }
-                
-                // For HL Ads section: SAME sequence as KW/PT Ads
-                if (section === 'hl-ads') {
-                    // Move columns in EXACT same sequence as KW/PT Ads
-                    // 1-6: SKU, ACOS, Spend L30, Clicks L30, CVR, Rating
-                    table.moveColumn("hl_acos", "(Child) sku", true);              // 2. HL ACOS after SKU
-                    table.moveColumn("hl_spend_L30", "hl_acos", true);             // 3. HL Spend L30
-                    table.moveColumn("hl_clicks_L30", "hl_spend_L30", true);       // 4. HL Clicks L30
-                    table.moveColumn("hl_ad_cvr", "hl_clicks_L30", true);          // 5. HL CVR
-                    table.moveColumn("rating", "hl_ad_cvr", true);                 // 6. Rating
-                    
-                    // 7-13: INV, FBA INV, OV L30, DIL%, A L30, A DIL%, NRL
-                    table.moveColumn("INV", "rating", true);                       // 7. INV
-                    table.moveColumn("FBA_Quantity", "INV", true);                 // 8. FBA INV
-                    table.moveColumn("L30", "FBA_Quantity", true);                 // 9. OV L30
-                    table.moveColumn("E Dil%", "L30", true);                       // 10. DIL %
-                    table.moveColumn("A_L30", "E Dil%", true);                     // 11. A L30
-                    table.moveColumn("A DIL %", "A_L30", true);                    // 12. A DIL %
-                    table.moveColumn("NRL", "A DIL %", true);                      // 13. NRL
-                    
-                    // 14-17: NRA, Active, Missing AD, Price
-                    table.moveColumn("NRA", "NRL", true);                          // 14. NRA
-                    table.moveColumn("active_toggle", "NRA", true);                // 15. Active
-                    table.moveColumn("missing_ad", "active_toggle", true);         // 16. Missing AD
-                    table.moveColumn("price", "missing_ad", true);                 // 17. Price
-                    
-                    // 18-19: BGT, SBGT
-                    table.moveColumn("hl_campaignBudgetAmount", "price", true);    // 18. HL BGT
-                    table.moveColumn("hl_sbgt", "hl_campaignBudgetAmount", true);  // 19. HL SBGT
-                    
-                    // 20-21: L30 detail columns
-                    table.moveColumn("hl_sales_L30", "hl_sbgt", true);             // 20. Sales L30
-                    table.moveColumn("hl_sold_L30", "hl_sales_L30", true);         // 21. Ad Sold L30
-                    
-                    // Utilization, CPC, SBID columns
-                    table.moveColumn("hl_7ub", "hl_sold_L30", true);               // HL 7 UB%
-                    table.moveColumn("hl_1ub", "hl_7ub", true);                    // 26. HL 1 UB%
-                    table.moveColumn("hl_avg_cpc", "hl_1ub", true);                // 27. HL LIFE CPC
-                    table.moveColumn("hl_l7_cpc", "hl_avg_cpc", true);             // 28. HL L7 CPC
-                    table.moveColumn("hl_l1_cpc", "hl_l7_cpc", true);              // 29. HL L1 CPC
-                    table.moveColumn("hl_last_sbid", "hl_l1_cpc", true);           // 30. HL Last SBID
-                    table.moveColumn("hl_sbid", "hl_last_sbid", true);             // 31. HL SBID
-                    table.moveColumn("hl_sbid_m", "hl_sbid", true);                // 32. HL SBID M
-                    table.moveColumn("hl_apr_bid", "hl_sbid_m", true);             // 33. HL APR BID
-                    
-                    // 34-35: Campaign and TPFT at the end
-                    table.moveColumn("hl_campaignName", "hl_apr_bid", true);       // 34. HL CAMPAIGN
-                    table.moveColumn("TPFT", "hl_campaignName", true);             // 35. TPFT%
-                    
-                    // Sort by HL ACOS descending (like KW/PT page sorts by ACOS)
-                    table.setSort([
-                        {column:"hl_acos", dir:"desc"}
-                    ]);
-                    
-                    // HL section: show only parent rows (like HL utilized page)
-                    $('#parent-filter').val('parents');
-                    // Reset utilization filter, clear any filters and re-apply with section rules
-                    $('#utilization-type-filter').val('all');
-                    table.clearFilter();
-                    applyFilters(); // Re-apply all filters including section-specific rules
-                }
-                
-                } finally {
-                if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
-                }
-                requestAnimationFrame(function() {
-                    var $overlay = $('#section-loading-overlay');
-                    if ($overlay.length) {
-                        $overlay.css({transition: 'opacity .2s ease', opacity: 0});
-                        setTimeout(function() { $overlay.remove(); }, 220);
-                    }
-                });
-
-                }, 0); // End of setTimeout for loading overlay
-            });
-
-                // ACOS info icon: toggle detail columns (Clicks L30, Spend L30, Sales L30, Ad Sold L30)
+            // ACOS info icon: toggle detail columns (Clicks L30, Spend L30, Sales L30, Ad Sold L30)
             $(document).on('click', '.info-icon-toggle', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
@@ -7597,12 +6947,8 @@
                 let ub7Count = 0;
                 let ub7Ub1Count = 0;
 
-                // First pass: Campaign count - section-aware and Active-filter-aware
-                const currentSection = $('#section-filter').val();
                 const campaignStatusFilter = $('#campaign-status-filter').val();
-                // KW Ads + All/empty → show total KW count (use allData). KW Ads + Active/Paused → show filtered count (use data).
-                const useAllDataForCampaignCount = (currentSection === 'kw-ads' && (campaignStatusFilter === '' || campaignStatusFilter === 'ALL'));
-                const dataForCampaignCount = useAllDataForCampaignCount ? allData : data;
+                const dataForCampaignCount = data;
 
                 let parentRowsChecked = 0;
                 let parentRowsWithCampaign = 0;
@@ -7612,23 +6958,8 @@
                         parentRowsChecked++;
                     }
                     
-                    let campaignName = '';
-                    let campaignStatus = '';
-                    
-                    if (currentSection === 'hl-ads') {
-                        campaignName = (row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName)) ? (row.hl_campaignName || '') : '';
-                        campaignStatus = (row.hl_campaign_status || '').toUpperCase();
-                    } else if (currentSection === 'pt-ads') {
-                        campaignName = (row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName)) ? (row.pt_campaignName || '') : '';
-                        campaignStatus = (row.pt_campaign_status || '').toUpperCase();
-                    } else {
-                            if (currentSection === 'kw-ads') {
-                                campaignName = (row.has_own_kw_campaign && (row.campaign_id || row.campaignName)) ? (row.campaignName || '') : '';
-                            } else {
-                                campaignName = row.campaignName || '';
-                            }
-                            campaignStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
-                    }
+                    let campaignName = row.campaignName || '';
+                    let campaignStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
                     
                     // When using data (filtered), table already has only Active or only Paused rows per Active filter
                     if (campaignName) {
@@ -7719,19 +7050,8 @@
                         
                         // Calculate 7UB and 1UB counts (for INV > 0 SKUs only) - section aware
                         // Missing campaign count (SKUs with INV > 0 but no campaign)
-                        let hasCampaign = false;
-                        if (currentSection === 'hl-ads') {
-                            hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
-                        } else if (currentSection === 'pt-ads') {
-                            hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
-                        } else {
-                            if (currentSection === 'kw-ads') {
-                                hasCampaign = !!(row.has_own_kw_campaign && (row.campaign_id || row.campaignName));
-                            } else {
-                                const campaignName = row.campaignName || '';
-                                hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && campaignName);
-                            }
-                        }
+                        const campaignName = row.campaignName || '';
+                        let hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && campaignName);
                         
                         if (!hasCampaign) {
                             missingCampaignCount++;
@@ -7739,23 +7059,9 @@
                         
                         // Calculate 7UB and 1UB for INV > 0 SKUs (section-aware)
                         if (hasCampaign) {
-                            let l7_spend = 0;
-                            let l1_spend = 0;
-                            let budget = 0;
-                            
-                            if (currentSection === 'hl-ads') {
-                                l7_spend = parseFloat(row.hl_spend_L7) || 0;
-                                l1_spend = parseFloat(row.hl_spend_L1) || 0;
-                                budget = parseFloat(row.hl_campaignBudgetAmount) || 0;
-                            } else if (currentSection === 'pt-ads') {
-                                l7_spend = parseFloat(row.pt_spend_L7) || 0;
-                                l1_spend = parseFloat(row.pt_spend_L1) || 0;
-                                budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
-                            } else {
-                                l7_spend = parseFloat(row.l7_spend) || 0;
-                                l1_spend = parseFloat(row.l1_spend) || 0;
-                                budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                            }
+                            let l7_spend = parseFloat(row.l7_spend) || 0;
+                            let l1_spend = parseFloat(row.l1_spend) || 0;
+                            let budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             
                             const ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             const ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
@@ -9307,19 +8613,14 @@ $('#nmap-count').text(missingCount.toLocaleString());
             $('#campaignSummaryModal').modal('show');
         }
 
-        // Section Export - Export data based on current section filter
+        // Table export (filtered rows)
         $('#section-export-btn').on('click', function() {
             if (!table) {
                 alert('Table not loaded');
                 return;
             }
             
-            // Get current section
-            const currentSection = $('#section-filter').val() || 'all';
-            const sectionLabel = currentSection === 'kw-ads' ? 'KW_Ads' : 
-                                currentSection === 'pt-ads' ? 'PT_Ads' : 
-                                currentSection === 'hl-ads' ? 'HL_Ads' : 
-                                currentSection === 'pricing' ? 'Pricing' : 'All';
+            const sectionLabel = 'All';
             
             // Get filtered data
             const data = table.getData("active");
@@ -9329,37 +8630,10 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 return;
             }
             
-            // Define columns to export based on section
-            let columnsToExport = [];
-            
-            if (currentSection === 'kw-ads') {
-                columnsToExport = [
-                    '(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating',
-                    'campaignBudgetAmount', 'sbgt', 'NRA', 'campaignName', 'campaignStatus',
-                    'l30_sales', 'l30_purchases', 'INV', 'FBA_Quantity', 'L30', 'price', 'GPFT%', 'GROI%',
-                    'l7_cpc', 'l1_cpc', 'last_sbid', 'sbid', 'sbid_m', 'TPFT', 'bid_cap'
-                ];
-            } else if (currentSection === 'pt-ads') {
-                columnsToExport = [
-                    '(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating',
-                    'pt_campaignBudgetAmount', 'pt_sbgt', 'NRA', 'pt_campaignName', 'pt_campaign_status',
-                    'pt_sales_L30', 'pt_sold_L30', 'INV', 'FBA_Quantity', 'L30', 'price', 'GPFT%', 'GROI%',
-                    'pt_l7_cpc', 'pt_l1_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'TPFT'
-                ];
-            } else if (currentSection === 'hl-ads') {
-                columnsToExport = [
-                    '(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating',
-                    'hl_campaignBudgetAmount', 'hl_sbgt', 'NRA', 'hl_campaignName', 'hl_campaign_status',
-                    'hl_sales_L30', 'hl_sold_L30', 'INV', 'FBA_Quantity', 'L30', 'price', 'GPFT%', 'GROI%',
-                    'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'TPFT'
-                ];
-            } else {
-                // Pricing/All - export main columns
-                columnsToExport = [
-                    '(Child) sku', 'price', 'INV', 'FBA_Quantity', 'L30', 'A_L30', 'GPFT%', 'GROI%', 'PFT%',
-                    'ROI_percentage', 'NRL', 'NRA', 'rating', 'lmp_price'
-                ];
-            }
+            const columnsToExport = [
+                '(Child) sku', 'price', 'INV', 'FBA_Quantity', 'L30', 'A_L30', 'GPFT%', 'GROI%', 'PFT%',
+                'ROI_percentage', 'NRL', 'NRA', 'rating', 'lmp_price'
+            ];
             
             // Build CSV
             let csv = '';
@@ -9396,7 +8670,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
             
-            showToast('success', 'Exported ' + data.length + ' rows from ' + sectionLabel + ' section');
+            showToast('success', 'Exported ' + data.length + ' rows');
         });
     </script>
 @endsection
