@@ -518,6 +518,12 @@
                             <a href="{{ route('dim.wt.master') }}">Dimensions & Weight Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('dim.wt.master.ctn') }}">Dim Wt Master (CTN)</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('qc.upgrade') }}">QC Upgrade</a>
+                        </li>
+                        <li>
                             <a href="{{ route('shipping.master') }}">Shipping Master</a>
                         </li>
                         <li>
@@ -527,7 +533,7 @@
                             <a href="{{ route('compliance.master') }}">Compliance Masters</a>
                         </li>
                         <li>
-                            <a href="{{ route('packing.instructions.master') }}">Packing Instructions</a>
+                            <a href="{{ route('packing.instructions.master') }}">Packing Inner Design</a>
                         </li>
                         <li>
                             <a href="{{ route('extra.features.master') }}">Extra Features Masters</a>

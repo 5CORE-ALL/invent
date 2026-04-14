@@ -86,6 +86,39 @@
             word-break: break-all;
         }
 
+        .qc-ctn-instr-cell {
+            min-width: 140px;
+            max-width: 220px;
+        }
+        .qc-ctn-instr-wrap .qc-ctn-instructions-input {
+            min-width: 90px;
+            max-width: 160px;
+            font-size: 12px;
+        }
+        .qc-ctn-instr-wrap .qc-copy-ctn-instr {
+            flex-shrink: 0;
+            padding: 0 1px !important;
+            min-width: 0;
+            width: 1.1rem;
+            height: 1.1rem;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #ced4da;
+            border-radius: 2px;
+            background: #fff;
+            color: #6c757d;
+        }
+        .qc-ctn-instr-wrap .qc-copy-ctn-instr:hover {
+            color: #0d6efd;
+            border-color: #0d6efd;
+        }
+        .qc-ctn-instr-wrap .qc-copy-ctn-instr i {
+            font-size: 0.55rem;
+            line-height: 1;
+        }
+
         .orders-hold-col-date {
             min-width: 75px;
             width: 7%;
@@ -436,6 +469,7 @@
                                     <th class="orders-hold-col-action">Action</th>
                                     <th class="orders-hold-col-action">Track</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
+                                    <th class="qc-ctn-instr-cell">Instructions<br>CTN</th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
                                     <th class="orders-hold-col-dept">Dept</th>
                                     <th class="orders-hold-col-close">Close</th>
@@ -445,7 +479,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false) ? 17 : (($showOrderIdField ?? false) ? 16 : 15) }}" class="text-center text-muted py-4">No records found.</td>
+                                    <td colspan="{{ ($showDispatchExtras ?? false) ? 18 : (($showOrderIdField ?? false) ? 17 : 16) }}" class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -475,6 +509,7 @@
                                     <th class="orders-hold-col-action">Action</th>
                                     <th class="orders-hold-col-action">Track</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
+                                    <th class="qc-ctn-instr-cell">Instructions<br>CTN</th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
                                     <th class="orders-hold-col-dept">Dept</th>
                                     <th class="orders-hold-col-action">Close</th>
@@ -485,7 +520,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ ($showOrderIdField ?? false) ? 17 : 16 }}" class="text-center text-muted py-4">No history found.</td>
+                                    <td colspan="{{ ($showOrderIdField ?? false) ? 18 : 17 }}" class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -933,6 +968,107 @@
                 return el.innerHTML;
             }
 
+            function qcCtnInstrCell(row, listKind) {
+                const pid = row.product_master_id;
+                const instr = String(row.ctn_instructions || '');
+                if (!pid) {
+                    return '<td class="qc-ctn-instr-cell text-muted small" title="No matching product_master row">—</td>';
+                }
+                const valEsc = escAttr(instr);
+                const rowId = String(row.id);
+                return '<td class="qc-ctn-instr-cell">' +
+                    '<div class="qc-ctn-instr-wrap d-flex align-items-center justify-content-center gap-1 flex-nowrap">' +
+                    '<input type="text" class="form-control form-control-sm qc-ctn-instructions-input" maxlength="100" value="' + valEsc + '" ' +
+                    'data-product-id="' + escAttr(String(pid)) + '" data-sku="' + escAttr(row.sku || '') + '" data-parent="' + escAttr(row.parent || '') + '" ' +
+                    'data-ctn-list="' + escAttr(listKind) + '" data-ctn-row-id="' + escAttr(rowId) + '">' +
+                    '<button type="button" class="qc-copy-ctn-instr" title="Copy Instructions CTN" aria-label="Copy Instructions CTN"><i class="bi bi-clipboard"></i></button>' +
+                    '</div></td>';
+            }
+
+            async function saveQcCtnInstructionsFromInput(input) {
+                const productId = input.getAttribute('data-product-id');
+                const sku = input.getAttribute('data-sku') || '';
+                const parent = input.getAttribute('data-parent') || '';
+                const listKind = input.getAttribute('data-ctn-list') || 'main';
+                const rowId = parseInt(input.getAttribute('data-ctn-row-id'), 10);
+                if (!productId || Number.isNaN(rowId)) return;
+                const newV = input.value.trim().slice(0, 100);
+                let prev = '';
+                if (listKind === 'history') {
+                    const r = holdIssueHistoryRows.find(x => x.id === rowId);
+                    prev = r ? String(r.ctn_instructions || '').trim().slice(0, 100) : '';
+                } else {
+                    const r = holdIssueRows.find(x => x.id === rowId);
+                    prev = r ? String(r.ctn_instructions || '').trim().slice(0, 100) : '';
+                }
+                if (newV === prev) return;
+                try {
+                    const res = await fetch('/dim-wt-master/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({
+                            product_id: parseInt(productId, 10),
+                            sku: sku,
+                            parent: parent || '',
+                            ctn_instructions: newV.length ? newV : null,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    if (listKind === 'history') {
+                        const r = holdIssueHistoryRows.find(x => x.id === rowId);
+                        if (r) r.ctn_instructions = newV;
+                    } else {
+                        const r = holdIssueRows.find(x => x.id === rowId);
+                        if (r) r.ctn_instructions = newV;
+                    }
+                } catch (e) {
+                    alert(e.message || 'Could not save Instructions CTN');
+                    const r = listKind === 'history'
+                        ? holdIssueHistoryRows.find(x => x.id === rowId)
+                        : holdIssueRows.find(x => x.id === rowId);
+                    input.value = r ? String(r.ctn_instructions || '') : '';
+                }
+            }
+
+            function copyQcCtnInstrFromButton(btn) {
+                const wrap = btn.closest('.qc-ctn-instr-wrap');
+                const inp = wrap && wrap.querySelector('.qc-ctn-instructions-input');
+                const text = (inp && inp.value) ? String(inp.value).trim() : '';
+                if (!text) return;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        btn.classList.add('copied');
+                        const ic = btn.querySelector('i');
+                        if (ic) ic.className = 'bi bi-clipboard-check';
+                        setTimeout(() => {
+                            btn.classList.remove('copied');
+                            if (ic) ic.className = 'bi bi-clipboard';
+                        }, 1500);
+                    }).catch(() => {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        try { document.execCommand('copy'); } catch (err) {}
+                        document.body.removeChild(ta);
+                    });
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); } catch (err2) {}
+                    document.body.removeChild(ta);
+                }
+            }
+
             function getStaticOptionValues(selectEl) {
                 // No longer used (inputs with datalist don't need static option tracking)
                 return [];
@@ -1211,6 +1347,7 @@
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
+                        qcCtnInstrCell(row, 'main') +
                         '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                         '<td>' + escapeHtml(row.department || '—') + '</td>' +
                         '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
@@ -1256,6 +1393,7 @@
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
+                        qcCtnInstrCell(row, 'history') +
                         '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                         '<td>' + escapeHtml(row.department || '—') + '</td>' +
                         '<td>' + escapeHtml(row.close_note) + '</td>' +
@@ -1295,6 +1433,8 @@
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
                     order_number: row?.order_number ?? '',
                     total_loss: row?.total_loss ?? null,
+                    product_master_id: row?.product_master_id ?? null,
+                    ctn_instructions: row?.ctn_instructions ?? '',
                 };
             }
 
@@ -1324,6 +1464,8 @@
                     created_by: row?.created_by ?? 'System',
                     logged_at: row?.logged_at_display ?? row?.logged_at ?? '',
                     order_number: row?.order_number ?? '',
+                    product_master_id: row?.product_master_id ?? null,
+                    ctn_instructions: row?.ctn_instructions ?? '',
                 };
             }
 
@@ -1698,7 +1840,34 @@
                 }
             });
 
+            tableBody.addEventListener('focusout', (event) => {
+                const instrInp = event.target.closest('.qc-ctn-instructions-input');
+                if (instrInp && tableBody.contains(instrInp)) {
+                    saveQcCtnInstructionsFromInput(instrInp);
+                }
+            });
+
+            historyTableBody?.addEventListener('focusout', (event) => {
+                const instrInp = event.target.closest('.qc-ctn-instructions-input');
+                if (instrInp && historyTableBody.contains(instrInp)) {
+                    saveQcCtnInstructionsFromInput(instrInp);
+                }
+            });
+
+            historyTableBody?.addEventListener('click', (event) => {
+                const qcCopyHist = event.target.closest('.qc-copy-ctn-instr');
+                if (qcCopyHist && historyTableBody.contains(qcCopyHist)) {
+                    copyQcCtnInstrFromButton(qcCopyHist);
+                }
+            });
+
             tableBody.addEventListener('click', (event) => {
+                const qcCopyCtn = event.target.closest('.qc-copy-ctn-instr');
+                if (qcCopyCtn && tableBody.contains(qcCopyCtn)) {
+                    copyQcCtnInstrFromButton(qcCopyCtn);
+                    return;
+                }
+
                 const editBtn = event.target.closest('.hold-edit-btn');
                 if (editBtn) {
                     const record = getRecordById(editBtn.getAttribute('data-id'));

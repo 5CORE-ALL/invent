@@ -134,6 +134,45 @@
         .to-order-counts-box { padding: 0.75rem 1.25rem; min-width: 200px; }
         .to-order-counts-box .count-label { font-size: 0.85rem; letter-spacing: 0.02em; }
         .to-order-counts-box .count-value { font-size: 2rem; line-height: 1.2; font-weight: 700; }
+
+        .toa-ctn-instr-wrap .toa-ctn-instructions-input {
+            font-size: 12px;
+        }
+        .toa-ctn-instr-wrap .toa-copy-instr {
+            flex-shrink: 0;
+        }
+
+        /* Instructions item PKG: ~100ch line width, wrap like Dim Wt Master */
+        .toa-item-pkg-wrap {
+            max-width: 100ch;
+            margin: 0 auto;
+            text-align: left;
+        }
+        .toa-item-pkg-textarea {
+            width: 100%;
+            max-width: 100ch;
+            min-width: 12ch;
+            min-height: 52px;
+            font-size: 12px;
+            line-height: 1.35;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            resize: vertical;
+        }
+
+        .toa-packing-design-instr {
+            max-width: 36ch;
+            margin: 0 auto;
+            text-align: left;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            font-size: 12px;
+            line-height: 1.35;
+            max-height: 88px;
+            overflow: auto;
+        }
     </style>
 @endsection
 @section('content')
@@ -391,6 +430,69 @@
             let uniqueSuppliers = [];
             let allSuppliers = @json($allSuppliers ?? []);
 
+            function escapeHtmlAttr(s) {
+                return String(s ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;');
+            }
+
+            async function saveToOrderCtnInstructions(productId, sku, parent, newText, inputEl, cell) {
+                try {
+                    const res = await fetch('/dim-wt-master/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({
+                            product_id: parseInt(productId, 10),
+                            sku: sku,
+                            parent: parent || '',
+                            ctn_instructions: newText.length ? newText : null
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    inputEl.dataset.prev = newText;
+                    cell.getRow().update({ ctn_instructions: newText }, true);
+                } catch (e) {
+                    alert(e.message || 'Could not save Instructions CTN');
+                    inputEl.value = inputEl.dataset.prev != null ? inputEl.dataset.prev : '';
+                }
+            }
+
+            async function saveToOrderInstructionsItemPkg(productId, sku, newText, textareaEl, cell) {
+                try {
+                    const res = await fetch('/instructions-item-pkg/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({
+                            product_id: parseInt(productId, 10),
+                            sku: sku,
+                            instructions: newText
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    const stored = data.instructions != null ? String(data.instructions) : '';
+                    textareaEl.dataset.prev = stored;
+                    cell.getRow().update({ instructions_item_pkg: stored }, true);
+                } catch (e) {
+                    alert(e.message || 'Could not save Instructions item PKG');
+                    textareaEl.value = textareaEl.dataset.prev != null ? textareaEl.dataset.prev : '';
+                }
+            }
+
             function openMonthModal(monthData, sku) {
                 const wrapper = document.getElementById("monthCardWrapper");
                 if (!wrapper) return;
@@ -628,6 +730,167 @@
                                     <option value=""${selectSelected}>-- Select --</option>
                                     ${options}
                                 </select>`;
+                        }
+                    },
+                    {
+                        title: "Instructions item PKG",
+                        field: "instructions_item_pkg",
+                        width: 300,
+                        minWidth: 200,
+                        vertAlign: "top",
+                        headerSort: false,
+                        headerTooltip: "Item packaging instructions (instructions_item_pkg table); same as Dim Wt Master",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                return '<span class="text-muted small">—</span>';
+                            }
+                            const pid = row.product_master_id;
+                            if (!pid) {
+                                return '<span class="text-muted small" title="No matching product_master row">—</span>';
+                            }
+                            const sku = row.SKU || '';
+                            const val = cell.getValue() || '';
+                            const html = `<div class="toa-item-pkg-wrap">
+                                <textarea class="form-control form-control-sm toa-item-pkg-textarea" maxlength="2000" rows="3"
+                                    data-product-id="${pid}" data-sku="${escapeHtmlAttr(sku)}"></textarea>
+                            </div>`;
+                            setTimeout(() => {
+                                const root = cell.getElement();
+                                if (!root) return;
+                                const ta = root.querySelector('.toa-item-pkg-textarea');
+                                if (!ta) return;
+                                ta.value = val;
+                                if (!ta.dataset.bound) {
+                                    ta.dataset.bound = '1';
+                                    ta.dataset.prev = val;
+                                    ta.addEventListener('focusout', function () {
+                                        const newV = this.value.trim().slice(0, 2000);
+                                        const prev = this.dataset.prev != null ? this.dataset.prev : '';
+                                        if (newV === prev) return;
+                                        saveToOrderInstructionsItemPkg(pid, sku, newV, this, cell);
+                                    });
+                                } else {
+                                    ta.dataset.prev = val;
+                                }
+                            }, 0);
+                            return html;
+                        }
+                    },
+                    {
+                        title: "Instructions CTN",
+                        field: "ctn_instructions",
+                        width: 250,
+                        minWidth: 190,
+                        headerSort: false,
+                        headerTooltip: "Instructions CTN (max 100 chars); same Values field as Dim Wt Master (CTN)",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            const pid = row.product_master_id;
+                            if (!pid) {
+                                return '<span class="text-muted small" title="No matching product_master row">—</span>';
+                            }
+                            const sku = row.SKU || '';
+                            const parent = row.Parent || '';
+                            const val = cell.getValue() || '';
+                            const escVal = escapeHtmlAttr(val);
+                            const html = `<div class="toa-ctn-instr-wrap d-flex align-items-center justify-content-center gap-1 flex-wrap">
+                                <input type="text" class="form-control form-control-sm toa-ctn-instructions-input" maxlength="100"
+                                    value="${escVal}"
+                                    data-product-id="${pid}" data-sku="${escapeHtmlAttr(sku)}" data-parent="${escapeHtmlAttr(parent)}"
+                                    style="min-width:110px;max-width:190px;font-size:12px;">
+                                <button type="button" class="btn btn-sm btn-outline-secondary toa-copy-instr py-0 px-2" title="Copy Instructions CTN"><i class="far fa-copy"></i></button>
+                            </div>`;
+                            setTimeout(() => {
+                                const root = cell.getElement();
+                                if (!root) return;
+                                const input = root.querySelector('.toa-ctn-instructions-input');
+                                const btn = root.querySelector('.toa-copy-instr');
+                                if (input && !input.dataset.bound) {
+                                    input.dataset.bound = '1';
+                                    input.dataset.prev = val;
+                                    input.addEventListener('focusout', function () {
+                                        const newV = this.value.trim().slice(0, 100);
+                                        const prev = this.dataset.prev != null ? this.dataset.prev : '';
+                                        if (newV === prev) return;
+                                        saveToOrderCtnInstructions(pid, sku, parent, newV, this, cell);
+                                    });
+                                } else if (input) {
+                                    input.dataset.prev = val;
+                                }
+                                if (btn && input && !btn.dataset.bound) {
+                                    btn.dataset.bound = '1';
+                                    btn.addEventListener('click', function (ev) {
+                                        ev.preventDefault();
+                                        ev.stopPropagation();
+                                        const t = (input.value || '').trim();
+                                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                                            navigator.clipboard.writeText(t).catch(() => {});
+                                        } else {
+                                            input.select();
+                                            try {
+                                                document.execCommand('copy');
+                                            } catch (e) {}
+                                        }
+                                    });
+                                }
+                            }, 0);
+                            return html;
+                        }
+                    },
+                    {
+                        title: "Design Instructions",
+                        field: "packing_instructions",
+                        width: 280,
+                        minWidth: 180,
+                        vertAlign: "top",
+                        headerSort: false,
+                        headerTooltip: "Packing Inner Design — product_master.Values.packing_instructions",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                return '<span class="text-muted small">—</span>';
+                            }
+                            const v = (cell.getValue() || "").trim();
+                            if (!v) {
+                                return '<span class="text-muted small">—</span>';
+                            }
+                            const div = document.createElement("div");
+                            const preview = v.length > 160 ? v.slice(0, 160) + "…" : v;
+                            div.textContent = preview;
+                            const titleAttr = escapeHtmlAttr(v);
+                            return (
+                                '<div class="toa-packing-design-instr" title="' + titleAttr + '">' +
+                                div.innerHTML.replace(/\n/g, "<br>") +
+                                "</div>"
+                            );
+                        }
+                    },
+                    {
+                        title: "CDR",
+                        field: "packing_cdr_path",
+                        width: 72,
+                        minWidth: 60,
+                        hozAlign: "center",
+                        vertAlign: "middle",
+                        headerSort: false,
+                        headerTooltip: "Packing Inner Design — product_master.Values.packing_cdr_path",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                return '<span class="text-muted">—</span>';
+                            }
+                            const raw = (cell.getValue() || "").trim();
+                            if (!raw) {
+                                return '<span class="text-muted">—</span>';
+                            }
+                            const u = /^https?:\/\//i.test(raw) ? raw : ("/" + String(raw).replace(/^\//, ""));
+                            const base = raw.split(/[/\\]/).pop() || "file";
+                            return (
+                                '<a href="' + escapeHtmlAttr(u) + '" target="_blank" rel="noopener" ' +
+                                'class="btn btn-sm btn-outline-secondary py-0 px-2" download title="' + escapeHtmlAttr(base) + '">' +
+                                '<i class="fas fa-file-download"></i></a>'
+                            );
                         }
                     },
                     {

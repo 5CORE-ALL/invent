@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Dimensions & Weight Master', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'QC Upgrade', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -182,10 +182,23 @@
             background-color: #f8fafc;
         }
 
+        /* Parent SKU rows — light yellow (same family as item-dim-header #fff9c4) */
+        .table-responsive tbody tr.dim-wt-parent-row {
+            background-color: #fff9c4;
+        }
+        .table-responsive tbody tr.dim-wt-parent-row:nth-child(even) {
+            background-color: #fff9c4;
+        }
+
         .table-responsive tbody tr:hover {
             background-color: #e8f0fe;
             transform: translateY(-1px);
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Keep parent rows yellow on hover (must follow generic tr:hover) */
+        .table-responsive tbody tr.dim-wt-parent-row:hover {
+            background-color: #fff59d;
         }
 
         .table-responsive tbody tr:hover td {
@@ -290,19 +303,60 @@
             table-layout: auto;
         }
 
-        /* Instructions item PKG: ~100 characters per line, then wrap (100ch ≈ “0” width in this font) */
+        /*
+         * QC Improvement Req + Instructions item PKG: same width, header color, and cell wrapping
+         * (fixed band so long PKG text wraps instead of widening only one column)
+         */
         #dim-wt-master-datatable th.col-instructions-item-pkg,
-        #dim-wt-master-datatable td.col-instructions-item-pkg {
-            max-width: 100ch;
+        #dim-wt-master-datatable td.col-instructions-item-pkg,
+        #dim-wt-master-datatable th.col-qc-improvement-before-item-pkg,
+        #dim-wt-master-datatable td.col-qc-improvement-before-item-pkg {
+            width: min(22rem, 32vw);
+            min-width: min(22rem, 32vw);
+            max-width: min(22rem, 32vw);
             box-sizing: border-box;
+            vertical-align: top;
         }
-        #dim-wt-master-datatable td.col-instructions-item-pkg {
+        #dim-wt-master-datatable thead th.col-instructions-item-pkg,
+        #dim-wt-master-datatable thead th.col-qc-improvement-before-item-pkg {
+            background: #8fb9fe !important;
+            vertical-align: middle;
+        }
+        #dim-wt-master-datatable thead th.col-instructions-item-pkg:hover,
+        #dim-wt-master-datatable thead th.col-qc-improvement-before-item-pkg:hover {
+            background: #7aa8fd !important;
+        }
+        #dim-wt-master-datatable td.col-instructions-item-pkg,
+        #dim-wt-master-datatable td.col-qc-improvement-before-item-pkg {
             white-space: pre-wrap !important;
             word-break: break-word;
             overflow-wrap: anywhere;
-            vertical-align: top;
             font-size: 11px;
             line-height: 1.35;
+        }
+
+        /* Supplier — same mfrg_progress value as Forecast Analysis; allow wrap */
+        #dim-wt-master-datatable th.col-supplier,
+        #dim-wt-master-datatable td.col-supplier {
+            max-width: 14rem;
+            min-width: 6rem;
+            box-sizing: border-box;
+            vertical-align: top;
+        }
+        #dim-wt-master-datatable td.col-supplier {
+            white-space: normal !important;
+            word-break: break-word;
+            text-align: center;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        #dim-wt-master-datatable th.col-c-link,
+        #dim-wt-master-datatable td.col-c-link {
+            max-width: 5rem;
+            min-width: 3rem;
+            box-sizing: border-box;
+            vertical-align: middle;
         }
 
         /* Prevent horizontal overflow */
@@ -449,8 +503,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.shared.page-title', [
-        'page_title' => 'Dimensions & Weight Master',
-        'sub_title' => 'Dimensions & Weight Master Analysis',
+        'page_title' => 'QC Upgrade',
+        'sub_title' => 'Same grid and data as Dimensions & Weight Master',
     ])
 
     <div class="row">
@@ -556,34 +610,6 @@
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT DECL<br>(LB)</div>
-                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Length<br>(inch)</div>
-                                        <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Width<br>(inch)</div>
-                                        <select id="filterW" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Height<br>(Inch)</div>
-                                        <select id="filterH" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
                                     <th class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
                                     <th class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
                                     <th class="item-cm-col"><span class="th-vertical-label">Item Height<br>(CM)</span></th>
@@ -593,7 +619,10 @@
                                     <th><span class="th-vertical-label">Carton<br>CBM</span></th>
                                     <th><span class="th-vertical-label">CTN<br>QTY</span></th>
                                     <th><span class="th-vertical-label">Carton CBM<br>each</span></th>
+                                    <th class="col-qc-improvement-before-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">QC Improvement<br>Req</span></th>
                                     <th class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">Instructions<br>item PKG</span></th>
+                                    <th class="text-center col-supplier"><span class="th-vertical-label" style="font-size: 9px;">Supplier</span></th>
+                                    <th class="text-center col-c-link"><span class="th-vertical-label" style="font-size: 9px;">C link</span></th>
                                     <th class="text-center"><span class="th-vertical-label">Verified</span></th>
                                     <th><span class="th-vertical-label">Action</span></th>
                                 </tr>
@@ -608,19 +637,19 @@
                         <div class="wave"></div>
                         <div class="wave"></div>
                         <div class="wave"></div>
-                        <div class="loading-text">Loading Dimensions & Weight Master Data...</div>
+                        <div class="loading-text">Loading QC Upgrade…</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Edit Dimensions & Weight Master Modal -->
+    <!-- Edit row (QC Upgrade — shared dim/wt APIs) -->
     <div class="modal fade" id="editDimWtModal" tabindex="-1" aria-labelledby="editDimWtModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="editDimWtModalLabel">Edit Dimensions & Weight Master</h5>
+                    <h5 class="modal-title" id="editDimWtModalLabel">Edit dimensions & weight</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -707,6 +736,19 @@
 
                         <div class="row mb-1">
                             <div class="col-12">
+                                <small class="text-secondary fw-semibold">QC Improvement Req</small>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <label for="editQcImprovementReqBeforeItemPkg" class="form-label">QC Improvement Req</label>
+                                <textarea class="form-control" id="editQcImprovementReqBeforeItemPkg" name="qc_improvement_req_before_item_pkg" rows="3" maxlength="2000" placeholder="Enter QC Improvement Req"></textarea>
+                                <small class="text-muted">Max 2000 characters. Leave blank to clear. Not saved for PARENT rows.</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-1">
+                            <div class="col-12">
                                 <small class="text-secondary fw-semibold">Instructions item PKG</small>
                             </div>
                         </div>
@@ -735,7 +777,7 @@
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
                     <h5 class="modal-title" id="importExcelModalLabel">
-                        <i class="fas fa-upload me-2"></i>Import Dimensions & Weight Data
+                        <i class="fas fa-upload me-2"></i>Import dimensions & weight data
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -745,7 +787,7 @@
                         <strong>Steps:</strong>
                         <ol class="mb-0 mt-2">
                             <li>Download the sample file below</li>
-                            <li>Fill in the dim & wt data (Weight ACT (Kg), Itm wt GW, WT DECL (LB), Length (inch), Width (inch), Height (Inch), Length (CM), Width (CM), Height (CM), CTN L (CM), CTN W (CM), CTN H (CM), CTN QTY, Carton CBM columns as applicable)</li>
+                            <li>Fill in the dim & wt data (Weight ACT (Kg), Itm wt GW, Length (CM), Width (CM), Height (CM), CTN L (CM), CTN W (CM), CTN H (CM), CTN QTY, Carton CBM columns as applicable; optional columns such as Width (inch), Height (Inch), Length (inch) or WT DECL (LB) are still accepted by import)</li>
                             <li>Upload the completed file</li>
                         </ol>
                     </div>
@@ -987,7 +1029,7 @@
                 return `<span class="status-dot" style="background-color:${color}" title="${escapeHtml(title)}"></span>`;
             }
 
-            // Load Dimensions & Weight data from server
+            // Load data (shared /dim-wt-master-data-view endpoint)
             function loadData() {
                 const cacheParam = '?ts=' + new Date().getTime();
                 makeRequest('/dim-wt-master-data-view' + cacheParam, 'GET')
@@ -1011,7 +1053,7 @@
                         document.getElementById('rainbow-loader').style.display = 'none';
                     })
                     .catch(error => {
-                        console.error('Failed to load Dimensions & Weight data: ' + error.message);
+                        console.error('Failed to load QC Upgrade data: ' + error.message);
                         document.getElementById('rainbow-loader').style.display = 'none';
                     });
             }
@@ -1022,13 +1064,16 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="24" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="23" class="text-center">No data found</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
                     const row = document.createElement('tr');
                     const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                    if (isParentRow) {
+                        row.classList.add('dim-wt-parent-row');
+                    }
                     const cellVal = (val, decimals) => isParentRow ? '--' : formatNumber(val || 0, decimals);
 
                     // Checkbox column
@@ -1101,30 +1146,6 @@
                     wtActCell.textContent = cellVal(item.wt_act, 1);
                     row.appendChild(wtActCell);
 
-                    // WT DECL column
-                    const wtDeclCell = document.createElement('td');
-                    wtDeclCell.className = 'text-center';
-                    wtDeclCell.textContent = cellVal(item.wt_decl, 1);
-                    row.appendChild(wtDeclCell);
-
-                    // L column (inch) - round to whole number
-                    const lCell = document.createElement('td');
-                    lCell.className = 'text-center';
-                    lCell.textContent = cellVal(item.l, 0);
-                    row.appendChild(lCell);
-
-                    // W column (inch) - round to whole number
-                    const wCell = document.createElement('td');
-                    wCell.className = 'text-center';
-                    wCell.textContent = cellVal(item.w, 0);
-                    row.appendChild(wCell);
-
-                    // H column (inch) - round to whole number
-                    const hCell = document.createElement('td');
-                    hCell.className = 'text-center';
-                    hCell.textContent = cellVal(item.h, 0);
-                    row.appendChild(hCell);
-
                     // Length (CM) column (use stored value or convert from inch) - hidden
                     const lCmCell = document.createElement('td');
                     lCmCell.className = 'text-center item-cm-col';
@@ -1191,6 +1212,21 @@
                     ctnCbmEachCell.textContent = cellVal(ctnCbmEachCalculated, 1);
                     row.appendChild(ctnCbmEachCell);
 
+                    // QC Improvement Req (qc_improvement_req_before_item_pkg table)
+                    const qcBeforeCell = document.createElement('td');
+                    qcBeforeCell.className = 'col-qc-improvement-before-item-pkg';
+                    if (isParentRow) {
+                        qcBeforeCell.textContent = '--';
+                    } else {
+                        const rawQc = item.qc_improvement_req_before_item_pkg != null ? String(item.qc_improvement_req_before_item_pkg).trim() : '';
+                        if (!rawQc) {
+                            qcBeforeCell.textContent = '-';
+                        } else {
+                            qcBeforeCell.textContent = rawQc;
+                        }
+                    }
+                    row.appendChild(qcBeforeCell);
+
                     // Instructions item PKG (from instructions_item_pkg table)
                     const pkgCell = document.createElement('td');
                     pkgCell.className = 'col-instructions-item-pkg';
@@ -1205,6 +1241,33 @@
                         }
                     }
                     row.appendChild(pkgCell);
+
+                    // Supplier (mfrg_progress by SKU — same as Forecast Analysis "Supplier" / mfrg_supplier)
+                    const supplierCell = document.createElement('td');
+                    supplierCell.className = 'text-center col-supplier';
+                    if (isParentRow) {
+                        supplierCell.textContent = '--';
+                    } else {
+                        const sup = item.supplier != null ? String(item.supplier).trim() : '';
+                        supplierCell.textContent = sup ? sup : '-';
+                    }
+                    row.appendChild(supplierCell);
+
+                    // C link — forecast_analysis.clink by SKU (same as To Order Analysis "Clink")
+                    const cLinkCell = document.createElement('td');
+                    cLinkCell.className = 'text-center col-c-link';
+                    if (isParentRow) {
+                        cLinkCell.textContent = '--';
+                    } else {
+                        const rawClink = item.c_link != null ? String(item.c_link).trim() : '';
+                        if (!rawClink) {
+                            cLinkCell.textContent = '-';
+                        } else {
+                            const safe = escapeHtml(rawClink);
+                            cLinkCell.innerHTML = `<a href="${safe}" target="_blank" rel="noopener noreferrer" title="C link"><i class="fas fa-link text-primary"></i></a>`;
+                        }
+                    }
+                    row.appendChild(cLinkCell);
 
                     // Verified column – red/green dot toggle
                     const isVerified = item.verified_data === 1 || item.verified_data === true ||
@@ -1289,7 +1352,10 @@
                         const isLeadIdentityCol = i < 4;
                         const isTailUtilityCol = headerText.includes('verified') || /\baction\b/.test(headerText);
                         const isInstructionsPkgCol = headerText.includes('instructions') && headerText.includes('pkg');
-                        visible = isLeadIdentityCol || isTailUtilityCol || isCtnDim || isCartonMetric || headerText.includes('status') || headerText === 'inv' || isInstructionsPkgCol;
+                        const isQcImprovementBeforePkgCol = th.classList.contains('col-qc-improvement-before-item-pkg');
+                        const isSupplierCol = th.classList.contains('col-supplier');
+                        const isCLinkCol = th.classList.contains('col-c-link');
+                        visible = isLeadIdentityCol || isTailUtilityCol || isCtnDim || isCartonMetric || headerText.includes('status') || headerText === 'inv' || isInstructionsPkgCol || isQcImprovementBeforePkgCol || isSupplierCol || isCLinkCol;
                     }
 
                     th.style.display = visible ? '' : 'none';
@@ -1306,10 +1372,6 @@
                 let skuCount = 0;
                 let wtActKgMissingCount = 0;
                 let wtActMissingCount = 0;
-                let wtDeclMissingCount = 0;
-                let lMissingCount = 0;
-                let wMissingCount = 0;
-                let hMissingCount = 0;
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
@@ -1324,10 +1386,6 @@
                     // Count missing data for each column (only for child SKUs)
                     if (isMissing(item.wt_act_kg)) wtActKgMissingCount++;
                     if (isMissing(item.wt_act)) wtActMissingCount++;
-                    if (isMissing(item.wt_decl)) wtDeclMissingCount++;
-                    if (isMissing(item.l)) lMissingCount++;
-                    if (isMissing(item.w)) wMissingCount++;
-                    if (isMissing(item.h)) hMissingCount++;
                 });
                 
                 const setHeaderCount = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = `(${val})`; };
@@ -1335,10 +1393,6 @@
                 setHeaderCount('skuCount', skuCount);
                 setHeaderCount('wtActKgMissingCount', wtActKgMissingCount);
                 setHeaderCount('wtActMissingCount', wtActMissingCount);
-                setHeaderCount('wtDeclMissingCount', wtDeclMissingCount);
-                setHeaderCount('lMissingCount', lMissingCount);
-                setHeaderCount('wMissingCount', wMissingCount);
-                setHeaderCount('hMissingCount', hMissingCount);
             }
 
             function updateStatusBadgesBar() {
@@ -1460,13 +1514,7 @@
                 const filterStatusValue = filterSTATUS ? filterSTATUS.value : 'all';
                 const filterWtActKg = document.getElementById('filterWtActKg').value;
                 const filterWtAct = document.getElementById('filterWtAct').value;
-                const filterWtDecl = document.getElementById('filterWtDecl').value;
-                const filterL = document.getElementById('filterL').value;
-                const filterW = document.getElementById('filterW').value;
-                const filterH = document.getElementById('filterH').value;
-                const hasMissingDataFilter = filterStatusValue === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtDecl === 'missing' ||
-                                            filterL === 'missing' || filterW === 'missing' ||
-                                            filterH === 'missing';
+                const hasMissingDataFilter = filterStatusValue === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing';
 
                 const parentSearchVal = (document.getElementById('parentSearch')?.value || '').toLowerCase();
                 const skuSearchVal = (document.getElementById('skuSearch')?.value || '').toLowerCase();
@@ -1502,26 +1550,6 @@
                         return false;
                     }
 
-                    // WT DECL filter
-                    if (filterWtDecl === 'missing' && !isMissing(item.wt_decl)) {
-                        return false;
-                    }
-
-                    // L filter
-                    if (filterL === 'missing' && !isMissing(item.l)) {
-                        return false;
-                    }
-
-                    // W filter
-                    if (filterW === 'missing' && !isMissing(item.w)) {
-                        return false;
-                    }
-
-                    // H filter
-                    if (filterH === 'missing' && !isMissing(item.h)) {
-                        return false;
-                    }
-
                     return true;
                 });
                 renderTable(filteredData);
@@ -1546,7 +1574,7 @@
 
                 const filterSTATUSEl = document.getElementById('filterSTATUS');
                 if (filterSTATUSEl) filterSTATUSEl.addEventListener('change', applyFilters);
-                const filterIds = ['filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH'];
+                const filterIds = ['filterWtActKg', 'filterWtAct'];
                 filterIds.forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
@@ -1589,7 +1617,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Weight ACT (Kg)", "Itm wt GW", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Weight ACT (Kg)", "Itm wt GW", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "Supplier", "C link"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -1607,18 +1635,6 @@
                         },
                         "Itm wt GW": {
                             key: "wt_act"
-                        },
-                        "WT DECL (LB)": {
-                            key: "wt_decl"
-                        },
-                        "Length (inch)": {
-                            key: "l"
-                        },
-                        "Width (inch)": {
-                            key: "w"
-                        },
-                        "Height (Inch)": {
-                            key: "h"
                         },
                         "Length (CM)": {
                             key: "l_cm"
@@ -1646,6 +1662,12 @@
                         },
                         "CTN (CBM/Each)": {
                             key: "ctn_cbm_each"
+                        },
+                        "Supplier": {
+                            key: "supplier"
+                        },
+                        "C link": {
+                            key: "c_link"
                         }
                     };
 
@@ -1722,9 +1744,13 @@
                                 // Adjust width based on column type
                                 if (["SKU"].includes(col)) {
                                     return { wch: 20 }; // Wider for text columns
+                                } else if (["Supplier"].includes(col)) {
+                                    return { wch: 28 };
+                                } else if (["C link"].includes(col)) {
+                                    return { wch: 36 };
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["Weight ACT (Kg)", "Itm wt GW", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)"].includes(col)) {
+                                } else if (["Weight ACT (Kg)", "Itm wt GW", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -1761,10 +1787,10 @@
                             }
 
                             // Add the worksheet to the workbook
-                            XLSX.utils.book_append_sheet(wb, ws, "Dimensions & Weight Master");
+                            XLSX.utils.book_append_sheet(wb, ws, "QC Upgrade");
 
                             // Generate Excel file and trigger download
-                            XLSX.writeFile(wb, "dim_wt_master_export.xlsx");
+                            XLSX.writeFile(wb, "qc_upgrade_export.xlsx");
 
                             // Show success toast
                             showToast('success', 'Excel file downloaded successfully!');
@@ -1790,8 +1816,7 @@
                 const filtCountEl  = document.getElementById('skuScopeFilteredCount');
 
                 const DIM_HEADERS = [
-                    'Weight ACT (Kg)', 'Itm wt GW', 'WT DECL (LB)',
-                    'Length (inch)', 'Width (inch)', 'Height (Inch)',
+                    'Weight ACT (Kg)', 'Itm wt GW',
                     'Length (CM)', 'Width (CM)', 'Height (CM)',
                     'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)',
                     'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'
@@ -1977,10 +2002,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with all columns
                     const sampleData = [
-                        ['SKU', 'Weight ACT (Kg)', 'Itm wt GW', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
-                        ['SKU001', '6.2', '1.5', '1.2', '10.5', '8.3', '5.2', '26.67', '21.08', '13.21', '30', '25', '20', '0.015', '12', '0.00125'],
-                        ['SKU002', '9.1', '2.0', '1.8', '12.0', '9.0', '6.0', '30.48', '22.86', '15.24', '35', '28', '22', '0.0216', '15', '0.00144'],
-                        ['SKU003', '5.4', '1.2', '1.0', '9.5', '7.5', '4.5', '24.13', '19.05', '11.43', '28', '24', '18', '0.0121', '10', '0.00121']
+                        ['SKU', 'Weight ACT (Kg)', 'Itm wt GW', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
+                        ['SKU001', '6.2', '1.5', '26.67', '21.08', '13.21', '30', '25', '20', '0.015', '12', '0.00125'],
+                        ['SKU002', '9.1', '2.0', '30.48', '22.86', '15.24', '35', '28', '22', '0.0216', '15', '0.00144'],
+                        ['SKU003', '5.4', '1.2', '24.13', '19.05', '11.43', '28', '24', '18', '0.0121', '10', '0.00121']
                     ];
 
                     // Create workbook
@@ -1992,10 +2017,6 @@
                         { wch: 15 }, // SKU
                         { wch: 16 }, // Weight ACT (Kg)
                         { wch: 14 }, // Itm wt GW
-                        { wch: 14 }, // WT DECL (LB)
-                        { wch: 14 }, // Length (inch)
-                        { wch: 12 }, // Width (inch)
-                        { wch: 14 }, // Height (Inch)
                         { wch: 12 }, // Length (CM)
                         { wch: 12 }, // Width (CM)
                         { wch: 12 }, // Height (CM)
@@ -2019,8 +2040,8 @@
                         };
                     }
 
-                    XLSX.utils.book_append_sheet(wb, ws, "Dimensions & Weight Data");
-                    XLSX.writeFile(wb, "dim_wt_master_sample.xlsx");
+                    XLSX.utils.book_append_sheet(wb, ws, "QC Upgrade sample");
+                    XLSX.writeFile(wb, "qc_upgrade_sample.xlsx");
                     
                     showToast('success', 'Sample file downloaded successfully!');
                 });
@@ -2238,8 +2259,8 @@
                     const confirmMessage = `Are you sure you want to push dimensions & weight data for ${selectedSkus.length} SKU(s) to ALL marketplaces?\n\n` +
                         `Selected SKUs: ${skuList.substring(0, 100)}${skuList.length > 100 ? '...' : ''}\n\n` +
                         `Data to be updated:\n` +
-                        `- Weight (Weight ACT (Kg), Itm wt GW, WT DECL (LB))\n` +
-                        `- Dimensions (Length/Width/Height in inch and CM)\n\n` +
+                        `- Weight (Weight ACT (Kg), Itm wt GW)\n` +
+                        `- Dimensions (width/height inch, length/width/height CM)\n\n` +
                         `This will update the data in: Amazon, eBay, Shopify, Walmart, Doba, Temu, and all other connected marketplaces.`;
                     
                     if (!confirm(confirmMessage)) {
@@ -2376,6 +2397,28 @@
                 return sku && String(sku).toUpperCase().includes('PARENT');
             }
 
+            async function saveQcImprovementReqBeforeItemPkg(productId, sku, qcImprovementRaw) {
+                const body = {
+                    product_id: parseInt(productId, 10),
+                    sku: sku || '',
+                    qc_improvement_req: qcImprovementRaw != null ? String(qcImprovementRaw) : '',
+                };
+                const response = await fetch('/qc-improvement-req-before-item-pkg/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify(body),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.message || 'Failed to save QC Improvement Req');
+                }
+                return data;
+            }
+
             async function saveInstructionsItemPkg(productId, sku, instructionsRaw) {
                 const body = {
                     product_id: parseInt(productId, 10),
@@ -2398,12 +2441,12 @@
                 return data;
             }
 
-            // Edit Dimensions & Weight Master
+            // Edit row (QC Upgrade)
             function editDimWt(product) {
                 const modal = new bootstrap.Modal(document.getElementById('editDimWtModal'));
                 document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 0)
                     ? ('Bulk Edit (' + bulkEditList.length + ' items)')
-                    : 'Edit Dimensions & Weight Master';
+                    : 'Edit dimensions & weight';
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
@@ -2438,12 +2481,17 @@
 
                 document.getElementById('editCtnQty').value = product.ctn_qty || '';
 
+                const qcBeforeEl = document.getElementById('editQcImprovementReqBeforeItemPkg');
                 const pkgEl = document.getElementById('editInstructionsItemPkg');
                 const skuStr = product.SKU || '';
                 if (isParentSkuString(skuStr)) {
+                    qcBeforeEl.value = '';
+                    qcBeforeEl.disabled = true;
                     pkgEl.value = '';
                     pkgEl.disabled = true;
                 } else {
+                    qcBeforeEl.disabled = false;
+                    qcBeforeEl.value = product.qc_improvement_req_before_item_pkg != null ? String(product.qc_improvement_req_before_item_pkg) : '';
                     pkgEl.disabled = false;
                     pkgEl.value = product.instructions_item_pkg != null ? String(product.instructions_item_pkg) : '';
                 }
@@ -2460,7 +2508,7 @@
                 modal.show();
             }
 
-            // Save Dimensions & Weight Master (single or bulk)
+            // Save (single or bulk; shared /dim-wt-master/update)
             async function saveDimWt() {
                 const saveBtn = document.getElementById('saveDimWtBtn');
                 const originalText = saveBtn.innerHTML;
@@ -2498,7 +2546,9 @@
                     if (bulkEditList && bulkEditList.length > 0) {
                         let successCount = 0;
                         let failCount = 0;
+                        let qcBeforeFailCount = 0;
                         let pkgFailCount = 0;
+                        const qcBeforeText = document.getElementById('editQcImprovementReqBeforeItemPkg').value;
                         const pkgText = document.getElementById('editInstructionsItemPkg').value;
                         for (const product of bulkEditList) {
                             const formData = {
@@ -2520,6 +2570,12 @@
                                 if (response.ok) {
                                     successCount++;
                                     try {
+                                        await saveQcImprovementReqBeforeItemPkg(product.id, product.SKU, qcBeforeText);
+                                    } catch (qcErr) {
+                                        qcBeforeFailCount++;
+                                        console.error(qcErr);
+                                    }
+                                    try {
                                         await saveInstructionsItemPkg(product.id, product.SKU, pkgText);
                                     } catch (pkgErr) {
                                         pkgFailCount++;
@@ -2533,11 +2589,18 @@
                             }
                         }
                         bulkEditList = null;
-                        document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
-                        if (failCount === 0 && pkgFailCount === 0) {
+                        document.getElementById('editDimWtModalLabel').textContent = 'Edit dimensions & weight';
+                        if (failCount === 0 && pkgFailCount === 0 && qcBeforeFailCount === 0) {
                             showToast('success', successCount + ' item(s) updated successfully!');
-                        } else if (failCount === 0 && pkgFailCount > 0) {
-                            showToast('warning', successCount + ' dimension row(s) saved; Instructions item PKG failed for ' + pkgFailCount + ' item(s).');
+                        } else if (failCount === 0 && (pkgFailCount > 0 || qcBeforeFailCount > 0)) {
+                            const parts = [];
+                            if (qcBeforeFailCount > 0) {
+                                parts.push('QC Improvement Req failed for ' + qcBeforeFailCount + ' item(s)');
+                            }
+                            if (pkgFailCount > 0) {
+                                parts.push('Instructions item PKG failed for ' + pkgFailCount + ' item(s)');
+                            }
+                            showToast('warning', successCount + ' dimension row(s) saved; ' + parts.join('; ') + '.');
                         } else {
                             showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
                         }
@@ -2573,6 +2636,15 @@
                     const singleSku = document.getElementById('editSku').value;
                     if (!isParentSkuString(singleSku)) {
                         try {
+                            await saveQcImprovementReqBeforeItemPkg(
+                                document.getElementById('editProductId').value,
+                                singleSku,
+                                document.getElementById('editQcImprovementReqBeforeItemPkg').value
+                            );
+                        } catch (qcErr) {
+                            showToast('warning', 'Dimensions saved, but QC Improvement Req could not be saved: ' + (qcErr.message || ''));
+                        }
+                        try {
                             await saveInstructionsItemPkg(
                                 document.getElementById('editProductId').value,
                                 singleSku,
@@ -2587,7 +2659,7 @@
                         }
                     }
                     
-                    showToast('success', 'Dimensions & Weight Master updated successfully!');
+                    showToast('success', 'Saved successfully!');
                     
                     const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
                     modal.hide();
@@ -2654,7 +2726,7 @@
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
-                document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
+                document.getElementById('editDimWtModalLabel').textContent = 'Edit dimensions & weight';
             });
         });
     </script>

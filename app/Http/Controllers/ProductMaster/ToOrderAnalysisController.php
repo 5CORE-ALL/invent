@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
+use App\Models\InstructionsItemPkg;
 use App\Models\JungleScoutProductData;
 use App\Models\MfrgProgress;
 use App\Models\ShopifySku;
@@ -295,6 +296,10 @@ class ToOrderAnalysisController extends Controller
             // orderBy id asc so duplicate SKUs: keyBy keeps last occurrence = highest id (latest row)
             $toOrderRecords = DB::table('to_order_analysis')->whereNull('deleted_at')->orderBy('id', 'asc')->get()->keyBy('sku');
             $productData = DB::table('product_master')->get()->keyBy(fn($item) => strtoupper(trim($item->sku)));
+            $instructionsPkgByProductId = InstructionsItemPkg::query()
+                ->whereIn('product_master_id', $productData->pluck('id')->filter()->unique()->values())
+                ->get()
+                ->keyBy('product_master_id');
             $forecastData = DB::table('forecast_analysis')->get()->keyBy(fn($row) => strtoupper(trim($row->sku)));
             $amazonDataMap = DB::table('amazon_data_view')
                 ->select('sku', 'value')
@@ -357,12 +362,18 @@ class ToOrderAnalysisController extends Controller
                 $imagePath = null;
 
                 $lp = 0;
+                $ctnInstructions = '';
+                $packingInstructions = '';
+                $packingCdrPath = '';
                 if (!empty($product?->Values)) {
                     $valuesArray = json_decode($product->Values, true);
                     if (is_array($valuesArray)) {
                         $cbm = (float)($valuesArray['cbm'] ?? 0);
                         $imagePath = $valuesArray['image_path'] ?? null;
                         $lp = (float)($valuesArray['lp'] ?? 0);
+                        $ctnInstructions = isset($valuesArray['ctn_instructions']) ? (string) $valuesArray['ctn_instructions'] : '';
+                        $packingInstructions = isset($valuesArray['packing_instructions']) ? trim((string) $valuesArray['packing_instructions']) : '';
+                        $packingCdrPath = isset($valuesArray['packing_cdr_path']) ? trim((string) $valuesArray['packing_cdr_path']) : '';
                     }
                 }
 
@@ -378,6 +389,12 @@ class ToOrderAnalysisController extends Controller
                 $sMsl = $forecast ? (int)($forecast->s_msl ?? 0) : 0;
                 $lpMsl = ($mslValue > 0 && $lp > 0) ? round($mslValue * $lp / 4, 2) : null;
 
+                $instructionsItemPkg = '';
+                if ($product && $product->id) {
+                    $pkgRow = $instructionsPkgByProductId->get($product->id);
+                    $instructionsItemPkg = $pkgRow && $pkgRow->instructions !== null ? (string) $pkgRow->instructions : '';
+                }
+
                 // Monthly data for MONTH VIEW modal (Jan–Dec, same as forecast)
                 $monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 $monthData = array_fill_keys($monthNames, 0);
@@ -392,9 +409,14 @@ class ToOrderAnalysisController extends Controller
 
                 $processedData[] = array_merge([
                     'id'              => $toOrder->id,
+                    'product_master_id' => $product->id ?? null,
                     'Parent'          => $parent,
                     'SKU'             => $sheetSku,
                     'approved_qty'    => $approvedQty,
+                    'ctn_instructions' => mb_substr($ctnInstructions, 0, 100),
+                    'packing_instructions' => $packingInstructions,
+                    'packing_cdr_path' => $packingCdrPath,
+                    'instructions_item_pkg' => $instructionsItemPkg,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.

@@ -238,6 +238,8 @@ use App\Http\Controllers\ProductMaster\StockAnalysisController;
 use App\Http\Controllers\ProductMaster\ToBeDCController;
 use App\Http\Controllers\ProductMaster\ToOrderAnalysisController;
 use App\Http\Controllers\PurchaseMaster\CategoryController;
+use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
+use App\Http\Controllers\PurchaseMaster\QcImprovementReqBeforeItemPkgController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
@@ -1404,8 +1406,33 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'created_at',
             ]);
 
+        $skus = $rows->map(fn ($r) => strtoupper(trim((string) ($r->sku ?? ''))))->filter()->unique()->values()->all();
+        $productMap = [];
+        if ($skus !== []) {
+            $placeholders = implode(',', array_fill(0, count($skus), '?'));
+            $pRows = \Illuminate\Support\Facades\DB::table('product_master')
+                ->select('id', 'sku', 'Values')
+                ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $skus)
+                ->get();
+            foreach ($pRows as $p) {
+                $productMap[strtoupper(trim((string) $p->sku))] = $p;
+            }
+        }
+
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz) {
+        $data = $rows->map(function ($row) use ($tz, $productMap) {
+            $k = strtoupper(trim((string) ($row->sku ?? '')));
+            $productMasterId = null;
+            $ctnInstructions = '';
+            if (isset($productMap[$k])) {
+                $p = $productMap[$k];
+                $productMasterId = (int) $p->id;
+                $vals = json_decode($p->Values ?? '', true);
+                if (is_array($vals) && isset($vals['ctn_instructions'])) {
+                    $ctnInstructions = mb_substr((string) $vals['ctn_instructions'], 0, 100);
+                }
+            }
+
             return [
                 'id' => (int) $row->id,
                 'sku' => $row->sku,
@@ -1429,6 +1456,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'created_at_display' => $row->created_at
                     ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
                     : '',
+                'product_master_id' => $productMasterId,
+                'ctn_instructions' => $ctnInstructions,
             ];
         })->values();
 
@@ -1463,8 +1492,33 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'logged_at',
             ]);
 
+        $histSkus = $rows->map(fn ($r) => strtoupper(trim((string) ($r->sku ?? ''))))->filter()->unique()->values()->all();
+        $histProductMap = [];
+        if ($histSkus !== []) {
+            $placeholders = implode(',', array_fill(0, count($histSkus), '?'));
+            $pRows = \Illuminate\Support\Facades\DB::table('product_master')
+                ->select('id', 'sku', 'Values')
+                ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $histSkus)
+                ->get();
+            foreach ($pRows as $p) {
+                $histProductMap[strtoupper(trim((string) $p->sku))] = $p;
+            }
+        }
+
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz) {
+        $data = $rows->map(function ($row) use ($tz, $histProductMap) {
+            $k = strtoupper(trim((string) ($row->sku ?? '')));
+            $productMasterId = null;
+            $ctnInstructions = '';
+            if (isset($histProductMap[$k])) {
+                $p = $histProductMap[$k];
+                $productMasterId = (int) $p->id;
+                $vals = json_decode($p->Values ?? '', true);
+                if (is_array($vals) && isset($vals['ctn_instructions'])) {
+                    $ctnInstructions = mb_substr((string) $vals['ctn_instructions'], 0, 100);
+                }
+            }
+
             return [
                 'id' => (int) $row->id,
                 'orders_on_hold_issue_id' => $row->orders_on_hold_issue_id ? (int) $row->orders_on_hold_issue_id : null,
@@ -1498,6 +1552,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'logged_at_display' => $row->logged_at
                     ? \Carbon\Carbon::parse($row->logged_at)->timezone($tz)->format('d-m-Y H:i')
                     : '',
+                'product_master_id' => $productMasterId,
+                'ctn_instructions' => $ctnInstructions,
             ];
         })->values();
 
@@ -3033,10 +3089,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/id-master', [CategoryController::class, 'idMaster'])->name('id.master');
     Route::get('/id-master-data-view', [CategoryController::class, 'getIdMasterData'])->name('id.master.data');
     Route::get('/dim-wt-master', [CategoryController::class, 'dimWtMaster'])->name('dim.wt.master');
+    Route::get('/qc-upgrade', [CategoryController::class, 'qcUpgrade'])->name('qc.upgrade');
+    Route::get('/dim-wt-master-ctn', [CategoryController::class, 'dimWtMasterCtn'])->name('dim.wt.master.ctn');
     Route::get('/dim-wt-master-data-view', [CategoryController::class, 'getDimWtMasterData'])->name('dim.wt.master.data');
     Route::get('/dim-wt-master/skus', [CategoryController::class, 'getSkusForDimWtDropdown'])->name('dim.wt.master.skus');
     Route::post('/dim-wt-master/store', [CategoryController::class, 'storeDimWtMaster'])->name('dim.wt.master.store');
     Route::post('/dim-wt-master/update', [CategoryController::class, 'updateDimWtMaster'])->name('dim.wt.master.update');
+    Route::post('/instructions-item-pkg/update', [InstructionsItemPkgController::class, 'update'])->name('instructions.item.pkg.update');
+    Route::post('/qc-improvement-req-before-item-pkg/update', [QcImprovementReqBeforeItemPkgController::class, 'update'])->name('qc.improvement.req.before.item.pkg.update');
     Route::post('/dim-wt-master/import', [CategoryController::class, 'importDimWtMaster'])->name('dim.wt.master.import');
     Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
     Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
@@ -3066,6 +3126,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/packing-instructions-master/clear', [CategoryController::class, 'clearPackingInstructionsMaster'])->name('packing.instructions.master.clear');
     Route::get('/packing-instructions-master/images', [CategoryController::class, 'listPackingInstructionImages'])->name('packing.instructions.master.images');
     Route::post('/packing-instructions-master/upload-image', [CategoryController::class, 'uploadPackingInstructionImage'])->name('packing.instructions.master.upload.image');
+    Route::post('/packing-instructions-master/upload-cdr', [CategoryController::class, 'uploadPackingInstructionCdr'])->name('packing.instructions.master.upload.cdr');
+    Route::post('/packing-instructions-master/delete-cdr', [CategoryController::class, 'deletePackingInstructionCdr'])->name('packing.instructions.master.delete.cdr');
     Route::post('/packing-instructions-master/delete-image', [CategoryController::class, 'deletePackingInstructionImage'])->name('packing.instructions.master.delete.image');
     Route::post('/packing-instructions-master/ai-defect-scan', [CategoryController::class, 'aiDefectScanPackingImage'])->name('packing.instructions.master.ai.scan');
     Route::get('/extra-features-master', [CategoryController::class, 'extraFeaturesMaster'])->name('extra.features.master');

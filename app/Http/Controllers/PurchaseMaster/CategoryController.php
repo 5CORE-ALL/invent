@@ -12,6 +12,8 @@ use App\Models\FbaShipCalculation;
 use App\Models\FbaTable;
 use App\Models\ProductCategory;
 use App\Models\ProductGroup;
+use App\Models\InstructionsItemPkg;
+use App\Models\QcImprovementReqBeforeItemPkg;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
@@ -337,6 +339,22 @@ class CategoryController extends Controller
         return view('dim-wt-master');
     }
 
+    /**
+     * QC Upgrade — same UI and shared APIs as {@see dimWtMaster()} (read/update/import/push).
+     */
+    public function qcUpgrade()
+    {
+        return view('qc-upgrade');
+    }
+
+    /**
+     * Same grid and API as dimWtMaster(); carton-focused default section on the CTN view.
+     */
+    public function dimWtMasterCtn()
+    {
+        return view('dim-wt-master-ctn');
+    }
+
     public function getDimWtMasterData(Request $request)
     {
         // Fetch all products from the database ordered by parent and SKU
@@ -350,6 +368,51 @@ class CategoryController extends Controller
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
+
+        $instructionsPkgByProductId = InstructionsItemPkg::query()
+            ->whereIn('product_master_id', $products->pluck('id'))
+            ->get()
+            ->keyBy('product_master_id');
+
+        $qcImprovementBeforeItemPkgByProductId = QcImprovementReqBeforeItemPkg::query()
+            ->whereIn('product_master_id', $products->pluck('id'))
+            ->get()
+            ->keyBy('product_master_id');
+
+        // Supplier per SKU — same source as Forecast Analysis (mfrg_progress.supplier → mfrg_supplier column)
+        $normalizeDimWtSku = static function (?string $sku): string {
+            if ($sku === null || $sku === '') {
+                return '';
+            }
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+
+            return trim($sku);
+        };
+        $mfrgByNormSku = [];
+        $mfrgByNoSpacesSku = [];
+        foreach (DB::table('mfrg_progress')->whereNull('deleted_at')->get(['sku', 'supplier']) as $mfrgRow) {
+            $k = $normalizeDimWtSku($mfrgRow->sku ?? '');
+            if ($k === '') {
+                continue;
+            }
+            // Last row wins per key (matches ForecastAnalysisController keyBy behavior)
+            $mfrgByNormSku[$k] = $mfrgRow;
+            $mfrgByNoSpacesSku[str_replace(' ', '', $k)] = $mfrgRow;
+        }
+
+        // C link (Clink) — same source as To Order Analysis grid: forecast_analysis.clink by SKU
+        $forecastClinkBySku = [];
+        $forecastClinkBySkuNoSpaces = [];
+        foreach (DB::table('forecast_analysis')->get(['sku', 'clink']) as $faRow) {
+            $fk = strtoupper(trim(str_replace("\u{00a0}", ' ', $faRow->sku ?? '')));
+            if ($fk === '') {
+                continue;
+            }
+            $forecastClinkBySku[$fk] = $faRow;
+            $forecastClinkBySkuNoSpaces[str_replace(' ', '', $fk)] = $faRow;
+        }
 
         // Prepare data in the same format as your sheet (flatten Values)
         $result = [];
@@ -424,6 +487,30 @@ class CategoryController extends Controller
                 $row['image_path'] = null;
             }
 
+            $pkg = $instructionsPkgByProductId->get($product->id);
+            $row['instructions_item_pkg'] = $pkg && $pkg->instructions !== null ? (string) $pkg->instructions : '';
+
+            $qcBefore = $qcImprovementBeforeItemPkgByProductId->get($product->id);
+            $row['qc_improvement_req_before_item_pkg'] = $qcBefore && $qcBefore->qc_improvement_req !== null
+                ? (string) $qcBefore->qc_improvement_req
+                : '';
+
+            $normSkuKey = $normalizeDimWtSku($product->sku);
+            $mfrgMatch = $mfrgByNormSku[$normSkuKey] ?? null;
+            if ($mfrgMatch === null && $normSkuKey !== '') {
+                $mfrgMatch = $mfrgByNoSpacesSku[str_replace(' ', '', $normSkuKey)] ?? null;
+            }
+            $row['supplier'] = $mfrgMatch && isset($mfrgMatch->supplier)
+                ? trim((string) $mfrgMatch->supplier)
+                : '';
+
+            $toOrderSkuKey = strtoupper(trim(str_replace("\u{00a0}", ' ', $product->sku)));
+            $fcRow = $forecastClinkBySku[$toOrderSkuKey] ?? null;
+            if ($fcRow === null && $toOrderSkuKey !== '') {
+                $fcRow = $forecastClinkBySkuNoSpaces[str_replace(' ', '', $toOrderSkuKey)] ?? null;
+            }
+            $row['c_link'] = $fcRow ? trim((string) ($fcRow->clink ?? '')) : '';
+
             $result[] = $row;
         }
 
@@ -486,6 +573,7 @@ class CategoryController extends Controller
                 'ctn_gwt' => 'nullable|numeric',
                 'ctn_weight_kg' => 'nullable|numeric',
                 'ctn_weight_lb' => 'nullable|numeric',
+                'ctn_instructions' => 'nullable|string|max:100',
             ]);
 
             // Get the product by SKU to retrieve parent
@@ -561,6 +649,12 @@ class CategoryController extends Controller
             if (isset($validated['ctn_weight_lb']) && $validated['ctn_weight_lb'] !== null) {
                 $values['ctn_weight_lb'] = $validated['ctn_weight_lb'];
             }
+            if (array_key_exists('ctn_weight_kg', $validated) && $validated['ctn_weight_kg'] !== null && $validated['ctn_weight_kg'] !== '' && is_numeric($validated['ctn_weight_kg'])) {
+                $values['ctn_weight_lb'] = round((float) $validated['ctn_weight_kg'] * 2.2046226218, 4);
+            }
+            if (array_key_exists('ctn_instructions', $validated) && $validated['ctn_instructions'] !== null && $validated['ctn_instructions'] !== '') {
+                $values['ctn_instructions'] = mb_substr((string) $validated['ctn_instructions'], 0, 100);
+            }
 
             // Update existing product or create new one
             if ($existingProduct) {
@@ -633,6 +727,7 @@ class CategoryController extends Controller
                 'ctn_gwt' => 'nullable|numeric',
                 'ctn_weight_kg' => 'nullable|numeric',
                 'ctn_weight_lb' => 'nullable|numeric',
+                'ctn_instructions' => 'nullable|string|max:100',
                 'ship' => 'nullable|numeric',
                 'tt_ship' => 'nullable|numeric',
                 'temu_ship' => 'nullable|numeric',
@@ -724,6 +819,17 @@ class CategoryController extends Controller
             }
             if (isset($validated['ctn_weight_lb'])) {
                 $values['ctn_weight_lb'] = $validated['ctn_weight_lb'];
+            }
+            if (array_key_exists('ctn_weight_kg', $validated) && $validated['ctn_weight_kg'] !== null && $validated['ctn_weight_kg'] !== '' && is_numeric($validated['ctn_weight_kg'])) {
+                $values['ctn_weight_lb'] = round((float) $validated['ctn_weight_kg'] * 2.2046226218, 4);
+            }
+            if (array_key_exists('ctn_instructions', $validated)) {
+                $raw = $validated['ctn_instructions'];
+                if ($raw === null || $raw === '') {
+                    unset($values['ctn_instructions']);
+                } else {
+                    $values['ctn_instructions'] = mb_substr((string) $raw, 0, 100);
+                }
             }
 
             foreach (['ship', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
@@ -1846,6 +1952,7 @@ class CategoryController extends Controller
             'packing_seal_method',
             'packing_instructions',
             'packing_sheet_url',
+            'packing_cdr_path',
         ];
     }
 
@@ -2029,6 +2136,7 @@ class CategoryController extends Controller
                 $existingValues = [];
             }
             $this->deletePackingInstructionImageFilesFromValues($existingValues);
+            $this->deletePackingCdrStoredFileIfAny($existingValues['packing_cdr_path'] ?? null);
             unset($existingValues['packing_images']);
             foreach ($this->packingInstructionsValueKeys() as $k) {
                 unset($existingValues[$k]);
@@ -2104,6 +2212,20 @@ class CategoryController extends Controller
         }
 
         return $s;
+    }
+
+    /**
+     * @param  mixed  $storagePath  Values JSON path like storage/packing_instruction_cdr/…
+     */
+    private function deletePackingCdrStoredFileIfAny($storagePath): void
+    {
+        if (! is_string($storagePath) || trim($storagePath) === '') {
+            return;
+        }
+        $rel = $this->packingImageDiskRelativePath($storagePath);
+        if ($rel && Storage::disk('public')->exists($rel)) {
+            Storage::disk('public')->delete($rel);
+        }
     }
 
     /**
@@ -2258,6 +2380,83 @@ class CategoryController extends Controller
             return response()->json(['success' => false, 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Packing instruction image delete: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function uploadPackingInstructionCdr(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'cdr' => 'required|file|max:51200',
+            ]);
+            $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+            if (! $product) {
+                return response()->json(['success' => false, 'message' => 'Product not found for this SKU.'], 404);
+            }
+
+            $existingValues = is_array($product->Values) ? $product->Values
+                : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (! is_array($existingValues)) {
+                $existingValues = [];
+            }
+
+            $oldPath = $existingValues['packing_cdr_path'] ?? null;
+            $this->deletePackingCdrStoredFileIfAny($oldPath);
+
+            $needle = $this->normalizeSkuDisplayValue($validated['sku']);
+            $folder = 'packing_instruction_cdr/'.substr(hash('sha256', $needle !== '' ? $needle : $validated['sku']), 0, 20);
+            $stored = $request->file('cdr')->store($folder, 'public');
+            $storagePath = 'storage/'.$stored;
+
+            $existingValues['packing_cdr_path'] = $storagePath;
+            $product->Values = $existingValues;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'path' => $storagePath,
+                'url' => $this->packingImagePublicUrl($storagePath),
+                'name' => $request->file('cdr')->getClientOriginalName(),
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Packing instruction CDR upload: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Upload failed: '.$e->getMessage()], 500);
+        }
+    }
+
+    public function deletePackingInstructionCdr(Request $request)
+    {
+        try {
+            $validated = $request->validate(['sku' => 'required|string']);
+            $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+            if (! $product) {
+                return response()->json(['success' => false, 'message' => 'Product not found for this SKU.'], 404);
+            }
+            $existingValues = is_array($product->Values) ? $product->Values
+                : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (! is_array($existingValues)) {
+                $existingValues = [];
+            }
+            $this->deletePackingCdrStoredFileIfAny($existingValues['packing_cdr_path'] ?? null);
+            unset($existingValues['packing_cdr_path']);
+            $product->Values = $existingValues;
+            $product->save();
+
+            return response()->json(['success' => true, 'message' => 'Design file removed.']);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Packing instruction CDR delete: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -5820,7 +6019,8 @@ PROMPT;
                 'sku' => 'sku',
                 // Sample-file normalized headers (parentheses/spaces → underscores)
                 'weight_act__kg_' => 'wt_act_kg',   // Weight ACT (Kg)
-                'wt_act__lb_' => 'wt_act',      // WT ACT (LB)
+                'wt_act__lb_' => 'wt_act',      // WT ACT (LB) — legacy header
+                'itm_wt_gw' => 'wt_act',       // Itm wt GW (renamed column)
                 'wt_decl__lb_' => 'wt_decl',     // WT DECL (LB)
                 'length__inch_' => 'l',            // Length (inch)
                 'width__inch_' => 'w',            // Width (inch)
@@ -5837,6 +6037,12 @@ PROMPT;
                 'ctn__cbm_each_' => 'ctn_cbm_each', // CTN (CBM/Each)
                 'cbm__e_' => 'cbm_e',        // CBM (E)
                 'ctn_weight__kg_' => 'ctn_weight_kg', // CTN Weight (KG)
+                'ctn_wt__lb_' => 'ctn_weight_lb', // CTN WT (LB)
+                'instructions' => 'ctn_instructions',
+                'instructions__ctn_' => 'ctn_instructions', // legacy: Instructions (CTN)
+                'instructions_ctn' => 'ctn_instructions', // column header "Instructions CTN"
+                'ctn' => 'ctn_instructions', // short header "CTN"
+                'ctn_instructions' => 'ctn_instructions',
                 // Short-form / plain names for custom files
                 'wt_act' => 'wt_act',
                 'wt_act_kg' => 'wt_act_kg',
@@ -5856,6 +6062,7 @@ PROMPT;
                 'cbm_e' => 'cbm_e',
                 'ctn_gwt' => 'ctn_gwt',
                 'ctn_weight_kg' => 'ctn_weight_kg',
+                'ctn_weight_lb' => 'ctn_weight_lb',
                 'ship' => 'ship',
                 'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
@@ -5919,14 +6126,20 @@ PROMPT;
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
-                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ship', 'tt_ship', 'temu_ship', 'ebay2_ship'])) {
+                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'tt_ship', 'temu_ship', 'ebay2_ship'])) {
                                 $value = is_numeric($value) ? (float) $value : null;
+                            } elseif ($field === 'ctn_instructions') {
+                                $value = mb_substr($value, 0, 100);
                             }
                             if ($value !== null) {
                                 $values[$field] = $value;
                             }
                         }
                     }
+                }
+
+                if (isset($values['ctn_weight_kg']) && is_numeric($values['ctn_weight_kg'])) {
+                    $values['ctn_weight_lb'] = round((float) $values['ctn_weight_kg'] * 2.2046226218, 4);
                 }
 
                 // Calculate CTN CBM if CTN L, W, H are provided but CTN CBM is not

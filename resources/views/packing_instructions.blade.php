@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Packing Instructions', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Packing Inner Design', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed'])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -528,8 +528,9 @@
             'packing_units_ctn' => 'Units/CTN',
             'packing_fragile' => 'Fragile',
             'packing_seal_method' => 'Seal',
-            'packing_instructions' => 'Instructions',
+            'packing_instructions' => 'Design Instructions',
             'packing_sheet_url' => 'Sheet URL',
+            'packing_cdr_path' => 'CDR',
         ];
         $__piFilterIds = [
             'packing_box_spec' => 'filterPackingBoxSpec',
@@ -538,11 +539,12 @@
             'packing_seal_method' => 'filterPackingSeal',
             'packing_instructions' => 'filterPackingInstructions',
             'packing_sheet_url' => 'filterPackingSheetUrl',
+            'packing_cdr_path' => 'filterPackingCdr',
         ];
     @endphp
 
     @include('layouts.shared.page-title', [
-        'page_title' => 'Packing Instructions',
+        'page_title' => 'Packing Inner Design',
         'sub_title' => 'Product packing notes per SKU',
     ])
 
@@ -553,7 +555,7 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-2">
-                    <h4 class="mb-1 fs-5">Packing Instructions</h4>
+                    <h4 class="mb-1 fs-5">Packing Inner Design</h4>
                     <p class="text-muted small mb-2">Parent summary rows use a light blue band with a rule under each group (like the inventory grid). <strong>Drag column edges</strong> to resize spacing; <strong>drag headers</strong> to reorder columns. Packing text and links live in product Values JSON.</p>
                     <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                         <button type="button" class="btn btn-sm btn-primary" id="addPackingBtn">
@@ -730,7 +732,18 @@
                         </div>
                         <div class="row g-2">
                             @foreach ($__piFields as $fkey => $flabel)
-                                @if ($fkey === 'packing_fragile')
+                                @if ($fkey === 'packing_cdr_path')
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="add_packing_cdr_file">{{ $flabel }} <span class="text-muted fw-normal">(design file)</span></label>
+                                        <input type="hidden" id="add_packing_cdr_path" name="packing_cdr_path" value="" autocomplete="off">
+                                        <input type="file" class="form-control" id="add_packing_cdr_file" accept=".cdr,.zip,.pdf,.ai,application/octet-stream">
+                                        <div class="form-text small" id="pi_cdr_file_status">Select SKU, then choose a file. Upload runs when you pick a file.</div>
+                                        <div class="mt-1 d-flex flex-wrap gap-1">
+                                            <a href="#" class="btn btn-sm btn-outline-primary d-none" id="pi_cdr_download_link" target="_blank" rel="noopener">Download current</a>
+                                            <button type="button" class="btn btn-sm btn-outline-danger d-none" id="pi_cdr_remove_btn">Remove file</button>
+                                        </div>
+                                    </div>
+                                @elseif ($fkey === 'packing_fragile')
                                     <div class="col-md-6">
                                         <label class="form-label" for="add_{{ $fkey }}">{{ $flabel }}</label>
                                         <select class="form-select" id="add_{{ $fkey }}" name="{{ $fkey }}">
@@ -743,7 +756,7 @@
                                     <div class="col-md-6">
                                         <label class="form-label" for="add_{{ $fkey }}">{{ $flabel }}</label>
                                         @if ($fkey === 'packing_instructions')
-                                            <textarea class="form-control" id="add_{{ $fkey }}" name="{{ $fkey }}" rows="3" placeholder="Handling / placement notes"></textarea>
+                                            <textarea class="form-control" id="add_{{ $fkey }}" name="{{ $fkey }}" rows="3" placeholder="Design / handling notes"></textarea>
                                         @else
                                             <input type="text" class="form-control" id="add_{{ $fkey }}" name="{{ $fkey }}" placeholder="" autocomplete="off">
                                         @endif
@@ -911,6 +924,11 @@
                 if (key === 'packing_sheet_url' && /^https?:\/\//i.test(raw)) {
                     const u = escapeHtml(raw);
                     inner = '<a href="' + u + '" target="_blank" rel="noopener" class="small pi-packing-url-link"><i class="fas fa-link"></i></a>';
+                } else if (key === 'packing_cdr_path' && raw) {
+                    const u = /^https?:\/\//i.test(raw) ? escapeHtml(raw) : escapeHtml('/' + String(raw).replace(/^\//, ''));
+                    const base = raw.split(/[/\\]/).pop() || 'file';
+                    const t = escapeAttr(base);
+                    inner = '<a href="' + u + '" target="_blank" rel="noopener" class="small pi-packing-url-link" download title="' + t + '"><i class="fas fa-file-download"></i></a>';
                 } else if (key === 'packing_instructions') {
                     inner = truncateCell(raw, 48);
                 } else {
@@ -1157,18 +1175,21 @@
                 PACKING_FIELD_KEYS.forEach(function(fk) {
                     const label = @json($__piFields)[fk] || fk;
                     const isInstructions = fk === 'packing_instructions';
-                    cols.push({
+                    const isCdr = fk === 'packing_cdr_path';
+                    const colDef = {
                         title: label,
                         field: fk,
                         headerSort: false,
-                        hozAlign: 'left',
-                        minWidth: isInstructions ? 100 : 52,
-                        widthGrow: isInstructions ? 3 : 1,
+                        hozAlign: isCdr ? 'center' : 'left',
+                        minWidth: isInstructions ? 100 : (isCdr ? 56 : 52),
+                        widthGrow: isInstructions ? 3 : (isCdr ? 0 : 1),
                         cssClass: 'pi-packing-field-col' + (isInstructions ? ' pi-packing-instructions-col' : ''),
                         formatter: function(cell) {
                             return formatPackingCellHtml(cell.getRow().getData(), fk);
                         }
-                    });
+                    };
+                    if (isCdr) colDef.widthShrink = 1;
+                    cols.push(colDef);
                 });
 
                 cols.push({
@@ -1356,7 +1377,8 @@
                         packing_fragile: 'filterPackingFragile',
                         packing_seal_method: 'filterPackingSeal',
                         packing_instructions: 'filterPackingInstructions',
-                        packing_sheet_url: 'filterPackingSheetUrl'
+                        packing_sheet_url: 'filterPackingSheetUrl',
+                        packing_cdr_path: 'filterPackingCdr'
                     };
                     for (const k of PACKING_FIELD_KEYS) {
                         const sel = document.getElementById(filterMap[k]);
@@ -1393,14 +1415,14 @@
                         if (t) t.setAttribute('aria-expanded', 'false');
                     });
                     refreshPiStatusFilterUI();
-                    ['filterPackingBoxSpec', 'filterPackingUnitsCtn', 'filterPackingFragile', 'filterPackingSeal', 'filterPackingInstructions', 'filterPackingSheetUrl'].forEach(fid => {
+                    ['filterPackingBoxSpec', 'filterPackingUnitsCtn', 'filterPackingFragile', 'filterPackingSeal', 'filterPackingInstructions', 'filterPackingSheetUrl', 'filterPackingCdr'].forEach(fid => {
                         const el = document.getElementById(fid);
                         if (el) el.value = 'all';
                     });
                     applyFilters();
                 });
 
-                ['filterPackingBoxSpec', 'filterPackingUnitsCtn', 'filterPackingFragile', 'filterPackingSeal', 'filterPackingInstructions', 'filterPackingSheetUrl'].forEach(fid => {
+                ['filterPackingBoxSpec', 'filterPackingUnitsCtn', 'filterPackingFragile', 'filterPackingSeal', 'filterPackingInstructions', 'filterPackingSheetUrl', 'filterPackingCdr'].forEach(fid => {
                     const el = document.getElementById(fid);
                     if (el) el.addEventListener('change', applyFilters);
                 });
@@ -1512,6 +1534,30 @@
                 return filteredData.find(i => String(i.SKU) === s);
             }
 
+            function refreshPiCdrModalUi(opts) {
+                opts = opts || {};
+                const clearFileInput = !!opts.clearFileInput;
+                const hidden = document.getElementById('add_packing_cdr_path');
+                const fileInp = document.getElementById('add_packing_cdr_file');
+                const link = document.getElementById('pi_cdr_download_link');
+                const rm = document.getElementById('pi_cdr_remove_btn');
+                const status = document.getElementById('pi_cdr_file_status');
+                const path = hidden ? String(hidden.value || '').trim() : '';
+                const has = path !== '';
+                const url = has ? (/^https?:\/\//i.test(path) ? path : '/' + String(path).replace(/^\//, '')) : '';
+                if (link) {
+                    link.href = url || '#';
+                    link.classList.toggle('d-none', !has);
+                }
+                if (rm) rm.classList.toggle('d-none', !has);
+                if (status) {
+                    status.textContent = has
+                        ? 'File on record. Choose another file to replace it.'
+                        : 'Select SKU, then choose a file. Upload runs when you pick a file.';
+                }
+                if (clearFileInput && fileInp) fileInp.value = '';
+            }
+
             function setPackingFormFromItem(item) {
                 PACKING_FIELD_KEYS.forEach(k => {
                     const el = document.getElementById('add_' + k);
@@ -1519,6 +1565,7 @@
                     const v = packingFieldRaw(item, k);
                     el.value = v;
                 });
+                refreshPiCdrModalUi({});
             }
 
             function collectPackingPayload(sku) {
@@ -1566,6 +1613,7 @@
                     const el = document.getElementById('add_' + k);
                     if (el) el.value = '';
                 });
+                refreshPiCdrModalUi({ clearFileInput: true });
 
                 if (mode === 'edit') {
                     const skuStr = String(editSku || '').trim();
@@ -2004,10 +2052,93 @@
                 });
             }
 
+            function setupPiCdrFileUi() {
+                const fileInp = document.getElementById('add_packing_cdr_file');
+                const rmBtn = document.getElementById('pi_cdr_remove_btn');
+                if (fileInp && !fileInp.dataset.piCdrBound) {
+                    fileInp.dataset.piCdrBound = '1';
+                    fileInp.addEventListener('change', async function() {
+                        const file = this.files && this.files[0];
+                        if (!file) return;
+                        let sku = '';
+                        if (packingFormMode === 'edit') {
+                            sku = String(packingEditSku || '').trim();
+                        } else {
+                            const sel = document.getElementById('addPackingSku');
+                            sku = (sel && window.jQuery && $(sel).val()) ? String($(sel).val()).trim() : '';
+                        }
+                        if (!sku) {
+                            showToast('warning', 'Select a SKU before uploading a CDR file.');
+                            this.value = '';
+                            return;
+                        }
+                        const fd = new FormData();
+                        fd.append('cdr', file);
+                        fd.append('sku', sku);
+                        try {
+                            const res = await fetch('/packing-instructions-master/upload-cdr', {
+                                method: 'POST',
+                                headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                                body: fd
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok || data.success === false) {
+                                throw new Error(data.message || 'Upload failed');
+                            }
+                            const h = document.getElementById('add_packing_cdr_path');
+                            if (h) h.value = data.path || '';
+                            refreshPiCdrModalUi({});
+                            showToast('success', 'Design file (CDR) saved.');
+                            loadData();
+                        } catch (e) {
+                            showToast('danger', e.message || 'Upload failed');
+                        } finally {
+                            this.value = '';
+                        }
+                    });
+                }
+                if (rmBtn && !rmBtn.dataset.piCdrBound) {
+                    rmBtn.dataset.piCdrBound = '1';
+                    rmBtn.addEventListener('click', async function() {
+                        let sku = '';
+                        if (packingFormMode === 'edit') {
+                            sku = String(packingEditSku || '').trim();
+                        } else {
+                            const sel = document.getElementById('addPackingSku');
+                            sku = (sel && window.jQuery && $(sel).val()) ? String($(sel).val()).trim() : '';
+                        }
+                        if (!sku) {
+                            showToast('warning', 'Select a SKU.');
+                            return;
+                        }
+                        if (!confirm('Remove the stored design file (CDR) for this SKU?')) return;
+                        try {
+                            const res = await fetch('/packing-instructions-master/delete-cdr', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                                body: JSON.stringify({ sku: sku, _token: csrfToken })
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok || data.success === false) {
+                                throw new Error(data.message || 'Remove failed');
+                            }
+                            const h = document.getElementById('add_packing_cdr_path');
+                            if (h) h.value = '';
+                            refreshPiCdrModalUi({});
+                            showToast('success', data.message || 'Removed.');
+                            loadData();
+                        } catch (e) {
+                            showToast('danger', e.message || 'Remove failed');
+                        }
+                    });
+                }
+            }
+
             setupSearch();
             setupPiStatusFilter();
             refreshPiStatusFilterUI();
             setupPackingImagesUi();
+            setupPiCdrFileUi();
             setupExcelExport();
             loadData();
         });
