@@ -11,6 +11,62 @@ use Illuminate\Support\Facades\Schema;
  */
 class TitleMasterDataService
 {
+    /** Collapse whitespace and NBSP for search (matches Excel/import quirks). */
+    private function normalizeSearchWhitespace(string $s): string
+    {
+        $s = str_replace("\u{00a0}", ' ', $s);
+        $s = preg_replace('/\s+/u', ' ', trim($s));
+
+        return $s;
+    }
+
+    /**
+     * MySQL: UTF-8 NBSP → space, then collapse runs of spaces (nested REPLACE).
+     *
+     * @param  string  $sqlExpr  Raw column expression, e.g. "COALESCE(psm.sku,'')"
+     */
+    private function sqlWhitespaceCollapsed(string $sqlExpr): string
+    {
+        $e = "REPLACE({$sqlExpr}, UNHEX('C2A0'), ' ')";
+        for ($i = 0; $i < 10; $i++) {
+            $e = "REPLACE({$e}, '  ', ' ')";
+        }
+
+        return $e;
+    }
+
+    private function likeContainsPattern(string $normalized): string
+    {
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $normalized);
+
+        return '%'.$escaped.'%';
+    }
+
+    private function isMysql(): bool
+    {
+        return Schema::getConnection()->getDriverName() === 'mysql';
+    }
+
+    /**
+     * Distinct SKUs for Title Master: mappings table plus product_master rows that are not in mappings
+     * (so titles can be edited even before inventory sync creates a psm row).
+     */
+    private function titleMasterSkuUnion()
+    {
+        $notParent = "UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'";
+
+        return DB::table('product_stock_mappings')
+            ->select('sku')
+            ->whereNotNull('sku')
+            ->whereRaw($notParent)
+            ->union(
+                DB::table('product_master')
+                    ->select('sku')
+                    ->whereNotNull('sku')
+                    ->whereRaw($notParent)
+            );
+    }
+
     public function getList(Request $request)
     {
         $export = $request->boolean('export');
@@ -47,14 +103,15 @@ class TitleMasterDataService
             ? 'image12'
             : (Schema::hasColumn('product_master', 'images12') ? 'images12' : null);
 
-        $base = DB::table('product_stock_mappings as psm')
-            ->leftJoin('product_master as pm', 'pm.sku', '=', 'psm.sku')
+        $base = DB::query()
+            ->fromSub($this->titleMasterSkuUnion(), 'skus')
+            ->leftJoin('product_stock_mappings as psm', 'psm.sku', '=', 'skus.sku')
+            ->leftJoin('product_master as pm', 'pm.sku', '=', 'skus.sku')
             ->leftJoinSub($latestAmazonBySku, 'alr', function ($join) {
-                $join->on('alr.seller_sku', '=', 'psm.sku');
+                $join->on('alr.seller_sku', '=', 'skus.sku');
             })
-            ->leftJoin('amazon_datsheets as ads', 'ads.sku', '=', 'psm.sku')
-            ->leftJoin('shopify_skus as ss', 'ss.sku', '=', 'psm.sku')
-            ->whereRaw("UPPER(COALESCE(psm.sku, '')) NOT LIKE '%PARENT%'");
+            ->leftJoin('amazon_datsheets as ads', 'ads.sku', '=', 'skus.sku')
+            ->leftJoin('shopify_skus as ss', 'ss.sku', '=', 'skus.sku');
 
         $this->applyFilters($base, $request);
 
@@ -72,7 +129,7 @@ class TitleMasterDataService
         $dataQuery = $base->clone()->select($selectColumns);
 
         if ($export) {
-            $listings = $dataQuery->orderBy('psm.sku')->limit(15000)->get();
+            $listings = $dataQuery->orderBy('skus.sku')->limit(15000)->get();
             $result = $this->mapListings($listings);
 
             return response()->json([
@@ -83,7 +140,7 @@ class TitleMasterDataService
             ]);
         }
 
-        $paginator = $dataQuery->orderBy('psm.sku')->paginate($perPage, ['*'], 'page', $page);
+        $paginator = $dataQuery->orderBy('skus.sku')->paginate($perPage, ['*'], 'page', $page);
         $result = $this->mapListings($paginator->items());
 
         return response()->json([
@@ -104,39 +161,52 @@ class TitleMasterDataService
 
     public function skuOptions(Request $request)
     {
-        $q = trim((string) $request->query('q', ''));
-        $query = DB::table('product_stock_mappings')
-            ->whereNotNull('sku')
-            ->whereRaw("UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'");
+        $q = $this->normalizeSearchWhitespace((string) $request->query('q', ''));
+        $query = DB::query()->fromSub($this->titleMasterSkuUnion(), 'skus');
         if ($q !== '') {
-            $safe = addcslashes($q, '%_\\');
-            $query->where('sku', 'like', '%'.$safe.'%');
+            if ($this->isMysql()) {
+                $col = $this->sqlWhitespaceCollapsed('COALESCE(skus.sku, \'\')');
+                $pattern = $this->likeContainsPattern($q);
+                $query->whereRaw("LOWER({$col}) LIKE LOWER(?)", [$pattern]);
+            } else {
+                $safe = addcslashes($q, '%_\\');
+                $query->where('skus.sku', 'like', '%'.$safe.'%');
+            }
         }
-        $skus = $query->orderBy('sku')->limit(500)->pluck('sku');
+        $skus = $query->orderBy('skus.sku')->limit(500)->pluck('skus.sku');
 
         return response()->json(['data' => $skus]);
     }
 
     private function applyFilters($query, Request $request): void
     {
-        $qParent = trim((string) $request->query('q_parent', ''));
-        $qSku = trim((string) $request->query('q_sku', ''));
-        $search = trim((string) $request->query('search', ''));
+        $qParent = $this->normalizeSearchWhitespace((string) $request->query('q_parent', ''));
+        $qSku = $this->normalizeSearchWhitespace((string) $request->query('q_sku', ''));
+        $search = $this->normalizeSearchWhitespace((string) $request->query('search', ''));
         if ($qSku === '' && $search !== '') {
             $qSku = $search;
         }
 
         if ($qParent !== '') {
-            $safe = addcslashes($qParent, '%_\\');
-            $query->where('pm.parent', 'like', '%'.$safe.'%');
+            if ($this->isMysql()) {
+                $col = $this->sqlWhitespaceCollapsed('COALESCE(pm.parent, \'\')');
+                $pattern = $this->likeContainsPattern($qParent);
+                $query->whereRaw("LOWER({$col}) LIKE LOWER(?)", [$pattern]);
+            } else {
+                $safe = addcslashes($qParent, '%_\\');
+                $query->where('pm.parent', 'like', '%'.$safe.'%');
+            }
         }
 
         if ($qSku !== '') {
-            $safe = addcslashes($qSku, '%_\\');
-            $query->where(function ($q) use ($safe) {
-                $q->where('psm.sku', 'like', '%'.$safe.'%')
-                    ->orWhere('alr.seller_sku', 'like', '%'.$safe.'%');
-            });
+            if ($this->isMysql()) {
+                $colKey = $this->sqlWhitespaceCollapsed('COALESCE(skus.sku, \'\')');
+                $pattern = $this->likeContainsPattern($qSku);
+                $query->whereRaw("LOWER({$colKey}) LIKE LOWER(?)", [$pattern]);
+            } else {
+                $safe = addcslashes($qSku, '%_\\');
+                $query->where('skus.sku', 'like', '%'.$safe.'%');
+            }
         }
 
         $f150 = (string) $request->query('filter_title150', 'all');
@@ -202,7 +272,7 @@ class TitleMasterDataService
     ): array {
         $select = [
             'pm.id as pm_id',
-            'psm.sku as psm_sku',
+            DB::raw('COALESCE(psm.sku, pm.sku, skus.sku) as psm_sku'),
             'pm.parent',
             'pm.title150',
             'pm.title100',

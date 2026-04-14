@@ -1408,6 +1408,16 @@
         let aiTitle60ModalInstance;
         let currentAIGeneratedTitles60 = [];
 
+        /** NBSP + collapsed whitespace (same idea as product-master SKU search). */
+        function normalizeForTextSearch(s) {
+            if (s == null || s === '') return '';
+            return String(s)
+                .replace(/\u00a0/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             titleModal = new bootstrap.Modal(document.getElementById('titleModal'));
             platformModal = new bootstrap.Modal(document.getElementById('platformModal'));
@@ -2338,8 +2348,8 @@
             const perPage = document.getElementById('perPageSelect')?.value || 75;
             params.set('per_page', String(perPage));
             params.set('page', String(forPage != null ? forPage : 1));
-            const qParent = (document.getElementById('parentSearch')?.value || '').trim();
-            const qSku = (document.getElementById('skuSearch')?.value || '').trim();
+            const qParent = normalizeForTextSearch(document.getElementById('parentSearch')?.value || '');
+            const qSku = normalizeForTextSearch(document.getElementById('skuSearch')?.value || '');
             if (qParent) params.set('q_parent', qParent);
             if (qSku) params.set('q_sku', qSku);
             const f150 = document.getElementById('filterTitle150')?.value;
