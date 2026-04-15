@@ -1610,6 +1610,22 @@
                     return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
                 }
 
+                /** Oldest non-empty Inv age bucket (same order as modal / filters). */
+                function fbaInvAgeOldestBucket(ageData) {
+                    if (!ageData) return null;
+                    const buckets = [
+                        { label: '456+',      val: ageData.inv_age_456_plus_days   || 0, color: '#2c3e50' },
+                        { label: '366 – 455', val: ageData.inv_age_366_to_455_days || 0, color: '#8e44ad' },
+                        { label: '271 – 365', val: ageData.inv_age_271_to_365_days || 0, color: '#c0392b' },
+                        { label: '181 – 270', val: ageData.inv_age_181_to_270_days || 0, color: '#e74c3c' },
+                        { label: '91 – 180',  val: ageData.inv_age_91_to_180_days  || 0, color: '#e67e22' },
+                        { label: '61 – 90',   val: ageData.inv_age_61_to_90_days   || 0, color: '#f39c12' },
+                        { label: '31 – 60',   val: ageData.inv_age_31_to_60_days   || 0, color: '#2ecc71' },
+                        { label: '0 – 30',    val: ageData.inv_age_0_to_30_days    || 0, color: '#27ae60' },
+                    ];
+                    return buckets.find(b => b.val > 0) || null;
+                }
+
                 table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
                     ajaxSorting: true,
@@ -1897,6 +1913,14 @@
                             title: "Inv age",
                             field: "Inv_age",
                             hozAlign: "center",
+                            tooltip: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                if (!rowData.age_data) return 'No age data — click for details';
+                                const oldest = fbaInvAgeOldestBucket(rowData.age_data);
+                                if (!oldest) return 'Click to view age details';
+                                return oldest.label + ' days — click for details';
+                            },
                             cellClick: function(e, cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return;
@@ -1911,29 +1935,17 @@
                                     return `<span style="cursor:pointer;color:#ccc;" title="No age data"><i class="fa fa-eye"></i></span>`;
                                 }
 
-                                // Find the oldest bucket that has units
-                                const buckets = [
-                                    { label: '456+',      val: ageData.inv_age_456_plus_days   || 0, color: '#2c3e50' },
-                                    { label: '366 – 455', val: ageData.inv_age_366_to_455_days || 0, color: '#8e44ad' },
-                                    { label: '271 – 365', val: ageData.inv_age_271_to_365_days || 0, color: '#c0392b' },
-                                    { label: '181 – 270', val: ageData.inv_age_181_to_270_days || 0, color: '#e74c3c' },
-                                    { label: '91 – 180',  val: ageData.inv_age_91_to_180_days  || 0, color: '#e67e22' },
-                                    { label: '61 – 90',   val: ageData.inv_age_61_to_90_days   || 0, color: '#f39c12' },
-                                    { label: '31 – 60',   val: ageData.inv_age_31_to_60_days   || 0, color: '#2ecc71' },
-                                    { label: '0 – 30',    val: ageData.inv_age_0_to_30_days    || 0, color: '#27ae60' },
-                                ];
-
-                                const oldest = buckets.find(b => b.val > 0);
+                                const oldest = fbaInvAgeOldestBucket(ageData);
                                 if (!oldest) {
                                     return `<span style="color:#aaa;cursor:pointer;" title="Click to view age details">—</span>`;
                                 }
 
-                                // Show age as full months from the range's lower bound (first number), e.g. 81–100 → floor(81/30) → "2 M"
+                                // Months from range lower bound, e.g. 91–180 → floor(91/30) → ">3 M"
                                 const labelStr = String(oldest.label);
                                 const firstDaysMatch = labelStr.match(/(\d+)/);
                                 const firstDays = firstDaysMatch ? parseInt(firstDaysMatch[1], 10) : 0;
                                 const monthsWhole = Math.floor(firstDays / 30);
-                                const monthsText = monthsWhole + ' M';
+                                const monthsText = '>' + monthsWhole + ' M';
                                 const titleSafe = labelStr.replace(/"/g, '&quot;');
 
                                 return `<span style="color:${oldest.color};font-weight:700;cursor:pointer;" title="${titleSafe} days — click for details">${monthsText}</span>`;
