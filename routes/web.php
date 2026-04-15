@@ -13,6 +13,8 @@ use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayControlle
 use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingController;
 use App\Http\Controllers\ArrivedContainerController;
 use App\Http\Controllers\Auth\UserController;
+use App\Http\Controllers\AmazonAdsController;
+use App\Http\Controllers\AmazonUtilizedKwSheetController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
 use App\Http\Controllers\Campaigns\AmazonCampaignReportsController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
@@ -2330,6 +2332,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-all-temu-skus', [TemuController::class, 'updateAllTemuSkus']);
     Route::post('/update-amazon-price', action: [OverallAmazonController::class, 'updatePrice'])->name('amazon.priceChange');
 
+    Route::get('/amazon-ads/all', [AmazonAdsController::class, 'index'])->name('amazon.ads.all');
+    Route::match(['get', 'post'], '/amazon-ads/raw-data/{source}', [AmazonAdsController::class, 'rawData'])->name('amazon.ads.raw-data');
+
     // ajax routes
     Route::get('/amazon/all-data', [OverallAmazonController::class, 'getAllData'])->name('amazon.allData');
     Route::get('/channel/all-data', [ChannelMasterController::class, 'getAllData'])->name('channel.allData');
@@ -4106,6 +4111,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/save-amazon-sbid-m', 'saveAmazonSbidM');
         Route::post('/approve-amazon-sbid', 'approveAmazonSbid');
     });
+
+    Route::get('/amazon/utilized/kw/sheet', [AmazonUtilizedKwSheetController::class, 'index'])->name('amazon.utilized.kw.sheet');
 
     Route::controller(AmazonSbBudgetController::class)->group(function () {
         Route::get('/amazon-sb/amz-utilized-bgt-hl', 'amzUtilizedBgtHl')->name('amazon-sb.amz-utilized-bgt-hl');

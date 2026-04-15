@@ -2017,10 +2017,16 @@
                                                     <a href="{{ route('amazon.utilized.kw') }}">Amz KW Ad</a>
                                                 </li>
                                                 <li>
+                                                    <a href="{{ route('amazon.utilized.kw.sheet') }}">Amz KW sheet</a>
+                                                </li>
+                                                <li>
                                                     <a href="{{ route('amazon.utilized.pt') }}">Amz PT Ad</a>
                                                 </li>
                                                 <li>
                                                     <a href="{{ route('amazon.utilized.hl') }}">Amz HL Ad</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.all') }}">Amazon Ads All</a>
                                                 </li>
                                                 {{-- <li>
                                                     <a href=" {{ route('amazon-sp.amz-utilized-bgt-kw') }} "> >

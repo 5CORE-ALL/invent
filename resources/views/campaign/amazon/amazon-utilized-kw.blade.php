@@ -196,6 +196,22 @@
             color: #ff2727 !important;
         }
 
+        /* 1 UB% / 2 UB% / 7 UB% — text color only (>=99% magenta, <=66% red, else green) */
+        .ub-cond-magenta {
+            color: #FF00FF !important;
+            font-weight: 600;
+        }
+
+        .ub-cond-green {
+            color: #00FF00 !important;
+            font-weight: 600;
+        }
+
+        .ub-cond-red {
+            color: #FF0000 !important;
+            font-weight: 600;
+        }
+
         .utilization-type-btn {
             padding: 8px 16px;
             border: 2px solid #dee2e6;
@@ -2012,14 +2028,29 @@
                         title: "SBGT",
                         field: "sbgt",
                         mutator: function (value, data) {
+                            var spend30 = parseFloat(data.l30_spend || 0);
+                            var sales30 = parseFloat(data.l30_sales || 0);
                             var acos = parseFloat(data.acos || 0);
-                            // ACOS-based SBGT rules
-                            if (acos > 25) return 1;
-                            if (acos >= 20) return 2;
-                            if (acos >= 15) return 4;
-                            if (acos >= 10) return 6;
-                            if (acos >= 5) return 8;
-                            return 10; // Less than 5
+                            if (isNaN(acos)) {
+                                acos = 0;
+                            }
+                            if (spend30 === 0 && sales30 === 0) {
+                                acos = 0;
+                            }
+                            // SBGT tracks ACOS color tier: pink ≤10%→12, green 10–20→8, blue 20–30→4, yellow 30–40→2, red ≥40→1
+                            if (acos >= 40) {
+                                return 1;
+                            }
+                            if (acos > 30) {
+                                return 2;
+                            }
+                            if (acos > 20) {
+                                return 4;
+                            }
+                            if (acos > 10) {
+                                return 8;
+                            }
+                            return 12;
                         }
 
                     },
@@ -2043,33 +2074,46 @@
                             }
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+
+                            function acosTierTextColor(a) {
+                                if (a >= 40) {
+                                    return '#FF8FAB';
+                                }
+                                if (a > 30) {
+                                    return '#FFCC00';
+                                }
+                                if (a > 20) {
+                                    return '#5C9CEE';
+                                }
+                                if (a > 10) {
+                                    return '#00FF00';
+                                }
+                                return '#FF00FF';
+                            }
                             
                             var clicks30 = parseInt(row.l30_clicks || 0).toLocaleString();
-                            var spend30 = parseFloat(row.l30_spend || 0).toFixed(0);
-                            var sales30 = parseFloat(row.l30_sales || 0).toFixed(0);
+                            var spend30Str = parseFloat(row.l30_spend || 0).toFixed(0);
+                            var sales30Str = parseFloat(row.l30_sales || 0).toFixed(0);
                             var adSold30 = parseInt(row.l30_purchases || 0).toLocaleString();
                             var clicks7 = parseInt(row.l7_clicks || 0).toLocaleString();
                             var spend7 = parseFloat(row.l7_spend || 0).toFixed(2);
                             var sales7 = parseFloat(row.l7_sales || 0).toFixed(2);
                             var adSold7 = parseInt(row.l7_purchases || 0).toLocaleString();
-                            var tooltipText = "L30: Clicks " + clicks30 + ", Spend " + spend30 + ", Sales " + sales30 + ", Ad Sold " + adSold30 +
+                            var tooltipText = "L30: Clicks " + clicks30 + ", Spend " + spend30Str + ", Sales " + sales30Str + ", Ad Sold " + adSold30 +
                                 "\nL7: Clicks " + clicks7 + ", Spend " + spend7 + ", Sales " + sales7 + ", Ad Sold " + adSold7 +
                                 "\n(Click info to show/hide Clicks L7, Spend L7, Sales L7, Ad Sold L7 and L30 columns)";
                             
                             var acosDisplay;
-                            if (acos === 0) {
-                                acosDisplay = "0%"; 
-                            } else if (acos < 7) {
-                                td.classList.add('pink-bg');
+                            var acosColor = '#6c757d';
+                            if (spend30 === 0 && sales30 === 0) {
+                                acosDisplay = "0%";
+                            } else if (acos === 0) {
+                                acosDisplay = "0%";
+                            } else {
                                 acosDisplay = acos.toFixed(0) + "%";
-                            } else if (acos >= 7 && acos <= 14) {
-                                td.classList.add('green-bg');
-                                acosDisplay = acos.toFixed(0) + "%";
-                            } else if (acos > 14) {
-                                td.classList.add('red-bg');
-                                acosDisplay = acos.toFixed(0) + "%";
+                                acosColor = acosTierTextColor(acos);
                             }
-                            return `<div class="text-center">${acosDisplay}<i class="bi bi-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
+                            return `<div class="text-center"><span style="color:${acosColor};font-weight:600">${acosDisplay}</span><i class="bi bi-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
                         },
                         sorter: "number"
                     },
@@ -2132,15 +2176,15 @@
                         formatter: function (cell) {
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg', 'ub-cond-magenta', 'ub-cond-green', 'ub-cond-red');
                             if (!hasCampaign) return '-';
                             var l7_spend = parseFloat(row.l7_spend) || 0;
                             var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 66 && ub7 <= 99) td.classList.add('green-bg');
-                            else if (ub7 > 99) td.classList.add('pink-bg');
-                            else if (ub7 < 66) td.classList.add('red-bg');
+                            if (ub7 >= 99) td.classList.add('ub-cond-magenta');
+                            else if (ub7 <= 66) td.classList.add('ub-cond-red');
+                            else td.classList.add('ub-cond-green');
                             return ub7.toFixed(0) + '%';
                         }
                     },
@@ -2416,15 +2460,15 @@
                         formatter: function (cell) {
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg', 'ub-cond-magenta', 'ub-cond-green', 'ub-cond-red');
                             if (!hasCampaign) return '-';
                             var l2_spend = parseFloat(row.l2_spend) || 0;
                             var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub2 >= 66 && ub2 <= 99) td.classList.add('green-bg');
-                            else if (ub2 > 99) td.classList.add('pink-bg');
-                            else if (ub2 < 66) td.classList.add('red-bg');
+                            if (ub2 >= 99) td.classList.add('ub-cond-magenta');
+                            else if (ub2 <= 66) td.classList.add('ub-cond-red');
+                            else td.classList.add('ub-cond-green');
                             return ub2.toFixed(0) + '%';
                         }
                     },
@@ -2436,22 +2480,16 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg', 'ub-cond-magenta', 'ub-cond-green', 'ub-cond-red');
                             if (!hasCampaign) return '-';
                             var l7_spend = parseFloat(row.l7_spend) || 0;
                             // Same as combinedFilter: use utilization_budget for PARENT (aggregated children), else campaignBudgetAmount
                             var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            
-                            // Color logic based on UB7 only (Amazon rules) - same as over/under/correctly filter
-                            if (ub7 >= 66 && ub7 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub7 > 99) {
-                                td.classList.add('pink-bg');
-                            } else if (ub7 < 66) {
-                                td.classList.add('red-bg');
-                            }
+                            if (ub7 >= 99) td.classList.add('ub-cond-magenta');
+                            else if (ub7 <= 66) td.classList.add('ub-cond-red');
+                            else td.classList.add('ub-cond-green');
                             return ub7.toFixed(0) + "%";
                         }
                     },
@@ -2463,20 +2501,16 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg', 'ub-cond-magenta', 'ub-cond-green', 'ub-cond-red');
                             if (!hasCampaign) return '-';
                             var l1_spend = parseFloat(row.l1_spend) || 0;
                             // Same as combinedFilter: use utilization_budget for PARENT (aggregated children), else campaignBudgetAmount
                             var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 66 && ub1 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub1 > 99) {
-                                td.classList.add('pink-bg');
-                            } else if (ub1 < 66) {
-                                td.classList.add('red-bg');
-                            }
+                            if (ub1 >= 99) td.classList.add('ub-cond-magenta');
+                            else if (ub1 <= 66) td.classList.add('ub-cond-red');
+                            else td.classList.add('ub-cond-green');
                             return ub1.toFixed(0) + "%";
                         }
                     },
