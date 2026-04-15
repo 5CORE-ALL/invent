@@ -208,7 +208,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">TOTAL DELETED</div>
-                        <div class="stat-value">{{ $stats['total'] }}</div>
+                        <div class="stat-value" id="badge-stat-total">{{ $stats['total'] }}</div>
                     </div>
                 </div>
             </div>
@@ -220,7 +220,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">THIS MONTH</div>
-                        <div class="stat-value">{{ $stats['this_month'] }}</div>
+                        <div class="stat-value" id="badge-stat-month">{{ $stats['this_month'] }}</div>
                     </div>
                 </div>
             </div>
@@ -232,7 +232,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">THIS WEEK</div>
-                        <div class="stat-value">{{ $stats['this_week'] }}</div>
+                        <div class="stat-value" id="badge-stat-week">{{ $stats['this_week'] }}</div>
                     </div>
                 </div>
             </div>
@@ -244,7 +244,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">TODAY</div>
-                        <div class="stat-value">{{ $stats['today'] }}</div>
+                        <div class="stat-value" id="badge-stat-today">{{ $stats['today'] }}</div>
                     </div>
                 </div>
             </div>
@@ -257,7 +257,7 @@
                     <div class="stat-content d-flex align-items-center justify-content-between">
                         <div>
                             <div class="stat-label">TAT</div>
-                            <div class="stat-value">{{ $stats['tat_avg_30'] !== null ? (int) round((float) $stats['tat_avg_30']) : '-' }}</div>
+                            <div class="stat-value" id="badge-stat-tat">{{ $stats['tat_avg_30'] !== null ? (int) round((float) $stats['tat_avg_30']) : '-' }}</div>
                             <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;">Avg last 30 days (days)</div>
                         </div>
                         <button type="button" class="btn btn-sm btn-light border-0 p-2 rounded" id="tat-chart-eye-btn" title="View TAT trend">
@@ -275,7 +275,7 @@
                     <div class="stat-content d-flex align-items-center justify-content-between">
                         <div>
                             <div class="stat-label">MISSED</div>
-                            <div class="stat-value">{{ $stats['missed_count_30'] ?? 0 }}</div>
+                            <div class="stat-value" id="badge-stat-missed">{{ $stats['missed_count_30'] ?? 0 }}</div>
                             <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;">Last 30 days</div>
                         </div>
                         <button type="button" class="btn btn-sm btn-light border-0 p-2 rounded" id="missed-chart-eye-btn" title="View Missed trend">
@@ -737,6 +737,128 @@
                         }
                     },
                 ],
+            });
+
+            // Badge stats follow the current table filters (search, Deleted By, Assignor, Assignee, priority)
+            function parseRowDate(val) {
+                if (val === null || val === undefined || val === '') return null;
+                var t = new Date(val);
+                return isNaN(t.getTime()) ? null : t;
+            }
+
+            function formatYmd(d) {
+                var y = d.getFullYear();
+                var m = ('0' + (d.getMonth() + 1)).slice(-2);
+                var day = ('0' + d.getDate()).slice(-2);
+                return y + '-' + m + '-' + day;
+            }
+
+            function startOfWeekMonday(ref) {
+                var x = new Date(ref);
+                x.setHours(0, 0, 0, 0);
+                var dow = x.getDay();
+                var diff = dow === 0 ? -6 : 1 - dow;
+                x.setDate(x.getDate() + diff);
+                return x;
+            }
+
+            function endOfWeekSunday(ref) {
+                var s = startOfWeekMonday(ref);
+                var e = new Date(s);
+                e.setDate(s.getDate() + 6);
+                e.setHours(23, 59, 59, 999);
+                return e;
+            }
+
+            function updateBadgesFromTable() {
+                if (!table) return;
+                // Must be the string "active" — getData(true) falls through to all rows (boolean !== "active")
+                var rows = table.getData('active');
+                var now = new Date();
+                var month = now.getMonth();
+                var year = now.getFullYear();
+                var wStart = startOfWeekMonday(now);
+                var wEnd = endOfWeekSunday(now);
+                var thirtyAgo = new Date(now);
+                thirtyAgo.setDate(thirtyAgo.getDate() - 30);
+
+                var total = rows.length;
+                var thisMonth = 0;
+                var thisWeek = 0;
+                var today = 0;
+                var tatVals = [];
+                var missed30 = 0;
+                var tatByDay = {};
+                var missedByDay = {};
+
+                rows.forEach(function(d) {
+                    var del = parseRowDate(d.deleted_at);
+                    if (!del) return;
+
+                    if (del.getMonth() === month && del.getFullYear() === year) {
+                        thisMonth++;
+                    }
+                    if (del >= wStart && del <= wEnd) {
+                        thisWeek++;
+                    }
+                    if (del.toDateString() === now.toDateString()) {
+                        today++;
+                    }
+
+                    if (del >= thirtyAgo) {
+                        var st = (d.status && String(d.status).trim()) || '';
+                        var isDone = st.toLowerCase() === 'done';
+                        var start = parseRowDate(d.start_date);
+                        if (start) {
+                            var days = Math.abs(del.getTime() - start.getTime()) / 86400000;
+                            var rounded = Math.round(days);
+                            tatVals.push(rounded);
+                            var dk = formatYmd(del);
+                            if (!tatByDay[dk]) tatByDay[dk] = [];
+                            tatByDay[dk].push(rounded);
+                        }
+                        if (!isDone) {
+                            missed30++;
+                            var mk = formatYmd(del);
+                            missedByDay[mk] = (missedByDay[mk] || 0) + 1;
+                        }
+                    }
+                });
+
+                var tatAvg = tatVals.length
+                    ? Math.round(tatVals.reduce(function(a, b) { return a + b; }, 0) / tatVals.length)
+                    : null;
+
+                $('#badge-stat-total').text(total);
+                $('#badge-stat-month').text(thisMonth);
+                $('#badge-stat-week').text(thisWeek);
+                $('#badge-stat-today').text(today);
+                $('#badge-stat-tat').text(tatAvg !== null ? tatAvg : '-');
+                $('#badge-stat-missed').text(missed30);
+
+                tatChartData = [];
+                missedChartData = [];
+                for (var i = 29; i >= 0; i--) {
+                    var day = new Date(now);
+                    day.setDate(day.getDate() - i);
+                    day.setHours(0, 0, 0, 0);
+                    var key = formatYmd(day);
+                    var label = day.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+                    var tavg = null;
+                    if (tatByDay[key] && tatByDay[key].length) {
+                        var sum = tatByDay[key].reduce(function(a, b) { return a + b; }, 0);
+                        tavg = Math.round(sum / tatByDay[key].length);
+                    }
+                    tatChartData.push({ date: key, label: label, avg: tavg });
+                    missedChartData.push({ date: key, label: label, count: missedByDay[key] || 0 });
+                }
+            }
+
+            table.on('dataLoaded', function() {
+                setTimeout(updateBadgesFromTable, 0);
+            });
+            table.on('dataFiltered', function() {
+                setTimeout(updateBadgesFromTable, 0);
             });
 
             // Apply light yellow background to Missed rows (after data load / redraw)
