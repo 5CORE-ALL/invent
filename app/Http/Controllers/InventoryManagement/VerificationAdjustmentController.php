@@ -41,6 +41,84 @@ class VerificationAdjustmentController extends Controller
     }
 
     /**
+     * Shopify Admin API client. Custom apps require X-Shopify-Access-Token (same as inventory sync);
+     * Basic auth only applies to legacy private apps.
+     */
+    protected function shopifyHttp(): \Illuminate\Http\Client\PendingRequest
+    {
+        $token = config('services.shopify.access_token') ?: $this->shopifyPassword;
+
+        if ($token !== null && $token !== '') {
+            return Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ]);
+        }
+
+        return Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+            ->withHeaders(['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * Ohio / dashboard location used by sync — not necessarily inventory_levels[0] when multiple locations exist.
+     */
+    protected function getPreferredShopifyLocationId(): ?string
+    {
+        $configured = config('services.shopify.inventory_location_id');
+        if (! empty($configured)) {
+            return (string) $configured;
+        }
+
+        return Cache::remember('shopify_verification_preferred_location_id', 3600, function () {
+            try {
+                $response = $this->shopifyHttp()
+                    ->timeout(30)
+                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/locations.json");
+
+                if (! $response->successful()) {
+                    return null;
+                }
+
+                foreach ($response->json('locations') ?? [] as $loc) {
+                    if (stripos($loc['name'] ?? '', 'Ohio') !== false) {
+                        return (string) $loc['id'];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Could not resolve preferred Shopify location', ['error' => $e->getMessage()]);
+            }
+
+            return null;
+        });
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $levels
+     */
+    protected function resolveLocationIdFromLevels(array $levels): ?string
+    {
+        if ($levels === []) {
+            return null;
+        }
+
+        $preferredId = $this->getPreferredShopifyLocationId();
+        if ($preferredId !== null && $preferredId !== '') {
+            foreach ($levels as $level) {
+                if (isset($level['location_id']) && (string) $level['location_id'] === (string) $preferredId) {
+                    return (string) $level['location_id'];
+                }
+            }
+
+            Log::warning('Preferred Shopify location not present in inventory levels; using first level', [
+                'preferred_location_id' => $preferredId,
+                'available_location_ids' => array_column($levels, 'location_id'),
+            ]);
+        }
+
+        return isset($levels[0]['location_id']) ? (string) $levels[0]['location_id'] : null;
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index()
@@ -237,7 +315,11 @@ class VerificationAdjustmentController extends Controller
 
         $originalSkus = $productMasterData->pluck('sku')->filter()->unique()->values()->toArray();
         if (empty($originalSkus)) {
-            return response()->json(['message' => 'Data fetched successfully', 'data' => [], 'status' => 200]);
+            return response()->json([
+                'message' => 'Data fetched successfully',
+                'data' => [],
+                'status' => 200,
+            ]);
         }
 
         // Shopify rows keyed by product_master.sku (NBSP / unicode space safe)
@@ -301,23 +383,22 @@ class VerificationAdjustmentController extends Controller
                 }
 
                 $item->VERIFIED_STOCK = $inv?->verified_stock;
-                $item->TO_ADJUST = $inv?->to_adjust;
                 $item->REASON = $inv?->reason;
                 $item->REMARKS = $inv?->remarks;
                 $item->APPROVED = (bool) ($inv?->is_approved ?? false);
                 $item->APPROVED_BY = $inv?->approved_by;
                 $item->APPROVED_AT = $inv?->approved_at;
-                
+
                 // HISTORY column - Latest approved date from Adjustment History
                 $latestHistory = $latestApprovedHistory[$sku] ?? null;
                 $item->HISTORY = $latestHistory ? $latestHistory->approved_at : null;
-                
+
                 $item->is_verified = (bool) ($inv?->is_verified ?? false);
                 $item->is_doubtful = (bool) ($inv?->is_doubtful ?? false);
                 // Also set uppercase versions for compatibility
                 $item->IS_VERIFIED = (bool) ($inv?->is_verified ?? false);
                 $item->IS_DOUBTFUL = (bool) ($inv?->is_doubtful ?? false);
-                
+
                 // Get verified by user's first name
                 $verifiedByUser = $inv?->verifiedByUser;
                 if ($verifiedByUser && $verifiedByUser->name) {
@@ -328,23 +409,42 @@ class VerificationAdjustmentController extends Controller
                     $item->VERIFIED_BY_FIRST_NAME = null;
                 }
 
-                $adjustedQty = isset($item->TO_ADJUST) && is_numeric($item->TO_ADJUST) ? floatval($item->TO_ADJUST) : 0;
+                $tz = 'America/New_York';
+                $ta = $inv?->to_adjust;
+
+                $adjustedQty = isset($ta) && is_numeric($ta) ? floatval($ta) : 0;
                 $item->LOSS_GAIN = round($adjustedQty * $lp, 2);
-            } else {
-                // For parent rows, set default values
-                $item->IS_VERIFIED = false;
-                $item->is_verified = false;
-                $item->IS_DOUBTFUL = false;
-                $item->is_doubtful = false;
-                $item->VERIFIED_BY_FIRST_NAME = null;
-                $item->HISTORY = null;
+
+                $approvedAtYmd = $inv?->approved_at
+                    ? Carbon::parse($inv->approved_at)->timezone($tz)->format('Y-m-d')
+                    : null;
+
+                // OVERRIDE: Explicitly set IS_HIDE to 0 for all items to override any filtering
+                $item->IS_HIDE = 0;
+                $item->is_hide = 0;
+
+                // Eloquent serializes dynamic attributes with broken snake_case keys (e.g. TO_ADJUST -> t_o__a_d_j_u_s_t).
+                // Return a plain array with stable snake_case keys for the UI.
+                return array_merge($item->toArray(), [
+                    'to_adjust' => $ta,
+                    'approved_at_ymd' => $approvedAtYmd,
+                ]);
             }
+
+            // Parent rows
+            // For parent rows, set default values
+            $item->IS_VERIFIED = false;
+            $item->is_verified = false;
+            $item->IS_DOUBTFUL = false;
+            $item->is_doubtful = false;
+            $item->VERIFIED_BY_FIRST_NAME = null;
+            $item->HISTORY = null;
 
             // OVERRIDE: Explicitly set IS_HIDE to 0 for all items to override any filtering
             $item->IS_HIDE = 0;
             $item->is_hide = 0;
 
-            return $item;
+            return $item->toArray();
         });
 
         return response()->json([
@@ -530,47 +630,40 @@ class VerificationAdjustmentController extends Controller
         $toAdjust = $validated['verified_stock'] - ($validated['on_hand'] ?? 0);
         $lossGain = round($toAdjust * $lp, 2);
 
-        // If approving, update Shopify FIRST before saving to database
+        $shopifyAdjustmentStatus = null;
+        $shopifyAdjustmentError = null;
+
+        // If approving with a non-zero delta, update Shopify before saving (persist row even on failure for Status column + retries)
         if ($validated['is_approved'] && $toAdjust != 0) {
             $startTime = time();
-            
-            try {
-                // Try to update Shopify with unlimited retries until success
-                $shopifyResult = $this->updateShopifyInventoryWithRetry($sku, (int)$toAdjust, 10);
-                
-                if (!$shopifyResult['success']) {
-                    // This should rarely happen now with extended retries
-                    Log::error('Shopify update failed after max retries, not saving to database', [
-                        'sku' => $sku, 
-                        'error' => $shopifyResult['error']
-                    ]);
-                    
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Unable to connect to Shopify after multiple attempts. Please try again in a few minutes.',
-                        'shopify_error' => $shopifyResult['error'] ?? 'Unknown error'
-                    ], 500);
-                }
-                
-                // Shopify updated successfully, proceed to save in database
-                Log::info('Shopify updated successfully', ['sku' => $sku, 'duration' => time() - $startTime]);
 
+            try {
+                $shopifyResult = $this->updateShopifyInventoryWithRetry($sku, (int) $toAdjust, 10);
+
+                if ($shopifyResult['success']) {
+                    $shopifyAdjustmentStatus = 'success';
+                    Log::info('Shopify updated successfully', ['sku' => $sku, 'duration' => time() - $startTime]);
+                } else {
+                    $shopifyAdjustmentStatus = 'failed';
+                    $shopifyAdjustmentError = $shopifyResult['error'] ?? 'Unknown error';
+                    Log::error('Shopify update failed; saving record with failed status for retry', [
+                        'sku' => $sku,
+                        'error' => $shopifyAdjustmentError,
+                    ]);
+                }
             } catch (\Exception $e) {
-                // Exception during Shopify update - DO NOT save to database
-                Log::error('Shopify update exception, not saving to database', [
-                    'sku' => $sku, 
-                    'error' => $e->getMessage()
+                $shopifyAdjustmentStatus = 'failed';
+                $shopifyAdjustmentError = $e->getMessage();
+                Log::error('Shopify update exception; saving record with failed status', [
+                    'sku' => $sku,
+                    'error' => $shopifyAdjustmentError,
                 ]);
-                
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unable to connect to Shopify. Please check your internet connection and try again.',
-                    'shopify_error' => $e->getMessage()
-                ], 500);
             }
+        } elseif ($validated['is_approved'] && $toAdjust == 0) {
+            $shopifyAdjustmentStatus = 'na';
         }
 
-        // Save to database (only after Shopify confirms success or if not approved)
+        // Save to database
         try {
             DB::beginTransaction();
 
@@ -588,22 +681,47 @@ class VerificationAdjustmentController extends Controller
             $record->is_hide = 0;
             $record->is_verified = true;  // Auto-verify when any row value is updated
             $record->verified_by = Auth::id();
+            $record->shopify_adjustment_status = $shopifyAdjustmentStatus;
+            $record->shopify_adjustment_error = $shopifyAdjustmentError
+                ? Str::limit((string) $shopifyAdjustmentError, 65000, '')
+                : null;
+            $record->shopify_retry_count = 0;
+            $record->shopify_adjustment_succeeded_at = null;
+            if ($shopifyAdjustmentStatus === 'success') {
+                $record->shopify_adjustment_succeeded_at = Carbon::now('America/New_York');
+            }
             $record->save();
 
             DB::commit();
 
+            $successYmd = $record->shopify_adjustment_succeeded_at
+                ? Carbon::parse($record->shopify_adjustment_succeeded_at)->timezone('America/New_York')->format('Y-m-d')
+                : null;
+
             // Determine message
             $message = 'Record saved successfully';
             if ($validated['is_approved']) {
-                $message = 'Shopify inventory updated successfully and saved to database';
+                if ($toAdjust != 0) {
+                    if ($shopifyAdjustmentStatus === 'success') {
+                        $message = 'Shopify inventory updated successfully and saved to database';
+                    } elseif ($shopifyAdjustmentStatus === 'failed') {
+                        $message = 'Saved, but Shopify was not updated. Check Status — you can Retry or wait for automatic retries (every 1 min, up to 5).';
+                    } else {
+                        $message = 'Record saved successfully';
+                    }
+                } else {
+                    $message = 'Record saved. Shopify was not changed because verified quantity matches on hand (no adjustment).';
+                }
             }
 
             return response()->json([
                 'success' => true,
                 'message' => $message,
-                'shopify_updated' => $validated['is_approved'] && $toAdjust != 0,
+                'shopify_updated' => $shopifyAdjustmentStatus === 'success',
+                'shopify_adjustment_status' => $shopifyAdjustmentStatus,
                 'data' => [
                     'sku' => $record->sku,
+                    'inventory_id' => $record->id,
                     'verified_stock' => $record->verified_stock,
                     'reason' => $record->reason,
                     'remarks' => $record->remarks,
@@ -614,6 +732,13 @@ class VerificationAdjustmentController extends Controller
                     'updated_at' => optional($record->updated_at)->format('Y-m-d\TH:i:s.u\Z'),
                     'to_adjust' => $record->to_adjust,
                     'loss_gain' => $lossGain,
+                    'shopify_adjustment_status' => $record->shopify_adjustment_status,
+                    'shopify_adjustment_error' => $record->shopify_adjustment_error,
+                    'shopify_retry_count' => (int) $record->shopify_retry_count,
+                    'shopify_success_ymd' => $successYmd,
+                    'approved_at_ymd' => $record->approved_at
+                        ? Carbon::parse($record->approved_at)->timezone('America/New_York')->format('Y-m-d')
+                        : null,
                 ]
             ]);
 
@@ -704,7 +829,7 @@ class VerificationAdjustmentController extends Controller
         
         if ($shopifyRow && $shopifyRow->variant_id) {
             try {
-                $response = Http::timeout(8)->withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                $response = $this->shopifyHttp()->timeout(8)
                     ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$shopifyRow->variant_id}.json");
 
                 if ($response->successful()) {
@@ -729,7 +854,7 @@ class VerificationAdjustmentController extends Controller
             if ($pageInfo) $queryParams['page_info'] = $pageInfo;
 
             try {
-                $response = Http::timeout(8)->withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                $response = $this->shopifyHttp()->timeout(8)
                     ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $queryParams);
 
                 if ($response->status() === 429 || !$response->successful()) {
@@ -761,7 +886,7 @@ class VerificationAdjustmentController extends Controller
 
     protected function getLocationIdFast(string $inventoryItemId): ?string
     {
-        $response = Http::timeout(8)->withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+        $response = $this->shopifyHttp()->timeout(8)
             ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
                 'inventory_item_ids' => $inventoryItemId
             ]);
@@ -771,12 +896,13 @@ class VerificationAdjustmentController extends Controller
         }
 
         $levels = $response->json('inventory_levels') ?? [];
-        return $levels[0]['location_id'] ?? null;
+
+        return $this->resolveLocationIdFromLevels($levels);
     }
 
     protected function adjustInventoryFast(string $inventoryItemId, string $locationId, int $adjustment): void
     {
-        $response = Http::timeout(8)->withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+        $response = $this->shopifyHttp()->timeout(8)
             ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
                 'inventory_item_id' => $inventoryItemId,
                 'location_id' => $locationId,
@@ -918,7 +1044,7 @@ class VerificationAdjustmentController extends Controller
         
         if ($shopifyRow && $shopifyRow->variant_id) {
             try {
-                $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                $response = $this->shopifyHttp()
                     ->timeout(60)
                     ->retry(2, 1000)
                     ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$shopifyRow->variant_id}.json");
@@ -975,7 +1101,7 @@ class VerificationAdjustmentController extends Controller
             }
 
             try {
-                $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                $response = $this->shopifyHttp()
                     ->timeout(60)
                     ->retry(2, 1000)
                     ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $queryParams);
@@ -1030,7 +1156,7 @@ class VerificationAdjustmentController extends Controller
      */
     protected function getLocationId(string $inventoryItemId): ?string
     {
-        $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+        $response = $this->shopifyHttp()
             ->timeout(60)
             ->retry(3, 1000)
             ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
@@ -1051,7 +1177,8 @@ class VerificationAdjustmentController extends Controller
         }
 
         $levels = $response->json('inventory_levels') ?? [];
-        return $levels[0]['location_id'] ?? null;
+
+        return $this->resolveLocationIdFromLevels($levels);
     }
 
     /**
@@ -1059,7 +1186,7 @@ class VerificationAdjustmentController extends Controller
      */
     protected function adjustInventory(string $inventoryItemId, string $locationId, int $adjustment): void
     {
-        $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+        $response = $this->shopifyHttp()
             ->timeout(60) // Increased timeout to 60 seconds
             ->retry(3, 1000) // Auto-retry 3 times with 1s delay
             ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
@@ -1717,7 +1844,7 @@ GQL;
 
         $response = Http::timeout(20)->withHeaders([
             'Content-Type' => 'application/json',
-            'X-Shopify-Access-Token' => $this->shopifyPassword,
+            'X-Shopify-Access-Token' => config('services.shopify.access_token') ?: $this->shopifyPassword,
         ])->post($graphqlUrl, [
             'query' => $query,
             'variables' => ['variantId' => $variantGid],
@@ -1740,7 +1867,7 @@ GQL;
             } else {
                 $variantNumericId = preg_replace('/\D/', '', $vid);
             }
-            $restVariant = Http::timeout(15)->withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+            $restVariant = $this->shopifyHttp()->timeout(15)
                 ->get($base . '/admin/api/2025-01/variants/' . $variantNumericId . '.json');
             $invItemId = data_get($restVariant->json(), 'variant.inventory_item_id');
             if ($invItemId) {
@@ -1754,7 +1881,7 @@ query GetInvHistory($id: ID!) {
 GQL;
                 $r2 = Http::timeout(20)->withHeaders([
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->shopifyPassword,
+                    'X-Shopify-Access-Token' => config('services.shopify.access_token') ?: $this->shopifyPassword,
                 ])->post($graphqlUrl, [
                     'query' => $q2,
                     'variables' => ['id' => $itemGid],
@@ -1833,6 +1960,70 @@ GQL;
         }
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Retry Shopify inventory adjustment for a verification row (manual or scheduled auto-retry).
+     */
+    public function retryVerificationShopifyAdjustment(Request $request)
+    {
+        $request->validate([
+            'inventory_id' => 'required|integer|exists:inventories,id',
+        ]);
+
+        $record = Inventory::find($request->inventory_id);
+        if (! $record || $record->shopify_adjustment_status !== 'failed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This row is not waiting for a Shopify retry.',
+            ], 400);
+        }
+
+        if ((int) $record->shopify_retry_count >= 5) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Maximum retry attempts (5) reached. Update inventory in Shopify manually if needed.',
+            ], 400);
+        }
+
+        if ((float) $record->to_adjust == 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No adjustment quantity to push.',
+            ], 400);
+        }
+
+        $sku = trim((string) $record->sku);
+        $result = $this->updateShopifyInventoryWithRetry($sku, (int) $record->to_adjust, 10);
+
+        if ($result['success']) {
+            $record->shopify_adjustment_status = 'success';
+            $record->shopify_adjustment_error = null;
+            $record->shopify_adjustment_succeeded_at = Carbon::now('America/New_York');
+            $record->save();
+
+            $successYmd = Carbon::parse($record->shopify_adjustment_succeeded_at)->timezone('America/New_York')->format('Y-m-d');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Shopify inventory updated successfully.',
+                'shopify_adjustment_status' => 'success',
+                'shopify_retry_count' => (int) $record->shopify_retry_count,
+                'shopify_success_ymd' => $successYmd,
+            ]);
+        }
+
+        $record->increment('shopify_retry_count');
+        $record->shopify_adjustment_error = Str::limit((string) ($result['error'] ?? 'Unknown error'), 65000, '');
+        $record->shopify_adjustment_status = 'failed';
+        $record->save();
+
+        return response()->json([
+            'success' => false,
+            'message' => $result['error'] ?? 'Shopify update failed.',
+            'shopify_adjustment_status' => 'failed',
+            'shopify_retry_count' => (int) $record->shopify_retry_count,
+        ], 422);
     }
 
     /**

@@ -46,11 +46,16 @@ class Inventory extends Model
         'incoming_images',
         'incoming_voice_note',
         'replacement_tracking',
+        'shopify_adjustment_status',
+        'shopify_adjustment_error',
+        'shopify_retry_count',
+        'shopify_adjustment_succeeded_at',
     ];
 
     protected $casts = [
         'pick_locked_qty' => 'integer',
         'incoming_images' => 'array',
+        'shopify_adjustment_succeeded_at' => 'datetime',
     ];
 
     public function warehouse()

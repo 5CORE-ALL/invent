@@ -2601,7 +2601,7 @@
                     success: function(response) {
                         if (response && response.data) {
                             console.log('FULL API RESPONSE:', response);
-                            
+
                             tableData = response.data.map((item, index) => {
                                 const INV = parseFloat(item.INV) || 0;
                                 const L30 = parseFloat(item.L30) || 0;
@@ -2630,7 +2630,9 @@
                                     UNAVAILABLE: item.UNAVAILABLE ?? 0,
                                     INCOMING: item.INCOMING ?? 0,
                                     VERIFIED_STOCK: item.verified_stock || '', // User input
-                                    TO_ADJUST: item.to_adjust || '', // Auto-calculated
+                                    TO_ADJUST: (item.to_adjust !== undefined && item.to_adjust !== null && item.to_adjust !== '')
+                                        ? item.to_adjust
+                                        : (item.TO_ADJUST !== undefined && item.TO_ADJUST !== null && item.TO_ADJUST !== '' ? item.TO_ADJUST : ''),
                                     REASON: item.reason || 'Count', // Dropdown - default to "Count"
                                     REMARK: item.REMARKS || item.remarks || '', // Remark field
                                     APPROVED: item.APPROVED === true, // Checkbox state
@@ -2692,13 +2694,12 @@
                 });
             }
 
-
             function renderTable() {
                 const $tbody = $('#ebay-table tbody');
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="27" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
                     return;
                 }
 
@@ -2708,7 +2709,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="27" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
                     return;
                 }
 
@@ -3571,6 +3572,7 @@
                                 tableData[tableDataIdx].IS_VERIFIED = 1;
                                 tableData[tableDataIdx].is_verified = true;
                             }
+
                             setRowVerifiedGreen($row);
 
                             $row.find('.approved-by').text(isApproved ? approvedBy : '-');
@@ -3589,10 +3591,15 @@
                                 // .addClass('bg-primary')
                                 .text(`$ ${Math.trunc(totalLossGain)}`);
 
-                            // Show success message
-                            let message = isApproved ? 'Approved and Shopify inventory updated successfully!' : 'Approval removed';
+                            let message = res.message || (isApproved ? 'Saved.' : 'Approval removed');
                             let alertType = 'success';
-                            
+                            if (isApproved && res.shopify_adjustment_status === 'failed') {
+                                alertType = 'warning';
+                            } else if (!isApproved) {
+                                message = 'Approval removed';
+                                alertType = 'success';
+                            }
+
                             showNotification(alertType, message);
                             
                             // Uncheck the Accept checkbox after successful approval to allow next approval
