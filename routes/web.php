@@ -4709,7 +4709,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('update-fba-sprice-status', 'updateSpriceStatus');
         Route::get('fba-ads-data-json', 'fbaAdsDataJson');
         Route::get('fba-ads-pt-data-json', 'fbaAdsPtDataJson');
-        Route::get('fba-monthly-sales/{sku}', 'getFbaMonthlySales');
         Route::get('fba-manual-export', 'exportFbaManualData');
         Route::post('fba-manual-import', 'importFbaManualData');
         Route::get('fba-manual-sample', 'downloadSampleTemplate');

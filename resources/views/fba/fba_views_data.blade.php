@@ -145,16 +145,21 @@
 
                     <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">CVR</option>
-                        <option value="0-0">0 to 0.00%</option>
-                        <option value="0.01-1">0.01 - 1%</option>
-                        <option value="1-2">1-2%</option>
-                        <option value="2-3">2-3%</option>
-                        <option value="3-4">3-4%</option>
-                        <option value="0-4">0-4%</option>
+                        <option value="all">All CVR%</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-2">0-2%</option>
+                        <option value="2-4">2-4%</option>
                         <option value="4-7">4-7%</option>
-                        <option value="7-10">7-10%</option>
-                        <option value="10plus">10%+</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
+
+                    <select id="cvr-trend-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR trend</option>
+                        <option value="l60_gt_l30">CVR L60 &gt; CVR L30</option>
+                        <option value="l30_gt_l60">CVR L30 &gt; CVR L60</option>
+                        <option value="equal">CVR L60 = CVR L30</option>
                     </select>
 
                     <select id="status-filter" class="form-select form-select-sm"
@@ -1573,6 +1578,38 @@
                     };
                 }
 
+                // Amazon datasheet CVR (same idea as /amazon-tabulator-view)
+                function fbaCvrL30FromRow(row) {
+                    if (!row || row.is_parent) return 0;
+                    const aL30 = parseFloat(row.AMZ_L30) || 0;
+                    const sess30 = parseFloat(row.AMZ_Sess30) || 0;
+                    return sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                }
+                function fbaCvrL60FromRow(row) {
+                    if (!row || row.is_parent) return 0;
+                    const aL60 = parseFloat(row.AMZ_L60) || 0;
+                    const sess60 = parseFloat(row.AMZ_Sess60) || 0;
+                    return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                }
+                function fbaCvrL45FromRow(row) {
+                    if (!row || row.is_parent) return 0;
+                    const aL30 = parseFloat(row.AMZ_L30) || 0;
+                    const sess30 = parseFloat(row.AMZ_Sess30) || 0;
+                    const aL60 = parseFloat(row.AMZ_L60) || 0;
+                    const sess60 = parseFloat(row.AMZ_Sess60) || 0;
+                    const aL45 = (aL30 + aL60) / 2;
+                    const sess45 = (sess30 + sess60) / 2;
+                    return sess45 === 0 ? 0 : (aL45 / sess45) * 100;
+                }
+                function fbaCvrColoredHtml(cvr) {
+                    let color = '';
+                    if (cvr <= 4) color = '#a00211';
+                    else if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                    else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                    else color = '#e83e8c';
+                    return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                }
+
                 table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
                     ajaxSorting: true,
@@ -1787,6 +1824,62 @@
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
+                            },
+                        },
+                        {
+                            title: "CVR L60",
+                            field: "CVR_L60",
+                            hozAlign: "center",
+                            width: 65,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                const cvr = fbaCvrL60FromRow(row);
+                                if ((parseFloat(row.AMZ_Sess60) || 0) === 0) {
+                                    return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                                }
+                                return fbaCvrColoredHtml(cvr);
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                return fbaCvrL60FromRow(aRow.getData()) - fbaCvrL60FromRow(bRow.getData());
+                            },
+                        },
+                        {
+                            title: "CVR L45",
+                            field: "CVR_L45",
+                            hozAlign: "center",
+                            width: 65,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                const cvr = fbaCvrL45FromRow(row);
+                                const sess30 = parseFloat(row.AMZ_Sess30) || 0;
+                                const sess60 = parseFloat(row.AMZ_Sess60) || 0;
+                                if ((sess30 + sess60) === 0) {
+                                    return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                                }
+                                return fbaCvrColoredHtml(cvr);
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                return fbaCvrL45FromRow(aRow.getData()) - fbaCvrL45FromRow(bRow.getData());
+                            },
+                        },
+                        {
+                            title: "CVR L30",
+                            field: "CVR_L30",
+                            hozAlign: "center",
+                            width: 65,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                const cvr = fbaCvrL30FromRow(row);
+                                if ((parseFloat(row.AMZ_Sess30) || 0) === 0) {
+                                    return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                                }
+                                return fbaCvrColoredHtml(cvr);
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                return fbaCvrL30FromRow(aRow.getData()) - fbaCvrL30FromRow(bRow.getData());
                             },
                         },
 
@@ -2937,6 +3030,7 @@
                     const gpftFilter = $('#gpft-filter').val();
                     const roiFilter = $('#roi-filter').val();
                     const cvrFilter = $('#cvr-filter').val();
+                    const cvrTrendFilter = $('#cvr-trend-filter').val();
                     const statusFilter = $('#status-filter').val();
                     const invAgeFilter = $('#inv-age-filter').val();
 
@@ -2983,23 +3077,31 @@
                         });
                     }
 
+                    // CVR% buckets on CVR L30 (Amazon datasheet / AMZ_L30 ÷ AMZ_Sess30) — same as amazon-tabulator-view
                     if (cvrFilter !== 'all') {
                         table.addFilter(function(data) {
                             if (data.is_parent) return true;
-                            // Extract CVR from FBA_CVR HTML
-                            const cvrHtml = data['FBA_CVR'] || '';
-                            const cvrMatch = cvrHtml.match(/(\d+\.?\d*)%/);
-                            const cvr = cvrMatch ? parseFloat(cvrMatch[1]) : 0;
-                            
-                            if (cvrFilter === '0-0') return cvr === 0;
-                            if (cvrFilter === '0.01-1') return cvr > 0 && cvr <= 1;
-                            if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
-                            if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
-                            if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
-                            if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
-                            if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
-                            if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
-                            if (cvrFilter === '10plus') return cvr > 10;
+                            const cvr = fbaCvrL30FromRow(data);
+                            const cvrRounded = Math.round(cvr * 100) / 100;
+                            if (cvrFilter === '0-0') return cvrRounded === 0;
+                            if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
+                            if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
+                            if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                            if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                            if (cvrFilter === '13plus') return cvrRounded > 13;
+                            return true;
+                        });
+                    }
+
+                    if (cvrTrendFilter !== 'all') {
+                        const cvrTrendTol = 0.1;
+                        table.addFilter(function(data) {
+                            if (data.is_parent) return true;
+                            const cvrL30 = fbaCvrL30FromRow(data);
+                            const cvrL60 = fbaCvrL60FromRow(data);
+                            if (cvrTrendFilter === 'l60_gt_l30') return cvrL60 > cvrL30 + cvrTrendTol;
+                            if (cvrTrendFilter === 'l30_gt_l60') return cvrL30 > cvrL60 + cvrTrendTol;
+                            if (cvrTrendFilter === 'equal') return Math.abs(cvrL60 - cvrL30) <= cvrTrendTol;
                             return true;
                         });
                     }
@@ -3109,6 +3211,11 @@
                 });
 
                 $('#cvr-filter').on('change', function() {
+                    applyFilters();
+                    updateSummary();
+                });
+
+                $('#cvr-trend-filter').on('change', function() {
                     applyFilters();
                     updateSummary();
                 });

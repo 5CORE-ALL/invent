@@ -2012,6 +2012,47 @@ class FbaDataController extends Controller
    }
 
    /**
+    * Recompute and persist FBA ship rows from manual data (matches FBA JSON ship math).
+    */
+   public function syncFbaShipCalculations(Request $request)
+   {
+      $updated = 0;
+      foreach (FbaManualData::all() as $manual) {
+         $data = $manual->data ?? [];
+         $fbaFeeManual = floatval($data['fba_fee_manual'] ?? 0);
+         $shippingAmount = floatval($data['shipping_amount'] ?? 0);
+         $quantityInBox = floatval($data['quantity_in_each_box'] ?? 0);
+         $calculatedSendCost = $quantityInBox > 0
+            ? round($shippingAmount / $quantityInBox, 2)
+            : floatval($data['send_cost'] ?? 0);
+
+         $value = $this->fbaManualDataService->calculateFbaShipCalculation(
+            $manual->sku,
+            $fbaFeeManual,
+            $calculatedSendCost
+         );
+
+         $skuKey = strtoupper(trim($manual->sku));
+         FbaShipCalculation::updateOrCreate(
+            ['sku' => $skuKey],
+            [
+               'fba_fee_manual' => $fbaFeeManual,
+               'send_cost' => $calculatedSendCost,
+               'in_charges' => floatval($data['in_charges'] ?? 0),
+               'fba_ship_calculation' => $value,
+               'calculation_source' => 'manual_sync',
+            ]
+         );
+         $updated++;
+      }
+
+      return response()->json([
+         'success' => true,
+         'updated' => $updated,
+      ]);
+   }
+
+   /**
     * Return daily badge metrics for the FBA chart modal.
     * GET /fba-badge-chart-data?metric=sales&days=30
     */
