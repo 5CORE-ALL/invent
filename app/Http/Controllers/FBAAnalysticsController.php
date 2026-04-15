@@ -385,14 +385,6 @@ class FBAAnalysticsController extends Controller
       $field = $request->input('field');
       $value = $request->input('value');
 
-      // ✅ Validate s_price field to prevent 0 or negative prices
-      if ($field === 's_price' && (!$value || $value <= 0 || !is_numeric($value))) {
-         return response()->json([
-            'success' => false,
-            'error' => 'Invalid price. S_Price must be greater than 0.'
-         ], 400);
-      }
-
       $manual = FbaManualData::where('sku', $sku)->first();
 
       if (!$manual) {
@@ -402,6 +394,32 @@ class FBAAnalysticsController extends Controller
       }
 
       $data = $manual->data ?? [];
+
+      // s_price: positive numbers are stored; 0 / empty clears custom S.Price (FBA view "Clear S.Price")
+      if ($field === 's_price') {
+         if ($value !== '' && $value !== null && !is_numeric($value)) {
+            return response()->json([
+               'success' => false,
+               'error' => 'Invalid price. S_Price must be a number.',
+            ], 400);
+         }
+         $num = ($value === '' || $value === null) ? 0.0 : floatval($value);
+         if ($num < 0) {
+            return response()->json([
+               'success' => false,
+               'error' => 'Invalid price. S_Price cannot be negative.',
+            ], 400);
+         }
+         if ($num === 0.0) {
+            unset($data['s_price']);
+         } else {
+            $data['s_price'] = $num;
+         }
+         $manual->data = $data;
+         $manual->save();
+
+         return response()->json(['success' => true]);
+      }
       
       // Handle empty values - remove field from data array if value is empty/null
       // Fields that should be removable: length, width, height, quantity_in_each_box, gw_ctn, shipping_amount

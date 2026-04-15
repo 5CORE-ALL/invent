@@ -129,8 +129,8 @@ class Kernel extends ConsoleKernel
      *
      * HARDENING RULES:
      * - Every command uses ->withoutOverlapping() to prevent duplicate runs.
-     * - Every command uses ->runInBackground() so the scheduler can proceed.
-     * - Every command uses ->appendOutputTo() for debugging.
+     * - Artisan commands use ->runInBackground() so the scheduler can proceed (closures cannot — Laravel throws).
+     * - Commands use ->appendOutputTo() for debugging where applicable.
      * - No env() calls – only config() used if needed.
      */
     protected function schedule(Schedule $schedule)
@@ -163,7 +163,6 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->name('crm-follow-up-reminders')
             ->withoutOverlapping(5)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         /*
