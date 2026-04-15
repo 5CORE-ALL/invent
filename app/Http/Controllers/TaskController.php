@@ -2229,6 +2229,9 @@ class TaskController extends Controller
             'today' => (clone $deletedQuery)->whereDate('deleted_at', today())->count(),
         ];
 
+        $stats['etc_total_minutes'] = (int) round((float) ((clone $deletedQuery)->sum(\DB::raw('COALESCE(eta_time, 0)')) ?? 0));
+        $stats['atc_total_minutes'] = (int) round((float) ((clone $deletedQuery)->sum(\DB::raw('COALESCE(etc_done, 0)')) ?? 0));
+
         // TAT badge: average TAT (days from start_date to deleted_at) for deleted tasks in last 30 days
         $last30Query = (clone $deletedQuery)
             ->where('deleted_at', '>=', now()->subDays(30))

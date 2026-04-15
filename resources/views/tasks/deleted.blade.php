@@ -106,6 +106,20 @@
             background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
         }
 
+        .stat-card-etc {
+            border-left-color: #0d6efd;
+        }
+        .stat-card-etc .stat-icon {
+            background: linear-gradient(135deg, #4e8cff 0%, #0d6efd 100%);
+        }
+
+        .stat-card-atc {
+            border-left-color: #198754;
+        }
+        .stat-card-atc .stat-icon {
+            background: linear-gradient(135deg, #34ce57 0%, #198754 100%);
+        }
+
         /* Table styling */
         .tabulator {
             border: 1px solid #e9ecef !important;
@@ -281,6 +295,32 @@
                         <button type="button" class="btn btn-sm btn-light border-0 p-2 rounded" id="missed-chart-eye-btn" title="View Missed trend">
                             <i class="mdi mdi-eye" style="font-size: 1.5rem; color: #dc3545;"></i>
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-etc">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-timer-sand"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">TOTAL ETC</div>
+                        <div class="stat-value" id="badge-stat-etc">{{ number_format((int) round((float) (($stats['etc_total_minutes'] ?? 0) / 60))) }}</div>
+                        <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;">Hours (sum) · updates with filters</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-atc">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-check-circle-outline"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">TOTAL ATC</div>
+                        <div class="stat-value" id="badge-stat-atc">{{ number_format((int) round((float) (($stats['atc_total_minutes'] ?? 0) / 60))) }}</div>
+                        <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;">Hours (sum) · updates with filters</div>
                     </div>
                 </div>
             </div>
@@ -770,6 +810,14 @@
                 return e;
             }
 
+            function formatEtcAtcHours(totalMinutes) {
+                var h = totalMinutes / 60;
+                if (!Number.isFinite(h)) {
+                    return '0';
+                }
+                return Math.round(h).toLocaleString(undefined, { maximumFractionDigits: 0 });
+            }
+
             function updateBadgesFromTable() {
                 if (!table) return;
                 // Must be the string "active" — getData(true) falls through to all rows (boolean !== "active")
@@ -790,8 +838,16 @@
                 var missed30 = 0;
                 var tatByDay = {};
                 var missedByDay = {};
+                var etcSum = 0;
+                var atcSum = 0;
 
                 rows.forEach(function(d) {
+                    // Match SQL COALESCE(eta_time,0) / COALESCE(etc_done,0) for filtered rows
+                    var etcN = Number(d.eta_time);
+                    etcSum += Number.isFinite(etcN) ? etcN : 0;
+                    var atcN = Number(d.etc_done);
+                    atcSum += Number.isFinite(atcN) ? atcN : 0;
+
                     var del = parseRowDate(d.deleted_at);
                     if (!del) return;
 
@@ -835,6 +891,8 @@
                 $('#badge-stat-today').text(today);
                 $('#badge-stat-tat').text(tatAvg !== null ? tatAvg : '-');
                 $('#badge-stat-missed').text(missed30);
+                $('#badge-stat-etc').text(formatEtcAtcHours(etcSum));
+                $('#badge-stat-atc').text(formatEtcAtcHours(atcSum));
 
                 tatChartData = [];
                 missedChartData = [];
@@ -918,6 +976,10 @@
                 if (filters.length > 0) {
                     table.setFilter(filters);
                 }
+                // Ensure badges (incl. ETC/ATC) refresh after Tabulator applies filters
+                setTimeout(function() {
+                    updateBadgesFromTable();
+                }, 0);
             }
 
             $('#filter-search').on('keyup', applyFilters);
