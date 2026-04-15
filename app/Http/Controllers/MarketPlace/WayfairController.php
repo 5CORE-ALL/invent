@@ -475,6 +475,20 @@ class WayfairController extends Controller
         exit;
     }
 
+    /**
+     * Excel/CSV exports often embed NBSP (U+00A0) or raw 0xA0 bytes; invalid as lone bytes in utf8mb4.
+     * Map NBSP variants to ASCII space; drop invalid UTF-8 (aligned with getWayfairPricingData $normalizeSku).
+     */
+    private function normalizeWayfairPricingSku(string $raw): string
+    {
+        $s = (string) $raw;
+        $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', $s);
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+        $s = trim($clean !== false ? $clean : $s);
+
+        return preg_replace('/\s+/u', ' ', $s);
+    }
+
     public function uploadWayfairPricingPriceSheet(Request $request)
     {
         $request->validate([
@@ -491,7 +505,7 @@ class WayfairController extends Controller
                 $sheetRows = $spreadsheet->getActiveSheet()->toArray();
                 $sheetRows = $this->dropWayfairPricingHeaderRows($sheetRows);
                 if (empty($sheetRows)) {
-                    return response()->json(['success' => false, 'message' => 'No data rows after headers.'], 422);
+                    return response()->json(['success' => false, 'message' => 'No data rows after headers.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
                 $headerRow = array_shift($sheetRows);
                 $indexes = $this->resolveWayfairPricingColumnIndexes($headerRow);
@@ -508,12 +522,12 @@ class WayfairController extends Controller
                     return response()->json([
                         'success' => false,
                         'message' => 'Could not find Supplier Part Number (or SKU) and price columns. Expected Wayfair pricing sheet (Supplier Part Number, New Base Cost / Current Base Cost). Seen: [' . $preview . '].',
-                    ], 422);
+                    ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 $updated = 0;
                 foreach ($sheetRows as $row) {
-                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    $sku = $this->normalizeWayfairPricingSku(trim((string) ($row[$skuIndex] ?? '')));
                     if ($sku === '') {
                         continue;
                     }
@@ -529,7 +543,7 @@ class WayfairController extends Controller
             } else {
                 $handle = fopen($path, 'r');
                 if (!$handle) {
-                    return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422);
+                    return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 $bom = fread($handle, 3);
@@ -553,7 +567,7 @@ class WayfairController extends Controller
 
                 $allRows = $this->dropWayfairPricingHeaderRows($allRows);
                 if (empty($allRows)) {
-                    return response()->json(['success' => false, 'message' => 'Price sheet is empty.'], 422);
+                    return response()->json(['success' => false, 'message' => 'Price sheet is empty.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 $headerRow = array_shift($allRows);
@@ -571,7 +585,7 @@ class WayfairController extends Controller
                     return response()->json([
                         'success' => false,
                         'message' => 'Could not find Supplier Part Number (or SKU) and price columns. Seen: [' . $preview . '].',
-                    ], 422);
+                    ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 $updated = 0;
@@ -579,7 +593,7 @@ class WayfairController extends Controller
                     if (!$row || count(array_filter($row, fn ($v) => $v !== '' && $v !== null)) === 0) {
                         continue;
                     }
-                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    $sku = $this->normalizeWayfairPricingSku(trim((string) ($row[$skuIndex] ?? '')));
                     if ($sku === '') {
                         continue;
                     }
@@ -598,14 +612,14 @@ class WayfairController extends Controller
                 'success' => true,
                 'message' => "Price sheet uploaded successfully. {$updated} SKU rows updated.",
                 'updated' => $updated,
-            ]);
+            ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Throwable $e) {
             Log::error('Wayfair pricing upload failed: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'message' => 'Price upload failed: ' . $e->getMessage(),
-            ], 500);
+            ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 
@@ -809,7 +823,7 @@ class WayfairController extends Controller
             $rows = $this->insertWayfairParentRows($rows);
             $this->saveWayfairPricingSnapshot($rows);
 
-            return response()->json($rows);
+            return response()->json($rows, 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Exception $e) {
             Log::error('Error fetching Wayfair pricing data: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
@@ -817,7 +831,7 @@ class WayfairController extends Controller
 
             return response()->json([
                 'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
-            ], 500);
+            ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 

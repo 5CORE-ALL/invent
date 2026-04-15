@@ -865,6 +865,21 @@ class AliexpressController extends Controller
     }
 
     /**
+     * Excel/CSV exports often embed NBSP (U+00A0) or raw 0xA0 bytes; invalid as lone bytes in utf8mb4.
+     * Map NBSP variants to ASCII space (same idea as getPricingData $normalizeSku), drop invalid UTF-8.
+     */
+    private function normalizeAliexpressPricingSku(string $raw): string
+    {
+        $s = (string) $raw;
+        // UTF-8 NBSP, narrow NBSP, Latin-1 / Windows-1252 single-byte NBSP
+        $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', $s);
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+        $s = trim($clean !== false ? $clean : $s);
+
+        return preg_replace('/\s+/u', ' ', $s);
+    }
+
+    /**
      * Upload price sheet and store values in aliexpress_data_views.value.
      */
     public function uploadPricingPriceSheet(Request $request)
@@ -898,12 +913,12 @@ class AliexpressController extends Controller
                     return response()->json([
                         'success' => false,
                         'message' => 'Columns not found. Found: [' . implode(', ', array_filter($headers)) . ']. Expected: sku, price, stock.',
-                    ], 422);
+                    ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 $updated = 0;
                 foreach ($sheetRows as $row) {
-                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    $sku = $this->normalizeAliexpressPricingSku(trim((string) ($row[$skuIndex] ?? '')));
                     if ($sku === '') continue;
                     $price   = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIndex] ?? '')));
                     $aeStock = $stockIndex !== false ? (int) trim((string) ($row[$stockIndex] ?? '0')) : 0;
@@ -917,7 +932,7 @@ class AliexpressController extends Controller
                 // ── CSV / TSV → fgetcsv ───────────────────────────────
                 $handle = fopen($path, 'r');
                 if (!$handle) {
-                    return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422);
+                    return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 // Strip UTF-8 BOM
@@ -937,7 +952,7 @@ class AliexpressController extends Controller
                 $headerRow = fgetcsv($handle, 0, $delimiter);
                 if (!$headerRow) {
                     fclose($handle);
-                    return response()->json(['success' => false, 'message' => 'Price sheet is empty.'], 422);
+                    return response()->json(['success' => false, 'message' => 'Price sheet is empty.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 $headers    = array_map(static fn($h) =>
@@ -953,13 +968,13 @@ class AliexpressController extends Controller
                     return response()->json([
                         'success' => false,
                         'message' => 'Columns not found. Found: [' . implode(', ', array_filter($headers)) . ']. Expected: sku, price, stock.',
-                    ], 422);
+                    ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 $updated = 0;
                 while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
                     if (!$row || count(array_filter($row, fn($v) => $v !== '' && $v !== null)) === 0) continue;
-                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    $sku = $this->normalizeAliexpressPricingSku(trim((string) ($row[$skuIndex] ?? '')));
                     if ($sku === '') continue;
                     $price   = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIndex] ?? '')));
                     $aeStock = $stockIndex !== false ? (int) trim((string) ($row[$stockIndex] ?? '0')) : 0;
@@ -976,14 +991,14 @@ class AliexpressController extends Controller
                 'success' => true,
                 'message' => "Price sheet uploaded successfully. {$updated} SKU rows updated.",
                 'updated' => $updated,
-            ]);
+            ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Throwable $e) {
             Log::error('AliExpress pricing upload failed: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'message' => 'Price upload failed: ' . $e->getMessage(),
-            ], 500);
+            ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 
@@ -1194,7 +1209,7 @@ class AliexpressController extends Controller
             // Auto-save daily snapshot (non-blocking, same as TikTok)
             $this->saveDailySnapshot($rows);
 
-            return response()->json($rows);
+            return response()->json($rows, 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Exception $e) {
             Log::error('Error fetching AliExpress pricing data: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
@@ -1202,7 +1217,7 @@ class AliexpressController extends Controller
 
             return response()->json([
                 'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
-            ], 500);
+            ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 

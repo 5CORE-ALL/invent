@@ -205,9 +205,6 @@
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-file-csv"></i> Export CSV
                         </button>
-                        <a href="{{ route('aliexpress.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
-                            <i class="fas fa-download"></i> Sample
-                        </a>
                         <button type="button" class="btn btn-sm btn-warning"
                             data-bs-toggle="modal" data-bs-target="#uploadPriceSheetModal">
                             <i class="fas fa-upload"></i> Upload Price
@@ -331,8 +328,16 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <p class="mb-2">
+                        <a href="{{ route('aliexpress.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-download"></i> Download sample CSV
+                        </a>
+                    </p>
                     <input type="file" class="form-control" id="priceSheetFile" accept=".xlsx,.xls,.csv,.txt">
-                    <small class="text-muted">Headers: sku, price, stock</small>
+                    <small class="text-muted d-block mt-2">
+                        Headers: <strong>sku</strong>, <strong>price</strong>, optional <strong>stock</strong>.
+                        Use Excel (.xlsx, .xls) or CSV/TSV (comma or tab).
+                    </small>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>

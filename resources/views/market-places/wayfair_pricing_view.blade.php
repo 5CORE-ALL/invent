@@ -87,9 +87,6 @@
                     <span class="text-muted small ms-2">Table below shows merged product masters, sales, and uploaded base costs.</span>
                 </div>
                 <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-                    <a href="{{ route('wayfair.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-download"></i> Sample CSV
-                    </a>
                     <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadWayfairPriceModal">
                         <i class="fas fa-upload"></i> Upload price
                     </button>
@@ -240,9 +237,19 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <p class="mb-2">
+                        <a href="{{ route('wayfair.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-download"></i> Download sample CSV
+                        </a>
+                    </p>
                     <input type="file" class="form-control" id="wfPriceSheetFile" accept=".xlsx,.xls,.csv,.txt">
-                    <small class="text-muted">Minimum columns: <strong>Supplier Part Number</strong> (stored as <code>sku</code>) or column named <strong>sku</strong>, <strong>price</strong>, optional <strong>wayfair stock</strong> / <strong>wayfair_stock</strong>. Full Wayfair export (New Base Cost, etc.) also supported. TSV/CSV/Excel.</small>
-                    <div class="mt-2 small"><a href="{{ asset('sample_excel/wayfair_pricing_sample.csv') }}" class="text-decoration-none" download>Static sample (supplier part)</a> · <a href="{{ asset('sample_excel/wayfair_pricing_sample_sku_column.csv') }}" class="text-decoration-none" download>Static sample (sku header)</a></div>
+                    <small class="text-muted d-block mt-2">Minimum columns: <strong>Supplier Part Number</strong> (stored as <code>sku</code>) or column named <strong>sku</strong>, <strong>price</strong>, optional <strong>wayfair stock</strong> / <strong>wayfair_stock</strong>. Full Wayfair export (New Base Cost, etc.) also supported. TSV/CSV/Excel.</small>
+                    <div class="mt-2 small text-muted">
+                        Alternate static examples:
+                        <a href="{{ asset('sample_excel/wayfair_pricing_sample.csv') }}" class="text-decoration-none" download>supplier part</a>
+                        ·
+                        <a href="{{ asset('sample_excel/wayfair_pricing_sample_sku_column.csv') }}" class="text-decoration-none" download>sku header</a>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>

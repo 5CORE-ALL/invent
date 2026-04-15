@@ -350,7 +350,9 @@ class TikTokSalesController extends Controller
     }
 
     /**
-     * Upload TikTok 2 sales file: truncate tiktok_sales_two and insert new rows (TSV format like index.txt)
+     * Upload TikTok 2 sales file: truncate tiktok_sales_two and insert new rows (TSV/CSV TikTok order export).
+     * Column positions are resolved from the header row — TikTok adds columns over time (e.g. Order Substatus),
+     * so fixed indices break (old code used index 11 for price, which is "Sku Quantity of return" in the 2026 export).
      */
     public function uploadTwo(Request $request)
     {
@@ -366,17 +368,6 @@ class TikTokSalesController extends Controller
                 return response()->json(['error' => 'Could not open file'], 400);
             }
 
-            // TSV/CSV: Order ID=0, Order Status=1, Seller SKU=6, Product Name=7, Quantity=9, SKU Unit Original Price=11, Order Amount=24, Created Time=26
-            $colOrderId = 0;
-            $colOrderStatus = 1;
-            $colSellerSku = 6;
-            $colProductName = 7;
-            $colQuantity = 9;
-            $colUnitPrice = 11;
-            $colOrderAmount = 24;
-            $colCreatedTime = 26;
-            $minCols = 12; // need at least 0..11 (through unit_price)
-
             // Auto-detect delimiter from header: tab vs comma; strip BOM if present
             $headerLine = fgets($handle);
             if ($headerLine === false) {
@@ -390,10 +381,19 @@ class TikTokSalesController extends Controller
             if ($header !== false && isset($header[0])) {
                 $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
             }
-            if ($header === false) {
+            if ($header === false || count(array_filter($header, fn ($h) => trim((string) $h) !== '')) === 0) {
                 fclose($handle);
                 return response()->json(['error' => 'Empty or invalid file'], 400);
             }
+
+            $cols = $this->resolveTikTokTwoColumnIndexes($header);
+            $minCols = max(
+                $cols['order_id'],
+                $cols['seller_sku'],
+                $cols['quantity'],
+                $cols['unit_price'],
+                $cols['product_name']
+            ) + 1;
 
             DB::beginTransaction();
             // Use delete() instead of truncate() - truncate commits the transaction in MySQL
@@ -405,32 +405,36 @@ class TikTokSalesController extends Controller
                 if ($numCols < $minCols) {
                     continue;
                 }
-                $orderId = isset($cells[$colOrderId]) ? trim($cells[$colOrderId], " \t\"") : '';
+                $c = static function (array $cells, int $idx): string {
+                    return isset($cells[$idx]) ? trim((string) $cells[$idx], " \t\r\n\"") : '';
+                };
+
+                $orderId = $c($cells, $cols['order_id']);
+                $sellerSku = $c($cells, $cols['seller_sku']);
+                $qtyRaw = $c($cells, $cols['quantity']);
+                $quantity = (int) preg_replace('/[^0-9-]/', '', $qtyRaw);
+
                 // Skip empty rows
-                if ($orderId === '' && trim($cells[$colSellerSku] ?? '') === '' && (int) preg_replace('/[^0-9-]/', '', $cells[$colQuantity] ?? '0') === 0) {
+                if ($orderId === '' && $sellerSku === '' && $quantity === 0) {
                     continue;
                 }
-                $orderStatus = isset($cells[$colOrderStatus]) ? trim($cells[$colOrderStatus], " \t\"") : '';
-                $sellerSku = isset($cells[$colSellerSku]) ? trim($cells[$colSellerSku], " \t\"") : '';
-                $productName = isset($cells[$colProductName]) ? trim($cells[$colProductName], " \t\"") : '';
-                $quantity = isset($cells[$colQuantity]) ? (int) preg_replace('/[^0-9-]/', '', $cells[$colQuantity]) : 0;
-                $unitPrice = isset($cells[$colUnitPrice]) ? (float) preg_replace('/[^0-9.]/', '', $cells[$colUnitPrice]) : 0;
-                $orderAmount = ($numCols > $colOrderAmount && isset($cells[$colOrderAmount])) ? (float) preg_replace('/[^0-9.]/', '', $cells[$colOrderAmount]) : ($unitPrice * ($quantity ?: 1));
-                $createdTime = ($numCols > $colCreatedTime && isset($cells[$colCreatedTime])) ? trim($cells[$colCreatedTime], " \t\"") : null;
 
-                $orderDate = null;
-                if ($createdTime) {
-                    try {
-                        $orderDate = \Carbon\Carbon::createFromFormat('m/d/Y h:i:s A', $createdTime)
-                            ?: \Carbon\Carbon::parse($createdTime);
-                    } catch (\Exception $e) {
-                        try {
-                            $orderDate = \Carbon\Carbon::parse($createdTime);
-                        } catch (\Exception $e2) {
-                            // leave null
-                        }
-                    }
+                $orderStatus = $c($cells, $cols['order_status']);
+                $productName = $c($cells, $cols['product_name']);
+                $unitPrice = (float) preg_replace('/[^0-9.\-]/', '', $c($cells, $cols['unit_price']));
+
+                $oaIdx = $cols['order_amount'];
+                $orderAmount = ($oaIdx !== null && $numCols > $oaIdx && $c($cells, $oaIdx) !== '')
+                    ? (float) preg_replace('/[^0-9.\-]/', '', $c($cells, $oaIdx))
+                    : ($unitPrice * ($quantity ?: 1));
+
+                $ctIdx = $cols['created_time'];
+                $createdTime = ($ctIdx !== null && $numCols > $ctIdx) ? $c($cells, $ctIdx) : null;
+                if ($createdTime === '') {
+                    $createdTime = null;
                 }
+
+                $orderDate = $this->parseTikTokTwoOrderDate($createdTime);
 
                 TiktokSalesTwo::create([
                     'order_id' => $orderId,
@@ -462,6 +466,175 @@ class TikTokSalesController extends Controller
             Log::error('TikTok Sales Two Upload Error: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    private function normalizeTikTokTwoHeaderCell($h): string
+    {
+        $s = preg_replace('/^\xEF\xBB\xBF/', '', (string) $h);
+
+        return strtolower(trim(preg_replace('/\s+/', ' ', $s)));
+    }
+
+    /**
+     * Map TikTok export headers to column indexes. Current exports include extra columns (Order Substatus, etc.),
+     * so fixed numeric positions are unreliable.
+     *
+     * @return array{order_id:int,order_status:int,seller_sku:int,product_name:int,quantity:int,unit_price:int,order_amount:?int,created_time:?int}
+     */
+    private function resolveTikTokTwoColumnIndexes(array $header): array
+    {
+        $norm = [];
+        foreach ($header as $i => $h) {
+            $norm[$i] = $this->normalizeTikTokTwoHeaderCell($h);
+        }
+
+        $firstExact = [];
+        foreach ($norm as $i => $n) {
+            if ($n !== '' && ! array_key_exists($n, $firstExact)) {
+                $firstExact[$n] = $i;
+            }
+        }
+
+        $get = static function (string $key) use ($firstExact): ?int {
+            return $firstExact[$key] ?? null;
+        };
+
+        $orderId = $get('order id');
+        $orderStatus = $get('order status');
+        $sellerSku = $get('seller sku');
+        $productName = $get('product name');
+        // Line-item quantity — not "sku quantity of return"
+        $quantity = $get('quantity');
+        $unitPrice = $get('sku unit original price');
+        $orderAmount = $get('order amount');
+        $createdTime = $get('created time');
+
+        if ($unitPrice === null) {
+            foreach ($norm as $i => $n) {
+                if ($n === 'sku unit original price' || preg_match('/^sku\s+unit\s+original\s+price$/', $n)) {
+                    $unitPrice = $i;
+                    break;
+                }
+            }
+        }
+
+        if ($orderId !== null && $sellerSku !== null && $quantity !== null && $unitPrice !== null) {
+            return [
+                'order_id' => $orderId,
+                'order_status' => $orderStatus ?? 1,
+                'seller_sku' => $sellerSku,
+                'product_name' => $productName ?? ($sellerSku + 1),
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'order_amount' => $orderAmount,
+                'created_time' => $createdTime,
+            ];
+        }
+
+        return $this->fallbackTikTokTwoColumnIndexesByLayout($norm);
+    }
+
+    /**
+     * When header names differ (locale) but column layout matches a known TikTok template.
+     *
+     * @param  array<int, string>  $norm
+     * @return array{order_id:int,order_status:int,seller_sku:int,product_name:int,quantity:int,unit_price:int,order_amount:?int,created_time:?int}
+     */
+    private function fallbackTikTokTwoColumnIndexesByLayout(array $norm): array
+    {
+        $joined = implode(' ', $norm);
+        $newExport = str_contains($joined, 'order substatus')
+            || str_contains($joined, 'cancelation')
+            || str_contains($joined, 'sku quantity of return');
+
+        if ($newExport) {
+            return [
+                'order_id' => 0,
+                'order_status' => 1,
+                'seller_sku' => 6,
+                'product_name' => 7,
+                'quantity' => 10,
+                'unit_price' => 12,
+                'order_amount' => 25,
+                'created_time' => 27,
+            ];
+        }
+
+        return [
+            'order_id' => 0,
+            'order_status' => 1,
+            'seller_sku' => 6,
+            'product_name' => 7,
+            'quantity' => 9,
+            'unit_price' => 11,
+            'order_amount' => 24,
+            'created_time' => 26,
+        ];
+    }
+
+    /**
+     * Parse TikTok export "Created Time". Carbon::parse('6') becomes 1970-01-01 00:00:06 which MySQL TIMESTAMP
+     * rejects or stores as garbage; short integers must not be treated as dates.
+     */
+    private function parseTikTokTwoOrderDate(?string $createdTime): ?\Carbon\Carbon
+    {
+        if ($createdTime === null || trim($createdTime) === '') {
+            return null;
+        }
+        $s = trim($createdTime, " \t\"");
+
+        // Integer-only: Unix seconds (10) or ms (13+). Reject small values that parse as epoch seconds.
+        if (preg_match('/^\d+$/', $s)) {
+            $len = strlen($s);
+            if ($len >= 13) {
+                $sec = (int) floor((int) $s / 1000);
+
+                return $sec >= 946684800 ? \Carbon\Carbon::createFromTimestamp($sec) : null;
+            }
+            if ($len === 10) {
+                $sec = (int) $s;
+
+                return $sec >= 946684800 ? \Carbon\Carbon::createFromTimestamp($sec) : null;
+            }
+
+            return null;
+        }
+
+        $formats = [
+            'm/d/Y h:i:s A',
+            'm/d/Y H:i:s',
+            'm/d/Y g:i:s A',
+            'Y-m-d H:i:s',
+            'Y-m-d H:i:s.u',
+        ];
+        foreach ($formats as $fmt) {
+            try {
+                $dt = \Carbon\Carbon::createFromFormat($fmt, $s);
+                if ($dt === false) {
+                    continue;
+                }
+                if ($this->isTikTokTwoOrderDatePlausible($dt)) {
+                    return $dt;
+                }
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+
+        try {
+            $dt = \Carbon\Carbon::parse($s);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return $this->isTikTokTwoOrderDatePlausible($dt) ? $dt : null;
+    }
+
+    private function isTikTokTwoOrderDatePlausible(\Carbon\Carbon $dt): bool
+    {
+        $y = $dt->year;
+
+        return $y >= 2000 && $y <= 2100;
     }
 
     public function getColumnVisibilityTwo()
