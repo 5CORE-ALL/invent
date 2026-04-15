@@ -1002,6 +1002,8 @@ class FbaDataController extends Controller
             'REV_COUNT' => $manual ? ($manual->data['rev_count'] ?? '') : '',
             'RATING' => $manual ? ($manual->data['rating'] ?? '') : '',
             'LP' => round($LP, 2),
+            // Product Master LP (analytics PFT/SPFT/SROI) — may differ from mapped LP above
+            'LP_FOR_PFT' => round($LP_FOR_PFT, 2),
             'Fulfillment_Fee' => $fbaReportsInfo ? round(($fbaReportsInfo->fulfillment_fee ?? 0), 2) : 0,
             'FBA_Fee_Manual' => $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
             'ASIN' => $fba->asin,
@@ -1365,6 +1367,7 @@ class FbaDataController extends Controller
             'REV_COUNT' => '',
             'RATING' => '',
             'LP' => '',
+            'LP_FOR_PFT' => '',
             'FBA_Ship_Calculation' => round($children->sum(fn($item) => is_numeric($item['FBA_Ship_Calculation']) ? $item['FBA_Ship_Calculation'] : 0), 2),
             'PFT_AMT' => round($children->sum('PFT_AMT'), 2),
             'SALES_AMT' => round($children->sum('SALES_AMT'), 2),

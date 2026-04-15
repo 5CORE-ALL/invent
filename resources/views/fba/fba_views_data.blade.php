@@ -103,6 +103,11 @@
             <div class="card-body py-3">
                 <h4>FBA Analytics</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
+                    <div class="input-group input-group-sm" style="min-width: 200px; flex: 1 1 240px; max-width: 420px;">
+                        <span class="input-group-text bg-white"><i class="fa fa-search text-muted"></i></span>
+                        <input type="search" id="fba-global-search" class="form-control" placeholder="Search SKU, FBA SKU, parent, ASIN, barcode…" autocomplete="off">
+                        <button type="button" class="btn btn-outline-secondary" id="fba-global-search-clear" title="Clear search">&times;</button>
+                    </div>
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Inventory</option>
@@ -980,26 +985,12 @@
                     }
                     newSPrice = Math.max(0.01, Math.round(newSPrice * 100) / 100);
 
-                    // ── Recalculate derived S_Price metrics instantly ───────────
-                    const LP        = parseFloat(row.LP)   || 0;
-                    const FBA_SHIP  = parseFloat(row.FBA_Ship_Calculation) || 0;
-                    const COMM      = parseFloat(row.Commission_Percentage) || 34;
-
-                    const sPft   = newSPrice > 0 ? ((newSPrice * 0.66 - LP - FBA_SHIP) / newSPrice) * 100 : 0;
-                    const sRoi   = LP > 0        ? ((newSPrice * 0.66 - LP - FBA_SHIP) / LP) * 100         : 0;
-                    const sGpft  = newSPrice > 0 ? ((newSPrice * (1 - (COMM / 100 + 0.05)) - LP - FBA_SHIP) / newSPrice) * 100 : 0;
-                    const sGroi  = LP > 0        ? ((newSPrice * (1 - (COMM / 100 + 0.05)) - LP - FBA_SHIP) / LP) * 100       : 0;
-
-                    // Instantly reflect in table row (no replaceData needed)
+                    // Instantly reflect in table row (same formulas as FbaDataController / GPFT, GROI, PFT, TPFT)
                     const tableRow = table.searchRows('SKU', '=', row.SKU)[0];
                     if (tableRow) {
-                        tableRow.update({
-                            S_Price : newSPrice,
-                            'SGPFT%': `${sGpft.toFixed(1)} %`,
-                            'SGROI%': `${sGroi.toFixed(1)} %`,
-                            SPFT    : sPft,
-                            'SROI%' : `${sRoi.toFixed(1)} %`,
-                        });
+                        const merged = Object.assign({}, row, { S_Price: newSPrice });
+                        const sm = recalculateSPriceMetrics(merged, newSPrice);
+                        tableRow.update(Object.assign({ S_Price: newSPrice }, sm));
                     }
 
                     // ── Save to DB in background ─────────────────────────────
@@ -1024,6 +1015,10 @@
                         }
                     });
                 });
+
+                setTimeout(function() {
+                    if (typeof updateSummary === 'function') updateSummary();
+                }, 0);
 
                 $('#discount-percentage-input').val('');
             }
@@ -1488,6 +1483,96 @@
                     $('#skuMetricsModal').modal('show');
                 });
 
+                // S-price derived % columns: parse server HTML or numeric; same color bands as SPft%
+                function parseFbaPercentStored(val) {
+                    if (val === null || val === undefined || val === '') return NaN;
+                    if (typeof val === 'number' && !isNaN(val)) return val;
+                    const s = String(val).replace(/<[^>]*>/g, '').replace(/%/g, '').trim();
+                    const n = parseFloat(s);
+                    return isNaN(n) ? NaN : n;
+                }
+
+                function styleSPercentMetric(v) {
+                    const value = parseFloat(v);
+                    if (isNaN(value)) return '';
+                    if (value < 10) return 'color: red;';
+                    if (value >= 11 && value <= 15) return 'background-color: yellow; color: black;';
+                    if (value >= 16 && value <= 20) return 'color: blue;';
+                    if (value >= 21 && value <= 40) return 'color: green;';
+                    if (value > 40) return 'color: purple;';
+                    return '';
+                }
+
+                function htmlSPercentMetric(val) {
+                    const v = parseFbaPercentStored(val);
+                    if (isNaN(v)) return '';
+                    const st = styleSPercentMetric(v);
+                    return `<span style="${st} font-weight:600;">${Math.round(v)}%</span>`;
+                }
+
+                // Match FbaDataController: marginAfterCommission = 0.95 - (commission/100); default commission 15
+                function fbaMarginAfterCommission(data) {
+                    let comm = parseFloat(data.Commission_Percentage);
+                    if (comm === 0 || isNaN(comm)) comm = 15;
+                    return 0.95 - (comm / 100);
+                }
+
+                function fbaSgpftGrossPercent(data, sPrice) {
+                    const value = parseFloat(sPrice);
+                    if (isNaN(value) || value <= 0) return null;
+                    const marginAfterCommission = fbaMarginAfterCommission(data);
+                    const LP = parseFloat(data.LP) || 0;
+                    const FBA_SHIP = parseFloat(data.FBA_Ship_Calculation) || 0;
+                    return (((value * marginAfterCommission) - LP - FBA_SHIP) / value) * 100;
+                }
+
+                // SPft% — identical rule to PRFT%: net = parseFloat(SGPFT%) − window._fbaGlobalAdsPercent, then round for display
+                function fbaSpftPercentFromRow(rowData) {
+                    if (!rowData || rowData.is_parent) return null;
+                    const sgpftRaw = String(rowData['SGPFT%'] ?? '').replace(/<[^>]*>/g, '').replace('%', '').trim();
+                    const sgpft = parseFloat(sgpftRaw) || 0;
+                    const ads = window._fbaGlobalAdsPercent || 0;
+                    return sgpft - ads;
+                }
+
+                function prftStyleColor(value) {
+                    return value < 0 ? 'red' : value < 10 ? 'red' : value <= 15 ? '#ffc107' : value <= 20 ? 'blue' : value <= 40 ? 'green' : 'purple';
+                }
+
+                // SGPFT/SGROI same as GPFT/GROI with S price; SPFT field = same net as PRFT (SGPFT% − global Ads%) after SGPFT is set
+                function recalculateSPriceMetrics(data, sPrice) {
+                    const value = parseFloat(sPrice);
+                    if (isNaN(value) || value <= 0) {
+                        return { 'SGPFT%': '', 'SGROI%': '', SPFT: 0, 'SROI%': '' };
+                    }
+                    const marginAfterCommission = fbaMarginAfterCommission(data);
+                    const LP = parseFloat(data.LP) || 0;
+                    const FBA_SHIP = parseFloat(data.FBA_Ship_Calculation) || 0;
+                    let LPfp = parseFloat(data.LP_FOR_PFT);
+                    if (isNaN(LPfp)) LPfp = LP;
+                    const Fship = parseFloat(data.Fulfillment_Fee) || 0;
+
+                    const sgpftGross = fbaSgpftGrossPercent(data, value);
+                    // Match PHP / GPFT%: integer gross % so SPft parses like PRFT parses GPFT%
+                    const sGpft = sgpftGross === null ? 0 : Math.round(sgpftGross);
+                    const sGroi = LP > 0 && value > 0 ? (((value * marginAfterCommission) - LP - FBA_SHIP) / LP) * 100 : 0;
+
+                    const ads = window._fbaGlobalAdsPercent || 0;
+                    const spftStored = Math.round((sGpft - ads) * 100) / 100;
+
+                    const sroiPct = (LPfp > 0 && value > 0)
+                        ? (((value * marginAfterCommission) - LPfp - Fship) / LPfp) * 100
+                        : 0;
+                    const sroiPctRounded = Math.round(sroiPct * 100) / 100;
+
+                    return {
+                        'SGPFT%': sGpft,
+                        'SGROI%': sGroi,
+                        SPFT: spftStored,
+                        'SROI%': sroiPctRounded,
+                    };
+                }
+
                 table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
                     ajaxSorting: true,
@@ -1750,7 +1835,15 @@
                                     return `<span style="color:#aaa;cursor:pointer;" title="Click to view age details">—</span>`;
                                 }
 
-                                return `<span style="color:${oldest.color};font-weight:700;cursor:pointer;" title="Click to view age details">${oldest.label}</span>`;
+                                // Show age as full months from the range's lower bound (first number), e.g. 81–100 → floor(81/30) → "2 M"
+                                const labelStr = String(oldest.label);
+                                const firstDaysMatch = labelStr.match(/(\d+)/);
+                                const firstDays = firstDaysMatch ? parseInt(firstDaysMatch[1], 10) : 0;
+                                const monthsWhole = Math.floor(firstDays / 30);
+                                const monthsText = monthsWhole + ' M';
+                                const titleSafe = labelStr.replace(/"/g, '&quot;');
+
+                                return `<span style="color:${oldest.color};font-weight:700;cursor:pointer;" title="${titleSafe} days — click for details">${monthsText}</span>`;
                             }
                         },
 
@@ -2024,7 +2117,7 @@
                                 const gpft    = parseFloat(gpftRaw) || 0;
                                 const ads     = window._fbaGlobalAdsPercent || 0;
                                 const value   = gpft - ads;
-                                let color = value < 0 ? 'red' : value < 10 ? 'red' : value <= 15 ? '#ffc107' : value <= 20 ? 'blue' : value <= 40 ? 'green' : 'purple';
+                                const color = prftStyleColor(value);
                                 return `<span style="color:${color};font-weight:600;">${Math.round(value)}%</span>`;
                             },
                         },
@@ -2054,6 +2147,20 @@
                             field: "S_Price",
                             hozAlign: "center",
                             editor: "input",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const price = parseFloat(cell.getValue());
+                                if (isNaN(price) || price <= 0) return '';
+                                const lmp = parseFloat(rowData.LMP || rowData.lmp_1 || 0);
+                                let color = '';
+                                if (lmp > 0) {
+                                    if (price > lmp) color = 'red';
+                                    else if (price < lmp) color = 'darkgreen';
+                                }
+                                const disp = color ? `color:${color};` : '';
+                                return `<span style="${disp} font-weight:600;">${price.toFixed(2)}</span>`;
+                            },
                             cellEdited: function(cell) {
                                 var row  = cell.getRow();
                                 var data = row.getData();
@@ -2065,22 +2172,13 @@
                                     return;
                                 }
 
-                                // ── Instantly recalculate derived S_Price metrics ──────────
-                                const LP       = parseFloat(data.LP)   || 0;
-                                const FBA_SHIP = parseFloat(data.FBA_Ship_Calculation) || 0;
-                                const COMM     = parseFloat(data.Commission_Percentage) || 34;
-
-                                const sPft  = value > 0 ? ((value * 0.66 - LP - FBA_SHIP) / value) * 100 : 0;
-                                const sRoi  = LP > 0   ? ((value * 0.66 - LP - FBA_SHIP) / LP)    * 100 : 0;
-                                const sGpft = value > 0 ? ((value * (1 - (COMM / 100 + 0.05)) - LP - FBA_SHIP) / value) * 100 : 0;
-                                const sGroi = LP > 0   ? ((value * (1 - (COMM / 100 + 0.05)) - LP - FBA_SHIP) / LP)    * 100 : 0;
-
-                                row.update({
-                                    'SGPFT%': `${sGpft.toFixed(1)} %`,
-                                    'SGROI%': `${sGroi.toFixed(1)} %`,
-                                    SPFT    : sPft,
-                                    'SROI%' : `${sRoi.toFixed(1)} %`,
-                                });
+                                // Merge so recalc sees new S price; refresh Ads% + SPFT/PRFT columns after Tabulator commits row
+                                const merged = Object.assign({}, data, { S_Price: value });
+                                const sm = recalculateSPriceMetrics(merged, value);
+                                row.update(Object.assign({ S_Price: value }, sm));
+                                setTimeout(function() {
+                                    if (typeof updateSummary === 'function') updateSummary();
+                                }, 0);
 
                                 // ── Save to DB in background ───────────────────────────────
                                 $.ajax({
@@ -2230,7 +2328,9 @@
                             field: "SGPFT%",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                return htmlSPercentMetric(cell.getValue());
                             },
                         },
 
@@ -2239,7 +2339,9 @@
                             field: "SGROI%",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                return htmlSPercentMetric(cell.getValue());
                             },
                         },
 
@@ -2250,20 +2352,15 @@
                             field: "SPFT",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                let style = '';
-                                if (value < 10) {
-                                    style = 'color: red;';
-                                } else if (value >= 11 && value <= 15) {
-                                    style = 'background-color: yellow; color: black;';
-                                } else if (value >= 16 && value <= 20) {
-                                    style = 'color: blue;';
-                                } else if (value >= 21 && value <= 40) {
-                                    style = 'color: green;';
-                                } else if (value > 40) {
-                                    style = 'color: purple;';
-                                }
-                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const sprice = parseFloat(rowData.S_Price);
+                                if (isNaN(sprice) || sprice <= 0) return '';
+                                // Same as PRFT%: gross column value − global Ads% (PRFT uses GPFT%; we use SGPFT%)
+                                const net = fbaSpftPercentFromRow(rowData);
+                                if (net === null || isNaN(net)) return '';
+                                const color = prftStyleColor(net);
+                                return `<span style="color:${color};font-weight:600;">${Math.round(net)}%</span>`;
                             },
                         },
                         {
@@ -2271,7 +2368,9 @@
                             field: "SROI%",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                return htmlSPercentMetric(cell.getValue());
                             },
                         },
 
@@ -2807,8 +2906,8 @@
                     if (table) {
                         const col = table.getColumn('TCOS_Percentage');
                         if (col) col.getCells().forEach(c => c.setValue(c.getValue(), true));
-                        // Redraw PRFT% and ROI% since they depend on global Ads%
-                        ['TPFT', 'ROI'].forEach(function(f) {
+                        // Redraw PRFT%, ROI%, SPft% — all use global Ads%
+                        ['TPFT', 'ROI', 'SPFT'].forEach(function(f) {
                             const c2 = table.getColumn(f);
                             if (c2) c2.getCells().forEach(c => c.setValue(c.getValue(), true));
                         });
@@ -2953,7 +3052,41 @@
                             return oldest ? oldest.key === invAgeFilter : false;
                         });
                     }
+
+                    const searchRaw = ($('#fba-global-search').val() || '').trim();
+                    if (searchRaw !== '') {
+                        const searchLower = searchRaw.toLowerCase();
+                        table.addFilter(function(data) {
+                            const strip = function(v) {
+                                if (v == null || v === '') return '';
+                                return String(v).replace(/<[^>]*>/g, '').toLowerCase();
+                            };
+                            const includes = function(v) { return strip(v).indexOf(searchLower) !== -1; };
+                            if (data.is_parent) {
+                                return includes(data.Parent) || includes(data.SKU);
+                            }
+                            const fields = ['Parent', 'SKU', 'FBA_SKU', 'ASIN', 'Barcode', 'UPC_Codes', 'WH_ACT'];
+                            for (let i = 0; i < fields.length; i++) {
+                                if (includes(data[fields[i]])) return true;
+                            }
+                            return false;
+                        });
+                    }
                 }
+
+                let fbaSearchDebounce = null;
+                $('#fba-global-search').on('input', function() {
+                    clearTimeout(fbaSearchDebounce);
+                    fbaSearchDebounce = setTimeout(function() {
+                        applyFilters();
+                        updateSummary();
+                    }, 200);
+                });
+                $('#fba-global-search-clear').on('click', function() {
+                    $('#fba-global-search').val('');
+                    applyFilters();
+                    updateSummary();
+                });
 
                 $('#inventory-filter').on('change', function() {
                     applyFilters();
