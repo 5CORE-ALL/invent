@@ -883,6 +883,11 @@ class FetchEbayReports extends Command
         }
 
         $rows = $res->json();
+        if (! is_array($rows)) {
+            $this->warn('⚠️ Google Sheet organic clicks: response was not a JSON array (empty or invalid); skipping');
+
+            return;
+        }
 
         foreach ($rows as $row) {
             $itemId = $row['item_id'] ?? null;
