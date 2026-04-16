@@ -105,11 +105,11 @@ class EbayThreeController extends Controller
         // Fetch Amazon data for price comparison
         $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        // Fetch NR values for these SKUs from EbayThreeDataView
-        $ebayDataViews = EbayThreeDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Fetch NR values for these SKUs from EbayThreeDataView (include PARENT SKUs for nr_req mirror + lookups)
+        $ebayDataViews = EbayThreeDataView::whereIn('sku', $allSkus)->get()->keyBy('sku');
 
         // NR/REQ (pricing column): listing status rows that include nr_req (same source as save-status)
-        $ebayListingStatuses = EbayThreeListingStatus::whereIn('sku', $skus)
+        $ebayListingStatuses = EbayThreeListingStatus::whereIn('sku', $allSkus)
             ->orderBy('updated_at', 'desc')
             ->get()
             ->filter(function ($record) {
@@ -151,14 +151,24 @@ class EbayThreeController extends Controller
             $hideValues[$sku] = isset($value['Hide']) ? filter_var($value['Hide'], FILTER_VALIDATE_BOOLEAN) : false;
         }
 
-        // NR/REQ column uses /listing_ebaythree/save-status → EbayThreeListingStatus.nr_req only.
-        // Do not mix EbayThreeDataView.NRL here (ads NRL/REQ); that caused saves to look ignored when NRL !== 'REQ'.
+        // NR/REQ column uses /listing_ebaythree/save-status → EbayThreeListingStatus.nr_req, with dataview mirror in value nr_req.
+        // Do not use EbayThreeDataView NRL (ads) for this column.
         foreach ($ebayListingStatuses as $sku => $listingStatus) {
             $statusValue = is_array($listingStatus->value) ? $listingStatus->value : (json_decode($listingStatus->value, true) ?: []);
             $nrReqValues[$sku] = $statusValue['nr_req'] ?? 'REQ';
         }
 
-        foreach ($skus as $sku) {
+        foreach ($ebayDataViews as $sku => $dataView) {
+            if (isset($nrReqValues[$sku])) {
+                continue;
+            }
+            $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
+            if (isset($value['nr_req']) && ($value['nr_req'] === 'REQ' || $value['nr_req'] === 'NR')) {
+                $nrReqValues[$sku] = $value['nr_req'];
+            }
+        }
+
+        foreach ($allSkus as $sku) {
             if (! isset($nrReqValues[$sku])) {
                 $nrReqValues[$sku] = 'REQ';
             }
@@ -545,7 +555,7 @@ class EbayThreeController extends Controller
                 
                 // Set defaults for PARENT rows
                 $row['NR'] = null;
-                $row['nr_req'] = 'REQ';
+                $row['nr_req'] = $nrReqValues[$sku] ?? 'REQ';
                 $row['NRL'] = null;
                 $row['Listed'] = false;
                 $row['Live'] = false;
@@ -1161,7 +1171,8 @@ class EbayThreeController extends Controller
                 
                 // Set defaults
                 $syntheticParent['NR'] = null;
-                $syntheticParent['nr_req'] = 'REQ';
+                $synSku = 'PARENT ' . $parentValue;
+                $syntheticParent['nr_req'] = $nrReqValues[$synSku] ?? 'REQ';
                 $syntheticParent['Listed'] = false;
                 $syntheticParent['Live'] = false;
                 $syntheticParent['Hide'] = false;

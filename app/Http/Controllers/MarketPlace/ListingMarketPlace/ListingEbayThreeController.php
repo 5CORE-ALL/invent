@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\EbayThreeListingStatus;
+use App\Models\EbayThreeDataView;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -125,10 +126,39 @@ class ListingEbayThreeController extends Controller
             'sku' => $sku,
             'value' => $existing
         ]);
+
+        if (isset($existing['nr_req'])) {
+            $this->syncNrReqToEbayThreeDataView($sku, (string) $existing['nr_req']);
+        }
         
         \Log::info('Status saved successfully', ['sku' => $sku]);
 
         return response()->json(['status' => 'success']);
+    }
+
+    /**
+     * Mirror NR/REQ into ebay3_data_view.value (includes PARENT SKUs) so dataview stays aligned with listing status.
+     */
+    protected function syncNrReqToEbayThreeDataView(string $sku, string $nrReq): void
+    {
+        $sku = trim($sku);
+        $nrReq = trim($nrReq);
+        if ($sku === '') {
+            return;
+        }
+        if ($nrReq !== 'NR' && $nrReq !== 'REQ') {
+            return;
+        }
+
+        $ebayDataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
+        $jsonData = is_array($ebayDataView->value)
+            ? $ebayDataView->value
+            : (json_decode($ebayDataView->value ?? '{}', true) ?: []);
+
+        $jsonData['nr_req'] = $nrReq;
+
+        $ebayDataView->value = $jsonData;
+        $ebayDataView->save();
     }
 
     public function getNrReqCount()

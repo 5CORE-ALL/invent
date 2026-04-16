@@ -1996,22 +1996,32 @@
             return allTableData;
         }
 
-        /** Rows to show in Play for one parent (INV>0 SKUs + parent if summed INV>0). */
+        /** True when row is marked NR in NR/REQ column (excluded from Play). */
+        function ebay3RowNrReqIsNr(row) {
+            return !!(row && String(row.nr_req || '').trim() === 'NR');
+        }
+
+        /** Rows to show in Play: INV>0, not NR/REQ=NR; parent row only if INV>0 and not NR. */
         function ebay3BuildPlayDisplayData(parentRow) {
             if (!parentRow) return [];
             var rawChildren = (parentRow._children && Array.isArray(parentRow._children)) ? parentRow._children : [];
             var invKids = [];
             if (typeof ebay3Qty === 'function') {
-                invKids = rawChildren.filter(function(c) { return ebay3Qty(c.INV) > 0; });
+                invKids = rawChildren.filter(function(c) {
+                    if (ebay3RowNrReqIsNr(c)) return false;
+                    return ebay3Qty(c.INV) > 0;
+                });
             } else {
                 invKids = rawChildren.filter(function(c) {
+                    if (ebay3RowNrReqIsNr(c)) return false;
                     return (parseFloat(c.INV || 0) || 0) > 0;
                 });
             }
             var parentInvOk = typeof ebay3Qty === 'function'
                 ? ebay3Qty(parentRow.INV) > 0
                 : (parseFloat(parentRow.INV || 0) || 0) > 0;
-            return parentInvOk ? invKids.concat([parentRow]) : invKids.slice();
+            var parentOkForPlay = parentInvOk && !ebay3RowNrReqIsNr(parentRow);
+            return parentOkForPlay ? invKids.concat([parentRow]) : invKids.slice();
         }
 
         function showCurrentParentPlayView() {
