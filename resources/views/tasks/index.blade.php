@@ -504,10 +504,10 @@
         
         /* Priority badges with STRONG contrast */
         .mobile-priority-high {
-            background: #dc3545 !important;
+            background: #7c3aed !important;
             color: #ffffff !important;
             font-weight: 700 !important;
-            box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+            box-shadow: 0 2px 4px rgba(124, 58, 237, 0.35);
         }
         
         .mobile-priority-medium {
@@ -818,12 +818,10 @@
             }
         }
         
-        /* Clean Table Styling */
+        /* Clean table shell — horizontal scroll lives on .table-wrapper (Tabulator syncs header in .tabulator-tableholder) */
         #tasks-table {
             background: white;
             border-radius: 8px;
-            overflow-x: auto;
-            overflow-y: hidden;
         }
         
         .table-wrapper {
@@ -855,8 +853,46 @@
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             font-weight: 600 !important;
             color: #495057 !important;
-            font-size: 13px !important;
+            font-size: calc(13px * 0.9) !important; /* ~10% smaller than 13px */
             text-transform: uppercase;
+        }
+
+        /* ETC / ATC: stacked letters in header (override row uppercase for these) */
+        .tabulator .tabulator-header .tabulator-col-title .tasks-th-vertical-letters {
+            display: inline-block;
+            font-weight: 700 !important;
+            font-size: calc(10px * 0.9) !important;
+            color: #495057 !important;
+            line-height: 1.12;
+            text-align: center;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        /* Center header titles without overriding .tabulator-col-content display (breaks column sync) */
+        #tasks-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            text-align: center !important;
+        }
+        /* Sort triangle only (.tabulator-arrow is border-drawn); hide sorter box, keep title + column sort */
+        #tasks-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-sorter {
+            display: none !important;
+        }
+        #tasks-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-content .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+
+        /* Autofit-style narrow cols (see widthGrow:0 + cssClass on column defs) */
+        #tasks-table .tabulator-header .tabulator-col.tasks-col-time-compact,
+        #tasks-table .tabulator-row .tabulator-cell.tasks-col-time-compact {
+            padding: 8px 3px !important;
+        }
+        #tasks-table .tabulator-header .tabulator-col.tasks-col-link-icon,
+        #tasks-table .tabulator-row .tabulator-cell.tasks-col-link-icon {
+            padding: 6px 2px !important;
+        }
+        #tasks-table .tabulator-header .tabulator-col.tasks-col-priority-compact,
+        #tasks-table .tabulator-row .tabulator-cell.tasks-col-priority-compact {
+            padding: 6px 2px !important;
         }
 
         .tabulator-row {
@@ -1011,10 +1047,10 @@
         }
 
         .priority-high {
-            background-color: #dc3545;
+            background-color: #7c3aed;
             color: #ffffff;
-            border: 1px solid #b02a37;
-            box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+            border: 1px solid #5b21b6;
+            box-shadow: 0 2px 4px rgba(124, 58, 237, 0.35);
         }
 
         /* Action Icon Buttons (view / edit / delete — 25% smaller than previous 16px/36px) */
@@ -1517,10 +1553,6 @@
                                         <button type="button" class="btn btn-primary ms-2" id="bulk-task-btn">
                                             <i class="mdi mdi-plus-box-multiple me-2"></i> Multiple Task
                                         </button>
-
-                                        <a href="{{ route('tasks.deleted') }}" class="btn btn-secondary ms-2">
-                                            <i class="mdi mdi-archive me-2"></i> Archived
-                                        </a>
                                         
                                         <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
                                             <i class="mdi mdi-format-list-checks me-2"></i> Bulk
@@ -1585,11 +1617,6 @@
                                         <i class="mdi mdi-plus-box-multiple"></i>
                                         <span>Multiple Task</span>
                                     </button>
-
-                                    <a href="{{ route('tasks.deleted') }}" class="mobile-action-btn btn-secondary">
-                                        <i class="mdi mdi-archive"></i>
-                                        <span>Archived</span>
-                                    </a>
                                     
                                     <button type="button" class="mobile-action-btn btn-info" id="bulk-actions-btn-mobile">
                                         <i class="mdi mdi-format-list-checks"></i>
@@ -2001,7 +2028,7 @@
                 <div class="modal-body">
                     <div class="alert alert-info">
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
-                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, Training, Video, Form, Form report, Checklist, PL</p>
+                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, Form, Report (hover: Form report), CL (hover: Checklist), PL</p>
                         <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
                         <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, High, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
@@ -2503,6 +2530,27 @@
                 });
             }
             
+            /** Parse start_date / TID; label e.g. "3rd Apr", title "DD/MM/YYYY" for tooltip. */
+            function formatTidCellParts(value) {
+                if (!value) {
+                    return null;
+                }
+                var parts = String(value).trim().split(/[- T]/);
+                var year = parseInt(parts[0], 10);
+                var month = parseInt(parts[1], 10);
+                var day = parseInt(parts[2], 10);
+                if (isNaN(year) || isNaN(month) || isNaN(day) || month < 1 || month > 12) {
+                    return null;
+                }
+                var mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                var j = day % 10;
+                var k = day % 100;
+                var ord = (j === 1 && k !== 11) ? day + 'st' : (j === 2 && k !== 12) ? day + 'nd' : (j === 3 && k !== 13) ? day + 'rd' : day + 'th';
+                var label = ord + ' ' + mon[month - 1];
+                var title = String(day).padStart(2, '0') + '/' + String(month).padStart(2, '0') + '/' + year;
+                return { year: year, month: month, day: day, label: label, title: title };
+            }
+
             // ==========================================
             // MOBILE TASK CARDS RENDERER
             // ==========================================
@@ -2624,7 +2672,10 @@
                                     }
                                     return parts.join('');
                                 })()}
-                                ${task.tid ? `<div><i class="mdi mdi-calendar"></i> ${new Date(task.tid).toLocaleDateString()}</div>` : ''}
+                                ${(() => {
+                                    var tp = formatTidCellParts(task.start_date || task.tid);
+                                    return tp ? '<div><i class="mdi mdi-calendar"></i> ' + tp.label + '</div>' : '';
+                                })()}
                             </div>
                             
                             <div class="mobile-task-actions">
@@ -2752,8 +2803,8 @@
                 var linkTeal = '#14b8a6';
                 if (/^https?:\/\//i.test(v)) {
                     return '<a href="' + escAttr(v) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr(v) + '" ' +
-                        'style="color:' + linkTeal + ';text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;">' +
-                        '<i class="mdi mdi-link-variant" style="font-size:18px;" aria-hidden="true"></i></a>';
+                        'style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;" aria-label="Open link">' +
+                        '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' + linkTeal + ';"></span></a>';
                 }
                 return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
             }
@@ -2761,6 +2812,9 @@
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
                 selectable: true, // All users can select rows for bulk actions
+                defaultColumn: {
+                    headerHozAlign: "center",
+                },
                 ajaxURL: "{{ route('tasks.data') }}",
                 ajaxParams: {},
                 ajaxContentType: "json",
@@ -2871,15 +2925,14 @@
                         // Keep default styling for non-automated rows
                     }
                 },
-                layout: "fitColumns",
+                layout: "fitDataTable",
                 pagination: true,
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
-                responsiveLayout: "hide",
+                responsiveLayout: false,
                 placeholder: "No Tasks Found",
                 height: "600px",
                 layoutColumnsOnNewData: true,
-                horizontalScroll: true,
                 autoResize: true,
                 initialSort: [
                     {column: "start_date", dir: "asc"},
@@ -2887,7 +2940,7 @@
                 ],
                 columns: (function() {
                     var cols = [];
-                    
+
                     // Add checkbox column — header selects all rows on the current pagination page (not scroll viewport, not all pages)
                     cols.push({
                         formatter: "rowSelection", 
@@ -2928,26 +2981,8 @@
                         visible: false,
                         sorter: "number"
                     });
-
-                    // AT (Automated Task flag)
-                    cols.push({
-                        title: "AT",
-                        field: "is_automate_task",
-                        width: 55,
-                        minWidth: 50,
-                        hozAlign: "center",
-                        headerHozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            var isAutomated = Number(cell.getValue() || 0) === 1;
-                            if (!isAutomated) {
-                                return '<span style="color:#adb5bd;">-</span>';
-                            }
-                            return '<span title="Automated task" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#198754;box-shadow:0 0 0 1px rgba(25,135,84,.25);"></span>';
-                        }
-                    });
                     
-                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, L1, L2, Training, Video, Form, Form report, Checklist, PL, STATUS, PRIORITY, IMAGE, ACTION
+                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, L1, L2, SOP, Video, Form, Report, CL, PL, STATUS, P (Priority), IMAGE, ACTION
                     
                     // GROUP
                     cols.push({
@@ -3036,27 +3071,27 @@
                         }
                     });
                     
-                    // TID (Task Initiation Date) - Limited to 5 characters (DD/MM)
+                    // TID (Task Initiation Date) — display e.g. "3rd Apr"; title shows DD/MM/YYYY
                     cols.push({
                         title: "TID", 
                         field: "start_date", 
-                        width: 80,
+                        width: 88,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var value = cell.getValue();
                             
                             if (value) {
-                                // Parse MySQL datetime correctly (YYYY-MM-DD HH:mm:ss)
-                                var parts = value.split(/[- :]/);
-                                var year = parseInt(parts[0]);
-                                var month = parseInt(parts[1]);
-                                var day = parseInt(parts[2]);
-                                
-                                // Format as DD/MM (5 characters max)
-                                var dayStr = String(day).padStart(2, '0');
-                                var monthStr = String(month).padStart(2, '0');
-                                
+                                var fp = formatTidCellParts(value);
+                                if (!fp) {
+                                    return '<span style="color: #adb5bd;">-</span>';
+                                }
+                                var year = fp.year;
+                                var month = fp.month;
+                                var day = fp.day;
+                                var label = fp.label;
+                                var titleFull = fp.title;
+
                                 var tidDate = new Date(year, month - 1, day);
                                 tidDate.setHours(0, 0, 0, 0);
 
@@ -3075,7 +3110,7 @@
                                 if (now > tidDate) {
                                     textColor = '#dc3545'; // Red when overdue
                                 }
-                                return '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + dayStr + '/' + monthStr + '/' + year + '">' + dayStr + '/' + monthStr + '</span>';
+                                return '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + titleFull + '">' + label + '</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
@@ -3083,9 +3118,13 @@
                     
                     // ETC (Estimated Time) — whole minutes
                     cols.push({
-                        title: "ETC", 
+                        title: "ETC",
                         field: "eta_time", 
-                        width: 60,
+                        width: 52,
+                        minWidth: 46,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-time-compact",
+                        headerClass: "tasks-col-time-compact",
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
@@ -3101,9 +3140,13 @@
                     
                     // ATC (Actual Time) — whole minutes
                     cols.push({
-                        title: "ATC", 
+                        title: "ATC",
                         field: "etc_done", 
-                        width: 60,
+                        width: 52,
+                        minWidth: 46,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-time-compact",
+                        headerClass: "tasks-col-time-compact",
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
@@ -3118,27 +3161,45 @@
                     });
 
                     // Named link columns (DB link1–link8 + legacy aliases)
-                    var linkCol = function(title, field, getRaw, w) {
-                        cols.push({
+                    var linkCol = function(title, field, getRaw, w, opts) {
+                        opts = opts || {};
+                        var def = {
                             title: title,
                             field: field,
-                            width: w || 56,
-                            minWidth: 52,
+                            width: w || 40,
+                            minWidth: opts.minWidth != null ? opts.minWidth : 34,
+                            widthGrow: 0,
+                            cssClass: "tasks-col-link-icon",
+                            headerClass: "tasks-col-link-icon",
                             hozAlign: "center",
-                            headerSort: false,
                             formatter: function(cell) {
                                 return formatNamedLinkSlot(cell.getRow().getData(), getRaw);
                             }
-                        });
+                        };
+                        if (opts.titleFormatter) {
+                            def.titleFormatter = opts.titleFormatter;
+                        }
+                        if (opts.headerTooltip) {
+                            def.headerTooltip = opts.headerTooltip;
+                        }
+                        cols.push(def);
                     };
-                    linkCol("L1", "link1", function(d) { return d.link1 || d.l1; }, 56);
-                    linkCol("L2", "link2", function(d) { return d.link2 || d.l2; }, 56);
-                    linkCol("Training", "link3", function(d) { return d.link3 || d.training_link; }, 72);
-                    linkCol("Video", "link4", function(d) { return d.link4 || d.video_link; }, 64);
-                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 60);
-                    linkCol("Form report", "link6", function(d) { return d.link6 || d.form_report_link; }, 76);
-                    linkCol("Checklist", "link7", function(d) { return d.link7 || d.checklist_link; }, 72);
-                    linkCol("PL", "link8", function(d) { return d.link8 || d.pl; }, 52);
+                    linkCol("L1", "link1", function(d) { return d.link1 || d.l1; }, 38);
+                    linkCol("L2", "link2", function(d) { return d.link2 || d.l2; }, 38);
+                    linkCol("SOP", "link3", function(d) { return d.link3 || d.training_link; }, 48, {
+                        headerTooltip: "Training",
+                        minWidth: 40
+                    });
+                    linkCol("Video", "link4", function(d) { return d.link4 || d.video_link; }, 44);
+                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
+                    linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
+                    linkCol("CL", "link7", function(d) { return d.link7 || d.checklist_link; }, 38, {
+                        titleFormatter: function() {
+                            return '<span title="Checklist" style="font-weight:700;font-size:10.8px;color:#495057;">CL</span>';
+                        },
+                        headerTooltip: "Checklist"
+                    });
+                    linkCol("PL", "link8", function(d) { return d.link8 || d.pl; }, 36);
                     
                     // STATUS
                     cols.push({
@@ -3196,18 +3257,26 @@
                         }
                     });
                     
-                    // PRIORITY (Colored dots)
+                    // P = Priority (colored dots; hover header for full name)
                     cols.push({
-                        title: "PRIORITY", 
+                        title: "P",
+                        titleFormatter: function() {
+                            return '<span title="Priority" style="font-weight:700;font-size:calc(13px * 0.9);color:#495057;">P</span>';
+                        },
+                        headerTooltip: "Priority",
                         field: "priority", 
-                        width: 90, 
+                        width: 44,
+                        minWidth: 40,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-priority-compact",
+                        headerClass: "tasks-col-priority-compact",
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue() || 'normal';
                             var dotColors = {
                                 'low': '#9ca3af',        // Gray
                                 'normal': '#fbbf24',     // Yellow
-                                'high': '#fb923c',       // Orange
+                                'high': '#7c3aed',       // Purple
                                 'urgent': '#ef4444'      // Red
                             };
                             var color = dotColors[value.toLowerCase()] || dotColors['normal'];
@@ -3241,7 +3310,6 @@
                         field: "id", 
                         width: 140,
                         hozAlign: "center",
-                        headerSort: false,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var id = rowData.id;

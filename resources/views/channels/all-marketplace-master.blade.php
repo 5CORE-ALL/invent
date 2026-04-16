@@ -150,6 +150,24 @@
         .dropdown-item input[type="checkbox"] {
             margin-right: 8px;
         }
+
+        /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin, not --bs-modal-*) */
+        #adBreakdownChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #adBreakdownChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #adBreakdownChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -284,26 +302,26 @@
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
                             Orders: <span id="total-l30-orders">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link d-none" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Qty items: <span id="total-qty">0</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="Blended Gprofit% = sum(Sales×G%) / sum(Sales) using each channel’s rolling Sales column; matches GPFT% column footer">
-                            GPFT%: <span id="avg-gprofit">0%</span>
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="Blended Gprofit% = sum(Sales×G%) / sum(Sales) using each channel’s rolling Sales column; matches GPFT column footer">
+                            GPFT: <span id="avg-gprofit">0%</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $ = sum of (rolling Sales × Gprofit%) per channel; matches Gross PFT column (show column to verify)">
+                        <span class="badge bg-warning fs-6 p-2 d-none" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $ = sum of (rolling Sales × Gprofit%) per channel; matches Gross PFT column (show column to verify)">
                             GPFT: <span id="total-gross-pft">$0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             G ROI: <span id="avg-groi">0%</span>
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Ads Spend: <span id="total-ad-spend">$0</span>
+                            Spend: <span id="total-ad-spend">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View Total Views trend">
-                            Total Views: <span id="total-views-badge">0</span>
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
+                            views: <span id="total-views-badge">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="CVR % = Orders / Total Views">
-                            CVR %: <span id="cvr-pct-badge">0%</span>
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="CVR = Orders / views">
+                            CVR: <span id="cvr-pct-badge">0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
                             NPFT: <span id="total-pft">$0</span>
@@ -327,19 +345,19 @@
                             Missing L : <span id="total-miss">0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
-                            INV Val: $<span id="inventory-value-amazon">0</span>
+                            inv: $<span id="inventory-value-amazon">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
                             Inv@LP: $<span id="inv-at-lp">0</span>
                         </span>
-                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="View trend - Inventory Value ÷ Sales (months of stock at current sales)">
+                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="View trend - inv ÷ Sales (months of stock at current sales)">
                             TAT: <span id="tat-badge">0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of ratings (weighted avg), average of reviews">
-                            Ratings &amp; Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
+                            Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
                         </span>
                         <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;" title="Seller: sum of ratings (weighted avg), average of reviews">
-                            Seller Rating &amp; Reviews: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
+                            Seller review: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
                         </span>
                     </div>
                 </div>
@@ -645,9 +663,9 @@
     </div>
 
     <!-- Ad Breakdown Chart Modal -->
-    <div class="modal fade" id="adBreakdownChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+    <div class="modal fade p-0" id="adBreakdownChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
@@ -944,7 +962,7 @@
                             showToast('info', response.message || 'No channels to display.');
                         }
                         updateSummaryStats(response.data);
-                        // Update INV Val badge
+                        // Update inv badge
                         const invValEl = document.getElementById('inventory-value-amazon');
                         if (invValEl && response.inventory_value_amazon != null) {
                             const val = parseFloat(response.inventory_value_amazon) || 0;
@@ -956,7 +974,7 @@
                             const val = parseFloat(response.inv_at_lp) || 0;
                             invAtLpEl.textContent = Math.round(val).toLocaleString('en-US');
                         }
-                        // Update TAT badge (INV Val / Sales)
+                        // Update TAT badge (inv / Sales)
                         const tatEl = document.getElementById('tat-badge');
                         if (tatEl && response.inventory_value_amazon != null && response.data && response.data.length) {
                             const invVal = parseFloat(response.inventory_value_amazon) || 0;
@@ -1232,7 +1250,7 @@
                         }
                     },
                     {
-                        title: "Ads Spend",
+                        title: "Spend",
                         field: "Total Ad Spend",
                         hozAlign: "center",
                         sorter: "number",
@@ -1264,7 +1282,7 @@
                         }
                     },
                     {
-                        title: "Total Views",
+                        title: "views",
                         field: "Total Views",
                         hozAlign: "center",
                         sorter: "number",
@@ -1389,7 +1407,7 @@
                         }
                     },
                     {
-                        title: "GPFT%",
+                        title: "GPFT",
                         field: "Gprofit%",
                         hozAlign: "center",
                         sorter: "number",
@@ -2725,7 +2743,7 @@
                         }
                     },
                     {
-                        title: "Ratings & Reviews",
+                        title: "Reviews",
                         field: "Ratings & Reviews",
                         hozAlign: "center",
                         sorter: "number",
@@ -2742,7 +2760,7 @@
                         }
                     },
                     {
-                        title: "Seller Rating & Reviews",
+                        title: "Seller review",
                         field: "Seller Rating & Reviews",
                         hozAlign: "center",
                         sorter: "number",
@@ -3063,18 +3081,18 @@
                 $('#avg-groi').text(Math.round(avgGroi) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
-                // CVR % = Orders / Total Views (overall)
+                // CVR = Orders / views (overall)
                 const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
                 $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
                 $('#total-pft').text('$' + Math.round(netProfit).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
-                $('#avg-nroi').text(avgNroi.toFixed(1) + '%');
+                $('#avg-nroi').text(Math.round(avgNroi) + '%');
                 $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
                 $('#total-nmap').text(Math.round(totalNMap).toLocaleString('en-US'));
                 $('#total-miss').text(Math.round(totalMiss).toLocaleString('en-US'));
 
-                // Ratings & Reviews badge: weighted avg rating (sum(rating*reviews)/sum(reviews)), total reviews (sum)
+                // Reviews badge: weighted avg rating (sum(rating*reviews)/sum(reviews)), total reviews (sum)
                 let ratingSum = 0, reviewsSum = 0, sellerRatingSum = 0, sellerReviewsSum = 0;
                 data.forEach(row => {
                     const r = parseNumber(row['Avg Rating'] || 0);
@@ -3673,7 +3691,7 @@
                 const adTypeLabel = currentChartAdType.toUpperCase();
                 let metricLabel;
                 if (metricType === 'acos') metricLabel = 'ACOS %';
-                else if (metricType === 'cvr') metricLabel = 'CVR %';
+                else if (metricType === 'cvr') metricLabel = 'CVR';
                 else metricLabel = metricType.charAt(0).toUpperCase() + metricType.slice(1);
                 $('#adChartModalTitle').text(`${channel} - ${adTypeLabel} ${metricLabel} (Rolling ${adChartRangeLabel(currentChartDays)})`);
 
@@ -3783,14 +3801,14 @@
                 'nroi': 'N ROI%',
                 'missing_l': 'Missing L',
                 'nmap': 'Missing M',
-                'ad_spend': 'AD Spend',
+                'ad_spend': 'Spend',
                 'clicks': 'AD Clicks',
                 'ad_sales': 'AD Sales',
                 'ad_sold': 'AD Sold',
                 'acos': 'ACOS',
                 'ads_cvr': 'AD CVR',
                 'cvr': 'CVR',
-                'total_views': 'Total Views',
+                'total_views': 'views',
                 'inv_at_lp': 'Inv@LP',
                 'tat': 'TAT',
             };

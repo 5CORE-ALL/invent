@@ -138,6 +138,27 @@
             padding: 12px 8px !important;
         }
 
+        .tabulator .tabulator-header .tabulator-col-title .tasks-th-vertical-letters {
+            display: inline-block;
+            font-weight: 700 !important;
+            font-size: 11px !important;
+            color: #495057 !important;
+            line-height: 1.15;
+            text-align: center;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        #deleted-tasks-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            text-align: center !important;
+        }
+        #deleted-tasks-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-sorter {
+            display: none !important;
+        }
+        #deleted-tasks-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-content .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+
         .tabulator-row {
             border-bottom: 1px solid #e9ecef !important;
             background: white !important;
@@ -685,6 +706,9 @@
             var table = new Tabulator("#deleted-tasks-table", {
                 ajaxURL: "{{ route('tasks.deletedData') }}",
                 ajaxContentType: "json",
+                defaultColumn: {
+                    headerHozAlign: "center",
+                },
                 layout: "fitData",
                 pagination: true,
                 paginationSize: 25,
@@ -775,7 +799,7 @@
                         }
                     },
                     {
-                        title: "ETC", 
+                        title: "ETC",
                         field: "eta_time", 
                         width: 80,
                         hozAlign: "center",
@@ -785,7 +809,7 @@
                         }
                     },
                     {
-                        title: "ATC", 
+                        title: "ATC",
                         field: "etc_done", 
                         width: 80,
                         hozAlign: "center",
@@ -870,7 +894,6 @@
                         field: "id",
                         width: 120,
                         hozAlign: "center",
-                        headerSort: false,
                         formatter: function(cell) {
                             if (!canReviveArchivedTasks) {
                                 return '<span style="color: #adb5bd;">-</span>';

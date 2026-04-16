@@ -201,12 +201,10 @@
             background-color: #5a6268 !important;
         }
         
-        /* Clean Table Styling */
+        /* Clean Table Styling — horizontal scroll only on .table-wrapper; Tabulator syncs header inside its own holder */
         #tasks-table {
             background: white;
             border-radius: 8px;
-            overflow-x: auto;
-            overflow-y: hidden;
         }
         
         .table-wrapper {
@@ -238,8 +236,38 @@
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             font-weight: 600 !important;
             color: #495057 !important;
-            font-size: 13px !important;
+            font-size: calc(13px * 0.9) !important; /* ~10% smaller than 13px */
             text-transform: uppercase;
+        }
+
+        #tasks-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            text-align: center !important;
+        }
+        #tasks-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-sorter {
+            display: none !important;
+        }
+        #tasks-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-content .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col-title .tasks-th-vertical-letters {
+            display: inline-block;
+            font-weight: 700 !important;
+            font-size: calc(10px * 0.9) !important;
+            color: #495057 !important;
+            line-height: 1.12;
+            text-align: center;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        #tasks-table .tabulator-header .tabulator-col.tasks-col-link-icon,
+        #tasks-table .tabulator-row .tabulator-cell.tasks-col-link-icon {
+            padding: 6px 2px !important;
+        }
+        #tasks-table .tabulator-header .tabulator-col.tasks-col-etcmin-compact,
+        #tasks-table .tabulator-row .tabulator-cell.tasks-col-etcmin-compact {
+            padding: 8px 4px !important;
         }
 
         .tabulator-row {
@@ -374,9 +402,10 @@
         }
 
         .priority-high {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background-color: #7c3aed;
+            color: #ffffff;
+            border: 1px solid #5b21b6;
+            box-shadow: 0 2px 4px rgba(124, 58, 237, 0.25);
         }
 
         /* Action Icon Buttons */
@@ -947,7 +976,7 @@
                 <div class="modal-body">
                     <div class="alert alert-info">
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
-                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, Training, Video, Form, Form report, Checklist, PL</p>
+                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, Form, Report (hover: Form report), CL (hover: Checklist), PL</p>
                         <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
                         <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, High, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
@@ -1053,8 +1082,8 @@
                 var linkTeal = '#14b8a6';
                 if (/^https?:\/\//i.test(v)) {
                     return '<a href="' + escAttr(v) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr(v) + '" ' +
-                        'style="color:' + linkTeal + ';text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;">' +
-                        '<i class="mdi mdi-link-variant" style="font-size:18px;" aria-hidden="true"></i></a>';
+                        'style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;" aria-label="Open link">' +
+                        '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' + linkTeal + ';"></span></a>';
                 }
                 return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
             }
@@ -1066,6 +1095,9 @@
                 selectableCheck: function(row) {
                     // Only allow selection of visible/filtered rows
                     return true;
+                },
+                defaultColumn: {
+                    headerHozAlign: "center",
                 },
                 ajaxURL: "{{ route('tasks.automatedData') }}",
                 ajaxParams: {},
@@ -1084,15 +1116,14 @@
                         row.getElement().style.backgroundColor = "#fffbea";
                     }
                 },
-                layout: "fitColumns",
+                layout: "fitDataTable",
                 pagination: true,
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
-                responsiveLayout: "hide",
+                responsiveLayout: false,
                 placeholder: "No Tasks Found",
                 height: "600px",
                 layoutColumnsOnNewData: true,
-                horizontalScroll: true,
                 autoResize: true,
                 columns: (function() {
                     var cols = [];
@@ -1131,7 +1162,7 @@
                         });
                     }
                     
-                    // Column Order: … ETC-M, L1, L2, Training, Video, Form, Form report, Checklist, PL, FREQ, ACTION
+                    // Column Order: … ETC, ETC-M, L1, L2, SOP, Video, Form, Report, CL, PL, FREQ, ACTION
                     
                     // FLAG RAISED - HIDDEN
                     // cols.push({
@@ -1220,11 +1251,16 @@
                         }
                     });
                     
-                    // ETC (MIN) — whole minutes
+                    // ETC — whole minutes (values still ETA minutes; hover for hint)
                     cols.push({
-                        title: "ETC (MIN)", 
+                        title: "ETC",
+                        headerTooltip: "Minutes (ETA)",
                         field: "eta_time", 
-                        width: 90,
+                        width: 72,
+                        minWidth: 56,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-etcmin-compact",
+                        headerClass: "tasks-col-etcmin-compact",
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
@@ -1242,7 +1278,6 @@
                         field: "etc_monthly",
                         width: 110,
                         hozAlign: "center",
-                        headerSort: false,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var etcMonthly = calculateEtcMonthly(rowData);
@@ -1252,27 +1287,45 @@
                     });
 
                     // Named link columns (DB link1–link8 + legacy aliases)
-                    var linkCol = function(title, field, getRaw, w) {
-                        cols.push({
+                    var linkCol = function(title, field, getRaw, w, opts) {
+                        opts = opts || {};
+                        var def = {
                             title: title,
                             field: field,
-                            width: w || 56,
-                            minWidth: 52,
+                            width: w || 40,
+                            minWidth: opts.minWidth != null ? opts.minWidth : 34,
+                            widthGrow: 0,
+                            cssClass: "tasks-col-link-icon",
+                            headerClass: "tasks-col-link-icon",
                             hozAlign: "center",
-                            headerSort: false,
                             formatter: function(cell) {
                                 return formatNamedLinkSlot(cell.getRow().getData(), getRaw);
                             }
-                        });
+                        };
+                        if (opts.titleFormatter) {
+                            def.titleFormatter = opts.titleFormatter;
+                        }
+                        if (opts.headerTooltip) {
+                            def.headerTooltip = opts.headerTooltip;
+                        }
+                        cols.push(def);
                     };
-                    linkCol("L1", "link1", function(d) { return d.link1 || d.l1; }, 56);
-                    linkCol("L2", "link2", function(d) { return d.link2 || d.l2; }, 56);
-                    linkCol("Training", "link3", function(d) { return d.link3 || d.training_link; }, 72);
-                    linkCol("Video", "link4", function(d) { return d.link4 || d.video_link; }, 64);
-                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 60);
-                    linkCol("Form report", "link6", function(d) { return d.link6 || d.form_report_link; }, 76);
-                    linkCol("Checklist", "link7", function(d) { return d.link7 || d.checklist_link; }, 72);
-                    linkCol("PL", "link8", function(d) { return d.link8 || d.pl; }, 52);
+                    linkCol("L1", "link1", function(d) { return d.link1 || d.l1; }, 38);
+                    linkCol("L2", "link2", function(d) { return d.link2 || d.l2; }, 38);
+                    linkCol("SOP", "link3", function(d) { return d.link3 || d.training_link; }, 48, {
+                        headerTooltip: "Training",
+                        minWidth: 40
+                    });
+                    linkCol("Video", "link4", function(d) { return d.link4 || d.video_link; }, 44);
+                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
+                    linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
+                    linkCol("CL", "link7", function(d) { return d.link7 || d.checklist_link; }, 38, {
+                        titleFormatter: function() {
+                            return '<span title="Checklist" style="font-weight:700;font-size:10.8px;color:#495057;">CL</span>';
+                        },
+                        headerTooltip: "Checklist"
+                    });
+                    linkCol("PL", "link8", function(d) { return d.link8 || d.pl; }, 36);
                     
                     // TID (Task Initiation Date) - HIDDEN
                     // cols.push({
@@ -1539,7 +1592,6 @@
                         field: "id", 
                         width: 120,
                         hozAlign: "center",
-                        headerSort: false,
                         formatter: function(cell) {
                             var id = cell.getValue();
                             return `

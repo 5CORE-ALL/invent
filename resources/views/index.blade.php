@@ -775,7 +775,7 @@
         }
         .chart-modal-canvas-wrap {
             flex: 1 1 45%;
-            min-width: 260px;
+            
             min-height: min(72vh, 560px);
             height: min(72vh, 560px);
             position: relative;
@@ -1048,6 +1048,34 @@
                 --dashboard-chart-h: clamp(110px, 21vw, 170px);
             }
         }
+        #dashboard-summary-stats .badge-chart-link {
+            cursor: pointer;
+        }
+        #dashboard-summary-stats .badge-chart-link:hover {
+            filter: brightness(0.97);
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+        }
+        /*
+         * Metric history modal — full width (Themezo / app.css uses --tz-modal-width on .modal,
+         * and @media (min-width: 576px) sets .modal-dialog { max-width: var(--tz-modal-width) } — not Bootstrap --bs-*.)
+         */
+        #adBreakdownChartModal.modal {
+            --tz-modal-width: 100%;
+            /* one value = all sides in theme; use two values so left/right are 0 (full bleed) */
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #adBreakdownChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #adBreakdownChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
 </style>
 @endsection
 
@@ -1071,55 +1099,55 @@
             <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                 Channels: <span id="total-channels">0</span>
             </span>
-            <span class="badge bg-success fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of Sales column">
+            <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold;" title="Sum of Sales column — click for history">
                 Sales: <span id="total-l30-sales">$0</span>
             </span>
-            <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of Orders column">
+            <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold;" title="Sum of Orders column — click for history">
                 Orders: <span id="total-l30-orders">0</span>
             </span>
-            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+            <span class="badge bg-primary fs-6 p-2 badge-chart-link d-none" data-metric="qty" style="color: white; font-weight: bold;" title="View trend">
                 Qty items: <span id="total-qty">0</span>
             </span>
-            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;" title="Blended Gprofit%">
-                GPFT%: <span id="avg-gprofit">0%</span>
+            <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold;" title="Blended Gprofit% — click for history">
+                GPFT: <span id="avg-gprofit">0%</span>
             </span>
-            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $">
+            <span class="badge bg-warning fs-6 p-2 d-none" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $">
                 GPFT: <span id="total-gross-pft">$0</span>
             </span>
-            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+            <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold;" title="View trend">
                 G ROI: <span id="avg-groi">0%</span>
             </span>
-            <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;">
-                Ads Spend: <span id="total-ad-spend">$0</span>
+            <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold;" title="View trend">
+                Spend: <span id="total-ad-spend">$0</span>
             </span>
-            <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
-                Total Views: <span id="total-views-badge">0</span>
+            <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold;" title="View trend">
+                views: <span id="total-views-badge">0</span>
             </span>
-            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
-                CVR %: <span id="cvr-pct-badge">0%</span>
+            <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold;" title="CVR = Orders / views — click for history">
+                CVR: <span id="cvr-pct-badge">0%</span>
             </span>
-            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
+            <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold;" title="Net profit $ — click for history">
                 NPFT: <span id="total-pft">$0</span>
             </span>
-            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
+            <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="npft" style="color: black; font-weight: bold;" title="View trend">
                 NPFT: <span id="avg-npft">0%</span>
             </span>
-            <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+            <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold;" title="View trend">
                 NROI: <span id="avg-nroi">0%</span>
             </span>
-            <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
+            <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="clicks" style="color: black; font-weight: bold;" title="View trend">
                 Clicks: <span id="total-clicks">0</span>
             </span>
-            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+            <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="nmap" style="color: white; font-weight: bold;" title="View trend">
                 Missing M: <span id="total-nmap">0</span>
             </span>
-            <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+            <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="missing_l" style="color: white; font-weight: bold;" title="View trend">
                 Missing L : <span id="total-miss">0</span>
             </span>
             <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
-                INV Val: $<span id="inventory-value-amazon">0</span>
+                inv: $<span id="inventory-value-amazon">0</span>
             </span>
-            <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Shopify inventory × LP)">
+            <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold;" title="View trend — Sum of (Shopify inventory × LP)">
                 Inv@LP: $<span id="inv-at-lp">0</span>
             </span>
             <span class="badge bg-success fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of shopify_skus.inv">
@@ -1128,14 +1156,14 @@
             <span class="badge bg-success fs-6 p-2" style="color: black; font-weight: bold;" title="product_master.Values → lp (JSON), inv-weighted">
                 LP: <span id="dashboard-shopify-lp-avg">$0</span>
             </span>
-            <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;" title="INV Val ÷ Sales">
+            <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold;" title="View trend — inv ÷ Sales">
                 TAT: <span id="tat-badge">0</span>
             </span>
             <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
-                Ratings &amp; Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
+                Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
             </span>
             <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">
-                Seller Rating &amp; Reviews: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
+                Seller review: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
             </span>
         </div>
     </div>
@@ -1370,6 +1398,72 @@
                         <canvas id="ySalesChartModalCanvas"></canvas>
                     </div>
                     <ul class="chart-modal-legend-col" id="ySalesPieLegendList" aria-label="Y sales by channel"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Channel metric history (same API as All Marketplace Master — ChannelMasterController::getChannelMetricChartData) -->
+    <div class="modal fade p-0" id="adBreakdownChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="ri-bar-chart-2-line me-1" aria-hidden="true"></i>
+                        <span id="adChartModalTitle">Metric — Rolling window</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="adChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30">30 Days</option>
+                            <option value="31">31 Days</option>
+                            <option value="32" selected>32 Days</option>
+                            <option value="35">35 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="adBreakdownChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="adBreakdownChart"></canvas>
+                        </div>
+                        <div id="adChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="adChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="adChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="salesOrdersItemsBarContainer" style="height: 20vh; margin-top: 8px; align-items: stretch; display: none;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="salesOrdersItemsBarChart"></canvas>
+                        </div>
+                        <div id="salesOrdersItemsBarRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #1e88e5;">Daily</div>
+                        </div>
+                    </div>
+                    <div id="adChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="adChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="ri-error-warning-line text-warning" style="font-size: 2rem;" aria-hidden="true"></i>
+                        <p class="text-muted small mb-0">Daily snapshot data is not available for this metric.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1883,7 +1977,7 @@
             setDashText('cvr-pct-badge', cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
             setDashText('total-pft', '$' + Math.round(netProfit).toLocaleString('en-US'));
             setDashText('avg-npft', avgNpft.toFixed(1) + '%');
-            setDashText('avg-nroi', avgNroi.toFixed(1) + '%');
+            setDashText('avg-nroi', Math.round(avgNroi) + '%');
             setDashText('total-nmap', Math.round(totalNMap).toLocaleString('en-US'));
             setDashText('total-miss', Math.round(totalMiss).toLocaleString('en-US'));
 
@@ -2202,6 +2296,408 @@
                     }
                 });
         }
+
+        // --- Summary badge metric history (ChannelMasterSummary via /channel-metric-chart-data, same as All Marketplace Master) ---
+        let adBreakdownChartInstance = null;
+        let salesOrdersItemsBarChartInstance = null;
+        let currentChartChannel = '';
+        let currentChartMetric = 'l30_sales';
+        let currentChartDays = 32;
+        let adChartAjax = null;
+        let currentChartMode = 'metric';
+        let currentMetricKey = '';
+        let currentCellValue = null;
+
+        function adChartRangeLabel(days) {
+            if (days === 0) return 'Lifetime';
+            return 'L' + days;
+        }
+
+        const summaryMetricLabels = {
+            'l30_sales': 'Sales',
+            'l30_orders': 'Orders',
+            'qty': 'Qty',
+            'gprofit': 'GPFT',
+            'groi': 'G ROI%',
+            'ads_pct': 'TAcos %',
+            'pft': 'NPFT $',
+            'npft': 'NPFT %',
+            'nroi': 'NROI',
+            'missing_l': 'Missing L',
+            'nmap': 'Missing M',
+            'ad_spend': 'Spend',
+            'clicks': 'Clicks',
+            'cvr': 'CVR',
+            'total_views': 'views',
+            'inv_at_lp': 'Inv@LP',
+            'tat': 'TAT',
+        };
+
+        function summaryBarChartFmtVal(metricKey, v) {
+            if (metricKey === 'l30_sales' || metricKey === 'ad_spend' || metricKey === 'ad_sales' || metricKey === 'pft' || metricKey === 'inv_at_lp') {
+                return '$' + Math.round(v).toLocaleString('en-US');
+            }
+            if (metricKey === 'acos' || metricKey === 'cvr' || metricKey === 'ads_cvr' || metricKey === 'gprofit' || metricKey === 'groi' || metricKey === 'ads_pct' || metricKey === 'npft' || metricKey === 'nroi') {
+                return v.toFixed(1) + '%';
+            }
+            if (metricKey === 'tat') return v.toFixed(2);
+            return Math.round(v).toLocaleString('en-US');
+        }
+
+        function renderSummaryMetricBarChart(barData) {
+            const ctx = document.getElementById('salesOrdersItemsBarChart');
+            if (!ctx) return;
+            const g = ctx.getContext('2d');
+            if (salesOrdersItemsBarChartInstance) {
+                salesOrdersItemsBarChartInstance.destroy();
+                salesOrdersItemsBarChartInstance = null;
+            }
+            const labels = barData.labels || [];
+            const values = barData.values || [];
+            const metricKey = barData.metricKey || 'l30_sales';
+            const seriesLabel = summaryMetricLabels[metricKey] || metricKey;
+            const isCurrency = ['l30_sales', 'ad_spend', 'ad_sales', 'pft', 'inv_at_lp'].includes(metricKey);
+            const isPercent = ['acos', 'cvr', 'ads_cvr', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi'].includes(metricKey);
+            const yTitle = isCurrency ? seriesLabel + ' ($)' : isPercent ? seriesLabel + ' (%)' : seriesLabel;
+            salesOrdersItemsBarChartInstance = new Chart(g, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: seriesLabel, data: values, backgroundColor: 'rgba(30,136,229,0.8)', borderColor: '#1e88e5', borderWidth: 1 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 8, left: 4, right: 4, bottom: 20 } },
+                    plugins: {
+                        legend: { display: true, position: 'top', labels: { font: { size: 9 }, boxWidth: 12 } },
+                        tooltip: {
+                            callbacks: {
+                                label: function (ctx) {
+                                    const v = ctx.raw;
+                                    return seriesLabel + ': ' + summaryBarChartFmtVal(metricKey, v);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45,
+                                font: { size: labels.length > 25 ? 7 : 8 },
+                                autoSkip: false,
+                                maxTicksLimit: Math.max(labels.length, 31)
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: yTitle, font: { size: 9 } },
+                            ticks: {
+                                font: { size: 9 },
+                                callback: function (v) {
+                                    if (isCurrency) return '$' + (v >= 1000 ? (v / 1000) + 'k' : v);
+                                    if (isPercent) return v + '%';
+                                    return Math.round(v).toLocaleString('en-US');
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function loadSummaryMetricBarChart() {
+            const channel = currentChartChannel;
+            const days = currentChartDays;
+            const metricKey = currentMetricKey || 'l30_sales';
+            $.get('/channel-metric-chart-data', { channel: channel, days: days, metric: metricKey }).done(function (resp) {
+                const data = (resp && resp.data) ? resp.data : [];
+                if (data.length === 0) {
+                    $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
+                    if (salesOrdersItemsBarChartInstance) {
+                        salesOrdersItemsBarChartInstance.destroy();
+                        salesOrdersItemsBarChartInstance = null;
+                    }
+                    return;
+                }
+                const year = new Date().getFullYear();
+                const sorted = data.slice().sort(function (a, b) {
+                    const dA = new Date((a.date || a.label) + ' ' + year);
+                    const dB = new Date((b.date || b.label) + ' ' + year);
+                    if (isNaN(dA.getTime()) || isNaN(dB.getTime())) return String(a.date || a.label).localeCompare(String(b.date || b.label));
+                    return dA - dB;
+                });
+                const labels = sorted.map(function (d) { return d.date || d.label; });
+                const values = sorted.map(function (d) { return parseFloat(d.value) || 0; });
+                $('#salesOrdersItemsBarContainer').css('display', 'flex').show();
+                renderSummaryMetricBarChart({ labels: labels, values: values, metricKey: metricKey });
+            }).fail(function () {
+                $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
+                if (salesOrdersItemsBarChartInstance) {
+                    salesOrdersItemsBarChartInstance.destroy();
+                    salesOrdersItemsBarChartInstance = null;
+                }
+            });
+        }
+
+        function renderSummaryMetricLineChart(data) {
+            const canvas = document.getElementById('adBreakdownChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (adBreakdownChartInstance) {
+                adBreakdownChartInstance.destroy();
+            }
+            const labels = data.map(function (d) { return d.date; });
+            const values = data.map(function (d) { return d.value; });
+            const dataMin = Math.min.apply(null, values);
+            const dataMax = Math.max.apply(null, values);
+            const sorted = values.slice().sort(function (a, b) { return a - b; });
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            const range = dataMax - dataMin || 1;
+            const yMin = Math.max(0, dataMin - range * 0.1);
+            const yMax = dataMax + range * 0.1;
+
+            const fmtVal = function (v) {
+                const m = currentChartMetric;
+                if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
+                    return '$' + Math.round(v).toLocaleString('en-US');
+                }
+                if (m === 'acos' || m === 'cvr' || m === 'ads_cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
+                    return v.toFixed(1) + '%';
+                }
+                if (m === 'tat') return v.toFixed(2);
+                return Math.round(v).toLocaleString('en-US');
+            };
+
+            const refRed = '#dc3545';
+            const refGray = '#6c757d';
+            const refGreen = '#198754';
+            const highestEl = document.getElementById('adChartHighest');
+            const medianEl = document.getElementById('adChartMedian');
+            const lowestEl = document.getElementById('adChartLowest');
+            if (highestEl) {
+                highestEl.textContent = fmtVal(dataMax);
+                highestEl.style.color = dataMax === 0 ? refGreen : dataMax > 0 ? refRed : refGray;
+            }
+            if (medianEl) {
+                medianEl.textContent = fmtVal(median);
+                medianEl.style.color = median === 0 ? refGreen : median > 0 ? refRed : refGray;
+            }
+            if (lowestEl) {
+                lowestEl.textContent = fmtVal(dataMin);
+                lowestEl.style.color = dataMin === 0 ? refGreen : dataMin > 0 ? refRed : refGray;
+            }
+
+            const invertedMetrics = ['acos', 'ads_pct'];
+            const isInverted = invertedMetrics.indexOf(currentChartMetric) >= 0;
+            const dotColors = values.map(function (v, i) {
+                if (i === 0) return '#6c757d';
+                if (isInverted) {
+                    return v < values[i - 1] ? '#28a745' : v > values[i - 1] ? '#dc3545' : '#6c757d';
+                }
+                return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? '#dc3545' : '#6c757d';
+            });
+            const labelColors = values.map(function (v) { return v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d'; });
+
+            const medianLinePlugin = {
+                id: 'medianLine',
+                afterDraw: function (chart) {
+                    const yScale = chart.scales.y;
+                    const xScale = chart.scales.x;
+                    const c = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(median);
+                    c.save();
+                    c.setLineDash([6, 4]);
+                    c.strokeStyle = '#6c757d';
+                    c.lineWidth = 1.2;
+                    c.beginPath();
+                    c.moveTo(xScale.left, yPixel);
+                    c.lineTo(xScale.right, yPixel);
+                    c.stroke();
+                    c.restore();
+                }
+            };
+            const valueLabelsPlugin = {
+                id: 'valueLabels',
+                afterDatasetsDraw: function (chart) {
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const c = chart.ctx;
+                    c.save();
+                    c.font = 'bold 11px Inter, system-ui, sans-serif';
+                    c.textAlign = 'center';
+                    c.textBaseline = 'bottom';
+                    meta.data.forEach(function (point, i) {
+                        const val = dataset.data[i];
+                        const offsetY = (i % 2 === 0) ? -10 : -20;
+                        c.fillStyle = labelColors[i];
+                        c.fillText(fmtVal(val), point.x, point.y + offsetY);
+                    });
+                    c.restore();
+                }
+            };
+
+            adBreakdownChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: (currentChartMetric.charAt(0).toUpperCase() + currentChartMetric.slice(1)),
+                        data: values,
+                        backgroundColor: 'rgba(108,117,125,0.08)',
+                        borderColor: '#adb5bd',
+                        borderWidth: 1.5,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: dotColors,
+                        pointBorderColor: dotColors,
+                        pointBorderWidth: 1.5
+                    }]
+                },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 26, left: 2, right: 2, bottom: 2 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            titleFont: { size: 10 },
+                            bodyFont: { size: 10 },
+                            padding: 6,
+                            callbacks: {
+                                label: function (context) {
+                                    const idx = context.dataIndex;
+                                    const parts = ['Value: ' + fmtVal(context.raw)];
+                                    if (idx > 0) {
+                                        const diff = context.raw - values[idx - 1];
+                                        const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '▬';
+                                        parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
+                                    }
+                                    if (idx >= 7) {
+                                        const diff7 = context.raw - values[idx - 7];
+                                        const arrow7 = diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬';
+                                        parts.push('vs 7d Ago: ' + arrow7 + ' ' + fmtVal(Math.abs(diff7)));
+                                    }
+                                    return parts;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: yMin,
+                            max: yMax,
+                            ticks: {
+                                font: { size: 9 },
+                                callback: function (value) { return fmtVal(value); }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45,
+                                autoSkip: currentChartMode === 'metric' ? false : labels.length > 14,
+                                maxTicksLimit: currentChartMode === 'metric' ? Math.max(labels.length, 31) : (labels.length > 14 ? 14 : labels.length),
+                                font: { size: 8 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function loadSummaryMetricHistoryChart() {
+            if (adChartAjax) adChartAjax.abort();
+            $('#adChartNoData').hide();
+            $('#adBreakdownChartContainer').hide();
+            $('#adChartLoading').show();
+            const params = {
+                channel: currentChartChannel,
+                metric: currentMetricKey,
+                days: currentChartDays
+            };
+            if (currentCellValue !== null && !isNaN(currentCellValue)) {
+                params.badge_value = currentCellValue;
+            }
+            adChartAjax = $.ajax({
+                url: '/channel-metric-chart-data',
+                method: 'GET',
+                data: params,
+                success: function (response) {
+                    adChartAjax = null;
+                    $('#adChartLoading').hide();
+                    if (response.success && response.data && response.data.length > 0) {
+                        $('#adBreakdownChartContainer').show();
+                        renderSummaryMetricLineChart(response.data);
+                        loadSummaryMetricBarChart();
+                    } else {
+                        $('#adChartNoData').show();
+                        $('#salesOrdersItemsBarContainer').hide();
+                        if (salesOrdersItemsBarChartInstance) {
+                            salesOrdersItemsBarChartInstance.destroy();
+                            salesOrdersItemsBarChartInstance = null;
+                        }
+                    }
+                },
+                error: function (xhr, status) {
+                    adChartAjax = null;
+                    if (status === 'abort') return;
+                    console.error('[Dashboard] metric chart:', xhr);
+                    $('#adChartLoading').hide();
+                    $('#adChartNoData').show();
+                    $('#salesOrdersItemsBarContainer').hide();
+                    if (salesOrdersItemsBarChartInstance) {
+                        salesOrdersItemsBarChartInstance.destroy();
+                        salesOrdersItemsBarChartInstance = null;
+                    }
+                }
+            });
+        }
+
+        function showSummaryMetricChart(channel, metricKey, cellValue) {
+            if (typeof bootstrap === 'undefined') {
+                alert('Bootstrap is required for metric charts. Please refresh.');
+                return;
+            }
+            currentChartMode = 'metric';
+            currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
+            currentMetricKey = metricKey;
+            currentChartMetric = metricKey;
+            currentChartDays = 32;
+            currentCellValue = (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) ? cellValue : null;
+            $('#adChartRangeSelect').val('32');
+            const label = summaryMetricLabels[metricKey] || metricKey;
+            $('#adChartModalTitle').text(channel + ' - ' + label + ' (Rolling ' + adChartRangeLabel(currentChartDays) + ')');
+            const modal = new bootstrap.Modal(document.getElementById('adBreakdownChartModal'));
+            modal.show();
+            loadSummaryMetricHistoryChart();
+        }
+
+        $(document).on('change', '#adChartRangeSelect', function () {
+            const days = parseInt($(this).val(), 10);
+            if (days === currentChartDays) return;
+            currentChartDays = days;
+            const titleEl = $('#adChartModalTitle');
+            titleEl.text(titleEl.text().replace(/\(Rolling [^)]+\)/, '(Rolling ' + adChartRangeLabel(days) + ')'));
+            loadSummaryMetricHistoryChart();
+        });
+
+        $(document).on('click', '#dashboard-summary-stats .badge-chart-link', function (e) {
+            e.preventDefault();
+            const metricKey = $(this).data('metric');
+            if (!metricKey) return;
+            const raw = $(this).find('span').first().text().replace(/[^0-9.-]/g, '');
+            const badgeValue = (raw === '' || raw === '-') ? null : parseFloat(raw);
+            showSummaryMetricChart('All', metricKey, badgeValue);
+        });
 
         function initDashboardPage() {
             document.querySelectorAll('.dashboard-grid .subcard-item').forEach(function (el) {
