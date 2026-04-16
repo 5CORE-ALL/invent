@@ -195,7 +195,7 @@
             text-align: center;
         }
 
-        /* Coloring for ACOS, 7UB, 1UB */
+        /* Coloring for ACOS */
         .green-bg {
             color: #05bd30 !important;
         }
@@ -270,29 +270,27 @@
                         <option value="req" selected>RL</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1" style="width: auto;">
-                        <select id="gpft-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative (&lt;0%)</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="60plus">Above 60%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
-                            <option value="all">All CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-2">0-2%</option>
-                            <option value="2-4">2-4%</option>
-                            <option value="4-7">4-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
+                    <select id="gpft-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative (&lt;0%)</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+                    <select id="cvr-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All CVR%</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-2">0-2%</option>
+                        <option value="2-4">2-4%</option>
+                        <option value="4-7">4-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
 
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -349,7 +347,7 @@
                     <select id="sold-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">Sold</option>
-                        <option value="sold">Sold (>0)</option>
+                        <option value="sold">Sold >0</option>
                         <option value="zero">0 Sold</option>
                     </select>
 
@@ -357,21 +355,6 @@
                         style="width: auto; display: inline-block;">
                         <option value="all">S PRC</option>
                         <option value="blank">Blank S PRC only</option>
-                    </select>
-
-                    <!-- KW Page Filters -->
-                    <select id="utilization-type-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">All Utilization</option>
-                        <option value="gg">Green+Green</option>
-                        <option value="gp">Green+Pink</option>
-                        <option value="gr">Green+Red</option>
-                        <option value="pg">Pink+Green</option>
-                        <option value="pp">Pink+Pink</option>
-                        <option value="pr">Pink+Red</option>
-                        <option value="rg">Red+Green</option>
-                        <option value="rp">Red+Pink</option>
-                        <option value="rr">Red+Red</option>
                     </select>
 
                     <select id="campaign-status-filter" class="form-select form-select-sm"
@@ -390,60 +373,6 @@
                         <option value="NRA">NRA</option>
                         <option value="LATER">LATER</option>
                     </select>
-
-                    <select id="price-slab-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="">Price Slab</option>
-                        <option value="lt10">&lt; $10</option>
-                        <option value="10-20">$10 - $20</option>
-                        <option value="20-30">$20 - $30</option>
-                        <option value="30-50">$30 - $50</option>
-                        <option value="50-100">$50 - $100</option>
-                        <option value="gt100">&gt; $100</option>
-                    </select>
-
-                    <select id="acos-slab-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="">ACOS</option>
-                        <option value="10">Under 20%</option>
-                        <option value="5">20% – 30%</option>
-                        <option value="2">≥ 30%</option>
-                    </select>
-
-                    <!-- Unified Range Filter (Views & Sold) -->
-                    <select id="range-column-select" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="">Select Filter</option>
-                        <option value="Sess30">View L30</option>
-                        <option value="A_L30">Sold L30</option>
-                    </select>
-                    <input type="number" id="range-min" class="form-control form-control-sm" 
-                        placeholder="Min" min="0" style="width: 90px; display: inline-block;">
-                    <input type="number" id="range-max" class="form-control form-control-sm" 
-                        placeholder="Max" min="0" style="width: 90px; display: inline-block;">
-                    <button id="clear-range-filter" class="btn btn-sm btn-outline-secondary" title="Clear Range Filter">
-                        <i class="fas fa-times"></i>
-                    </button>
-                    <span class="badge bg-info fs-6 p-2" id="range-filter-count-badge" style="color: white; font-weight: bold; display: none;">
-                        Filtered: <span id="range-filter-count">0</span>
-                    </span>
-
-                    <!-- 7UB/1UB/ACOS Range Filters -->
-                    <span class="text-muted ms-2" style="font-size: 0.75rem;">7UB:</span>
-                    <input type="number" id="7ub-min" class="form-control form-control-sm" 
-                        placeholder="Min" step="0.1" style="width: 60px; display: inline-block;">
-                    <input type="number" id="7ub-max" class="form-control form-control-sm" 
-                        placeholder="Max" step="0.1" style="width: 60px; display: inline-block;">
-                    <span class="text-muted ms-2" style="font-size: 0.75rem;">1UB:</span>
-                    <input type="number" id="1ub-min" class="form-control form-control-sm" 
-                        placeholder="Min" step="0.1" style="width: 60px; display: inline-block;">
-                    <input type="number" id="1ub-max" class="form-control form-control-sm" 
-                        placeholder="Max" step="0.1" style="width: 60px; display: inline-block;">
-                    <span class="text-muted ms-2" style="font-size: 0.75rem;">ACOS:</span>
-                    <input type="number" id="acos-range-min" class="form-control form-control-sm" 
-                        placeholder="Min" step="0.1" style="width: 60px; display: inline-block;">
-                    <input type="number" id="acos-range-max" class="form-control form-control-sm" 
-                        placeholder="Max" step="0.1" style="width: 60px; display: inline-block;">
 
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
@@ -479,9 +408,6 @@
                             <!-- Populated dynamically -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-eye"></i> Show All
-                    </button>
 
                     {{-- <span class="me-3 px-3 py-1" style="background-color: #e3f2fd; border-radius: 5px;">
                         <strong>PFT%:</strong> <span id="pft-calc">0.00%</span>
@@ -489,14 +415,6 @@
                     <span class="me-3 px-3 py-1" style="background-color: #e8f5e9; border-radius: 5px;">
                         <strong>ROI%:</strong> <span id="roi-calc">0.00%</span>
                     </span> --}}
-
-                    <button id="import-btn" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
-                        <i class="fas fa-upload"></i> Import Ratings
-                    </button>
-
-                    <a href="{{ url('/amazon-ratings-sample') }}" class="btn btn-sm btn-info">
-                        <i class="fas fa-download"></i> Template
-                    </a>
 
                     <a href="{{ url('/amazon-export-pricing-cvr') }}" class="btn btn-sm btn-success">
                         <i class="fas fa-file-csv"></i> Export
@@ -526,10 +444,6 @@
                         <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
 
-                    <button id="seo-btn" class="btn btn-sm" style="background-color: #8B0000; color: white; font-weight: bold;">
-                        CVR Content (<span id="seo-count">0</span>)
-                    </button>
-
                     <span class="badge bg-info fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold; display: none;">Total SKUs: 0</span>
 
                 </div>
@@ -540,7 +454,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <!-- Sold Filter Badges (Clickable + Hover for chart) -->
                         <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Sold (>0): <span id="total-sold-count">0</span>
+                            Sold >0: <span id="total-sold-count">0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             0 Sold: <span id="zero-sold-count">0</span>
@@ -548,13 +462,13 @@
                         
                         <!-- Inventory Mapping Badges (Clickable + Hover for chart) -->
                         <span class="badge bg-danger fs-6 p-2 map-filter-badge amz-hover-chart" data-filter="nmapped" data-metric="nmap_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                             N Map: <span id="nmap-count">0</span>
+                             Missing M: <span id="nmap-count">0</span>
                         </span>
-                        <span class="badge bg-secondary fs-6 p-2 missing-amz-fba-filter-badge" id="missing-amazon-fba-badge" data-filter="missing-amazon-fba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L (FBA only)">
-                            Missing L (FBA): <span id="missing-amazon-fba-count">0</span>
+                        <span class="badge bg-secondary fs-6 p-2 missing-amz-fba-filter-badge" id="missing-amazon-fba-badge" data-filter="missing-amazon-fba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L FBA">
+                            Missing L FBA: <span id="missing-amazon-fba-count">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 missing-amz-nonfba-filter-badge" id="missing-amazon-nonfba-badge" data-filter="missing-amazon-nonfba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L (Non-FBA only)">
-                            Missing L (Non-FBA): <span id="missing-amazon-nonfba-count">0</span>
+                        <span class="badge bg-success fs-6 p-2 missing-amz-nonfba-filter-badge" id="missing-amazon-nonfba-badge" data-filter="missing-amazon-nonfba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing M FBM">
+                            Missing M FBM: <span id="missing-amazon-nonfba-count">0</span>
                         </span>
                         <span class="badge bg-success fs-6 p-2" id="variation-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Variation (NRL count)">
                             Variation: <span id="variation-count">0</span>
@@ -568,12 +482,12 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Sales: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="total_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Ad Spend: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="total_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Ad: $0.00</span>
                         
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
-                        <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" data-metric="groi_pct" id="groi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GROI: 0%</span>
+                        <span class="badge bg-light fs-6 p-2 amz-badge-chart border" data-metric="groi_pct" id="groi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GROI: 0%</span>
                         <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" id="nroi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">NROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" id="tcos-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">TCOS: 0%</span>
                         
@@ -581,39 +495,8 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">Avg Views: 0</span>
-                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_l30_orders" id="total-amazon-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">A L30: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-amazon-l7-badge" style="color: black; font-weight: bold;">A L7: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0%</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-amazon-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-amazon-inv-amz-badge" style="color: black; font-weight: bold;">INV AMZ: 0</span>
-                        
-                        <!-- Ad Spend Breakdown -->
-                        <span class="badge bg-dark fs-6 p-2 amz-badge-chart" data-metric="kw_spend" data-source="badge" id="kw-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">KW Ads: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" data-metric="hl_spend" data-source="badge" id="hl-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">HL Ads: $0</span>
-                        <span class="badge bg-dark fs-6 p-2 amz-badge-chart" data-metric="pt_spend" data-source="badge" id="pt-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">PT Ads: $0</span>
-                        
-                        <!-- Campaign Statistics (from KW page) -->
-                        <span class="badge fs-6 p-2 campaign-count-badge amz-hover-chart" id="campaign-count-badge" data-metric="campaign_count" data-source="badge" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Campaign: <span id="campaign-count">0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 missing-campaign-badge amz-hover-chart" id="missing-campaign-badge" data-metric="missing_campaign_count" data-source="badge" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Missing A: <span id="missing-campaign-count">0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 nra-count-badge amz-hover-chart" id="nra-count-badge" data-metric="nra_count" data-source="badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            NRA: <span id="nra-count">0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 ra-count-badge amz-hover-chart" id="ra-count-badge" data-metric="ra_count" data-source="badge" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            RA: <span id="ra-count">0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 paused-campaigns-badge amz-hover-chart" id="paused-campaigns-badge" data-metric="paused_count" data-source="badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Paused: <span id="paused-campaigns-count">0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 7ub-count-badge amz-hover-chart" id="7ub-count-badge" data-metric="ub7_count" data-source="badge" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            7UB: <span id="7ub-count">0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 7ub-1ub-count-badge amz-hover-chart" id="7ub-1ub-count-badge" data-metric="ub7_ub1_count" data-source="badge" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            7UB+1UB: <span id="7ub-1ub-count">0</span>
-                        </span>
                     </div>
                 </div>
             </div>
@@ -792,39 +675,6 @@
         </div>
     </div>
 
-    <!-- Import Modal -->
-    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Import Amazon Ratings</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <form id="importForm">
-                    @csrf
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="csvFile" class="form-label">Choose CSV File</label>
-                            <input type="file" class="form-control" id="csvFile" name="file" accept=".csv" required>
-                        </div>
-                        <div class="mb-3">
-                            <h6>Sample CSV Format:</h6>
-                            <small class="text-muted">
-                                <i class="fa fa-info-circle"></i> CSV must have SKU in the first column, followed by rating column.<br>
-                                Example format:<br>
-                                <code>SKU,rating<br>ABC123,5<br>DEF456,4<br>GHI789,3</code>
-                            </small>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="uploadBtn">Upload & Import</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <!-- Amazon Metric Trend Chart Modal -->
     <div class="modal fade" id="amzMetricChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
@@ -975,9 +825,8 @@
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
         let missingAmazonFilterActive = false;   // Track Missing L (all) — header dot
-        let missingAmazonFbaFilterActive = false;    // Track Missing L (FBA only) filter
-        let missingAmazonNonFbaFilterActive = false; // Track Missing L (Non-FBA only) filter
-        let seoModeActive = false; // Track SEO mode state
+        let missingAmazonFbaFilterActive = false;    // Track Missing L FBA filter
+        let missingAmazonNonFbaFilterActive = false; // Track Missing M FBM (non-FBA listing) filter
 
         // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
         function escAttr(s) {
@@ -1251,36 +1100,27 @@
         const amzMetricLabels = {
             'l30_sales': 'L30 Sales', 'l30_orders': 'L30 Orders', 'qty': 'Total Qty',
             'gprofit': 'Gprofit%', 'groi': 'G ROI%', 'ads_pct': 'Ads%/TCOS',
-            'npft': 'N PFT%', 'nroi': 'N ROI%', 'ad_spend': 'Ad Spend',
+            'npft': 'N PFT%', 'nroi': 'N ROI%', 'ad_spend': 'Ad',
             'clicks': 'Clicks', 'acos': 'ACOS', 'missing_l': 'Missing',
-            'nmap': 'N Map',
+            'nmap': 'Missing M',
             // Badge-stat metrics (daily snapshot counts)
-            'sold_count': 'Sold (>0)', 'zero_sold_count': '0 Sold',
-            'map_count': 'Missing M', 'nmap_count': 'N Map', 'missing_count': 'Missing L',
-            'prc_gt_lmp_count': 'Prc > LMP', 'campaign_count': 'Campaign',
-            'missing_campaign_count': 'Missing A', 'nra_count': 'NRA',
-            'ra_count': 'RA', 'paused_count': 'Paused',   
-            'ub7_count': '7UB', 'ub7_ub1_count': '7UB+1UB',
-            'kw_spend': 'KW Ads Spend', 'hl_spend': 'HL Ads Spend', 'pt_spend': 'PT Ads Spend',
-            'total_pft': 'PFT', 'total_sales': 'Sales', 'total_spend': 'Ad Spend',
+            'sold_count': 'Sold >0', 'zero_sold_count': '0 Sold',
+            'map_count': 'Missing M', 'nmap_count': 'Missing M', 'missing_count': 'Missing L',
+            'prc_gt_lmp_count': 'Prc > LMP',
+            'total_pft': 'PFT', 'total_sales': 'Sales', 'total_spend': 'Ad',
             'gpft_pct': 'GPFT%', 'npft_pct': 'PFT%', 'groi_pct': 'GROI%', 'nroi_pct': 'NROI%', 'tcos_pct': 'TCOS%',
-            'total_l30_orders': 'L30 Orders',
         };
 
         // Metrics stored in badge stats table (daily counts/amounts)
         const amzBadgeStatMetrics = [
             'sold_count', 'zero_sold_count', 'map_count', 'nmap_count',
-            'missing_count', 'prc_gt_lmp_count', 'campaign_count',
-            'missing_campaign_count', 'nra_count', 'ra_count',
-            'paused_count', 'ub7_count', 'ub7_ub1_count',
-            'kw_spend', 'hl_spend', 'pt_spend',
+            'missing_count', 'prc_gt_lmp_count',
             'total_pft', 'total_sales', 'total_spend',
             'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct',
-            'total_l30_orders',
         ];
 
         const amzPctMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
-        const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend', 'total_pft', 'total_sales', 'total_spend'];
+        const amzDollarMetrics = ['l30_sales', 'ad_spend', 'total_pft', 'total_sales', 'total_spend'];
 
         /** Set false to silence [amazon-tabulator] browser console debug lines */
         const AMAZON_TABULATOR_DEBUG_LOG = true;
@@ -1370,7 +1210,7 @@
             $('#amzChartRangeSelect').val('30');
             const label = amzMetricLabels[metricKey] || metricKey;
             const isBadge = amzBadgeStatMetrics.includes(metricKey);
-            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'total_spend', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'total_l30_orders'];
+            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'total_spend', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
             const suffix = isBadge ? (badgeSnapshotMetrics.includes(metricKey) ? 'Daily Snapshot' : 'Daily Count') : 'Rolling L30';
             $('#amzChartModalTitle').text(`Amazon - ${label} (${suffix})`);
             const modal = new bootstrap.Modal(document.getElementById('amzMetricChartModal'));
@@ -1431,7 +1271,7 @@
 
         // Hover-to-chart for badges (500ms delay). Filter badges: no hover chart so click = filter only.
         let amzHoverTimer = null;
-        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge, .missing-amz-fba-filter-badge, .missing-amz-nonfba-filter-badge, .price-filter-badge, .missing-campaign-badge';
+        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge, .missing-amz-fba-filter-badge, .missing-amz-nonfba-filter-badge, .price-filter-badge';
         $(document).on('mouseenter', '.amz-hover-chart', function() {
             if ($(this).is(amzHoverChartFilterBadgeSelector)) return; // filter badges: click applies filter, never open chart on hover
             const metric = $(this).data('metric');
@@ -1856,7 +1696,7 @@
                 applyFilters();
             });
 
-            // Missing L (FBA) filter badge click — show only Missing L rows that are FBA
+            // Missing L FBA badge click — show only not-listed-on-Amazon rows that are FBA
             $(document).on('click', '.missing-amz-fba-filter-badge', function() {
                 missingAmazonFbaFilterActive = !missingAmazonFbaFilterActive;
                 if (missingAmazonFbaFilterActive) {
@@ -1876,7 +1716,7 @@
                 applyFilters();
             });
 
-            // Missing L (Non-FBA) filter badge click — show only Missing L rows that are Non-FBA
+            // Missing M FBM badge click — show only not-listed-on-Amazon rows that are non-FBA (FBM)
             $(document).on('click', '.missing-amz-nonfba-filter-badge', function() {
                 missingAmazonNonFbaFilterActive = !missingAmazonNonFbaFilterActive;
                 if (missingAmazonNonFbaFilterActive) {
@@ -1896,88 +1736,12 @@
                 applyFilters();
             });
 
-            // Missing A filter badge click handler: set Active Filter to "Missing A" and apply
-            $(document).on('click', '.missing-campaign-badge', function() {
-                var $sel = $('#campaign-status-filter');
-                if ($sel.val() === 'MISSING') {
-                    $sel.val('');
-                } else {
-                    $sel.val('MISSING');
-                }
-                applyFilters();
-            });
-
             // Variation badge click: filter to NRL (red) rows only; click again to show all
             $(document).on('click', '#variation-count-badge', function() {
                 var current = $('#nrl-filter').val();
                 $('#nrl-filter').val(current === 'nr' ? 'all' : 'nr');
                 applyFilters();
             });
-
-            // SEO button click handler
-            $('#seo-btn').on('click', function() {
-                seoModeActive = !seoModeActive;
-                
-                if (seoModeActive) {
-                    $(this).css('background-color', '#006400'); // Darker green when active
-                    
-                    // Hide specified columns
-                    table.getColumn('NR').hide();
-                    table.getColumn('image_path').hide();
-                    table.getColumn('is_missing').hide();
-                    table.getColumn('inv_map').hide();
-                    table.getColumn('rating').hide();
-                    table.getColumn('INV_AMZ').hide();
-                    table.getColumn('FBA_Quantity').hide();
-                    
-                    // Hide columns from NROI to AD SALES L30
-                    table.getColumn('NROI').hide();
-                    table.getColumn('AD%').hide();
-                    table.getColumn('ACOS').hide();
-                    table.getColumn('SALES_L30').hide();
-                    
-                    // Hide SPFT and SROI columns
-                    table.getColumn('Spft%').hide();
-                    table.getColumn('SROI').hide();
-                    
-                    // Apply SEO filters
-                    applyFilters();
-                } else {
-                    $(this).css('background-color', '#8B0000'); // Dark red when inactive
-                    
-                    // Show specified columns
-                    table.getColumn('NR').show();
-                    table.getColumn('image_path').show();
-                    table.getColumn('is_missing').show();
-                    table.getColumn('inv_map').show();
-                    table.getColumn('rating').show();
-                    table.getColumn('INV_AMZ').show();
-                    table.getColumn('FBA_Quantity').show();
-                    
-                    // Show columns from NROI to AD SALES L30
-                    table.getColumn('NROI').show();
-                    table.getColumn('AD%').show();
-                    table.getColumn('ACOS').show();
-                    table.getColumn('SALES_L30').show();
-                    
-                    // Show SPFT and SROI columns
-                    table.getColumn('Spft%').show();
-                    table.getColumn('SROI').show();
-                    
-                    // Remove SEO filters
-                    applyFilters();
-                }
-                
-                updateSeoCount();
-            });
-
-            // Function to update SEO count
-            function updateSeoCount() {
-                if (!table) return;
-                
-                const filteredData = table.getData('active').filter(row => row.is_parent_summary);
-                $('#seo-count').text(filteredData.length);
-            }
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
@@ -4064,57 +3828,6 @@
                         width: 90
                     },
                     {
-                        title: "PT 7 UB%",
-                        field: "pt_7ub",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
-                            if (!hasCampaign) return '-';
-                            var l7_spend = parseFloat(row.pt_spend_L7 || 0);
-                            var budget = parseFloat(row.pt_campaignBudgetAmount || 0);
-                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 66 && ub7 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub7 > 99) {
-                                td.classList.add('pink-bg');
-                            } else if (ub7 < 66) {
-                                td.classList.add('red-bg');
-                            }
-                            return ub7.toFixed(0) + "%";
-                        }
-                    },
-                    {
-                        title: "PT 1 UB%",
-                        field: "pt_1ub",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
-                            if (!hasCampaign) return '-';
-                            // Use pt_spend_L1 directly from backend
-                            var l1_spend = parseFloat(row.pt_spend_L1 || 0);
-                            var budget = parseFloat(row.pt_campaignBudgetAmount || 0);
-                            var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 66 && ub1 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub1 > 99) {
-                                td.classList.add('pink-bg');
-                            } else if (ub1 < 66) {
-                                td.classList.add('red-bg');
-                            }
-                            return ub1.toFixed(0) + "%";
-                        }
-                    },
-                    {
                         title: "PT AVG CPC",
                         field: "pt_avg_cpc",
                         hozAlign: "center",
@@ -4157,27 +3870,6 @@
                             // Use pt_l1_cpc directly from backend
                             var l1_cpc = parseFloat(row.pt_l1_cpc || 0);
                             return l1_cpc.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "PT 2 UB%",
-                        field: "pt_2ub",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
-                            if (!hasCampaign) return '-';
-                            var l2_spend = parseFloat(row.pt_spend_L2 || 0);
-                            var budget = parseFloat(row.pt_campaignBudgetAmount || 0);
-                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub2 >= 66 && ub2 <= 99) td.classList.add('green-bg');
-                            else if (ub2 > 99) td.classList.add('pink-bg');
-                            else if (ub2 < 66) td.classList.add('red-bg');
-                            return ub2.toFixed(0) + "%";
                         }
                     },
                     {
@@ -4402,56 +4094,6 @@
                             return aCvr - bCvr;
                         },
                         width: 90
-                    },
-                    {
-                        title: "HL 7 UB%",
-                        field: "hl_7ub",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0;
-                            if (!hasCampaign) return '-';
-                            var l7_spend = parseFloat(row.hl_spend_L7 || 0);
-                            var budget = parseFloat(row.hl_campaignBudgetAmount || 0);
-                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 66 && ub7 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub7 > 99) {
-                                td.classList.add('pink-bg');
-                            } else if (ub7 < 66) {
-                                td.classList.add('red-bg');
-                            }
-                            return ub7.toFixed(0) + "%";
-                        }
-                    },
-                    {
-                        title: "HL 1 UB%",
-                        field: "hl_1ub",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0;
-                            if (!hasCampaign) return '-';
-                            var l1_spend = parseFloat(row.hl_spend_L1 || 0);
-                            var budget = parseFloat(row.hl_campaignBudgetAmount || 0);
-                            var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 66 && ub1 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub1 > 99) {
-                                td.classList.add('pink-bg');
-                            } else if (ub1 < 66) {
-                                td.classList.add('red-bg');
-                            }
-                            return ub1.toFixed(0) + "%";
-                        }
                     },
                     {
                         title: "HL LIFE CPC",
@@ -4979,91 +4621,6 @@
                     },
 
                     // KW Page Columns
-                    {
-                        title: "KW 7 UB%",
-                        field: "l7_spend",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                            if (!hasCampaign) return '-';
-                            var l7_spend = parseFloat(row.l7_spend) || 0;
-                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 66 && ub7 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub7 > 99) {
-                                td.classList.add('pink-bg');
-                            } else if (ub7 < 66) {
-                                td.classList.add('red-bg');
-                            }
-                            return ub7.toFixed(0) + "%";
-                        }
-                    },
-                    {
-                        title: "KW 2 UB%",
-                        field: "l2_spend",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                            if (!hasCampaign) return '-';
-                            var l2_spend = parseFloat(row.l2_spend) || 0;
-                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub2 >= 66 && ub2 <= 99) td.classList.add('green-bg');
-                            else if (ub2 > 99) td.classList.add('pink-bg');
-                            else if (ub2 < 66) td.classList.add('red-bg');
-                            return ub2.toFixed(0) + "%";
-                        }
-                    },
-                    {
-                        title: "KW L2 Spend",
-                        field: "kw_l2_spend",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 88,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                            if (!hasCampaign) return '-';
-                            var val = parseFloat(row.l2_spend) || 0;
-                            return val > 0 ? '$' + val.toFixed(2) : '$0.00';
-                        }
-                    },
-                    {
-                        title: "KW 1 UB%",
-                        field: "l1_spend",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                            if (!hasCampaign) return '-';
-                            var l1_spend = parseFloat(row.l1_spend) || 0;
-                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                            var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 66 && ub1 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub1 > 99) {
-                                td.classList.add('pink-bg');
-                            } else if (ub1 < 66) {
-                                td.classList.add('red-bg');
-                            }
-                            return ub1.toFixed(0) + "%";
-                        }
-                    },
                     {
                         title: "KW AVG CPC",
                         field: "avg_cpc",
@@ -5718,27 +5275,6 @@
             });
 
             // Apply filters
-            // UB Zone function for utilization type filtering
-            function ubZone(ub) {
-                if (ub >= 66 && ub <= 99) return 'g';
-                if (ub > 99) return 'p';
-                return 'r';
-            }
-
-            // Utilization combo counts in the dropdown were tied to removed HL Ads section; keep labels without counts.
-            function updateUtilizationCounts() {
-                if (!table) return;
-                var comboLabels = {
-                    'gg': 'Green+Green', 'gp': 'Green+Pink', 'gr': 'Green+Red',
-                    'pg': 'Pink+Green', 'pp': 'Pink+Pink', 'pr': 'Pink+Red',
-                    'rg': 'Red+Green', 'rp': 'Red+Pink', 'rr': 'Red+Red'
-                };
-                $('#utilization-type-filter option').each(function() {
-                    var val = $(this).val();
-                    $(this).text(val === 'all' ? 'All Utilization' : (comboLabels[val] || val));
-                });
-            }
-
             // Normalize parent key (trim + collapse spaces) to match backend and fix Play filter matching
             function normalizeParentKey(val) {
                 if (val == null || val === '') return '';
@@ -5882,18 +5418,9 @@
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
-                const rangeMin = parseFloat($('#range-min').val()) || null;
-                const rangeMax = parseFloat($('#range-max').val()) || null;
-                const rangeColumn = $('#range-column-select').val() || '';
                 
                 const campaignStatusFilter = $('#campaign-status-filter').val();
                 const nraFilter = $('#nra-filter').val();
-                const priceSlabFilter = $('#price-slab-filter').val();
-                const ub7Min = parseFloat($('#7ub-min').val()) || null;
-                const ub7Max = parseFloat($('#7ub-max').val()) || null;
-                const ub1Min = parseFloat($('#1ub-min').val()) || null;
-                const ub1Max = parseFloat($('#1ub-max').val()) || null;
-
                 table.clearFilter(true);
 
                 // When Play is active: apply ONLY playback filter so parent summary row always shows (no other filter can hide it)
@@ -5907,23 +5434,6 @@
                     }
                     updateCalcValues();
                     updateSummary();
-                    updateSeoCount();
-                    amazonTabulatorFinalizeFilterApply(sortSnapshot);
-                    return;
-                }
-
-                // SEO Mode filters
-                if (seoModeActive) {
-                    // Show only parent rows with INV > 0
-                    table.addFilter(function(data) {
-                        const inv = parseFloat(data['INV']) || 0;
-                        return data.is_parent_summary === true && inv > 0;
-                    });
-                    
-                    // Skip other filters when in SEO mode
-                    updateCalcValues();
-                    updateSummary();
-                    updateSeoCount();
                     amazonTabulatorFinalizeFilterApply(sortSnapshot);
                     return;
                 }
@@ -5977,7 +5487,7 @@
                         if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                         if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
                         if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                        if (gpftFilter === '60plus') return gpft >= 60;
+                        if (gpftFilter === '50plus') return gpft >= 50;
                         return true;
                     });
                 }
@@ -6141,30 +5651,6 @@
                     });
                 }
 
-                // Unified Range Filter (Views L30/L7, Sold L30/L7)
-                if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        
-                        const value = parseFloat(data[rangeColumn]) || 0;
-                        
-                        // Apply min filter
-                        if (rangeMin !== null && value < rangeMin) {
-                            return false;
-                        }
-                        
-                        // Apply max filter
-                        if (rangeMax !== null && value > rangeMax) {
-                            return false;
-                        }
-                        
-                        return true;
-                    });
-                }
-
-                // Update range filter badge
-                updateRangeFilterBadge();
-
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
                     table.addFilter(function(data) {
@@ -6196,7 +5682,7 @@
                         if (mapFilterActive === 'mapped') {
                             return difference === 0; // Show only matched items (Map)
                         } else if (mapFilterActive === 'nmapped') {
-                            return difference > 0; // Show only mismatched items (N Map)
+                            return difference > 0; // Show only mismatched items (Missing M)
                         }
                         return true;
                     });
@@ -6217,14 +5703,14 @@
                     const sku = String(data['(Child) sku'] || data['Parent'] || '').trim().toUpperCase();
                     return sku.indexOf('PARENT ') === 0 || sku === 'PARENT';
                 }
-                // Missing L filter — FBA only: not listed on Amazon and row is FBA (by flag or SKU). Exclude parent rows.
+                // Missing L FBA: not listed on Amazon and row is FBA (by flag or SKU). Exclude parent rows.
                 if (missingAmazonFbaFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return false;
                         return !!(data.is_missing_amazon && rowIsFba(data));
                     });
                 }
-                // Missing L filter — Non-FBA only: not listed on Amazon and row is not FBA. Exclude parent rows.
+                // Missing M FBM (non-FBA): not listed on Amazon and row is not FBA. Exclude parent rows.
                 if (missingAmazonNonFbaFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return false;
@@ -6282,63 +5768,8 @@
                     });
                 }
 
-                // Price Slab filter
-                if (priceSlabFilter && priceSlabFilter !== '') {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        const price = parseFloat(data.price) || 0;
-                        
-                        if (priceSlabFilter === 'lt10') return price < 10;
-                        if (priceSlabFilter === '10-20') return price >= 10 && price < 20;
-                        if (priceSlabFilter === '20-30') return price >= 20 && price < 30;
-                        if (priceSlabFilter === '30-50') return price >= 30 && price < 50;
-                        if (priceSlabFilter === '50-100') return price >= 50 && price < 100;
-                        if (priceSlabFilter === 'gt100') return price >= 100;
-                        return true;
-                    });
-                }
-
-                // 7UB Range filter - section-aware
-                if (ub7Min !== null || ub7Max !== null) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var l7_spend = parseFloat(data.l7_spend) || 0;
-                        var budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
-                        var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                        
-                        if (ub7Min !== null && ub7 < ub7Min) return false;
-                        if (ub7Max !== null && ub7 > ub7Max) return false;
-                        return true;
-                    });
-                }
-
-                // 1UB Range filter - section-aware
-                if (ub1Min !== null || ub1Max !== null) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var l1_spend = parseFloat(data.l1_spend) || 0;
-                        var budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
-                        var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                        
-                        if (ub1Min !== null && ub1 < ub1Min) return false;
-                        if (ub1Max !== null && ub1 > ub1Max) return false;
-                        return true;
-                    });
-                }
-
-                updateUtilizationCounts();
-
                 updateCalcValues();
                 updateSummary();
-                updateSeoCount();
-                // Sync Missing A badge appearance when Active Filter is "Missing A"
-                var campFilterVal = $('#campaign-status-filter').val();
-                var $missingCampBadge = $('.missing-campaign-badge');
-                if (campFilterVal === 'MISSING') {
-                    $missingCampBadge.addClass('bg-info').css('background', '');
-                } else {
-                    $missingCampBadge.removeClass('bg-info').css('background', 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)');
-                }
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
                 // Update select all checkbox after filter is applied
                 setTimeout(function() {
@@ -6346,7 +5777,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter, #campaign-status-filter, #nra-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -6423,24 +5854,6 @@
                 e.preventDefault();
                 var current = $('#nrl-filter').val();
                 $('#nrl-filter').val(current === 'req' ? 'all' : 'req');
-                applyFilters();
-            });
-
-            // 7UB, 1UB, ACOS range filter input handlers
-            $('#7ub-min, #7ub-max, #1ub-min, #1ub-max, #acos-range-min, #acos-range-max').on('keyup change', function() {
-                applyFilters();
-            });
-
-            // Unified range filter input handlers
-            $('#range-min, #range-max, #range-column-select').on('keyup change', function() {
-                applyFilters();
-            });
-
-            // Clear range filter button
-            $('#clear-range-filter').on('click', function() {
-                $('#range-min').val('');
-                $('#range-max').val('');
-                $('#range-column-select').val('');
                 applyFilters();
             });
 
@@ -6848,30 +6261,6 @@
                 kwLastSbidCurrentCampaignId = null;
             });
 
-            // Function to update range filter badge
-            function updateRangeFilterBadge() {
-                const rangeMin = parseFloat($('#range-min').val()) || null;
-                const rangeMax = parseFloat($('#range-max').val()) || null;
-                const rangeColumn = $('#range-column-select').val() || '';
-                
-                // Only show badge if filter is active
-                if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
-                    const data = table.getData("active");
-                    let filteredCount = 0;
-                    
-                    data.forEach(row => {
-                        if (!row['is_parent_summary']) {
-                            filteredCount++;
-                        }
-                    });
-                    
-                    $('#range-filter-count').text(filteredCount.toLocaleString());
-                    $('#range-filter-count-badge').show();
-                } else {
-                    $('#range-filter-count-badge').hide();
-                }
-            }
-
             // Update PFT% and ROI% calc values (only for INV > 0)
             function updateCalcValues() {
                 const data = table.getData("active");
@@ -6909,9 +6298,9 @@
                 // TOP ROI% = (total profit sum / total COGS) * 100
                 const avgRoi = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
 
-                $('#pft-calc').text(avgPft.toFixed(2) + '%');
-                $('#roi-calc').text(avgRoi.toFixed(2) + '%');
-                $('#avg-pft-badge').text('AVG PFT: ' + avgPft.toFixed(2) + '%');
+                $('#pft-calc').text(Math.round(avgPft) + '%');
+                $('#roi-calc').text(Math.round(avgRoi) + '%');
+                $('#avg-pft-badge').text('AVG PFT: ' + Math.round(avgPft) + '%');
             }
 
             // Update summary badges for INV > 0
@@ -6923,9 +6312,7 @@
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
                 let totalAmazonInv = 0;
-                let totalAmazonInvAmz = 0;
                 let totalAmazonL30 = 0;
-                let totalAmazonL7 = 0;
                 let totalDilPercent = 0;
                 let dilCount = 0;
                 let totalSkuCount = 0;
@@ -6938,38 +6325,6 @@
                 let missingAmazonNonFbaCount = 0;
                 let variationCount = 0;
                 
-                // KW page counts - Use Set to track unique campaigns
-                let uniqueCampaigns = new Set();
-                let uniquePausedCampaigns = new Set();
-                let missingCampaignCount = 0;
-                let nraCount = 0;
-                let raCount = 0;
-                let ub7Count = 0;
-                let ub7Ub1Count = 0;
-
-                const campaignStatusFilter = $('#campaign-status-filter').val();
-                const dataForCampaignCount = data;
-
-                let parentRowsChecked = 0;
-                let parentRowsWithCampaign = 0;
-                
-                dataForCampaignCount.forEach(row => {
-                    if (row['is_parent_summary']) {
-                        parentRowsChecked++;
-                    }
-                    
-                    let campaignName = row.campaignName || '';
-                    let campaignStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
-                    
-                    // When using data (filtered), table already has only Active or only Paused rows per Active filter
-                    if (campaignName) {
-                        uniqueCampaigns.add(campaignName);
-                        if (row['is_parent_summary']) parentRowsWithCampaign++;
-                        if (campaignStatus === 'PAUSED') uniquePausedCampaigns.add(campaignName);
-                    }
-                });
-                
-
                 // Variation count (NRL / red dot rows - all rows including parents)
                 data.forEach(row => {
                     if (row['NR'] === 'NR') variationCount++;
@@ -6986,19 +6341,11 @@
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['A_L30'] || 0);
                         totalAmazonInv += parseFloat(row['INV'] || 0);
                         
-                        // Handle INV_AMZ - only sum if numeric
-                        const invAmz = row['INV_AMZ'];
-                        if (invAmz && !isNaN(parseFloat(invAmz))) {
-                            totalAmazonInvAmz += parseFloat(invAmz);
-                        }
-                        
                         // Ad Spend Breakdown - DO NOT sum from rows as it causes double-counting
                         // We'll use the campaign totals from the backend instead (calculated below)
                         
                         const aL30 = parseFloat(row['A_L30'] || 0);
-                        const aL7 = parseFloat(row['A_L7'] || 0);
                         totalAmazonL30 += aL30;
-                        totalAmazonL7 += aL7;
                         
                         // Count sold and 0-sold
                         if (aL30 > 0) {
@@ -7014,7 +6361,7 @@
                             prcGtLmpCount++;
                         }
                         
-                        // Count Missing L (not listed on Amazon), Map, N Map
+                        // Count Missing L (not listed on Amazon), Map, Missing M (mismatch)
                         const inv = parseFloat(row['INV'] || 0);
                         const nrValue = row['NR'] || '';
                         const isMissingAmazon = row['is_missing_amazon'] || false;
@@ -7031,7 +6378,7 @@
                             }
                         }
                         
-                        // Map / N Map: only for INV > 0, NR = REQ, and listed on Amazon with price
+                        // Map / Missing M: only for INV > 0, NR = REQ, and listed on Amazon with price
                         if (inv > 0 && nrValue === 'REQ' && !isMissingAmazon && rowPrice > 0) {
                             const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
                             const invDifference = Math.abs(inv - invAmzNum);
@@ -7048,42 +6395,6 @@
                             dilCount++;
                         }
                         
-                        // Calculate 7UB and 1UB counts (for INV > 0 SKUs only) - section aware
-                        // Missing campaign count (SKUs with INV > 0 but no campaign)
-                        const campaignName = row.campaignName || '';
-                        let hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && campaignName);
-                        
-                        if (!hasCampaign) {
-                            missingCampaignCount++;
-                        }
-                        
-                        // Calculate 7UB and 1UB for INV > 0 SKUs (section-aware)
-                        if (hasCampaign) {
-                            let l7_spend = parseFloat(row.l7_spend) || 0;
-                            let l1_spend = parseFloat(row.l1_spend) || 0;
-                            let budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                            
-                            const ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                            const ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                            
-                            // 7UB green count (66-99%)
-                            if (ub7 >= 66 && ub7 <= 99) {
-                                ub7Count++;
-                            }
-                            
-                            // 7UB + 1UB both green count
-                            if ((ub7 >= 66 && ub7 <= 99) && (ub1 >= 66 && ub1 <= 99)) {
-                                ub7Ub1Count++;
-                            }
-                        }
-                        
-                        // NRA/RA count
-                        const nraValue = row.NRA || '';
-                        if (nraValue === 'NRA') {
-                            nraCount++;
-                        } else if (nraValue === 'RA') {
-                            raCount++;
-                        }
                     }
                 });
 
@@ -7108,20 +6419,18 @@
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
                 const avgViews = totalSkuCount > 0 ? Math.round(totalViews / totalSkuCount) : 0;
-                $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
+                $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#avg-views-badge').text('Avg Views: ' + avgViews.toLocaleString());
-                $('#total-amazon-l30-badge').text('A L30: ' + Math.round(totalAmazonL30).toLocaleString());
-                $('#total-amazon-l7-badge').text('A L7: ' + Math.round(totalAmazonL7).toLocaleString());
                 
                 // Update sold counts
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
                 
-                // Update Map and N Map counts (inventory sync for items that exist in Amazon)
+                // Update Map and Missing M counts (inventory sync for items that exist in Amazon)
 $('#nmap-count').text(missingCount.toLocaleString());
 
-                // Update Missing L (FBA) and Missing L (Non-FBA) counts
+                // Update Missing L FBA and Missing M FBM counts
                 $('#missing-amazon-fba-count').text(missingAmazonFbaCount.toLocaleString());
                 $('#missing-amazon-nonfba-count').text(missingAmazonNonFbaCount.toLocaleString());
                 var $missingFbaBadge = $('#missing-amazon-fba-badge');
@@ -7155,50 +6464,34 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 // Calculate TCOS% = (Total Spend L30 / Total Sales) * 100
                 const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
                 
-                $('#total-spend-l30-badge').text('Ad Spend: $' + Math.round(totalSpendL30));
+                $('#total-spend-l30-badge').text('Ad: $' + Math.round(totalSpendL30));
                 
                 // GROI% = (Total PFT / Total COGS) * 100
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
-                $('#groi-percent-badge').text('GROI: ' + groiPercent.toFixed(1) + '%');
+                $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
                 
                 // NROI% = GROI% - TCOS%
                 const nroiPercent = groiPercent - tcosPercent;
-                $('#nroi-percent-badge').text('NROI: ' + nroiPercent.toFixed(1) + '%');
+                $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
                 
                 // TCOS%
-                $('#tcos-percent-badge').text('TCOS: ' + tcosPercent.toFixed(1) + '%');
+                $('#tcos-percent-badge').text('TCOS: ' + Math.round(tcosPercent) + '%');
                 
                 $('#total-amazon-inv-badge').text('INV: ' + Math.round(totalAmazonInv).toLocaleString());
-                $('#total-amazon-inv-amz-badge').text('INV AMZ: ' + Math.round(totalAmazonInvAmz).toLocaleString());
                 $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSalesAmt));
                 
                 // AVG GPFT% = (Total_pft / Total_Sales) * 100 (Gross Profit % - before ads)
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
-                $('#avg-gpft-badge').text('GPFT: ' + avgGpft.toFixed(1) + '%');
+                $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
                 
-                // TACOS% = (Total Ad Spend / Total Sales) * 100
+                // TACOS% = (total ad dollars / Total Sales) * 100
                 const tacosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
                 
                 // AVG PFT% = GPFT% - TACOS% (Net Profit % - after ads)
                 const avgPft = avgGpft - tacosPercent;
-                $('#avg-pft-badge').text('PFT: ' + avgPft.toFixed(1) + '%');
+                $('#avg-pft-badge').text('PFT: ' + Math.round(avgPft) + '%');
                 
-                // Update Ad Spend Breakdown Badges
-                // Use campaign totals from backend to avoid double-counting
-                $('#kw-spend-badge').text('KW Ads: $' + Math.round(campaignTotals.kw_spend_L30 || 0));
-                $('#hl-spend-badge').text('HL Ads: $' + Math.round(campaignTotals.hl_spend_L30 || 0));
-                $('#pt-spend-badge').text('PT Ads: $' + Math.round(campaignTotals.pt_spend_L30 || 0));
-                
-                // Update KW page badges - Use Set.size for unique campaign counts
-                $('#campaign-count').text(uniqueCampaigns.size.toLocaleString());
-                $('#missing-campaign-count').text(missingCampaignCount.toLocaleString());
-                $('#nra-count').text(nraCount.toLocaleString());
-                $('#ra-count').text(raCount.toLocaleString());
-                $('#paused-campaigns-count').text(uniquePausedCampaigns.size.toLocaleString());
-                $('#7ub-count').text(ub7Count.toLocaleString());
-                $('#7ub-1ub-count').text(ub7Ub1Count.toLocaleString());
-
                 // Save badge stats daily (fire-and-forget, once per page load)
                 // Only save when totalSkuCount > 0 (proof that real data was processed)
                 if (!window._badgeStatsSaved && totalSkuCount > 0) {
@@ -7213,24 +6506,14 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         missing_fba_count: missingAmazonFbaCount,
                         missing_nonfba_count: missingAmazonNonFbaCount,
                         prc_gt_lmp_count: prcGtLmpCount,
-                        campaign_count: uniqueCampaigns.size,
-                        missing_campaign_count: missingCampaignCount,
-                        nra_count: nraCount,
-                        ra_count: raCount,
-                        paused_count: uniquePausedCampaigns.size,
-                        ub7_count: ub7Count,
-                        ub7_ub1_count: ub7Ub1Count,
-                        kw_spend: Math.round(campaignTotals.kw_spend_L30 || 0),
-                        hl_spend: Math.round(campaignTotals.hl_spend_L30 || 0),
-                        pt_spend: Math.round(campaignTotals.pt_spend_L30 || 0),
                         total_pft: Math.round(totalPftAmt),
                         total_sales: Math.round(totalSalesAmt),
                         total_spend: Math.round(totalSpendL30),
-                        gpft_pct: parseFloat(avgGpft.toFixed(2)),
-                        npft_pct: parseFloat(avgPft.toFixed(2)),
-                        groi_pct: parseFloat(groiPercent.toFixed(2)),
-                        nroi_pct: parseFloat(nroiPercent.toFixed(2)),
-                        tcos_pct: parseFloat(tcosPercent.toFixed(2)),
+                        gpft_pct: Math.round(avgGpft),
+                        npft_pct: Math.round(avgPft),
+                        groi_pct: Math.round(groiPercent),
+                        nroi_pct: Math.round(nroiPercent),
+                        tcos_pct: Math.round(tcosPercent),
                         total_l30_orders: Math.round(totalAmazonL30)
                     });
                 }
@@ -7334,7 +6617,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 initProductPlaybackControls();
                 updateCalcValues();
                 updateSummary();
-                updateSeoCount();
                 requestAnimationFrame(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
                     $('.sku-select-checkbox').each(function() {
@@ -7370,7 +6652,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         $(this).prop('checked', selectedSkus.has(sku));
                     });
                     updateSelectAllCheckbox();
-                    updateSeoCount();
                     // Refresh row selection checkboxes to reflect selectedRows set
                     $('.row-select-checkbox').each(function() {
                         var sku = $(this).data('sku');
@@ -7622,15 +6903,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     }
                     saveColumnVisibilityToServer();
                 }
-            });
-
-            // Show All Columns button
-            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-                buildColumnDropdown();
-                saveColumnVisibilityToServer();
             });
 
             // Handle campaign status toggle (Active column) – section-aware KW/PT/HL
@@ -8233,49 +7505,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
             $('#scoutModal').modal('show');
         }
 
-        // Import Ratings Modal Handler
-        $('#importForm').on('submit', function(e) {
-            e.preventDefault();
-
-            const formData = new FormData();
-            const file = $('#csvFile')[0].files[0];
-
-            if (!file) {
-                showToast('error', 'Please select a CSV file');
-                return;
-            }
-
-            formData.append('file', file);
-            formData.append('_token', '{{ csrf_token() }}');
-
-            const uploadBtn = $('#uploadBtn');
-            uploadBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importing...');
-
-            $.ajax({
-                url: '/import-amazon-ratings',
-                type: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(response) {
-                    uploadBtn.html('<i class="fa fa-spinner fa-spin"></i> Reloading...');
-                    table.reload(function() {
-                        showToast('success', response.success || 'Ratings imported successfully');
-                        $('#importModal').modal('hide');
-                        $('#importForm')[0].reset();
-                        uploadBtn.prop('disabled', false).html('Upload & Import');
-                    });
-                },
-                error: function(xhr) {
-                    const error = xhr.responseJSON?.error || 'Import failed';
-                    showToast('error', error);
-                },
-                complete: function() {
-                    uploadBtn.prop('disabled', false).html('Upload & Import');
-                }
-            });
-        });
-
         // ACOS Info Icon Click Handler
         $(document).on('click', '.acos-info-icon', function(e) {
             e.stopPropagation();
@@ -8306,14 +7535,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         return '';
                     }
                     
-                    // Helper function to get UB color class
-                    function getUbColorClass(ub) {
-                        if (ub >= 66 && ub <= 99) return 'green-bg';
-                        if (ub > 99) return 'pink-bg';
-                        if (ub < 66) return 'red-bg';
-                        return '';
-                    }
-                    
                     let html = '';
                     
                     // Check if HL campaigns exist - if yes, only show HL (not KW/PT)
@@ -8326,12 +7547,10 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             html += '<div class="table-responsive mb-4">';
                             html += '<table class="table table-bordered table-sm">';
                             html += '<thead><tr>';
-                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
-                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
+                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad</th><th>Ad Sales</th><th>Ad Sold</th>';
+                            html += '<th>AD CVR</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
                             html += '</tr></thead><tbody>';
                             const acos = parseFloat(campaign.acos || 0);
-                            const ub7 = parseFloat(campaign['7ub'] || 0);
-                            const ub1 = parseFloat(campaign['1ub'] || 0);
                             
                             html += '<tr>';
                             html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
@@ -8342,8 +7561,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
                             html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
                             html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
-                            html += `<td class="${getUbColorClass(ub7)}">${ub7.toFixed(0)}%</td>`;
-                            html += `<td class="${getUbColorClass(ub1)}">${ub1.toFixed(0)}%</td>`;
                             html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
                             html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
                             html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
@@ -8363,12 +7580,10 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             html += '<div class="table-responsive mb-4">';
                             html += '<table class="table table-bordered table-sm">';
                             html += '<thead><tr>';
-                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
-                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
+                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad</th><th>Ad Sales</th><th>Ad Sold</th>';
+                            html += '<th>AD CVR</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
                             html += '</tr></thead><tbody>';
                             const acos = parseFloat(campaign.acos || 0);
-                            const ub7 = parseFloat(campaign['7ub'] || 0);
-                            const ub1 = parseFloat(campaign['1ub'] || 0);
                             
                             html += '<tr>';
                             html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
@@ -8379,8 +7594,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
                             html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
                             html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
-                            html += `<td class="${getUbColorClass(ub7)}">${ub7.toFixed(0)}%</td>`;
-                            html += `<td class="${getUbColorClass(ub1)}">${ub1.toFixed(0)}%</td>`;
                             html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
                             html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
                             html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
@@ -8402,12 +7615,10 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             html += '<div class="table-responsive mb-4">';
                             html += '<table class="table table-bordered table-sm">';
                             html += '<thead><tr>';
-                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
-                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
+                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad</th><th>Ad Sales</th><th>Ad Sold</th>';
+                            html += '<th>AD CVR</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
                             html += '</tr></thead><tbody>';
                             const acos = parseFloat(campaign.acos || 0);
-                            const ub7 = parseFloat(campaign['7ub'] || 0);
-                            const ub1 = parseFloat(campaign['1ub'] || 0);
                             
                             html += '<tr>';
                             html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
@@ -8418,8 +7629,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                             html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
                             html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
                             html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
-                            html += `<td class="${getUbColorClass(ub7)}">${ub7.toFixed(0)}%</td>`;
-                            html += `<td class="${getUbColorClass(ub1)}">${ub1.toFixed(0)}%</td>`;
                             html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
                             html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
                             html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
@@ -8489,8 +7698,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                                 <th>CLICKS</th>
                                 <th>AD SOLD</th>
                                 <th>CVR</th>
-                                <th>7UB</th>
-                                <th>1UB</th>
                             </tr>
                         </thead>
                         <tbody id="campaign-comparison-tbody"></tbody>
@@ -8567,16 +7774,13 @@ $('#nmap-count').text(missingCount.toLocaleString());
             // KW, PT, HL rows
             const campaignTypes = [
                 { type: 'KW', bgClass: 'table-primary', fields: {
-                    spend: 'l30_spend', sales: 'l30_sales', clicks: 'l30_clicks', sold: 'l30_purchases',
-                    l7Spend: 'l7_spend', l1Spend: 'l1_spend', budget: 'campaignBudgetAmount'
+                    spend: 'l30_spend', sales: 'l30_sales', clicks: 'l30_clicks', sold: 'l30_purchases'
                 }},
                 { type: 'PT', bgClass: 'table-info', fields: {
-                    spend: 'pt_spend_L30', sales: 'pt_sales_L30', clicks: 'pt_clicks_L30', sold: 'pt_sold_L30',
-                    l7Spend: 'pt_spend_L7', l1Spend: 'pt_spend_L1', budget: 'pt_campaignBudgetAmount'
+                    spend: 'pt_spend_L30', sales: 'pt_sales_L30', clicks: 'pt_clicks_L30', sold: 'pt_sold_L30'
                 }},
                 { type: 'HL', bgClass: 'table-warning', fields: {
-                    spend: 'hl_spend_L30', sales: 'hl_sales_L30', clicks: 'hl_clicks_L30', sold: 'hl_sold_L30',
-                    l7Spend: 'hl_spend_L7', l1Spend: 'hl_spend_L1', budget: 'hl_campaignBudgetAmount'
+                    spend: 'hl_spend_L30', sales: 'hl_sales_L30', clicks: 'hl_clicks_L30', sold: 'hl_sold_L30'
                 }}
             ];
             
@@ -8585,14 +7789,9 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 const sales = parseFloat(rowData[fields.sales] || 0);
                 const clicks = parseFloat(rowData[fields.clicks] || 0);
                 const sold = parseFloat(rowData[fields.sold] || 0);
-                const l7Spend = parseFloat(rowData[fields.l7Spend] || 0);
-                const l1Spend = parseFloat(rowData[fields.l1Spend] || 0);
-                const budget = parseFloat(rowData[fields.budget] || 0);
                 
                 const acos = sales > 0 ? ((spend / sales) * 100).toFixed(1) : '-';
                 const cvr = clicks > 0 ? ((sold / clicks) * 100).toFixed(1) : '-';
-                const ub7 = budget > 0 ? ((l7Spend / (budget * 7)) * 100).toFixed(0) : '-';
-                const ub1 = budget > 0 ? ((l1Spend / budget) * 100).toFixed(0) : '-';
                 
                 tbody.append(`
                     <tr class="${bgClass}">
@@ -8603,8 +7802,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         <td class="text-center">${clicks > 0 ? clicks.toLocaleString() : '-'}</td>
                         <td class="text-center">${sold > 0 ? sold.toLocaleString() : '-'}</td>
                         <td class="text-center">${cvr !== '-' ? cvr + '%' : '-'}</td>
-                        <td class="text-center">${ub7 !== '-' ? ub7 + '%' : '-'}</td>
-                        <td class="text-center">${ub1 !== '-' ? ub1 + '%' : '-'}</td>
                     </tr>
                 `);
             });

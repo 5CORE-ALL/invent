@@ -197,8 +197,8 @@
                         <option value="more">More than 0</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1" style="width: 130px;" title="CVR = TT L30 ÷ T views">
-                        <select id="gpft-filter" class="form-select form-select-sm">
+                    <div class="d-flex align-items-center gap-2 flex-wrap" title="CVR = TT L30 ÷ T views">
+                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">GPFT%</option>
                             <option value="negative">Negative</option>
                             <option value="0-10">0-10%</option>
@@ -206,9 +206,9 @@
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
                             <option value="40-50">40-50%</option>
-                            <option value="60plus">Above 60%</option>
+                            <option value="50plus">Above 50%</option>
                         </select>
-                        <select id="cvr-filter" class="form-select form-select-sm">
+                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
                             <option value="0-2">0-2%</option>
@@ -383,32 +383,24 @@
                         ({{ rtrim(rtrim(number_format((float) ($tiktokPercentage ?? 80), 2, '.', ''), '0'), '.') }}% Margin)
                     </h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-success fs-6 p-2 tt-badge-chart" data-metric="total_pft"
-                            id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2 tt-badge-chart" data-metric="total_sales"
                             id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">Total Sales: $0</span>
+                            title="View trend">Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2 tt-badge-chart" data-metric="avg_gpft" id="avg-gpft-badge"
-                            style="color: black; font-weight: bold; cursor: pointer;" title="View trend">AVG GPFT:
+                            style="color: black; font-weight: bold; cursor: pointer;" title="View trend">GPFT:
                             0%</span>
                         <span class="badge bg-warning fs-6 p-2 tt-badge-chart" data-metric="avg_price"
                             id="avg-price-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">Avg Price: $0</span>
+                            title="View trend">Price: $0</span>
                         <span class="badge bg-success fs-6 p-2 tt-badge-chart" data-metric="total_l30"
                             id="total-l30-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">Total TT L30: 0</span>
+                            title="View trend">TT L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter 0 sold items">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge"
                             style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter items with sales">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2 tt-badge-chart" data-metric="avg_dil" id="avg-dil-badge"
-                            style="color: black; font-weight: bold; cursor: pointer;" title="View trend">DIL%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2 tt-badge-chart" data-metric="total_cogs"
-                            id="total-cogs-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">COGS: $0</span>
                         <span class="badge bg-secondary fs-6 p-2 tt-badge-chart" data-metric="avg_roi"
                             id="roi-percent-badge" style="color: black; font-weight: bold; cursor: pointer;"
                             title="View trend">ROI%: 0%</span>
@@ -557,16 +549,13 @@
             let ttBadgeChartDays = 30;
             let ttBadgeChartMetricKey = '';
             let ttBadgeChartAjax = null;
-            const ttBadgeDollarMetrics = ['total_pft', 'total_sales', 'avg_price', 'total_cogs'];
-            const ttBadgePercentMetrics = ['avg_gpft', 'avg_dil', 'avg_roi'];
+            const ttBadgeDollarMetrics = ['total_sales', 'avg_price'];
+            const ttBadgePercentMetrics = ['avg_gpft', 'avg_roi'];
             const ttBadgeMetricLabels = {
-                total_pft: 'Total PFT',
-                total_sales: 'Total Sales',
-                avg_gpft: 'AVG GPFT',
-                avg_price: 'Avg Price',
-                total_l30: 'Total TT L30',
-                avg_dil: 'DIL%',
-                total_cogs: 'COGS',
+                total_sales: 'Sales',
+                avg_gpft: 'GPFT',
+                avg_price: 'Price',
+                total_l30: 'TT L30',
                 avg_roi: 'ROI%',
             };
 
@@ -2488,7 +2477,7 @@
                         if (isParentRow(data)) return true;
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '60plus') return gpft >= 60;
+                        if (gpftFilter === '50plus') return gpft >= 50;
                         const [min, max] = gpftFilter.split('-').map(Number);
                         return gpft >= min && gpft < max;
                     });
@@ -2751,28 +2740,22 @@
                     return !(row.Parent && row.Parent.startsWith('PARENT '));
                 });
 
-                let totalPft = 0,
-                    totalSales = 0,
+                let totalSales = 0,
                     totalGpft = 0,
                     totalPrice = 0,
                     priceCount = 0;
                 let totalInv = 0,
                     totalL30 = 0,
                     zeroSoldCount = 0,
-                    moreSoldCount = 0,
-                    totalDil = 0,
-                    dilCount = 0;
-                let totalCogs = 0,
-                    totalRoi = 0,
+                    moreSoldCount = 0;
+                let totalRoi = 0,
                     roiCount = 0;
                 let missingCount = 0,
                     mapCount = 0,
                     invTTStockCount = 0;
 
                 data.forEach(row => {
-                    const profit = parseFloat(row.Profit) || 0;
                     const l30 = parseFloat(row['TT L30']) || 0;
-                    totalPft += l30 * profit;
                     totalSales += parseFloat(row['Sales L30']) || 0;
                     totalGpft += parseFloat(row['GPFT%']) || 0;
 
@@ -2790,15 +2773,6 @@
                     } else {
                         moreSoldCount++;
                     }
-
-                    const dil = parseFloat(row['TT Dil%']) || 0;
-                    if (dil > 0) {
-                        totalDil += dil;
-                        dilCount++;
-                    }
-
-                    const lp = parseFloat(row['LP_productmaster']) || 0;
-                    totalCogs += lp * l30;
 
                     const roi = parseFloat(row['ROI%']) || 0;
                     if (roi !== 0) {
@@ -2823,18 +2797,14 @@
 
                 const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
                 const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-                const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
                 const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
 
-                $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
-                $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-                $('#avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
-                $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
-                $('#total-l30-badge').text(`Total TT L30: ${totalL30.toLocaleString()}`);
+                $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
+                $('#avg-gpft-badge').text(`GPFT: ${avgGpft.toFixed(1)}%`);
+                $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
+                $('#total-l30-badge').text(`TT L30: ${totalL30.toLocaleString()}`);
                 $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
                 $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
-                $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
-                $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
                 $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
                 $('#missing-count-badge').text(`Missing: ${missingCount}`);
                 $('#map-count-badge').text(`Map: ${mapCount}`);

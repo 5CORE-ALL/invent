@@ -137,7 +137,7 @@
                                 <option value="20-30">20–30%</option>
                                 <option value="30-40">30–40%</option>
                                 <option value="40-50">40–50%</option>
-                                <option value="60plus">Above 60%</option>
+                                <option value="50plus">Above 50%</option>
                             </select>
                             <select id="ae-cvr-filter" class="form-select form-select-sm">
                                 <option value="all">All CVR%</option>
@@ -582,7 +582,7 @@
                 table.addFilter(function(d) {
                     const gpft = parseFloat(d.gpft) || 0;
                     if (gpftFilter === 'negative') return gpft < 0;
-                    if (gpftFilter === '60plus')   return gpft >= 60;
+                    if (gpftFilter === '50plus')   return gpft >= 50;
                     const [min, max] = gpftFilter.split('-').map(Number);
                     return gpft >= min && gpft < max;
                 });

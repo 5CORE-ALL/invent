@@ -532,7 +532,7 @@
                                 
                                 <!-- Multi-Range Filter Row -->
                                 <div class="row align-items-end g-2 mt-3 pt-3 border-top">
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">1UB (%)</label>
                                         <div class="d-flex gap-2 align-items-center">
                                             <input type="number" id="1ub-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.8rem;">
@@ -540,7 +540,7 @@
                                             <input type="number" id="1ub-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.8rem;">
                                         </div>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">7UB (%)</label>
                                         <div class="d-flex gap-2 align-items-center">
                                             <input type="number" id="7ub-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.8rem;">
@@ -548,20 +548,12 @@
                                             <input type="number" id="7ub-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.8rem;">
                                         </div>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">Lbid ($)</label>
                                         <div class="d-flex gap-2 align-items-center">
                                             <input type="number" id="lbid-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="font-size: 0.8rem;">
                                             <span style="color: #64748b; font-size: 0.8rem;">-</span>
                                             <input type="number" id="lbid-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="font-size: 0.8rem;">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">ACOS (%)</label>
-                                        <div class="d-flex gap-2 align-items-center">
-                                            <input type="number" id="acos-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.8rem;">
-                                            <span style="color: #64748b; font-size: 0.8rem;">-</span>
-                                            <input type="number" id="acos-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.8rem;">
                                         </div>
                                     </div>
                                 </div>
@@ -3130,17 +3122,6 @@
                     if (lbidMax && lastSbid > parseFloat(lbidMax)) return false;
                 }
 
-                // ACOS range filter
-                let acosMin = $("#acos-min").val();
-                let acosMax = $("#acos-max").val();
-                if (acosMin || acosMax) {
-                    let acos = parseFloat(data.acos || 0);
-                    if (isNaN(acos)) acos = 0;
-                    
-                    if (acosMin && acos < parseFloat(acosMin)) return false;
-                    if (acosMax && acos > parseFloat(acosMax)) return false;
-                }
-
                 return true;
             }
 
@@ -3421,7 +3402,7 @@
                 });
 
                 // Range filter event listeners
-                $("#1ub-min, #1ub-max, #7ub-min, #7ub-max, #lbid-min, #lbid-max, #acos-min, #acos-max").on("input", function() {
+                $("#1ub-min, #1ub-max, #7ub-min, #7ub-max, #lbid-min, #lbid-max").on("input", function() {
                     if (typeof table !== 'undefined' && table) {
                         table.setFilter(combinedFilter);
                         table.redraw(true);

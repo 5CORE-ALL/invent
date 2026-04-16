@@ -154,7 +154,7 @@
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
                             <option value="40-50">40-50%</option>
-                            <option value="60plus">Above 60%</option>
+                            <option value="50plus">Above 50%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm">
                             <option value="all">All CVR%</option>
@@ -4055,7 +4055,7 @@
                     if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
                     if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '60plus') return gpft >= 60;
+                    if (gpftFilter === '50plus') return gpft >= 50;
                     return true;
                 });
             }

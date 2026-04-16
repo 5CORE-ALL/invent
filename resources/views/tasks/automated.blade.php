@@ -860,26 +860,6 @@
     </div>
 </div>
 
-<!-- Links Modal -->
-<div class="modal fade" id="linksModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
-                <h5 class="modal-title">
-                    <i class="mdi mdi-link-variant me-2"></i>Links
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="links-content">
-                <!-- Links will be loaded here -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Bulk Actions Modal -->
 <div class="modal fade" id="bulkActionsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -967,7 +947,7 @@
                 <div class="modal-body">
                     <div class="alert alert-info">
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
-                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, Links</p>
+                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, Training, Video, Form, Form report, Checklist, PL</p>
                         <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
                         <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, High, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
@@ -1063,6 +1043,22 @@
                 return etcMinutes * getEtcMonthlyMultiplier(freq);
             }
 
+            /** Named link column: teal link icon only for http(s) (full URL in title); "-" if empty or not a URL. */
+            function formatNamedLinkSlot(rowData, getRawFn) {
+                var v = String(getRawFn(rowData) || '').trim();
+                if (!v) return '<span style="color:#adb5bd;">-</span>';
+                var escAttr = function(t) {
+                    return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                };
+                var linkTeal = '#14b8a6';
+                if (/^https?:\/\//i.test(v)) {
+                    return '<a href="' + escAttr(v) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr(v) + '" ' +
+                        'style="color:' + linkTeal + ';text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;">' +
+                        '<i class="mdi mdi-link-variant" style="font-size:18px;" aria-hidden="true"></i></a>';
+                }
+                return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
+            }
+
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
                 selectable: isAdmin,
@@ -1096,7 +1092,7 @@
                 placeholder: "No Tasks Found",
                 height: "600px",
                 layoutColumnsOnNewData: true,
-                horizontalScroll: false,
+                horizontalScroll: true,
                 autoResize: true,
                 columns: (function() {
                     var cols = [];
@@ -1135,7 +1131,7 @@
                         });
                     }
                     
-                    // Column Order: … ETC-M, Links, FREQ, ACTION
+                    // Column Order: … ETC-M, L1, L2, Training, Video, Form, Form report, Checklist, PL, FREQ, ACTION
                     
                     // FLAG RAISED - HIDDEN
                     // cols.push({
@@ -1255,25 +1251,28 @@
                         }
                     });
 
-                    // Links — link1–link9 + image; opens modal with all URLs from row
-                    cols.push({
-                        title: "Links",
-                        field: "id",
-                        width: 72,
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            var hasLinks = rowData.link1 || rowData.link2 || rowData.link3 || rowData.link4 ||
-                                rowData.link5 || rowData.link6 || rowData.link7 || rowData.link8 || rowData.link9 ||
-                                rowData.image;
-                            if (hasLinks) {
-                                return '<button type="button" class="btn btn-sm btn-link p-0 view-automated-links" data-id="' + cell.getValue() + '" title="View all links">' +
-                                    '<i class="mdi mdi-link-variant text-primary" style="font-size: 18px;"></i></button>';
+                    // Named link columns (DB link1–link8 + legacy aliases)
+                    var linkCol = function(title, field, getRaw, w) {
+                        cols.push({
+                            title: title,
+                            field: field,
+                            width: w || 56,
+                            minWidth: 52,
+                            hozAlign: "center",
+                            headerSort: false,
+                            formatter: function(cell) {
+                                return formatNamedLinkSlot(cell.getRow().getData(), getRaw);
                             }
-                            return '<span style="color: #adb5bd;">-</span>';
-                        }
-                    });
+                        });
+                    };
+                    linkCol("L1", "link1", function(d) { return d.link1 || d.l1; }, 56);
+                    linkCol("L2", "link2", function(d) { return d.link2 || d.l2; }, 56);
+                    linkCol("Training", "link3", function(d) { return d.link3 || d.training_link; }, 72);
+                    linkCol("Video", "link4", function(d) { return d.link4 || d.video_link; }, 64);
+                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 60);
+                    linkCol("Form report", "link6", function(d) { return d.link6 || d.form_report_link; }, 76);
+                    linkCol("Checklist", "link7", function(d) { return d.link7 || d.checklist_link; }, 72);
+                    linkCol("PL", "link8", function(d) { return d.link8 || d.pl; }, 52);
                     
                     // TID (Task Initiation Date) - HIDDEN
                     // cols.push({
@@ -2402,54 +2401,6 @@
                     }
                 });
             }
-
-            // View all links (automated templates: data from table row, not /tasks/{id})
-            $(document).on('click', '.view-automated-links', function(e) {
-                e.preventDefault();
-                var taskId = $(this).data('id');
-                var row = table.getRow(taskId);
-                if (!row) {
-                    return;
-                }
-                var d = row.getData();
-                var esc = function(t) {
-                    return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                };
-                var escAttr = function(t) {
-                    return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-                };
-                var html = '<div class="list-group">';
-                var linkCount = 0;
-                var linkLabels = ['L1', 'L2', 'Training', 'Video', 'Form', 'Form report', 'Checklist', 'PL', 'Process'];
-                for (var i = 1; i <= 9; i++) {
-                    var linkField = 'link' + i;
-                    var val = d[linkField];
-                    if (val && String(val).trim() !== '') {
-                        linkCount++;
-                        var label = linkLabels[i - 1] || ('Link ' + i);
-                        var s = String(val).trim();
-                        var isUrl = /^https?:\/\//i.test(s);
-                        if (isUrl) {
-                            html += '<a href="' + escAttr(s) + '" target="_blank" rel="noopener noreferrer" class="list-group-item list-group-item-action">' +
-                                '<i class="mdi mdi-link text-primary me-2"></i><strong>' + esc(label) + ':</strong> ' + esc(s) + '</a>';
-                        } else {
-                            html += '<div class="list-group-item"><i class="mdi mdi-text text-secondary me-2"></i><strong>' + esc(label) + ':</strong> ' + esc(s) + '</div>';
-                        }
-                    }
-                }
-                if (d.image && String(d.image).trim() !== '') {
-                    linkCount++;
-                    var imgName = String(d.image).trim().replace(/[^a-zA-Z0-9._-]/g, '');
-                    html += '<a href="/uploads/tasks/' + esc(imgName) + '" target="_blank" rel="noopener noreferrer" class="list-group-item list-group-item-action">' +
-                        '<i class="mdi mdi-image text-info me-2"></i><strong>Image:</strong> View file</a>';
-                }
-                html += '</div>';
-                if (linkCount === 0) {
-                    html = '<p class="text-muted">No links available for this template.</p>';
-                }
-                $('#links-content').html(html);
-                $('#linksModal').modal('show');
-            });
 
             // Edit Automated Task
             $(document).on('click', '.edit-automated-task', function(e) {

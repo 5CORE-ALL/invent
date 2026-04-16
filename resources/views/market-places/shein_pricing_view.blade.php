@@ -137,7 +137,7 @@
                             <option value="30-40">30–40%</option>
                             <option value="40-50">40–50%</option>
                             <option value="50-60">50–60%</option>
-                            <option value="60plus">60%+</option>
+                            <option value="50plus">50%+</option>
                         </select>
 
                         {{-- ROI% filter --}}
@@ -503,7 +503,7 @@
                 table.addFilter(function(d) {
                     const gpft = parseFloat(d.gpft) || 0;
                     if (gpftFilter === 'negative') return gpft < 0;
-                    if (gpftFilter === '60plus')   return gpft >= 60;
+                    if (gpftFilter === '50plus')   return gpft >= 50;
                     const [min, max] = gpftFilter.split('-').map(Number);
                     return gpft >= min && gpft < max;
                 });

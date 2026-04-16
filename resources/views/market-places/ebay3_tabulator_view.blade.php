@@ -508,9 +508,9 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1 pricing-filter-item" style="width: auto;">
+                    <div class="d-flex flex-row flex-nowrap align-items-center gap-1 pricing-filter-item" style="width: auto;">
                         <select id="gpft-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
+                            style="width: auto; display: inline-block; flex-shrink: 0;">
                             <option value="all">GPFT%</option>
                             <option value="negative">Negative</option>
                             <option value="0-10">0-10%</option>
@@ -518,10 +518,10 @@
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
                             <option value="40-50">40-50%</option>
-                            <option value="60plus">Above 60%</option>
+                            <option value="50plus">Above 50%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
+                            style="width: auto; display: inline-block; flex-shrink: 0;">
                             <option value="all">All CVR%</option>
                             <option value="0-0">0%</option>
                             <option value="0-2">0-2%</option>
@@ -605,7 +605,7 @@
                         <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
                             <i class="fas fa-step-backward"></i>
                         </button>
-                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play - step through parents">
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play — parents low → high by CVR 30 (SCVR)">
                             <i class="fas fa-play"></i>
                         </button>
                         <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause - show all">
@@ -1979,10 +1979,28 @@
         });
 
         // ==================== Play/Pause parent navigation (like pricing-master-cvr) ====================
+        /** CVR 30 for a parent tree row: SCVR from API, else eBay L30 / views. */
+        function parentRowCvr30(parentRow) {
+            if (!parentRow) return 0;
+            const scvr = parseFloat(parentRow['SCVR']);
+            if (!isNaN(scvr)) return scvr;
+            const views = parseFloat(parentRow.views || 0);
+            const l30 = parseFloat(parentRow['eBay L30'] || 0);
+            return views > 0 ? (l30 / views) * 100 : 0;
+        }
+
+        function getPlayModeParentList() {
+            if (isPlayNavigationActive && playModeParentList && playModeParentList.length) {
+                return playModeParentList;
+            }
+            return allTableData;
+        }
+
         function showCurrentParentPlayView() {
-            if (!allTableData || allTableData.length === 0) return;
-            if (currentPlayParentIndex < 0 || currentPlayParentIndex >= allTableData.length) return;
-            const parentRow = allTableData[currentPlayParentIndex];
+            const parentList = getPlayModeParentList();
+            if (!parentList || parentList.length === 0) return;
+            if (currentPlayParentIndex < 0 || currentPlayParentIndex >= parentList.length) return;
+            const parentRow = parentList[currentPlayParentIndex];
             const children = (parentRow._children && Array.isArray(parentRow._children)) ? parentRow._children : [];
             const displayData = [...children, parentRow];
             table.clearFilter(true);
@@ -1998,6 +2016,14 @@
                 showToast('No parent data to navigate', 'warning');
                 return;
             }
+            playModeParentList = [...allTableData].sort(function(a, b) {
+                const da = parentRowCvr30(a);
+                const db = parentRowCvr30(b);
+                if (da !== db) return da - db;
+                const sa = String(a['(Child) sku'] || a['Parent'] || '');
+                const sb = String(b['(Child) sku'] || b['Parent'] || '');
+                return sa.localeCompare(sb);
+            });
             isPlayNavigationActive = true;
             currentPlayParentIndex = 0;
             showCurrentParentPlayView();
@@ -2009,6 +2035,7 @@
         function stopPlayNavigation() {
             isPlayNavigationActive = false;
             currentPlayParentIndex = 0;
+            playModeParentList = null;
             $('#play-pause').hide();
             $('#play-auto').show();
             $('#play-backward, #play-forward').prop('disabled', true);
@@ -2017,15 +2044,18 @@
         }
 
         function updatePlayButtonStates() {
+            const plist = getPlayModeParentList();
+            const len = plist && plist.length ? plist.length : 0;
             $('#play-backward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex <= 0);
-            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= allTableData.length - 1);
-            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Play - step through parents');
+            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= len - 1);
+            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Play — parents low → high by CVR 30 (SCVR)');
             $('#play-pause').attr('title', 'Pause - show all');
         }
 
         function playNextParent() {
-            if (!isPlayNavigationActive || !allTableData.length) return;
-            if (currentPlayParentIndex >= allTableData.length - 1) return;
+            const plist = getPlayModeParentList();
+            if (!isPlayNavigationActive || !plist || !plist.length) return;
+            if (currentPlayParentIndex >= plist.length - 1) return;
             currentPlayParentIndex++;
             showCurrentParentPlayView();
         }
@@ -2120,6 +2150,8 @@
         // Play/Pause parent navigation (like pricing-master-cvr)
         let isPlayNavigationActive = false;
         let currentPlayParentIndex = 0;
+        /** While play is active: top-level parents sorted by CVR 30 (SCVR) ascending. */
+        let playModeParentList = null;
 
         let ebayMpImagePreviewHideTimer = null;
         let ebayMpImagePreviewEl = null;
@@ -3743,49 +3775,212 @@
             ]
         });
 
+        /** Tabulator dataTree always draws parent before children; move each parent row after its last visible descendant. */
+        function reorderEbay3ParentRowsBelowSkus() {
+            if (!table) return;
+            if (isPlayNavigationActive) return;
+            if (($('#view-mode-filter').val() || '') === 'sku') return;
+
+            var roots;
+            try {
+                roots = document.querySelectorAll('#ebay3-table .tabulator-row.parent-row.tabulator-tree-level-0');
+            } catch (e) {
+                return;
+            }
+
+            roots.forEach(function(level0) {
+                var lastDescEl = null;
+                var walker = level0.nextElementSibling;
+                while (walker && !walker.classList.contains('tabulator-tree-level-0')) {
+                    lastDescEl = walker;
+                    walker = walker.nextElementSibling;
+                }
+                if (lastDescEl && lastDescEl.parentNode === level0.parentNode) {
+                    lastDescEl.after(level0);
+                }
+            });
+        }
+
         // SKU Search functionality
         $('#sku-search').on('keyup', function() {
             const value = $(this).val();
             table.setFilter("(Child) sku", "like", value);
         });
 
+        /** Parent + all child SKUs in the same eBay3 tree group (for NR cascade). */
+        function ebay3GetNrCascadeSkus(primarySku) {
+            var key = (primarySku || '').toString().trim();
+            if (!key || !Array.isArray(allTableData) || !allTableData.length) {
+                return [key];
+            }
+            for (var i = 0; i < allTableData.length; i++) {
+                var pRow = allTableData[i];
+                var pSku = ((pRow['(Child) sku'] || '') + '').trim();
+                if (pSku.toUpperCase().indexOf('PARENT') === -1) {
+                    continue;
+                }
+                var kids = pRow._children;
+                if (!kids || !Array.isArray(kids) || kids.length === 0) {
+                    if (pSku === key) {
+                        return [pSku];
+                    }
+                    continue;
+                }
+                var match = (pSku === key) || kids.some(function(c) {
+                    return (((c['(Child) sku'] || '') + '').trim() === key);
+                });
+                if (match) {
+                    var out = [pSku];
+                    kids.forEach(function(c) {
+                        var cs = ((c['(Child) sku'] || '') + '').trim();
+                        if (cs) {
+                            out.push(cs);
+                        }
+                    });
+                    return [...new Set(out)];
+                }
+            }
+            if (typeof table !== 'undefined' && table && typeof table.searchRows === 'function') {
+                var hits = table.searchRows('(Child) sku', '=', key);
+                if (hits.length > 0) {
+                    var pdata = hits[0].getData();
+                    var parentVal = ((pdata.Parent || '') + '').trim();
+                    if (parentVal) {
+                        for (var j = 0; j < allTableData.length; j++) {
+                            var pr = allTableData[j];
+                            var ps = ((pr['(Child) sku'] || '') + '').trim();
+                            if (ps.toUpperCase().indexOf('PARENT') === -1) {
+                                continue;
+                            }
+                            if (((pr.Parent || '') + '').trim() !== parentVal) {
+                                continue;
+                            }
+                            var ch2 = pr._children;
+                            var out2 = [ps];
+                            if (ch2 && Array.isArray(ch2)) {
+                                ch2.forEach(function(c) {
+                                    var cs = ((c['(Child) sku'] || '') + '').trim();
+                                    if (cs) {
+                                        out2.push(cs);
+                                    }
+                                });
+                            }
+                            return [...new Set(out2)];
+                        }
+                    }
+                }
+            }
+            return [key];
+        }
+
+        function ebay3DeepUpdateNrReqForSkus(skuList, val) {
+            var set = {};
+            skuList.forEach(function(s) { set[s] = true; });
+            function walk(rows) {
+                if (!rows || !rows.length) {
+                    return;
+                }
+                rows.forEach(function(r) {
+                    if (set[r['(Child) sku']]) {
+                        r.nr_req = val;
+                    }
+                    if (r._children && r._children.length) {
+                        walk(r._children);
+                    }
+                });
+            }
+            walk(allTableData);
+        }
+
+        function ebay3UpdateVisibleRowsNrReq(skuList, val) {
+            skuList.forEach(function(s) {
+                var sku = (s || '').toString().trim();
+                if (!sku) return;
+                var rows = table.searchRows('(Child) sku', '=', sku);
+                rows.forEach(function(r) {
+                    r.update({ nr_req: val });
+                });
+            });
+        }
+
         // NR/REQ dropdown change handler
         $(document).on('change', '.nr-req-dropdown', function() {
             const $select = $(this);
             const value = $select.val();
-            const sku = $select.data('sku');
-            
+            const sku = ($select.attr('data-sku') || $select.data('sku') || '').toString().trim();
+
             if (!sku) {
                 console.error('Could not find SKU in dropdown data attribute');
                 showToast('Could not find SKU', 'error');
                 return;
             }
-            
-            console.log('Saving NR/REQ for SKU:', sku, 'Value:', value);
-            
-            $.ajax({
-                url: '/listing_ebaythree/save-status',
-                method: 'POST',
-                data: {
-                    _token: '{{ csrf_token() }}',
-                    sku: sku,
-                    nr_req: value
-                },
-                success: function(response) {
-                    if (response.status === 'success') {
-                        console.log('NR/REQ saved successfully for', sku, 'value:', value);
-                        const message = value === 'REQ' ? 'REQ updated' : (value === 'NR' ? 'NR updated' : 'Status cleared');
-                        showToast(message, 'success');
-                    } else {
-                        console.error('Save failed:', response);
-                        showToast(response.message || 'Failed to save status', 'error');
+
+            const skusToSave = (value === 'NR')
+                ? ebay3GetNrCascadeSkus(sku)
+                : [sku];
+
+            console.log('Saving NR/REQ for SKU(s):', skusToSave, 'Value:', value);
+
+            const token = '{{ csrf_token() }}';
+            const saveOne = function(s) {
+                return $.ajax({
+                    url: '/listing_ebaythree/save-status',
+                    method: 'POST',
+                    dataType: 'json',
+                    data: {
+                        _token: token,
+                        sku: s,
+                        nr_req: value
                     }
-                },
-                error: function(xhr) {
-                    console.error('Failed to save NR/REQ for', sku, 'Error:', xhr.responseText);
-                    showToast(`Failed to save NR/REQ for ${sku}`, 'error');
+                });
+            };
+
+            const saveOk = function(response) {
+                return response && (response.status === 'success' || response.status === true);
+            };
+
+            const onSuccess = function() {
+                if (value === 'NR') {
+                    ebay3DeepUpdateNrReqForSkus(skusToSave, 'NR');
+                    ebay3UpdateVisibleRowsNrReq(skusToSave, 'NR');
+                } else {
+                    ebay3DeepUpdateNrReqForSkus([sku], value);
+                    ebay3UpdateVisibleRowsNrReq([sku], value);
                 }
-            });
+                const message = value === 'REQ'
+                    ? 'REQ updated'
+                    : (value === 'NR'
+                        ? (skusToSave.length > 1 ? ('NR applied to parent and ' + (skusToSave.length - 1) + ' SKU(s)') : 'NR updated')
+                        : 'Status cleared');
+                showToast(message, 'success');
+            };
+
+            const onFail = function(xhr, labelSku) {
+                console.error('Failed to save NR/REQ for', labelSku, 'Error:', xhr && xhr.responseText);
+                showToast('Failed to save NR/REQ for ' + (labelSku || sku), 'error');
+            };
+
+            var idx = 0;
+            function saveNext() {
+                if (idx >= skusToSave.length) {
+                    onSuccess();
+                    return;
+                }
+                var s = skusToSave[idx++];
+                saveOne(s)
+                    .done(function(response) {
+                        if (saveOk(response)) {
+                            saveNext();
+                        } else {
+                            showToast((response && response.message) || 'Failed to save status', 'error');
+                        }
+                    })
+                    .fail(function(xhr) {
+                        onFail(xhr, s);
+                    });
+            }
+
+            saveNext();
         });
 
         table.on('cellEdited', function(cell) {
@@ -3962,7 +4157,7 @@
                     if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
                     if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '60plus') return gpft >= 60;
+                    if (gpftFilter === '50plus') return gpft >= 50;
                     return true;
                 });
             }
@@ -3981,11 +4176,6 @@
 
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
-                    // Skip filter for parent rows in tree mode
-                    const sku = data['(Child) sku'] || '';
-                    if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
-                    
-                    const scvrValue = parseFloat(data['SCVR'] || 0);
                     const views = parseFloat(data.views || 0);
                     const l30 = parseFloat(data['eBay L30'] || 0);
                     const cvr = views > 0 ? (l30 / views) * 100 : 0;
@@ -4006,8 +4196,6 @@
             if (cvrTrendFilter !== 'all') {
                 const cvrTrendTol = 0.1;
                 table.addFilter(function(data) {
-                    const sku = data['(Child) sku'] || '';
-                    if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
                     const cvr30 = parseFloat(data['SCVR'] || 0);
                     const cvr60 = parseFloat(data['CVR_60'] || 0);
                     if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + cvrTrendTol;
@@ -5297,6 +5485,9 @@
         table.on('dataLoaded', function() {
             updateCalcValues();
             updateSummary();
+            requestAnimationFrame(function() {
+                reorderEbay3ParentRowsBelowSkus();
+            });
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
                     const sku = $(this).data('sku');
@@ -5306,7 +5497,14 @@
             }, 100);
         });
 
+        table.on('dataTreeRowExpanded', function() {
+            requestAnimationFrame(function() {
+                reorderEbay3ParentRowsBelowSkus();
+            });
+        });
+
         table.on('renderComplete', function() {
+            reorderEbay3ParentRowsBelowSkus();
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
                     const sku = $(this).data('sku');

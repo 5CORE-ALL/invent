@@ -157,26 +157,6 @@
                         <option value="blank">Blank SPRICE only</option>
                     </select>
 
-                    <!-- Unified Range Filter (Views & Sold) -->
-                    <select id="range-column-select" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="">Select Filter</option>
-                        <option value="Sess30">View L30</option>
-                        <option value="Sess7">View L7</option>
-                        <option value="A_L30">Sold L30</option>
-                        <option value="A_L7">Sold L7</option>
-                    </select>
-                    <input type="number" id="range-min" class="form-control form-control-sm" 
-                        placeholder="Min" min="0" style="width: 90px; display: inline-block;">
-                    <input type="number" id="range-max" class="form-control form-control-sm" 
-                        placeholder="Max" min="0" style="width: 90px; display: inline-block;">
-                    <button id="clear-range-filter" class="btn btn-sm btn-outline-secondary" title="Clear Range Filter">
-                        <i class="fas fa-times"></i>
-                    </button>
-                    <span class="badge bg-info fs-6 p-2" id="range-filter-count-badge" style="color: white; font-weight: bold; display: none;">
-                        Filtered: <span id="range-filter-count">0</span>
-                    </span>
-
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
@@ -3120,9 +3100,6 @@
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
-                const rangeMin = parseFloat($('#range-min').val()) || null;
-                const rangeMax = parseFloat($('#range-max').val()) || null;
-                const rangeColumn = $('#range-column-select').val() || '';
 
                 table.clearFilter(true);
 
@@ -3312,30 +3289,6 @@
                     });
                 }
 
-                // Unified Range Filter (Views L30/L7, Sold L30/L7)
-                if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentFilter === 'show';
-                        
-                        const value = parseFloat(data[rangeColumn]) || 0;
-                        
-                        // Apply min filter
-                        if (rangeMin !== null && value < rangeMin) {
-                            return false;
-                        }
-                        
-                        // Apply max filter
-                        if (rangeMax !== null && value > rangeMax) {
-                            return false;
-                        }
-                        
-                        return true;
-                    });
-                }
-
-                // Update range filter badge
-                updateRangeFilterBadge();
-
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
                     table.addFilter(function(data) {
@@ -3398,43 +3351,6 @@
             $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
-
-            // Unified range filter input handlers
-            $('#range-min, #range-max, #range-column-select').on('keyup change', function() {
-                applyFilters();
-            });
-
-            // Clear range filter button
-            $('#clear-range-filter').on('click', function() {
-                $('#range-min').val('');
-                $('#range-max').val('');
-                $('#range-column-select').val('');
-                applyFilters();
-            });
-
-            // Function to update range filter badge
-            function updateRangeFilterBadge() {
-                const rangeMin = parseFloat($('#range-min').val()) || null;
-                const rangeMax = parseFloat($('#range-max').val()) || null;
-                const rangeColumn = $('#range-column-select').val() || '';
-                
-                // Only show badge if filter is active
-                if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
-                    const data = table.getData("active");
-                    let filteredCount = 0;
-                    
-                    data.forEach(row => {
-                        if (!row['is_parent_summary']) {
-                            filteredCount++;
-                        }
-                    });
-                    
-                    $('#range-filter-count').text(filteredCount.toLocaleString());
-                    $('#range-filter-count-badge').show();
-                } else {
-                    $('#range-filter-count-badge').hide();
-                }
-            }
 
             // Update PFT% and ROI% calc values (only for INV > 0)
             function updateCalcValues() {

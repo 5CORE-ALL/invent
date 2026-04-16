@@ -331,7 +331,7 @@
                         <option value="30-40">30–40%</option>
                         <option value="40-50">40–50%</option>
                         <option value="50-60">50–60%</option>
-                        <option value="60plus">60%+</option>
+                        <option value="50plus">50%+</option>
                     </select>
 
                     <select id="dws-roi-filter" class="form-select form-select-sm" style="width:130px;">
@@ -2143,7 +2143,7 @@
                         if (data.is_parent) return true;
                         const gpft = parseFloat(data.NPFT_pct) || 0;
                         if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '60plus') return gpft >= 60;
+                        if (gpftFilter === '50plus') return gpft >= 50;
                         const parts = gpftFilter.split('-');
                         const min = parseFloat(parts[0]);
                         const max = parseFloat(parts[1]);

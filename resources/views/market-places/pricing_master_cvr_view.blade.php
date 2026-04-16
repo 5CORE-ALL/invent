@@ -874,10 +874,8 @@
                                     <span class="status-circle green"></span> 30-40%</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="40-50">
                                     <span class="status-circle green"></span> 40-50%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="50-60">
-                                    <span class="status-circle pink"></span> 50-60%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="60+">
-                                    <span class="status-circle pink"></span> 60%+</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="50+">
+                                    <span class="status-circle pink"></span> 50%+</a></li>
                         </ul>
                     </div>
 
@@ -3435,7 +3433,7 @@ title: "Dil %",
                     return true;
                 });
             }
-            // Apply GPFT% filter to parent view (ranges: negative, 0-10, 10-20, 20-30, 30-40, 40-50, 50-60, 60+)
+            // Apply GPFT% filter to parent view (ranges: negative, 0-10, 10-20, 20-30, 30-40, 40-50, 50+; legacy saved: 50-60)
             const gpftRange = $('.column-filter[data-column="avg_gpft"].active')?.data('range') || 'all';
             if (gpftRange !== 'all') {
                 displayData = displayData.filter(row => {
@@ -3447,7 +3445,7 @@ title: "Dil %",
                     if (gpftRange === '30-40') return gpft >= 30 && gpft < 40;
                     if (gpftRange === '40-50') return gpft >= 40 && gpft < 50;
                     if (gpftRange === '50-60') return gpft >= 50 && gpft < 60;
-                    if (gpftRange === '60+') return gpft >= 60;
+                    if (gpftRange === '50+') return gpft >= 50;
                     return true;
                 });
             }
@@ -3682,7 +3680,7 @@ title: "Dil %",
                         if (gpftRange === '30-40') return gpft >= 30 && gpft < 40;
                         if (gpftRange === '40-50') return gpft >= 40 && gpft < 50;
                         if (gpftRange === '50-60') return gpft >= 50 && gpft < 60;
-                        if (gpftRange === '60+') return gpft >= 60;
+                        if (gpftRange === '50+') return gpft >= 50;
                         return true;
                     });
                 }

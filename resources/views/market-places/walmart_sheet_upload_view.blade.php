@@ -337,7 +337,7 @@
                             <option value="30-40">30-40%</option>
                             <option value="40-50">40-50%</option>
                             <option value="50-60">50-60%</option>
-                            <option value="60plus">60%+</option>
+                            <option value="50plus">50%+</option>
                         </select>
                     </div>
 
@@ -2729,7 +2729,7 @@
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
                     if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
                     if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
-                    if (gpftFilter === '60plus') return gpft >= 60;
+                    if (gpftFilter === '50plus') return gpft >= 50;
                     return true;
                 });
             }

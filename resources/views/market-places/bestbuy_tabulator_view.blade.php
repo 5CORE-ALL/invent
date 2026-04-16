@@ -79,7 +79,7 @@
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
                             <option value="40-50">40-50%</option>
-                            <option value="60plus">Above 60%</option>
+                            <option value="50plus">Above 50%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm"
                             style="width: auto; display: inline-block;">
@@ -1322,8 +1322,8 @@
             if (gpftFilter !== 'all') {
                 if (gpftFilter === 'negative') {
                     table.addFilter("GPFT%", "<", 0);
-                } else if (gpftFilter === '60plus') {
-                    table.addFilter("GPFT%", ">=", 60);
+                } else if (gpftFilter === '50plus') {
+                    table.addFilter("GPFT%", ">=", 50);
                 } else {
                     const [min, max] = gpftFilter.split('-').map(Number);
                     table.addFilter("GPFT%", ">=", min);
