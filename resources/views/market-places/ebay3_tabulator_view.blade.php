@@ -1996,19 +1996,49 @@
             return allTableData;
         }
 
+        /** Rows to show in Play for one parent (INV>0 SKUs + parent if summed INV>0). */
+        function ebay3BuildPlayDisplayData(parentRow) {
+            if (!parentRow) return [];
+            var rawChildren = (parentRow._children && Array.isArray(parentRow._children)) ? parentRow._children : [];
+            var invKids = [];
+            if (typeof ebay3Qty === 'function') {
+                invKids = rawChildren.filter(function(c) { return ebay3Qty(c.INV) > 0; });
+            } else {
+                invKids = rawChildren.filter(function(c) {
+                    return (parseFloat(c.INV || 0) || 0) > 0;
+                });
+            }
+            var parentInvOk = typeof ebay3Qty === 'function'
+                ? ebay3Qty(parentRow.INV) > 0
+                : (parseFloat(parentRow.INV || 0) || 0) > 0;
+            return parentInvOk ? invKids.concat([parentRow]) : invKids.slice();
+        }
+
         function showCurrentParentPlayView() {
-            const parentList = getPlayModeParentList();
+            var parentList = getPlayModeParentList();
             if (!parentList || parentList.length === 0) return;
-            if (currentPlayParentIndex < 0 || currentPlayParentIndex >= parentList.length) return;
-            const parentRow = parentList[currentPlayParentIndex];
-            const children = (parentRow._children && Array.isArray(parentRow._children)) ? parentRow._children : [];
-            const displayData = [...children, parentRow];
-            table.clearFilter(true);
-            table.setData(displayData).then(function() {
-                updateCalcValues();
-                updateSummary();
-                updatePlayButtonStates();
-            });
+            if (currentPlayParentIndex < 0) {
+                currentPlayParentIndex = 0;
+            }
+
+            while (currentPlayParentIndex < parentList.length) {
+                var displayData = ebay3BuildPlayDisplayData(parentList[currentPlayParentIndex]);
+                if (displayData.length > 0) {
+                    table.clearFilter(true);
+                    table.setData(displayData).then(function() {
+                        updateCalcValues();
+                        updateSummary();
+                        updatePlayButtonStates();
+                    });
+                    return;
+                }
+                currentPlayParentIndex++;
+            }
+
+            if (isPlayNavigationActive) {
+                showToast('No parent left with inventory — exiting Play', 'warning');
+                stopPlayNavigation();
+            }
         }
 
         function startPlayNavigation() {
@@ -2061,9 +2091,24 @@
         }
 
         function playPreviousParent() {
-            if (!isPlayNavigationActive) return;
+            var parentList = getPlayModeParentList();
+            if (!isPlayNavigationActive || !parentList || !parentList.length) return;
             if (currentPlayParentIndex <= 0) return;
             currentPlayParentIndex--;
+            while (currentPlayParentIndex >= 0) {
+                var displayData = ebay3BuildPlayDisplayData(parentList[currentPlayParentIndex]);
+                if (displayData.length > 0) {
+                    table.clearFilter(true);
+                    table.setData(displayData).then(function() {
+                        updateCalcValues();
+                        updateSummary();
+                        updatePlayButtonStates();
+                    });
+                    return;
+                }
+                currentPlayParentIndex--;
+            }
+            currentPlayParentIndex = 0;
             showCurrentParentPlayView();
         }
 
