@@ -116,6 +116,52 @@ class ProductMasterController extends Controller
         ]);
     }
 
+    /**
+     * Flatten a ProductMaster model to the JSON shape used by the CP Master table and store() responses.
+     */
+    protected function buildProductMasterJsonRow(ProductMaster $product): array
+    {
+        $row = [
+            'id' => $product->id,
+            'Parent' => $product->parent,
+            'SKU' => $product->sku,
+        ];
+
+        $values = $product->Values;
+        if (is_array($values)) {
+            $row = array_merge($row, $values);
+        } elseif (is_string($values)) {
+            $decoded = json_decode($values, true);
+            if (is_array($decoded)) {
+                $row = array_merge($row, $decoded);
+            }
+        }
+
+        $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+        $shopifySku = ShopifySku::where('sku', $normalizedSku)
+            ->orWhere('sku', str_replace(' ', "\u{00a0}", $product->sku))
+            ->first();
+
+        $shopifyImage = $shopifySku?->image_src ?? null;
+        $localImage = $row['image_path'] ?? null;
+
+        if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
+            $row['image_path'] = '/'.ltrim($localImage, '/');
+        } elseif ($shopifyImage) {
+            $row['image_path'] = $shopifyImage;
+        } elseif ($localImage) {
+            $row['image_path'] = '/'.ltrim($localImage, '/');
+        } else {
+            $row['image_path'] = null;
+        }
+
+        $row['shopify_inv'] = $shopifySku?->inv ?? null;
+        $row['shopify_quantity'] = $shopifySku?->quantity ?? null;
+        $row['Values'] = $product->Values;
+
+        return $row;
+    }
+
     public function getViewProductData(Request $request)
     {
         // Fetch all products from the database ordered by parent and SKU
@@ -493,61 +539,10 @@ class ProductMasterController extends Controller
                     @unlink($oldImagePath);
                 }
 
-                // Transform product data similar to getProductBySku for consistent response format
-                $row = [
-                    'id' => $product->id,
-                    'Parent' => $product->parent,
-                    'SKU' => $product->sku,
-                ];
-
-                // Merge values JSON
-                $values = $product->Values;
-                if (is_array($values)) {
-                    $row = array_merge($row, $values);
-                } elseif (is_string($values)) {
-                    $decoded = json_decode($values, true);
-                    if (is_array($decoded)) {
-                        $row = array_merge($row, $decoded);
-                    }
-                }
-
-                // Get Shopify image if available
-                $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-                $shopifySku = \App\Models\ShopifySku::where('sku', $normalizedSku)
-                    ->orWhere('sku', str_replace(' ', "\u{00a0}", $product->sku))
-                    ->first();
-
-                // Image path handling - prioritize manually uploaded local image, then Shopify
-                $shopifyImage = $shopifySku->image_src ?? null;
-                $localImage = $row['image_path'] ?? null;
-
-                // Priority: Manually uploaded local image > Shopify image
-                // If local image exists and is a storage path (manually uploaded), use it
-                // Otherwise, fall back to Shopify image
-                if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
-                    // Manually uploaded image takes priority
-                    $row['image_path'] = '/'.ltrim($localImage, '/');
-                } elseif ($shopifyImage) {
-                    // Fall back to Shopify image if no manual upload
-                    $row['image_path'] = $shopifyImage;
-                } elseif ($localImage) {
-                    // Other local images (if any)
-                    $row['image_path'] = '/'.ltrim($localImage, '/');
-                } else {
-                    $row['image_path'] = null;
-                }
-
-                // Add Shopify inventory fields
-                $row['shopify_inv'] = $shopifySku->inv ?? null;
-                $row['shopify_quantity'] = $shopifySku->quantity ?? null;
-
-                // Keep Values JSON for reference
-                $row['Values'] = $product->Values;
-
                 return response()->json([
                     'success' => true,
                     'message' => 'Product updated successfully',
-                    'data' => $row,
+                    'data' => $this->buildProductMasterJsonRow($product),
                 ]);
             } else {
                 // Check for soft-deleted product with same SKU and Parent
@@ -579,6 +574,7 @@ class ProductMasterController extends Controller
                 }
 
                 // 2. Also create a row with parent = original parent, sku = 'PARENT {parent}', Values = null
+                $parentRowForClient = null;
                 if (! empty($validated['parent'])) {
                     $parentSku = 'PARENT '.$validated['parent'];
                     // Check for both existing and soft-deleted rows
@@ -590,10 +586,11 @@ class ProductMasterController extends Controller
                     if ($parentRow) {
                         if ($parentRow->trashed()) {
                             $parentRow->restore();
+                            $parentRowForClient = $parentRow->fresh();
                         }
-                    } elseif (! $parentRow) {
+                    } else {
                         // Only create if it doesn't exist at all
-                        ProductMaster::create([
+                        $parentRowForClient = ProductMaster::create([
                             'sku' => $parentSku,
                             'parent' => $validated['parent'],
                             'Values' => null,
@@ -604,7 +601,8 @@ class ProductMasterController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => 'Product saved successfully',
-                    'data' => $product,
+                    'data' => $this->buildProductMasterJsonRow($product),
+                    'parent_row' => $parentRowForClient ? $this->buildProductMasterJsonRow($parentRowForClient) : null,
                 ]);
             }
         } catch (\Exception $e) {

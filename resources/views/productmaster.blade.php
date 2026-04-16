@@ -1780,6 +1780,68 @@
                     });
             }
 
+            /** Match server ordering: parent asc, non-PARENT SKUs before PARENT row, then sku asc */
+            function sortTableDataLikeServer() {
+                tableData.sort((a, b) => {
+                    const pa = String(a.Parent ?? a.parent ?? '');
+                    const pb = String(b.Parent ?? b.parent ?? '');
+                    const pc = pa.localeCompare(pb, undefined, { sensitivity: 'base' });
+                    if (pc !== 0) return pc;
+                    const skuA = String(a.SKU ?? a.sku ?? '');
+                    const skuB = String(b.SKU ?? b.sku ?? '');
+                    const aParent = skuA.toUpperCase().includes('PARENT');
+                    const bParent = skuB.toUpperCase().includes('PARENT');
+                    if (aParent !== bParent) {
+                        return aParent ? 1 : -1;
+                    }
+                    return skuA.localeCompare(skuB, undefined, { sensitivity: 'base' });
+                });
+            }
+
+            function upsertProductMasterRow(row) {
+                if (!row) return;
+                const sku = row.SKU || row.sku;
+                if (!sku) return;
+                const i = tableData.findIndex(p => (p.SKU || p.sku) === sku);
+                if (i >= 0) {
+                    Object.assign(tableData[i], row);
+                    tableData[i].SKU = sku;
+                    tableData[i].sku = sku;
+                    productMap.set(sku, tableData[i]);
+                } else {
+                    tableData.push(row);
+                    productMap.set(sku, tableData[tableData.length - 1]);
+                }
+            }
+
+            /** After create/update store JSON: merge rows, re-sort, refresh counts and table without refetching */
+            function patchTableDataAfterStore(serverJson) {
+                if (serverJson.parent_row) {
+                    upsertProductMasterRow(serverJson.parent_row);
+                }
+                if (serverJson.data) {
+                    upsertProductMasterRow(serverJson.data);
+                }
+                sortTableDataLikeServer();
+                const parentSet = new Set();
+                let skuCount = 0;
+                tableData.forEach(item => {
+                    if (item.Parent) parentSet.add(item.Parent);
+                    if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
+                        skuCount++;
+                    }
+                });
+                document.getElementById('parentCount').textContent = `(${parentSet.size})`;
+                document.getElementById('skuCount').textContent = `(${skuCount})`;
+                updateParentOptions();
+                initProductPlaybackControls();
+                applyFilters();
+                setTimeout(() => {
+                    setupEditButtons();
+                    setupDeleteButtons();
+                }, 100);
+            }
+
             // Modified renderTable function to respect column permissions
             function renderTable(data) {
                 
@@ -4273,14 +4335,7 @@
                         // Show success message
                         showToast('success', 'Product successfully added to database!');
                         bootstrap.Modal.getInstance(modal).hide();
-                        // Load data and reapply filters after successful creation
-                        loadData(function() {
-                            const currentFilters = getCurrentFilters();
-                            const filteredData = applyFiltersToData(currentFilters);
-                            renderTable(filteredData);
-                            setupEditButtons();
-                            setupDeleteButtons();
-                        });
+                        patchTableDataAfterStore(data);
                         resetProductForm();
                     } catch (error) {
                         showAlert('danger', error.message);
@@ -4528,10 +4583,6 @@
                     formData.append('operation', 'update');
                     formData.append('original_sku', this.getAttribute('data-original-sku'));
                     formData.append('original_parent', this.getAttribute('data-original-parent'));
-                    
-                    // Check if image is being updated
-                    const imageFileInput = document.getElementById('productImage');
-                    const isImageUpdate = imageFileInput && imageFileInput.files && imageFileInput.files.length > 0;
 
                     try {
                         const response = await fetch('/product_master/store', {
@@ -4704,23 +4755,12 @@
                                 productMap.set(sku, flattenedProduct);
                             }
                             
-                            // If image was updated, reload data to ensure proper image path from server
-                            // Server handles image path formatting (Shopify URLs, local paths with proper slashes, etc.)
-                            if (isImageUpdate) {
-                                // Reload data to get properly formatted image path from server
-                                // This ensures image shows correctly after update
-                                loadData();
-                            } else {
-                                // Force immediate re-render with updated data
-                                // Reapply filters immediately to show updated data
-                                applyFilters();
-                                
-                                // Also setup edit/delete buttons again after re-render in case table was recreated
-                                setTimeout(() => {
-                                    setupEditButtons();
-                                    setupDeleteButtons();
-                                }, 100);
-                            }
+                            // Re-render from local tableData (store response already includes formatted image_path)
+                            applyFilters();
+                            setTimeout(() => {
+                                setupEditButtons();
+                                setupDeleteButtons();
+                            }, 100);
                         } else {
                             // If no data returned, reload with filters preserved
                             loadData();

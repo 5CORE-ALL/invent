@@ -278,10 +278,10 @@
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Channels: <span id="total-channels">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last 32 days Pacific order totals, non-canceled. Other channels vary.">
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amazon Daily Sales). Other channels vary.">
                             Sales: <span id="total-l30-sales">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = 32-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
                             Orders: <span id="total-l30-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
@@ -1121,7 +1121,7 @@
                     {
                         title: "Sales",
                         field: "L30 Sales",
-                        headerTooltip: "Rolling sales per channel. Amazon = last 32 days Pacific, SUM(order total), non-canceled — same as Amazon Daily Sales.",
+                        headerTooltip: "Rolling sales per channel. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same formula as Amazon Daily Sales (AMAZON_SALES_TOTAL_MODE; Canceled/Cancelled excluded).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -1340,7 +1340,7 @@
                     {
                         title: "Orders",
                         field: "L30 Orders",
-                        headerTooltip: "Rolling order count per channel. Amazon = 32 days Pacific, non-canceled — same as Amazon Daily Sales.",
+                        headerTooltip: "Rolling order count per channel. Amazon = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same as Amazon Daily Sales (Canceled/Cancelled excluded).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,

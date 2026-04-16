@@ -2717,12 +2717,13 @@ class ChannelMasterController extends Controller
 
         $activeAmazonOrders = function ($q) {
             $q->where(function ($w) {
-                $w->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
+                $w->whereNull('o.status')
+                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
             });
         };
 
-        // Sales + order count (matches Amazon Daily Sales: SUM(quantity×price) by order_date, 35-day window)
-        $l30SalesFromOrders = AmazonOrder::revenueSumQtyTimesPriceByOrderDate($startAmazonWindow, $endToday);
+        // Sales + order count (same as Amazon Daily Sales: AMAZON_SALES_TOTAL_MODE + DAILY_SALES_WINDOW_DAYS, Pacific through yesterday)
+        $l30SalesFromOrders = AmazonOrder::badgeTotalSalesByOrderDate($startAmazonWindow, $endToday);
         $l30OrdersFromOrders = (int) DB::table('amazon_orders as o')
             ->where('o.order_date', '>=', $startAmazonWindow)
             ->where('o.order_date', '<=', $endToday)
