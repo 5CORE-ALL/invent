@@ -71,7 +71,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 32) . ' Days, California)',
+        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 34) . ' Days, California)',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -353,7 +353,7 @@
                     title: "Period",
                     field: "period",
                     width: 80,
-                    headerTooltip: "API period label (e.g. L32). Matches the page: {{ (int) ($amazonSalesWindowDays ?? 32) }} Pacific calendar days through yesterday, today excluded."
+                    headerTooltip: "API period label (e.g. L34). Matches the page: {{ (int) ($amazonSalesWindowDays ?? 34) }} Pacific calendar days through yesterday, today excluded."
                 },
                 {
                     title: "LP",
