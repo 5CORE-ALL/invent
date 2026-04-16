@@ -14,8 +14,8 @@ use Carbon\Carbon;
 
 class AmazonSalesController extends Controller
 {
-    /** Inclusive calendar days ending yesterday (Pacific), same for badge + grid API + Channel Master Amazon (L32) */
-    public const DAILY_SALES_WINDOW_DAYS = 32;
+    /** Inclusive calendar days ending yesterday (Pacific), same for badge + grid API + Channel Master */
+    public const DAILY_SALES_WINDOW_DAYS = 35;
 
     public function index()
     {
@@ -61,29 +61,13 @@ class AmazonSalesController extends Controller
         $endDate = $yesterdayPacific->copy()->endOfDay();
         $startWindow = $yesterdayPacific->copy()->subDays($windowDays - 1)->startOfDay();
 
-        $effectiveTotal = AmazonOrder::effectiveOrderTotalSql('o');
+        // Revenue: SUM(quantity × price) on line items, filtered by amazon_orders.order_date
+        $amazonSalesTotal = AmazonOrder::revenueSumQtyTimesPriceByOrderDate($startWindow, $endDate);
 
-        // OrderTotal when present; else sum of line items (Pending orders often lack OrderTotal in API)
-        $amazonSalesTotal = (float) (DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $startWindow)
-            ->where('o.order_date', '<=', $endDate)
-            ->where(function ($q) {
-                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
-            })
-            ->selectRaw("SUM({$effectiveTotal}) as revenue")
-            ->value('revenue') ?? 0);
-
-        // 8 Feb to today (separate badge, fixed start)
+        // 8 Feb to yesterday (separate badge, fixed start) — same line formula
         $start8Feb = Carbon::createFromDate(now()->year, 2, 8)->startOfDay();
         $daysFrom8Feb = $start8Feb->isFuture() ? 0 : $start8Feb->diffInDays($endDate) + 1;
-        $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : (float) (DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $start8Feb)
-            ->where('o.order_date', '<=', $endDate)
-            ->where(function ($q) {
-                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
-            })
-            ->selectRaw("SUM({$effectiveTotal}) as revenue")
-            ->value('revenue') ?? 0);
+        $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : AmazonOrder::revenueSumQtyTimesPriceByOrderDate($start8Feb, $endDate);
 
         return view('sales.amazon_daily_sales_data', [
             'kwSpent'                 => (float) $kwSpent,
@@ -110,7 +94,8 @@ class AmazonSalesController extends Controller
         $startDateStr = $startWindow->format('Y-m-d');
         $endDateStr = $endDate->format('Y-m-d');
 
-        $orderTotalExpr = AmazonOrder::effectiveOrderTotalSql('o');
+        $lineRevExpr = AmazonOrder::orderItemQtyTimesPriceSql('i');
+        $orderLinesSum = AmazonOrder::orderSumQtyTimesPriceSubquery('o');
 
         $orderRows = DB::table('amazon_orders as o')
             ->leftJoin('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
@@ -123,7 +108,8 @@ class AmazonSalesController extends Controller
                 'o.amazon_order_id as order_id',
                 'o.order_date',
                 'o.status',
-                DB::raw("({$orderTotalExpr}) as order_total_amount"),
+                DB::raw("({$orderLinesSum}) as order_total_amount"),
+                DB::raw("({$lineRevExpr}) as line_revenue"),
                 'o.currency',
                 'i.asin',
                 'i.sku',
@@ -140,23 +126,26 @@ class AmazonSalesController extends Controller
         }
 
         // Build orderItems-like collection: one row per order line (same shape as before)
-        $orderItems = $orderRows->map(function ($row) {
+        $periodLabel = 'L'.(int) self::DAILY_SALES_WINDOW_DAYS;
+        $orderItems = $orderRows->map(function ($row) use ($periodLabel) {
             $qty = (int) ($row->quantity ?? 0);
-            $linePrice = (float) ($row->line_price ?? 0);
-            $unitPrice = $qty > 0 ? $linePrice / $qty : 0;
+            $dbPrice = (float) ($row->line_price ?? 0);
+            $lineRevenue = (float) ($row->line_revenue ?? ($qty * $dbPrice));
+
             return (object) [
                 'order_id'           => $row->order_id,
                 'order_date'         => $row->order_date,
                 'status'             => $row->status,
                 'order_total_amount' => (float) ($row->order_total_amount ?? 0),
-                'total_amount'       => $linePrice,
+                'total_amount'       => $lineRevenue,
                 'currency'           => $row->currency ?? 'USD',
-                'period'             => 'L32',
+                'period'             => $periodLabel,
                 'asin'               => $row->asin ?? '',
                 'sku'                => $row->sku ?? '',
                 'title'              => $row->title ?? '',
                 'quantity'           => $qty,
-                'price'              => $linePrice,
+                'price'              => $dbPrice,
+                'line_revenue'       => $lineRevenue,
             ];
         });
 
@@ -255,7 +244,7 @@ class AmazonSalesController extends Controller
     
             $qty = floatval($item->quantity);
     
-            $totalPrice = floatval($item->price);
+            $totalPrice = floatval($item->line_revenue ?? ($qty * floatval($item->price)));
             $unitPrice = $qty > 0 ? $totalPrice / $qty : 0;
     
             $tWeight = $weightAct * $qty;
@@ -283,7 +272,7 @@ class AmazonSalesController extends Controller
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,
                 'status' => $item->status,
-                'period' => 'L32',
+                'period' => 'L'.(int) self::DAILY_SALES_WINDOW_DAYS,
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
                 't_weight' => round($tWeight, 2),
@@ -451,17 +440,9 @@ class AmazonSalesController extends Controller
             ->sum('i.quantity');
         $debug['total_quantity_from_items'] = $totalQty;
         
-        // 9. Total sales from item prices
-        $totalSales = DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $startDateCarbon)
-            ->where('o.order_date', '<=', $endDateCarbon)
-            ->where(function ($query) {
-                $query->whereNull('o.status')
-                    ->orWhere('o.status', '!=', 'Canceled');
-            })
-            ->sum('i.price');
-        $debug['total_sales_from_item_prices'] = round($totalSales, 2);
+        // 9. Total sales: SUM(quantity × price) on items, order_date window (same as badge)
+        $totalSales = AmazonOrder::revenueSumQtyTimesPriceByOrderDate($startDateCarbon, $endDateCarbon);
+        $debug['total_sales_qty_times_price'] = round($totalSales, 2);
         
         // 10. Items with 0 or null price (data quality issue)
         $zeroPriceItems = DB::table('amazon_orders as o')
@@ -507,11 +488,11 @@ class AmazonSalesController extends Controller
             'total_order_items' => 2327,
         ];
         
-        // 13. What your system currently shows
+        // 13. What your system currently shows (live)
         $debug['your_system_shows'] = [
-            'total_sales' => 67928.54,
-            'total_quantity' => 1599,
-            'total_orders' => 1426,
+            'total_sales' => round($totalSales, 2),
+            'total_quantity' => (int) $totalQty,
+            'total_orders' => $nonCancelledOrders,
         ];
         
         // 14. Calculate discrepancies

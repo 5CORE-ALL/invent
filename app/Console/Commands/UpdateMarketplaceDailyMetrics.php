@@ -110,15 +110,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $endOfDay = $datePacific->copy()->endOfDay();
         $startOfDay = $datePacific->copy()->subDays($windowDays - 1)->startOfDay();
 
-        $effectiveTotal = AmazonOrder::effectiveOrderTotalSql('o');
-        $totalRevenue = (float) (DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $startOfDay)
-            ->where('o.order_date', '<=', $endOfDay)
-            ->where(function ($q) {
-                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
-            })
-            ->selectRaw("SUM({$effectiveTotal}) as revenue")
-            ->value('revenue') ?? 0);
+        $totalRevenue = AmazonOrder::revenueSumQtyTimesPriceByOrderDate($startOfDay, $endOfDay);
 
         // Get order rows for item-level metrics (COGS, profit, etc.)
         $orderRows = DB::table('amazon_orders as o')
@@ -162,7 +154,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         foreach ($orderRows as $row) {
             $quantity = (int) $row->quantity;
             $linePrice = (float) $row->line_price;
-            $unitPrice = $quantity > 0 ? $linePrice / $quantity : 0;
+            $lineRevenue = $quantity * $linePrice;
+            $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0;
 
             $totalQuantity += $quantity;
 

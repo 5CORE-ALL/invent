@@ -2721,15 +2721,13 @@ class ChannelMasterController extends Controller
             });
         };
 
-        $effectiveTotal = AmazonOrder::effectiveOrderTotalSql('o');
-
-        // Sales + order count (matches Amazon Daily Sales badge: OrderTotal or line-item fallback)
-        $orderHead = DB::table('amazon_orders as o')
+        // Sales + order count (matches Amazon Daily Sales: SUM(quantity×price) by order_date, 35-day window)
+        $l30SalesFromOrders = AmazonOrder::revenueSumQtyTimesPriceByOrderDate($startAmazonWindow, $endToday);
+        $l30OrdersFromOrders = (int) DB::table('amazon_orders as o')
             ->where('o.order_date', '>=', $startAmazonWindow)
             ->where('o.order_date', '<=', $endToday)
             ->where($activeAmazonOrders)
-            ->selectRaw("COUNT(DISTINCT o.amazon_order_id) as order_count, COALESCE(SUM({$effectiveTotal}), 0) as total_sales")
-            ->first();
+            ->count(DB::raw('DISTINCT o.amazon_order_id'));
 
         // Line quantities only (item join)
         $qtyAgg = DB::table('amazon_orders as o')
@@ -2740,8 +2738,6 @@ class ChannelMasterController extends Controller
             ->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
             ->first();
 
-        $l30SalesFromOrders = (float) ($orderHead->total_sales ?? 0);
-        $l30OrdersFromOrders = (int) ($orderHead->order_count ?? 0);
         $totalQuantityFromOrders = (int) ($qtyAgg->total_qty ?? 0);
 
         // Get other metrics from marketplace_daily_metrics (PFT%, ROI, TACOS, ad spend, etc.)

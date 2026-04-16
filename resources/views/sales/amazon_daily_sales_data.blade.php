@@ -71,7 +71,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 32) . ' Days, California)',
+        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 35) . ' Days, California)',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -80,7 +80,7 @@
                 <h4>Amazon Daily Sales Data </h4>
                 <p class="text-muted small mb-2" id="date-range-info">
                     Date range (Pacific): {{ $amazonSalesWindowStart ?? '—' }} – {{ $amazonSalesWindowEnd ?? '—' }}
-                    — {{ (int) ($amazonSalesWindowDays ?? 32) }} days through yesterday (today excluded). This total is a <strong>rolling</strong> window: each day the oldest date drops out, so the sum can go down even when sales are fine. Match the same dates in Seller Central; canceled orders are excluded here.
+                    — {{ (int) ($amazonSalesWindowDays ?? 35) }} days through yesterday (today excluded). Total sales = <strong>Σ (quantity × price)</strong> on <code>amazon_order_items</code> for orders whose <code>order_date</code> falls in this range. Rolling window: each day the oldest date drops out. Canceled orders excluded. Match the same dates in Seller Central.
                 </p>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
@@ -343,7 +343,7 @@
                     title: "Period",
                     field: "period",
                     width: 80,
-                    headerTooltip: "API period label (e.g. L32). Matches the page: {{ (int) ($amazonSalesWindowDays ?? 32) }} Pacific calendar days through yesterday, today excluded."
+                    headerTooltip: "API period label (e.g. L35). Matches the page: {{ (int) ($amazonSalesWindowDays ?? 35) }} Pacific calendar days through yesterday, today excluded."
                 },
                 {
                     title: "LP",
