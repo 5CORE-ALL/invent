@@ -1251,6 +1251,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.board');
     Route::get('/customer-care/carrier-and-claim', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'carrierAndClaimBoard'])
         ->name('customer.care.dispatch.carrier.and.claim');
+    Route::get('/customer-care/carrier-issue', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'carrierIssueBoard'])
+        ->name('customer.care.dispatch.carrier.issue');
     Route::permanentRedirect('/customer-care/dispatch-issue', '/customer-care/all-issues');
     Route::get('/customer-care/all-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
         ->name('customer.care.dispatch.issues.sku.details');

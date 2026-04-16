@@ -1099,7 +1099,8 @@
                                     <option value="Dispatch" @selected(!empty($lockedDepartment ?? null))>Dispatch</option>
                                     <option value="Shipping">Shipping</option>
                                     <option value="Listing">Listing</option>
-                                    <option value="Carrier">Carrier</option>
+                                    <option value="Carrier">Carrier and Claim</option>
+                                    <option value="Carrier Issue">Carrier Issue</option>
                                     <option value="Customer Care">Customer Care</option>
                                     <option value="Pricing">Pricing</option>
                                     <option value="QC">QC</option>

@@ -28,6 +28,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return view('customer-care.carrier_and_claim', $this->issueBoardIndexData());
     }
 
+    /** Same board as Carrier and Claim, filtered to department "Carrier Issue" (`dispatch_issue_issues`). */
+    public function carrierIssueBoard()
+    {
+        return view('customer-care.carrier_issue', $this->issueBoardIndexData());
+    }
+
     protected function issuesTable(): string
     {
         return 'dispatch_issue_issues';
@@ -112,7 +118,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return is_finite($v) ? round($v, 2) : 0.0;
     }
 
-    public function claimsStats(): JsonResponse
+    public function claimsStats(Request $request): JsonResponse
     {
         $empty = [
             'filed' => ['count' => 0, 'amount' => 0.0],
@@ -123,11 +129,16 @@ class DispatchIssuesController extends IssueBoardControllerBase
             return response()->json($empty);
         }
 
+        $department = trim((string) $request->query('department', 'Carrier'));
+        if ($department === '') {
+            $department = 'Carrier';
+        }
+
         $query = DB::table($this->issuesTable())
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             });
-        CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', 'Carrier');
+        CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
         $rows = $query->get(['claim_filed', 'claim_received', 'amp_usd']);
 
         $filedC = 0;

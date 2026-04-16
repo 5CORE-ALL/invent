@@ -879,6 +879,12 @@
                             <a href="{{ route('customer.care.dispatch.issues') }}">All Issues</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.dispatch.carrier.and.claim') }}">Carrier and Claim</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.dispatch.carrier.issue') }}">Carrier Issue</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>
                         </li>
                         <li>
