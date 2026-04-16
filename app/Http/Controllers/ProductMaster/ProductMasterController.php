@@ -630,6 +630,147 @@ class ProductMasterController extends Controller
         }
     }
 
+    /**
+     * Duplicate an existing product row under a new SKU (and optional parent).
+     * Copies Values JSON from the source row; does not copy archived Shopify linkage metadata beyond Values.
+     */
+    public function duplicateSku(Request $request)
+    {
+        $request->headers->set('Accept', 'application/json');
+
+        $validated = $request->validate([
+            'source_sku' => 'required|string',
+            'source_parent' => 'nullable|string',
+            'new_sku' => 'required|string',
+            'new_parent' => 'nullable|string',
+        ]);
+
+        $normalizeParent = static function ($v): ?string {
+            if ($v === null || $v === '') {
+                return null;
+            }
+
+            return trim((string) $v) ?: null;
+        };
+
+        $sourceSku = trim($validated['source_sku']);
+        $newSku = trim($validated['new_sku']);
+
+        if ($newSku === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'New SKU is required.',
+            ], 422);
+        }
+
+        if (stripos($sourceSku, 'PARENT') !== false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot duplicate this row.',
+            ], 422);
+        }
+
+        $newParent = array_key_exists('new_parent', $validated)
+            ? $normalizeParent($validated['new_parent'])
+            : null;
+
+        $source = ProductMaster::where('sku', $sourceSku)->first();
+
+        if (! $source || stripos((string) $source->sku, 'PARENT') !== false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Source product not found.',
+            ], 404);
+        }
+
+        $values = $source->Values;
+        if (is_string($values)) {
+            $values = json_decode($values, true);
+        }
+        if (! is_array($values)) {
+            $values = [];
+        }
+
+        // Independent copy of Values (avoid shared refs)
+        $valuesCopy = json_decode(json_encode($values), true);
+
+        // Same uniqueness rule as store(): SKU + parent combination must not exist (non-archived blocks immediately)
+        $existing = ProductMaster::withTrashed()
+            ->where('sku', $newSku)
+            ->where('parent', $newParent)
+            ->first();
+
+        if ($existing && ! $existing->trashed()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A product with this SKU already exists in the database.',
+            ], 409);
+        }
+
+        if ($existing && $existing->trashed()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A product with this SKU already exists in the database.',
+            ], 409);
+        }
+
+        try {
+            $product = ProductMaster::create([
+                'sku' => $newSku,
+                'parent' => $newParent,
+                'Values' => $valuesCopy,
+            ]);
+
+            $parentRowForClient = null;
+            if (! empty($newParent)) {
+                $parentSku = 'PARENT '.$newParent;
+                $parentRow = ProductMaster::withTrashed()
+                    ->where('sku', $parentSku)
+                    ->where('parent', $newParent)
+                    ->first();
+
+                if ($parentRow) {
+                    if ($parentRow->trashed()) {
+                        $parentRow->restore();
+                        $parentRowForClient = $parentRow->fresh();
+                    }
+                } else {
+                    $parentRowForClient = ProductMaster::create([
+                        'sku' => $parentSku,
+                        'parent' => $newParent,
+                        'Values' => null,
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Product duplicated successfully.',
+                'data' => $this->buildProductMasterJsonRow($product),
+                'parent_row' => $parentRowForClient ? $this->buildProductMasterJsonRow($parentRowForClient) : null,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error duplicating product: '.$e->getMessage());
+
+            if (strpos($e->getMessage(), 'Integrity constraint violation') !== false &&
+                strpos($e->getMessage(), 'Duplicate entry') !== false) {
+                preg_match("/Duplicate entry '(.+)' for/", $e->getMessage(), $matches);
+                $duplicateSku = isset($matches[1]) ? $matches[1] : 'this SKU';
+
+                return response()->json([
+                    'success' => false,
+                    'message' => "Product with SKU '{$duplicateSku}' already exists in the database.",
+                    'error_type' => 'duplicate_entry',
+                ], 409);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error duplicating product: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function updateField(Request $request)
     {
         $request->headers->set('Accept', 'application/json');

@@ -1295,6 +1295,39 @@
                         </div>
                     </div>
 
+                    <!-- Duplicate SKU (single row — not part of Bulk Actions) -->
+                    <div class="modal fade" id="duplicateProductModal" tabindex="-1" aria-labelledby="duplicateProductModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff;">
+                                    <h5 class="modal-title" id="duplicateProductModalLabel"><i class="bi bi-files me-2"></i>Duplicate SKU</h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="text-muted small mb-3">Copy all CP Master fields from <strong id="duplicateSourceSkuDisplay">—</strong> into a new product row.</p>
+                                    <input type="hidden" id="duplicateSourceSku" value="">
+                                    <input type="hidden" id="duplicateSourceParent" value="">
+                                    <div class="mb-3">
+                                        <label for="duplicateNewSku" class="form-label fw-semibold">New SKU <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="duplicateNewSku" autocomplete="off" placeholder="Enter a unique SKU">
+                                        <div class="invalid-feedback" id="duplicateNewSkuFeedback">SKU is required.</div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label for="duplicateNewParent" class="form-label fw-semibold">Parent</label>
+                                        <input type="text" class="form-control" id="duplicateNewParent" list="parentOptions" placeholder="Parent name (editable)" autocomplete="off">
+                                        <div class="form-text">You can use the same parent or enter a new parent name.</div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="confirmDuplicateBtn">
+                                        <i class="bi bi-check-lg me-1"></i>Create duplicate
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Progress Modal -->
                     <div id="progressModal" class="modal fade" tabindex="-1">
                         <div class="modal-dialog modal-lg">
@@ -1838,6 +1871,7 @@
                 applyFilters();
                 setTimeout(() => {
                     setupEditButtons();
+                    setupDuplicateButtons();
                     setupDeleteButtons();
                 }, 100);
             }
@@ -2422,18 +2456,25 @@
                                     </select>
                                 `;
                                 break;
-                            case "Action":
+                            case "Action": {
                                 cell.className = 'text-center';
+                                const isParentPlaceholder = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                                 cell.innerHTML = `
                         <div class="d-inline-flex">
                             ${hasEditPermission ? 
-                                `<button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
+                                `<button type="button" class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                         <i class="bi bi-pencil-square"></i>
                                                     </button>` 
                                 : ''
                             }
+                            ${hasEditPermission && !isParentPlaceholder ? 
+                                `<button type="button" class="btn btn-sm btn-outline-secondary duplicate-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="Duplicate as new SKU">
+                                                        <i class="bi bi-files"></i>
+                                                    </button>` 
+                                : ''
+                            }
                             ${hasDeletePermission ? 
-                                `<button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
+                                `<button type="button" class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                                         <i class="bi bi-archive"></i>
                                                     </button>` 
                                 : ''
@@ -2442,6 +2483,7 @@
                         </div>
                     `;
                                 break;
+                            }
                             default:
                                 cell.textContent = '-';
                         }
@@ -2453,6 +2495,7 @@
 
                 if (hasEditPermission) {
                     setupEditButtons();
+                    setupDuplicateButtons();
                     setupDeleteButtons();
                 }
 
@@ -2488,7 +2531,7 @@
                     cells.forEach((cell, cellIndex) => {
                         // Skip checkbox column and action column
                         if (cellIndex === 0 && cell.querySelector('.row-checkbox')) return;
-                        if (cell.querySelector('.edit-btn, .delete-btn')) return;
+                        if (cell.querySelector('.edit-btn, .duplicate-btn, .delete-btn')) return;
 
                         const missingIndicator = cell.querySelector('.missing-data-indicator');
                         if (missingIndicator && missingIndicator.tagName === 'SPAN') {
@@ -3442,18 +3485,25 @@
 
                             // Add cases for other columns...
 
-                        case "Action":
+                        case "Action": {
                             cell.className = 'text-center';
+                            const isParentPlaceholder = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                             cell.innerHTML = `
                     <div class="d-inline-flex">
                         ${hasEditPermission ? 
-                            `<button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
+                            `<button type="button" class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                                             <i class="bi bi-pencil-square"></i>
                                                                         </button>` 
                             : ''
                         }
+                        ${hasEditPermission && !isParentPlaceholder ? 
+                            `<button type="button" class="btn btn-sm btn-outline-secondary duplicate-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="Duplicate as new SKU">
+                                                                            <i class="bi bi-files"></i>
+                                                                        </button>` 
+                            : ''
+                        }
                         ${hasDeletePermission ? 
-                            `<button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
+                            `<button type="button" class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                                                             <i class="bi bi-archive"></i>
                                                                         </button>` 
                             : ''
@@ -3462,6 +3512,7 @@
                     </div>
                 `;
                             break;
+                        }
 
                         default:
                             // Handle any other column using the columnDefs mapping
@@ -3514,6 +3565,7 @@
                 setupSelectionMode();
                 setupBatchProcessing();
                 setupBulkActionsModal();
+                setupDuplicateProductModal();
                 setupMissingDataButtons();
             }
 
@@ -4563,6 +4615,101 @@
                 });
             }
 
+            function setupDuplicateButtons() {
+                document.querySelectorAll('.duplicate-btn').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const sku = this.getAttribute('data-sku');
+                        const product = productMap.get(sku);
+                        if (!product) {
+                            showToast('warning', 'Product not found.');
+                            return;
+                        }
+                        if (String(product.SKU || '').toUpperCase().includes('PARENT')) {
+                            return;
+                        }
+                        const dupSku = document.getElementById('duplicateNewSku');
+                        const dupFb = document.getElementById('duplicateNewSkuFeedback');
+                        if (dupSku) {
+                            dupSku.classList.remove('is-invalid');
+                            dupSku.value = '';
+                        }
+                        if (dupFb) dupFb.textContent = 'SKU is required.';
+                        document.getElementById('duplicateSourceSku').value = product.SKU || '';
+                        document.getElementById('duplicateSourceParent').value = product.Parent ?? '';
+                        document.getElementById('duplicateSourceSkuDisplay').textContent = product.SKU || '—';
+                        document.getElementById('duplicateNewParent').value = product.Parent ?? '';
+                        const m = document.getElementById('duplicateProductModal');
+                        bootstrap.Modal.getOrCreateInstance(m).show();
+                        setTimeout(() => {
+                            if (dupSku) dupSku.focus();
+                        }, 350);
+                    });
+                });
+            }
+
+            function setupDuplicateProductModal() {
+                const btn = document.getElementById('confirmDuplicateBtn');
+                if (!btn || btn.dataset.duplicateBound === '1') return;
+                btn.dataset.duplicateBound = '1';
+                btn.addEventListener('click', async function() {
+                    const newSkuEl = document.getElementById('duplicateNewSku');
+                    const newSku = newSkuEl ? newSkuEl.value.trim() : '';
+                    const newParent = document.getElementById('duplicateNewParent') ?
+                        document.getElementById('duplicateNewParent').value.trim() : '';
+                    const sourceSku = document.getElementById('duplicateSourceSku').value;
+                    const sourceParent = document.getElementById('duplicateSourceParent').value;
+                    const dupFb = document.getElementById('duplicateNewSkuFeedback');
+                    if (!newSku) {
+                        if (newSkuEl) newSkuEl.classList.add('is-invalid');
+                        if (dupFb) dupFb.textContent = 'Enter a new SKU.';
+                        return;
+                    }
+                    if (newSkuEl) newSkuEl.classList.remove('is-invalid');
+
+                    try {
+                        const response = await fetch('/product_master/duplicate', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({
+                                source_sku: sourceSku,
+                                source_parent: sourceParent || null,
+                                new_sku: newSku,
+                                new_parent: newParent || null
+                            })
+                        });
+                        const data = await response.json();
+
+                        if (!response.ok) {
+                            showToast('warning', data.message || 'Could not create duplicate.');
+                            if (response.status === 409 && newSkuEl) {
+                                newSkuEl.classList.add('is-invalid');
+                                if (dupFb) {
+                                    dupFb.textContent = data.message && data.message.includes('SKU') ?
+                                        data.message : 'This SKU already exists. Choose another.';
+                                }
+                            }
+                            return;
+                        }
+
+                        showToast('success', data.message || 'Product duplicated successfully.');
+                        const modalEl = document.getElementById('duplicateProductModal');
+                        const inst = bootstrap.Modal.getInstance(modalEl);
+                        if (inst) inst.hide();
+
+                        patchTableDataAfterStore(data);
+                    } catch (err) {
+                        showToast('danger', err.message || 'Duplicate failed');
+                    }
+                });
+            }
+
             // Edit product
             function editProduct(product) {
                 const modal = new bootstrap.Modal(document.getElementById('addProductModal'));
@@ -4759,6 +4906,7 @@
                             applyFilters();
                             setTimeout(() => {
                                 setupEditButtons();
+                                setupDuplicateButtons();
                                 setupDeleteButtons();
                             }, 100);
                         } else {

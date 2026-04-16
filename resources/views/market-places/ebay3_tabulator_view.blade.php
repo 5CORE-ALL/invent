@@ -2265,6 +2265,7 @@
             dataTree: true,
             dataTreeStartExpanded: false,
             dataTreeChildField: "_children",
+            dataTreeFilter: true,
             dataTreeChildColumnCalcs: true,
             langs: {
                 "default": {
@@ -4019,6 +4020,22 @@
             }
         });
 
+        /** Parse Shop/PM stock (INV) for row filters: numbers, comma thousands, trim, no false "0" from bad parse. */
+        function ebay3Qty(v) {
+            if (v == null || v === '' || v === false) {
+                return 0;
+            }
+            if (typeof v === 'number' && Number.isFinite(v)) {
+                return v;
+            }
+            var s = String(v).replace(/,/g, '').replace(/[\s\u00A0]+/g, '').trim();
+            if (s === '' || s === '—' || s === '-' || s === 'N/A' || s === 'n/a') {
+                return 0;
+            }
+            var n = parseFloat(s);
+            return Number.isFinite(n) ? n : 0;
+        }
+
         // Apply filters
         function applyFilters() {
             if (isPlayNavigationActive) {
@@ -4076,13 +4093,17 @@
 
             if (invFilter === 'zero') {
                 table.addFilter(function(data) {
-                    const inv = parseFloat(data.INV || 0) || 0;
-                    return inv === 0;
+                    if (!data) {
+                        return false;
+                    }
+                    return ebay3Qty(data.INV) === 0;
                 });
             } else if (invFilter === 'more') {
                 table.addFilter(function(data) {
-                    const inv = parseFloat(data.INV || 0) || 0;
-                    return inv > 0;
+                    if (!data) {
+                        return false;
+                    }
+                    return ebay3Qty(data.INV) > 0;
                 });
             }
 
@@ -5148,7 +5169,7 @@
                     zeroInvCount++;
                 }
 
-                var shopifyInv = parseFloat(row['INV'] || 0) || 0;
+                var shopifyInv = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
                 if (invFilterVal === 'zero') { if (shopifyInv !== 0) return; }
                 else if (invFilterVal === 'more') { if (shopifyInv <= 0) return; }
 
