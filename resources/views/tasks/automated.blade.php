@@ -866,7 +866,7 @@
         <div class="modal-content">
             <div class="modal-header" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
                 <h5 class="modal-title">
-                    <i class="mdi mdi-link-variant me-2"></i>Task Links
+                    <i class="mdi mdi-link-variant me-2"></i>Links
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -1135,7 +1135,7 @@
                         });
                     }
                     
-                    // Column Order: FLAG RAISED, GROUP, TITLE, ASSIGNER, ASSIGNEE, ETC(MIN), ETC-M, L1, FORM, FREQ, ACTION
+                    // Column Order: … ETC-M, Links, FREQ, ACTION
                     
                     // FLAG RAISED - HIDDEN
                     // cols.push({
@@ -1255,41 +1255,23 @@
                         }
                     });
 
-                    // L1 — link icon when data present (DB: link1)
+                    // Links — link1–link9 + image; opens modal with all URLs from row
                     cols.push({
-                        title: "L1",
-                        field: "link1",
-                        width: 58,
+                        title: "Links",
+                        field: "id",
+                        width: 72,
                         hozAlign: "center",
                         headerSort: false,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
-                            var v = String(rowData.link1 || rowData.l1 || "").trim();
-                            if (!v) {
-                                return '<span style="color: #adb5bd;">-</span>';
+                            var hasLinks = rowData.link1 || rowData.link2 || rowData.link3 || rowData.link4 ||
+                                rowData.link5 || rowData.link6 || rowData.link7 || rowData.link8 || rowData.link9 ||
+                                rowData.image;
+                            if (hasLinks) {
+                                return '<button type="button" class="btn btn-sm btn-link p-0 view-automated-links" data-id="' + cell.getValue() + '" title="View all links">' +
+                                    '<i class="mdi mdi-link-variant text-primary" style="font-size: 18px;"></i></button>';
                             }
-                            var href = v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "");
-                            return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open L1 link">' +
-                                '<i class="mdi mdi-link-variant text-primary" style="font-size: 18px;"></i></a>';
-                        }
-                    });
-
-                    // Form link — link icon when data present (DB: link5)
-                    cols.push({
-                        title: "FORM",
-                        field: "link5",
-                        width: 88,
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            var v = String(rowData.link5 || rowData.form_link || "").trim();
-                            if (!v) {
-                                return '<span style="color: #adb5bd;">-</span>';
-                            }
-                            var href = v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "");
-                            return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open form link">' +
-                                '<i class="mdi mdi-link-variant text-success" style="font-size: 18px;"></i></a>';
+                            return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
@@ -1550,29 +1532,8 @@
                     //         }
                     //         return '<span style="color: #adb5bd;">-</span>';
                     //     }
-                    // });
-                    
-                    // LINKS - HIDDEN
-                    // cols.push({
-                    //     title: "LINKS", 
-                    //     field: "id", 
-                    //     width: 90,
-                    //     hozAlign: "center",
-                    //     headerSort: false,
-                    //     formatter: function(cell) {
-                    //         var rowData = cell.getRow().getData();
-                    //         var hasLinks = rowData.training_link || rowData.video_link || rowData.form_link || 
-                    //                       rowData.form_report_link || rowData.checklist_link || rowData.pl || rowData.process;
-                    //         
-                    //         if (hasLinks) {
-                    //             return `<button class="btn btn-sm btn-link view-links" data-id="${cell.getValue()}" title="View Links">
-                    //                 <i class="mdi mdi-link-variant text-primary" style="font-size: 20px; cursor: pointer;"></i>
-                    //             </button>`;
-                    //         }
-                    //         return '<span style="color: #adb5bd;">-</span>';
-                    //     }
-                    // });
-                    
+                    //                     });
+
                     // ACTION
                     cols.push({
                         title: "ACTION", 
@@ -2442,76 +2403,52 @@
                 });
             }
 
-            // View Links
-            $(document).on('click', '.view-links', function(e) {
+            // View all links (automated templates: data from table row, not /tasks/{id})
+            $(document).on('click', '.view-automated-links', function(e) {
                 e.preventDefault();
                 var taskId = $(this).data('id');
-                $.ajax({
-                    url: '/tasks/' + taskId,
-                    type: 'GET',
-                    success: function(response) {
-                        var html = '<div class="list-group">';
-                        
-                        if (response.training_link) {
-                            html += `
-                                <a href="${response.training_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-school text-primary me-2"></i>
-                                    <strong>Training Link:</strong> ${response.training_link}
-                                </a>`;
+                var row = table.getRow(taskId);
+                if (!row) {
+                    return;
+                }
+                var d = row.getData();
+                var esc = function(t) {
+                    return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                };
+                var escAttr = function(t) {
+                    return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                };
+                var html = '<div class="list-group">';
+                var linkCount = 0;
+                var linkLabels = ['L1', 'L2', 'Training', 'Video', 'Form', 'Form report', 'Checklist', 'PL', 'Process'];
+                for (var i = 1; i <= 9; i++) {
+                    var linkField = 'link' + i;
+                    var val = d[linkField];
+                    if (val && String(val).trim() !== '') {
+                        linkCount++;
+                        var label = linkLabels[i - 1] || ('Link ' + i);
+                        var s = String(val).trim();
+                        var isUrl = /^https?:\/\//i.test(s);
+                        if (isUrl) {
+                            html += '<a href="' + escAttr(s) + '" target="_blank" rel="noopener noreferrer" class="list-group-item list-group-item-action">' +
+                                '<i class="mdi mdi-link text-primary me-2"></i><strong>' + esc(label) + ':</strong> ' + esc(s) + '</a>';
+                        } else {
+                            html += '<div class="list-group-item"><i class="mdi mdi-text text-secondary me-2"></i><strong>' + esc(label) + ':</strong> ' + esc(s) + '</div>';
                         }
-                        if (response.video_link) {
-                            html += `
-                                <a href="${response.video_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-video text-danger me-2"></i>
-                                    <strong>Video Link:</strong> ${response.video_link}
-                                </a>`;
-                        }
-                        if (response.form_link) {
-                            html += `
-                                <a href="${response.form_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-file-document text-success me-2"></i>
-                                    <strong>Form Link:</strong> ${response.form_link}
-                                </a>`;
-                        }
-                        if (response.form_report_link) {
-                            html += `
-                                <a href="${response.form_report_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-file-chart text-info me-2"></i>
-                                    <strong>Form Report Link:</strong> ${response.form_report_link}
-                                </a>`;
-                        }
-                        if (response.checklist_link) {
-                            html += `
-                                <a href="${response.checklist_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-checkbox-marked-outline text-warning me-2"></i>
-                                    <strong>Checklist Link:</strong> ${response.checklist_link}
-                                </a>`;
-                        }
-                        if (response.pl) {
-                            html += `
-                                <div class="list-group-item">
-                                    <i class="mdi mdi-folder text-secondary me-2"></i>
-                                    <strong>PL:</strong> ${response.pl}
-                                </div>`;
-                        }
-                        if (response.process) {
-                            html += `
-                                <div class="list-group-item">
-                                    <i class="mdi mdi-cog text-dark me-2"></i>
-                                    <strong>Process:</strong> ${response.process}
-                                </div>`;
-                        }
-                        
-                        html += '</div>';
-                        
-                        if (html === '<div class="list-group"></div>') {
-                            html = '<p class="text-muted">No links available for this task.</p>';
-                        }
-                        
-                        $('#links-content').html(html);
-                        $('#linksModal').modal('show');
                     }
-                });
+                }
+                if (d.image && String(d.image).trim() !== '') {
+                    linkCount++;
+                    var imgName = String(d.image).trim().replace(/[^a-zA-Z0-9._-]/g, '');
+                    html += '<a href="/uploads/tasks/' + esc(imgName) + '" target="_blank" rel="noopener noreferrer" class="list-group-item list-group-item-action">' +
+                        '<i class="mdi mdi-image text-info me-2"></i><strong>Image:</strong> View file</a>';
+                }
+                html += '</div>';
+                if (linkCount === 0) {
+                    html = '<p class="text-muted">No links available for this template.</p>';
+                }
+                $('#links-content').html(html);
+                $('#linksModal').modal('show');
             });
 
             // Edit Automated Task

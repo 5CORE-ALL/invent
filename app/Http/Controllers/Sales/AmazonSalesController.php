@@ -61,13 +61,13 @@ class AmazonSalesController extends Controller
         $endDate = $yesterdayPacific->copy()->endOfDay();
         $startWindow = $yesterdayPacific->copy()->subDays($windowDays - 1)->startOfDay();
 
-        // Revenue: SUM(quantity × price) on line items, filtered by amazon_orders.order_date
-        $amazonSalesTotal = AmazonOrder::revenueSumQtyTimesPriceByOrderDate($startWindow, $endDate);
+        // Total Sales badge: AMAZON_SALES_TOTAL_MODE (default order_greatest ≈ Seller Central order revenue)
+        $amazonSalesTotal = AmazonOrder::badgeTotalSalesByOrderDate($startWindow, $endDate);
 
-        // 8 Feb to yesterday (separate badge, fixed start) — same line formula
+        // 8 Feb to yesterday (separate badge, fixed start) — same formula as main badge
         $start8Feb = Carbon::createFromDate(now()->year, 2, 8)->startOfDay();
         $daysFrom8Feb = $start8Feb->isFuture() ? 0 : $start8Feb->diffInDays($endDate) + 1;
-        $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : AmazonOrder::revenueSumQtyTimesPriceByOrderDate($start8Feb, $endDate);
+        $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : AmazonOrder::badgeTotalSalesByOrderDate($start8Feb, $endDate);
 
         return view('sales.amazon_daily_sales_data', [
             'kwSpent'                 => (float) $kwSpent,
@@ -75,6 +75,7 @@ class AmazonSalesController extends Controller
             'hlSpent'                 => (float) $hlSpent,
             'amazonSalesTotal'        => $amazonSalesTotal,
             'amazonSalesWindowDays'   => $windowDays,
+            'amazonSalesTotalMode'    => AmazonOrder::salesTotalMode(),
             'salesFrom8Feb'           => $salesFrom8Feb,
             'daysFrom8Feb'            => $daysFrom8Feb,
             'amazonSalesWindowStart'  => $startWindow->copy()->timezone('America/Los_Angeles')->format('M j, Y'),
@@ -94,15 +95,16 @@ class AmazonSalesController extends Controller
         $startDateStr = $startWindow->format('Y-m-d');
         $endDateStr = $endDate->format('Y-m-d');
 
-        $lineRevExpr = AmazonOrder::orderItemQtyTimesPriceSql('i');
-        $orderLinesSum = AmazonOrder::orderSumQtyTimesPriceSubquery('o');
+        $lineRevExpr = AmazonOrder::lineRevenueSelectSql('i');
+        $orderLinesSum = AmazonOrder::perOrderTotalForBadgeSelectSql('o');
 
         $orderRows = DB::table('amazon_orders as o')
             ->leftJoin('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->where('o.order_date', '>=', $startWindow)
             ->where('o.order_date', '<=', $endDate)
             ->where(function ($q) {
-                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
+                $q->whereNull('o.status')
+                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
             })
             ->select([
                 'o.amazon_order_id as order_id',
@@ -269,6 +271,7 @@ class AmazonSalesController extends Controller
                 'sale_amount' => round($totalPrice, 2),
                 'price' => round($unitPrice, 2),
                 'total_amount' => $item->total_amount,
+                'order_total_amount' => round((float) ($item->order_total_amount ?? 0), 2),
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,
                 'status' => $item->status,
@@ -303,6 +306,7 @@ class AmazonSalesController extends Controller
             'sale_amount' => true,
             'price' => true,
             'total_amount' => true,
+            'order_total_amount' => false,
             'order_date' => true,
             'status' => true,
             'lp' => true,
@@ -440,9 +444,10 @@ class AmazonSalesController extends Controller
             ->sum('i.quantity');
         $debug['total_quantity_from_items'] = $totalQty;
         
-        // 9. Total sales: SUM(quantity × price) on items, order_date window (same as badge)
-        $totalSales = AmazonOrder::revenueSumQtyTimesPriceByOrderDate($startDateCarbon, $endDateCarbon);
-        $debug['total_sales_qty_times_price'] = round($totalSales, 2);
+        // 9. Total sales (same as page badge — AMAZON_SALES_TOTAL_MODE)
+        $totalSales = AmazonOrder::badgeTotalSalesByOrderDate($startDateCarbon, $endDateCarbon);
+        $debug['total_sales_badge'] = round($totalSales, 2);
+        $debug['amazon_sales_total_mode'] = AmazonOrder::salesTotalMode();
         
         // 10. Items with 0 or null price (data quality issue)
         $zeroPriceItems = DB::table('amazon_orders as o')

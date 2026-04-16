@@ -1913,7 +1913,7 @@
         <div class="modal-content">
             <div class="modal-header" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
                 <h5 class="modal-title">
-                    <i class="mdi mdi-link-variant me-2"></i>Task Links
+                    <i class="mdi mdi-link-variant me-2"></i>Links
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -2951,7 +2951,7 @@
                         }
                     });
                     
-                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, L1, FORM, STATUS, PRIORITY, IMAGE, LINKS, ACTION
+                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, Links, STATUS, PRIORITY, IMAGE, ACTION
                     
                     // GROUP
                     cols.push({
@@ -3121,41 +3121,24 @@
                         }
                     });
 
-                    // L1 — link icon when data present (DB: link1)
+                    // Links — link1–link9 + image; opens modal with all URLs
                     cols.push({
-                        title: "L1",
-                        field: "link1",
-                        width: 52,
+                        title: "Links",
+                        field: "id",
+                        width: 72,
                         hozAlign: "center",
                         headerSort: false,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
-                            var v = String(rowData.link1 || rowData.l1 || "").trim();
-                            if (!v) {
-                                return '<span style="color: #adb5bd;">-</span>';
+                            var hasLinks = rowData.link1 || rowData.link2 || rowData.link3 || rowData.link4 ||
+                                rowData.link5 || rowData.link6 || rowData.link7 || rowData.link8 || rowData.link9 ||
+                                rowData.image;
+                            if (hasLinks) {
+                                return `<button type="button" class="btn btn-sm btn-link p-0 view-links" data-id="${cell.getValue()}" title="View all links">
+                                    <i class="mdi mdi-link-variant text-primary" style="font-size: 18px; cursor: pointer;"></i>
+                                </button>`;
                             }
-                            var href = v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "");
-                            return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open L1 link">' +
-                                '<i class="mdi mdi-link-variant text-primary" style="font-size: 18px;"></i></a>';
-                        }
-                    });
-
-                    // Form — link icon when data present (DB: link5)
-                    cols.push({
-                        title: "FORM",
-                        field: "link5",
-                        width: 56,
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            var v = String(rowData.link5 || rowData.form_link || "").trim();
-                            if (!v) {
-                                return '<span style="color: #adb5bd;">-</span>';
-                            }
-                            var href = v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "");
-                            return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open form link">' +
-                                '<i class="mdi mdi-link-variant text-success" style="font-size: 18px;"></i></a>';
+                            return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
@@ -3249,29 +3232,6 @@
                                 return `<a href="/uploads/tasks/${value}" target="_blank" title="View Screenshot">
                                     <i class="mdi mdi-camera text-primary" style="font-size: 18px; cursor: pointer;"></i>
                                 </a>`;
-                            }
-                            return '-';
-                        }
-                    });
-                    
-                    // LINKS - Hidden
-                    cols.push({
-                        title: "LINKS", 
-                        field: "id", 
-                        width: 90,
-                        hozAlign: "center",
-                        headerSort: false,
-                        visible: false,
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            // Check all link fields (link1-9)
-                            var hasLinks = rowData.link1 || rowData.link2 || rowData.link3 || rowData.link4 || 
-                                          rowData.link5 || rowData.link6 || rowData.link7 || rowData.link8 || rowData.link9;
-                            
-                            if (hasLinks) {
-                                return `<button class="btn btn-sm btn-link view-links" data-id="${cell.getValue()}" title="View Links">
-                                    <i class="mdi mdi-link-variant text-primary" style="font-size: 18px; cursor: pointer;"></i>
-                                </button>`;
                             }
                             return '-';
                         }
@@ -4849,28 +4809,39 @@
                     success: function(response) {
                         var html = '<div class="list-group">';
                         var linkCount = 0;
+                        var linkLabels = ['L1', 'L2', 'Training', 'Video', 'Form', 'Form report', 'Checklist', 'PL', 'Process'];
                         
-                        // Show all links (link1-9)
                         for (var i = 1; i <= 9; i++) {
                             var linkField = 'link' + i;
                             if (response[linkField] && response[linkField] !== '') {
                                 linkCount++;
-                                var isUrl = response[linkField].startsWith('http');
+                                var label = linkLabels[i - 1] || ('Link ' + i);
+                                var raw = String(response[linkField]);
+                                var isUrl = raw.trim().startsWith('http');
                                 
                                 if (isUrl) {
                                     html += `
-                                        <a href="${response[linkField]}" target="_blank" class="list-group-item list-group-item-action">
+                                        <a href="${raw.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="list-group-item list-group-item-action">
                                             <i class="mdi mdi-link text-primary me-2"></i>
-                                            <strong>Link ${i}:</strong> ${response[linkField]}
+                                            <strong>${label}:</strong> ${raw.replace(/</g, '&lt;')}
                                         </a>`;
                                 } else {
                                     html += `
                                         <div class="list-group-item">
                                             <i class="mdi mdi-text text-secondary me-2"></i>
-                                            <strong>Link ${i}:</strong> ${response[linkField]}
+                                            <strong>${label}:</strong> ${raw.replace(/</g, '&lt;')}
                                         </div>`;
                                 }
                             }
+                        }
+                        if (response.image && String(response.image).trim() !== '') {
+                            linkCount++;
+                            var imgName = String(response.image).trim().replace(/[^a-zA-Z0-9._-]/g, '');
+                            html += `
+                                <a href="/uploads/tasks/${imgName}" target="_blank" rel="noopener noreferrer" class="list-group-item list-group-item-action">
+                                    <i class="mdi mdi-image text-info me-2"></i>
+                                    <strong>Image:</strong> View file
+                                </a>`;
                         }
                         
                         html += '</div>';

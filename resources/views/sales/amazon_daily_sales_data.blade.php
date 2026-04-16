@@ -80,7 +80,13 @@
                 <h4>Amazon Daily Sales Data </h4>
                 <p class="text-muted small mb-2" id="date-range-info">
                     Date range (Pacific): {{ $amazonSalesWindowStart ?? '—' }} – {{ $amazonSalesWindowEnd ?? '—' }}
-                    — {{ (int) ($amazonSalesWindowDays ?? 35) }} days through yesterday (today excluded). Total sales = <strong>Σ (quantity × price)</strong> on <code>amazon_order_items</code> for orders whose <code>order_date</code> falls in this range. Rolling window: each day the oldest date drops out. Canceled orders excluded. Match the same dates in Seller Central.
+                    — {{ (int) ($amazonSalesWindowDays ?? 35) }} days through yesterday (today excluded).
+                    <strong>Total Sales</strong> uses mode <code>{{ $amazonSalesTotalMode ?? 'order_greatest' }}</code>
+                    (<code>AMAZON_SALES_TOTAL_MODE</code> in <code>.env</code>):
+                    <code>order_greatest</code> = Σ per order max(line prices, <code>total_amount</code>, JSON OrderTotal) — default, closest to many Amazon totals;
+                    <code>lines</code> = Σ line <code>price</code> only;
+                    <code>qty_times_price</code> = legacy Σ (quantity × price).
+                    Canceled / Cancelled excluded.
                 </p>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
@@ -150,7 +156,11 @@
     const HL_SPENT = {{ $hlSpent ?? 0 }};
     // Server-computed rolling total (amazon_orders effective total; orders without items included)
     const SERVER_AMAZON_SALES_TOTAL = {{ $amazonSalesTotal ?? 0 }};
-    
+
+    function formatUsdTwoDecimals(value) {
+        return (Number(value) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
     // Toast notification function
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -616,7 +626,7 @@
             // Unfiltered: use server-side total (amazon_orders direct sum, includes orders without items)
             // Filtered: use JS order-total sum so filtered result is accurate
             const displaySales = isFiltered ? totalSalesByOrders : SERVER_AMAZON_SALES_TOTAL;
-            $('#amazon-sales-total-badge').text('Total Sales: $' + displaySales.toFixed(2));
+            $('#amazon-sales-total-badge').text('Total Sales: $' + formatUsdTwoDecimals(displaySales));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
             $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
             $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
