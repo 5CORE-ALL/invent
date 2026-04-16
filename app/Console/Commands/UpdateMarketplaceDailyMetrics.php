@@ -3358,7 +3358,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     /**
      * Purchasing Power — purchasing_power_sales (same upload as /purchasing-power-sales).
-     * Excludes canceled rows; margin from marketplace_percentages.marketplace = Purchase (default 70%).
+     * Excludes canceled rows; margin from marketplace_percentages.marketplace = Purchase (default 65%).
      * PFT per line matches Purchasing Power pricing: (unit_price × margin) − LP − ship, × quantity.
      */
     private function calculatePurchasingPowerMetrics($date)
@@ -3373,7 +3373,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
-        $pct = (($marketplaceData ? (float) ($marketplaceData->percentage ?? 70) : 70) / 100);
+        $pct = (($marketplaceData ? (float) ($marketplaceData->percentage ?? 65) : 65) / 100);
 
         $productMasters = ProductMaster::all()->keyBy(fn ($pm) => strtoupper(trim((string) ($pm->sku ?? ''))));
 

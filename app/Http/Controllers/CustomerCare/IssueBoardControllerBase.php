@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\CustomerCare;
 
 use App\Http\Controllers\Controller;
+use App\Support\CustomerCareDepartments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -55,7 +56,8 @@ abstract class IssueBoardControllerBase extends Controller
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
             'issue_date' => 'nullable|string|max:100',
-            'department' => 'nullable|string|max:100',
+            'department' => 'required|array|min:1',
+            'department.*' => 'required|string|max:100',
         ]);
 
         // Merge page-specific extra field validation
@@ -71,10 +73,19 @@ abstract class IssueBoardControllerBase extends Controller
             ], 422));
         }
 
+        $depts = CustomerCareDepartments::normalizeStringList($validated['department']);
+        if (count($depts) === 0) {
+            abort(response()->json([
+                'message' => 'Department is required.',
+                'errors' => ['department' => ['Select at least one department.']],
+            ], 422));
+        }
+        $validated['department'] = $depts;
+
         return $validated;
     }
 
-    public function index()
+    protected function issueBoardIndexData(): array
     {
         $marketplaces = DB::table('marketplace_percentages')
             ->whereNotNull('marketplace')
@@ -86,7 +97,12 @@ abstract class IssueBoardControllerBase extends Controller
             ->unique(fn ($m) => strtolower(preg_replace('/\s+/', '', $m)))
             ->values();
 
-        return view($this->viewName(), compact('marketplaces'));
+        return compact('marketplaces');
+    }
+
+    public function index()
+    {
+        return view($this->viewName(), $this->issueBoardIndexData());
     }
 
     public function dropdownOptionsIndex(Request $request): JsonResponse
@@ -239,7 +255,8 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
-                'department' => $row->department ?? null,
+                'department' => CustomerCareDepartments::label($row->department ?? null),
+                'departments' => CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'issue_date' => $row->issue_date ?? null,
@@ -283,7 +300,8 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
-                'department' => $row->department ?? null,
+                'department' => CustomerCareDepartments::label($row->department ?? null),
+                'departments' => CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'logged_at' => $row->logged_at,
                 'logged_at_display' => $row->logged_at
@@ -319,9 +337,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
-                'department' => isset($validated['department']) && trim((string) $validated['department']) !== ''
-                    ? trim((string) $validated['department'])
-                    : null,
+                'department' => CustomerCareDepartments::encode($validated['department']),
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
                 'issue_date' => isset($validated['issue_date']) ? trim((string) $validated['issue_date']) : null,
@@ -360,7 +376,8 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
-                'department' => $row->department ?? null,
+                'department' => CustomerCareDepartments::label($row->department ?? null),
+                'departments' => CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
                 'issue_date' => $row->issue_date ?? null,
@@ -399,9 +416,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
-                'department' => isset($validated['department']) && trim((string) $validated['department']) !== ''
-                    ? trim((string) $validated['department'])
-                    : null,
+                'department' => CustomerCareDepartments::encode($validated['department']),
                 'updated_at' => $now,
                 'issue_date' => isset($validated['issue_date']) ? trim((string) $validated['issue_date']) : null,
             ];
@@ -497,6 +512,20 @@ abstract class IssueBoardControllerBase extends Controller
                 continue;
             }
 
+            $departmentRaw = $get('department');
+            if ($departmentRaw === null || trim((string) $departmentRaw) === '') {
+                $skipped++;
+                $errors[] = "Row skipped (SKU={$sku}): Department is required.";
+                continue;
+            }
+
+            $departmentList = CustomerCareDepartments::parseFromImportCell((string) $departmentRaw);
+            if (count($departmentList) === 0) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU={$sku}): Department is required.";
+                continue;
+            }
+
             try {
                 $now     = now();
                 $payload = [
@@ -515,7 +544,7 @@ abstract class IssueBoardControllerBase extends Controller
                     'c_action_1'           => $get('c_action_1'),
                     'c_action_1_remark'    => $get('c_action_1_remark'),
                     'issue_date'           => $get('issue_date'),
-                    'department'           => $get('department'),
+                    'department'           => CustomerCareDepartments::encode($departmentList),
                     'created_by'           => $createdBy,
                     'created_by_user_id'   => $user?->id,
                     'created_at'           => $now,

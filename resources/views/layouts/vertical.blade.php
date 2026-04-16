@@ -102,19 +102,26 @@
                                          padding: 0;
                                          display: none;">
         
-        <!-- Header: title doubles as submit; close stays separate -->
-        <div class="position-relative" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 15px;">
+        <!-- Header: compact actions + close -->
+        <div class="position-relative d-flex align-items-center flex-wrap gap-2"
+             style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 42px 8px 12px;">
             <button type="submit"
                     form="quick-task-form"
                     id="quick-task-header-submit"
-                    class="quick-task-header-submit-btn">
-                <i class="mdi mdi-plus-circle me-1"></i> Create Task
+                    class="btn btn-success btn-sm px-2 py-1 shadow-sm quick-task-header-primary-btn">
+                <i class="mdi mdi-plus-circle me-1"></i>Create Task
             </button>
-            <button type="button" 
+            <button type="button"
+                    id="quick-task-save-create-more-btn"
+                    class="btn btn-warning btn-sm px-2 py-1 text-dark shadow-sm border border-dark border-opacity-10"
+                    title="Save this task and clear the form for another">
+                <i class="mdi mdi-content-save-outline me-1"></i>Save &amp; Create More
+            </button>
+            <button type="button"
                     id="close-task-form-btn"
                     class="btn-close btn-close-white position-absolute"
-                    style="top: 50%; 
-                           right: 10px; 
+                    style="top: 50%;
+                           right: 10px;
                            transform: translateY(-50%);"
                     aria-label="Close">
             </button>
@@ -122,6 +129,7 @@
         
         <!-- Form body with padding -->
         <div style="padding: 8px;">
+        <div id="quick-task-success-alert" class="alert alert-success py-1 px-2 mb-2 d-none" style="font-size: 10px; line-height: 1.35;" role="status" aria-live="polite"></div>
 
         <form id="quick-task-form" action="{{ route('tasks.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
@@ -237,27 +245,13 @@
                                          display: none;"></div>
 
     <style>
-        .quick-task-header-submit-btn {
-            font-size: 13px;
-            font-weight: bold;
-            border: none;
-            background: rgba(255, 255, 255, 0.15);
-            color: #fff;
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            text-align: left;
-            display: block;
-            width: calc(100% - 36px);
-            transition: background 0.2s ease, color 0.2s ease;
+        .quick-task-header-primary-btn {
+            font-size: 11px;
+            font-weight: 600;
         }
-        .quick-task-header-submit-btn:hover {
-            background: rgba(255, 255, 255, 0.28);
-            color: #fff;
-        }
-        .quick-task-header-submit-btn:focus-visible {
-            outline: 2px solid rgba(255, 255, 255, 0.9);
-            outline-offset: 2px;
+        #quick-task-save-create-more-btn {
+            font-size: 11px;
+            font-weight: 600;
         }
 
         .floating-task-btn {
@@ -465,9 +459,10 @@
                 padding: 6px 10px !important;
             }
 
-            .quick-task-header-submit-btn {
-                font-size: 16px;
-                padding: 10px 12px;
+            .quick-task-header-primary-btn,
+            #quick-task-save-create-more-btn {
+                font-size: 13px;
+                padding: 6px 10px;
             }
         }
 
@@ -498,6 +493,8 @@
             // Open floating task form
             $('#open-task-form-btn').on('click', function() {
                 clearTimeout(hideTaskFormTimer);
+                $('#quick-task-success-alert').addClass('d-none').empty();
+                clearTimeout(window.__quickTaskAlertTimer);
                 $('#floating-task-form').show();
                 requestAnimationFrame(function () {
                     $('#floating-task-form').css('right', '0');
@@ -646,6 +643,13 @@
                         positionQuickAssigneePanel();
                     }
                 });
+
+                window.resetQuickTaskAssignees = function () {
+                    selected.clear();
+                    $list.find('.quick-assignee-ms-item').removeClass('is-selected').attr('aria-selected', 'false');
+                    syncHidden();
+                    updateLabel();
+                };
             })();
 
             // Close floating task form
@@ -712,6 +716,101 @@
                 if (tidOverride) {
                     $('input[name="tid"]').val(tidOverride);
                 }
+            });
+
+            function resetQuickTaskFormAfterSave() {
+                var form = document.getElementById('quick-task-form');
+                if (!form) {
+                    return;
+                }
+                form.reset();
+                $('input[name="priority"]').val('normal');
+                var now = new Date();
+                function pad(n) { return n < 10 ? '0' + n : '' + n; }
+                var tidVal = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+                $('input[name="tid"]').val(tidVal);
+                $('input[name="tid_override"]').val(tidVal);
+                $('select[name="priority_override"]').val('normal');
+                $('#quick_etc_minutes').val('10');
+                if (typeof window.resetQuickTaskAssignees === 'function') {
+                    window.resetQuickTaskAssignees();
+                }
+                $('#quick-additional-fields').hide();
+                $('#toggle-quick-more-fields').html('<i class="mdi mdi-chevron-down" id="quick-toggle-icon"></i> More');
+                closeQuickAssigneePanel();
+            }
+
+            $('#quick-task-save-create-more-btn').on('click', function () {
+                var $form = $('#quick-task-form');
+                var title = $.trim($('#quick_title').val() || '');
+                if (!title) {
+                    alert('Please enter a task title.');
+                    $('#quick_title').trigger('focus');
+                    return;
+                }
+                var priorityOverride = $('select[name="priority_override"]').val();
+                if (priorityOverride) {
+                    $('input[name="priority"]').val(priorityOverride);
+                }
+                var tidOverride = $('input[name="tid_override"]').val();
+                if (tidOverride) {
+                    $('input[name="tid"]').val(tidOverride);
+                }
+
+                var formData = new FormData($form[0]);
+                formData.append('quick_create_more', '1');
+
+                $('#quick-task-success-alert').addClass('d-none').empty();
+                clearTimeout(window.__quickTaskAlertTimer);
+
+                var $btn = $(this);
+                $btn.prop('disabled', true);
+                fetch($form.attr('action'), {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin'
+                }).then(function (res) {
+                    var ct = res.headers.get('content-type') || '';
+                    if (res.status === 422) {
+                        return res.json().then(function (err) {
+                            var msg = 'Validation failed.';
+                            if (err.errors) {
+                                msg = Object.values(err.errors).flat().join('\n');
+                            }
+                            alert(msg);
+                        });
+                    }
+                    if (!res.ok) {
+                        alert('Could not save task. Please try again.');
+                        return;
+                    }
+                    if (ct.indexOf('application/json') === -1) {
+                        window.location.reload();
+                        return;
+                    }
+                    return res.json().then(function (data) {
+                        var msg = (data && data.message) ? data.message : 'Task generated successfully!';
+                        var $alert = $('#quick-task-success-alert');
+                        $alert.text(msg).removeClass('d-none');
+                        resetQuickTaskFormAfterSave();
+                        if (window.toastr && typeof toastr.success === 'function') {
+                            toastr.success(msg);
+                        }
+                        clearTimeout(window.__quickTaskAlertTimer);
+                        window.__quickTaskAlertTimer = setTimeout(function () {
+                            $alert.addClass('d-none').empty();
+                        }, 8000);
+                    });
+                }).catch(function () {
+                    alert('Network error. Please try again.');
+                }).finally(function () {
+                    $btn.prop('disabled', false);
+                });
             });
         });
     </script>

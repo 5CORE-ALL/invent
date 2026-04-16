@@ -66,9 +66,9 @@
                     </button>
                 </div>
 
-                <!-- Summary Badges -->
+                <!-- Summary Badges (margin from marketplace_percentages.marketplace = Purchase; default 65%) -->
                 <div class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary</h6>
+                    <h6 class="mb-3">Summary (Purchase margin: {{ number_format($ppMargin ?? 65, 2) }}%)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color:white;font-weight:bold;">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-qty-badge" style="color:white;font-weight:bold;">Total Qty: 0</span>
@@ -76,6 +76,8 @@
                         <span class="badge bg-warning fs-6 p-2" id="total-commission-badge" style="color:black;font-weight:bold;">Commission: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-transferred-badge" style="color:white;font-weight:bold;">Transferred: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-pft-badge" style="color:white;font-weight:bold;">PFT: $0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="gpft-rev-badge" style="color:white;font-weight:bold;" title="Total PFT ÷ revenue (non-canceled lines)">GPFT % (rev): 0%</span>
+                        <span class="badge fs-6 p-2" id="groi-badge" style="background-color:#6f42c1;color:white;font-weight:bold;" title="Total PFT ÷ COGS (LP × qty), non-canceled">GROI %: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="canceled-badge" style="color:white;font-weight:bold;">Canceled: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="avg-price-badge" style="color:white;font-weight:bold;">Avg Price: $0</span>
                     </div>
@@ -338,6 +340,14 @@
                     }
                 },
                 {
+                    title: 'GROI%', field: 'groi_pct', width: 58, hozAlign: 'center', sorter: 'number',
+                    formatter: function (cell) {
+                        const v = parseFloat(cell.getValue() || 0);
+                        const color = v < 40 ? '#dc3545' : v < 100 ? '#ffc107' : '#28a745';
+                        return `<span style="color:${color};font-weight:600;">${v.toFixed(0)}%</span>`;
+                    }
+                },
+                {
                     title: 'Category', field: 'category_label', width: 140,
                     formatter: function (cell) {
                         return `<span style="font-size:11px;">${cell.getValue() || ''}</span>`;
@@ -378,12 +388,18 @@
             ]
         });
 
+        function isCanceledRow(row) {
+            const s = (row.status || '').toLowerCase();
+            return s === 'canceled' || s === 'cancelled';
+        }
+
         // Summary update
         function updateSummary() {
             const data = table.getData('active');
             let totalOrders = data.length;
             let totalQty = 0, totalRevenue = 0, totalCommission = 0, totalTransferred = 0;
             let totalPft = 0, canceledCount = 0, totalPrice = 0, priceCount = 0;
+            let gpftRevenue = 0, gpftPft = 0, gpftCogs = 0;
 
             data.forEach(row => {
                 const qty = parseInt(row.quantity) || 0;
@@ -398,11 +414,24 @@
                 totalCommission += comm;
                 totalTransferred += transferred;
                 totalPft += pft;
-                if ((row.status || '').toLowerCase() === 'canceled') canceledCount++;
+                if (isCanceledRow(row)) canceledCount++;
                 if (price > 0) { totalPrice += price; priceCount++; }
+
+                if (!isCanceledRow(row)) {
+                    let lineRev = amount;
+                    if (lineRev <= 0) {
+                        const up = parseFloat(row.unit_price) || 0;
+                        lineRev = up * qty;
+                    }
+                    gpftRevenue += lineRev;
+                    gpftPft += pft;
+                    gpftCogs += parseFloat(row.cogs) || 0;
+                }
             });
 
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
+            const gpftRevPct = gpftRevenue > 0 ? (gpftPft / gpftRevenue) * 100 : 0;
+            const groiPct = gpftCogs > 0 ? (gpftPft / gpftCogs) * 100 : 0;
 
             $('#total-orders-badge').text(`Orders: ${totalOrders.toLocaleString()}`);
             $('#total-qty-badge').text(`Total Qty: ${totalQty.toLocaleString()}`);
@@ -410,12 +439,26 @@
             $('#total-commission-badge').text(`Commission: $${Math.round(totalCommission).toLocaleString()}`);
             $('#total-transferred-badge').text(`Transferred: $${Math.round(totalTransferred).toLocaleString()}`);
             $('#total-pft-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
+            $('#gpft-rev-badge').text(`GPFT % (rev): ${gpftRevPct.toFixed(1)}%`);
+            $('#groi-badge').text(`GROI %: ${groiPct.toFixed(1)}%`);
             $('#canceled-badge').text(`Canceled: ${canceledCount}`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
+
+            const gpftEl = $('#gpft-rev-badge');
+            if (gpftRevPct >= 0) {
+                gpftEl.removeClass('bg-danger').addClass('bg-success');
+            } else {
+                gpftEl.removeClass('bg-success').addClass('bg-danger');
+            }
+
+            const groiEl = $('#groi-badge');
+            if (groiPct >= 0) { groiEl.css({ backgroundColor: '#6f42c1', color: '#fff' }); }
+            else { groiEl.css({ backgroundColor: '#dc3545', color: '#fff' }); }
         }
 
         table.on('dataLoaded', function () { setTimeout(updateSummary, 100); });
         table.on('dataFiltered', function () { setTimeout(updateSummary, 100); });
+        table.on('renderComplete', function () { setTimeout(updateSummary, 100); });
 
         // Column dropdown
         function buildColumnDropdown() {

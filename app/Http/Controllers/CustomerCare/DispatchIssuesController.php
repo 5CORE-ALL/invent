@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\CustomerCare;
 
+use App\Support\CustomerCareDepartments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,6 +13,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
     protected function viewName(): string
     {
         return 'customer-care.dispatch_issues';
+    }
+
+    /** Second entry point: same datatable and APIs as All Issues, alternate shell/titles. */
+    public function dispatchIssueBoard()
+    {
+        return view('customer-care.dispatch', $this->issueBoardIndexData());
     }
 
     protected function issuesTable(): string
@@ -57,13 +64,17 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ];
     }
 
-    public function issuesIndex(): \Illuminate\Http\JsonResponse
+    public function issuesIndex(): JsonResponse
     {
-        $rows = DB::table($this->issuesTable())
+        $department = trim((string) request()->query('department', ''));
+        $query = DB::table($this->issuesTable())
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
-            })
-            ->orderByDesc('id')
+            });
+        if ($department !== '') {
+            CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
+        }
+        $rows = $query->orderByDesc('id')
             ->limit(1000)
             ->get();
 
@@ -116,13 +127,63 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'c_action_1'           => $row->c_action_1,
                 'c_action_1_remark'    => $row->c_action_1_remark,
                 'close_note'           => $row->close_note,
-                'department'           => $row->department ?? null,
+                'department'           => CustomerCareDepartments::label($row->department ?? null),
+                'departments'          => CustomerCareDepartments::decode($row->department ?? null),
                 'created_by'           => $row->created_by,
                 'created_at'           => $row->created_at,
                 'created_at_display'   => $row->created_at
                     ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
                     : '',
             ] + $this->extraRowFields($row);
+        })->values();
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function historyIndex(): JsonResponse
+    {
+        $department = trim((string) request()->query('department', ''));
+        $query = DB::table($this->historyTable())->orderByDesc('id')->limit(1000);
+        if ($department !== '') {
+            CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
+        }
+        $rows = $query->get();
+        $tz = config('app.timezone');
+
+        $data = $rows->map(function ($row) use ($tz) {
+            return [
+                'id' => (int) $row->id,
+                'orders_on_hold_issue_id' => $row->orders_on_hold_issue_id ? (int) $row->orders_on_hold_issue_id : null,
+                'event_type' => $row->event_type,
+                'revision_no' => $row->revision_no !== null ? (int) $row->revision_no : null,
+                'issue_ref' => ($row->orders_on_hold_issue_id
+                    ? ((((int) ($row->revision_no ?? 0) > 0)
+                        ? ((string) $row->orders_on_hold_issue_id . '.' . (string) ((int) $row->revision_no))
+                        : (string) $row->orders_on_hold_issue_id))
+                    : null),
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1,
+                'marketplace_2' => $row->marketplace_2,
+                'what_happened' => $row->what_happened,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark,
+                'action_1' => $row->action_1,
+                'action_1_remark' => $row->action_1_remark,
+                'replacement_tracking' => $row->replacement_tracking,
+                'c_action_1' => $row->c_action_1,
+                'c_action_1_remark' => $row->c_action_1_remark,
+                'close_note' => $row->close_note,
+                'department' => CustomerCareDepartments::label($row->department ?? null),
+                'departments' => CustomerCareDepartments::decode($row->department ?? null),
+                'created_by' => $row->created_by,
+                'logged_at' => $row->logged_at,
+                'logged_at_display' => $row->logged_at
+                    ? \Carbon\Carbon::parse($row->logged_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+            ] + $this->extraHistoryRowFields($row);
         })->values();
 
         return response()->json(['data' => $data]);
@@ -150,7 +211,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today]);
 
         if ($department !== '') {
-            $query->where('department', $department);
+            CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
         }
 
         $rows = $query->groupByRaw("DATE(created_at)")
@@ -183,7 +244,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             ->whereNotNull('total_loss');
 
         if ($department !== '') {
-            $query->where('department', $department);
+            CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
         }
 
         $rows = $query->groupByRaw("DATE(created_at)")
@@ -235,8 +296,18 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'c_action_1'         => 'nullable|string|max:255',
             'c_action_1_remark'  => 'nullable|string|max:255',
             'issue_date'         => 'nullable|string|max:100',
-            'department'         => 'nullable|string|max:100',
+            'department'         => 'required|array|min:1',
+            'department.*'       => 'required|string|max:100',
         ]);
+
+        $depts = CustomerCareDepartments::normalizeStringList($request->input('department', []));
+        if (count($depts) === 0) {
+            return response()->json([
+                'message' => 'Department is required.',
+                'errors'  => ['department' => ['Select at least one department.']],
+            ], 422);
+        }
+        $departmentEncoded = CustomerCareDepartments::encode($depts);
 
         $user      = auth()->user();
         $createdBy = trim((string) ($user?->name ?? 'System')) ?: 'System';
@@ -261,7 +332,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'c_action_1_remark'    => $request->input('c_action_1_remark') ? trim($request->input('c_action_1_remark')) : null,
             'close_note'           => null,
             'issue_date'           => $request->input('issue_date') ? trim($request->input('issue_date')) : null,
-            'department'           => $request->input('department') ? trim($request->input('department')) : null,
+            'department'           => $departmentEncoded,
             'created_by'           => $createdBy,
             'created_by_user_id'   => $user?->id,
             'created_at'           => $now,
@@ -317,6 +388,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
                     'order_number'         => $row->order_number ?? null,
                     'refund_amount'        => $row->refund_amount !== null ? (float) $row->refund_amount : null,
                     'total_loss'           => $row->total_loss !== null ? (float) $row->total_loss : null,
+                    'department'           => CustomerCareDepartments::label($row->department ?? null),
+                    'departments'          => CustomerCareDepartments::decode($row->department ?? null),
                     'created_at_display'   => $row->created_at
                         ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
                         : '',

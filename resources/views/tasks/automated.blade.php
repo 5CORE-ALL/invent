@@ -617,14 +617,14 @@
                         </div>
                     </div>
 
-                    <!-- ETC Monthly Total -->
+                    <!-- ETC-M total -->
                     <div class="stat-card stat-card-yellow" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
                                 <i class="mdi mdi-calculator-variant"></i>
                             </div>
                             <div class="stat-content">
-                                <div class="stat-label" style="font-size: 9px;">ETC MONTHLY</div>
+                                <div class="stat-label" style="font-size: 9px;">ETC-M</div>
                                 <div class="stat-value" style="font-size: 20px;">0</div>
                             </div>
                         </div>
@@ -1135,7 +1135,7 @@
                         });
                     }
                     
-                    // Column Order: FLAG RAISED, GROUP, TITLE, ASSIGNER, ASSIGNEE, ETC(MIN), STATUS, L1&L2, TL, VL, FORMS, FR, CL, TYPE, ACTION
+                    // Column Order: FLAG RAISED, GROUP, TITLE, ASSIGNER, ASSIGNEE, ETC(MIN), ETC-M, L1, FORM, FREQ, ACTION
                     
                     // FLAG RAISED - HIDDEN
                     // cols.push({
@@ -1240,9 +1240,9 @@
                         }
                     });
 
-                    // ETC MONTHLY (ETC x frequency multiplier) — whole number
+                    // ETC-M (ETC x frequency multiplier) — whole number
                     cols.push({
-                        title: "ETC MONTHLY",
+                        title: "ETC-M",
                         field: "etc_monthly",
                         width: 110,
                         hozAlign: "center",
@@ -1252,6 +1252,44 @@
                             var etcMonthly = calculateEtcMonthly(rowData);
                             var n = Math.round(etcMonthly);
                             return '<strong>' + (isNaN(n) ? 0 : n) + '</strong>';
+                        }
+                    });
+
+                    // L1 — link icon when data present (DB: link1)
+                    cols.push({
+                        title: "L1",
+                        field: "link1",
+                        width: 58,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var v = String(rowData.link1 || rowData.l1 || "").trim();
+                            if (!v) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            var href = v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "");
+                            return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open L1 link">' +
+                                '<i class="mdi mdi-link-variant text-primary" style="font-size: 18px;"></i></a>';
+                        }
+                    });
+
+                    // Form link — link icon when data present (DB: link5)
+                    cols.push({
+                        title: "FORM",
+                        field: "link5",
+                        width: 88,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var v = String(rowData.link5 || rowData.form_link || "").trim();
+                            if (!v) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            var href = v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "");
+                            return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open form link">' +
+                                '<i class="mdi mdi-link-variant text-success" style="font-size: 18px;"></i></a>';
                         }
                     });
                     
@@ -1583,7 +1621,7 @@
                         case 'WEEKLY': valueEl.text(weekly); break;
                         case 'MONTHLY': valueEl.text(monthly); break;
                         case 'ACTIVE': valueEl.text(active); break;
-                        case 'ETC MONTHLY': valueEl.text(Math.round(etcMonthlyTotal / 60) + 'h'); break;
+                        case 'ETC-M': valueEl.text(Math.round(etcMonthlyTotal / 60) + 'h'); break;
                     }
                 });
             }

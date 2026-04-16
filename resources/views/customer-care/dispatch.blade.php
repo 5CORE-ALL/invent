@@ -1,9 +1,9 @@
 {!! view('customer-care.qc_and_packing', [
-    'pageTitle' => 'All Issues',
-    'addIssueButtonText' => 'All Issues',
+    'pageTitle' => 'Dispatch',
+    'addIssueButtonText' => 'Dispatch',
     'hideIntroBanner' => true,
-    'recordsTitle' => 'All Issues',
-    'modalTitle' => 'All Issues',
+    'recordsTitle' => 'Dispatch',
+    'modalTitle' => 'Dispatch',
     'skuDetailsUrl' => route('customer.care.dispatch.issues.sku.details'),
     'recordsListUrl' => route('customer.care.dispatch.issues.list.index'),
     'recordsStoreUrl' => route('customer.care.dispatch.issues.list.store'),
@@ -15,4 +15,6 @@
     'importUrl' => route('customer.care.dispatch.issues.import'),
     'marketplaces' => $marketplaces ?? collect(),
     'showDispatchExtras' => true,
+    'defaultDepartmentFilter' => 'Dispatch',
+    'hideDepartmentColumnAndFilter' => true,
 ])->render() !!}

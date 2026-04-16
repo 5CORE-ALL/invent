@@ -183,6 +183,110 @@
             background-color: #fd7e14;
             color: #fff;
         }
+
+        /* One row of badges: equal flex share, compact, scroll on narrow screens */
+        .deleted-page-stats {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 0.4rem;
+            width: 100%;
+            margin-bottom: 1rem;
+            align-items: stretch;
+        }
+        .deleted-page-stats .stat-card-wrap {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        .deleted-page-stats .stat-card {
+            margin-bottom: 0;
+            padding: 10px 8px;
+            min-height: 100%;
+        }
+        .deleted-page-stats .stat-icon {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            margin-right: 8px;
+            font-size: 18px;
+            border-radius: 8px;
+        }
+        .deleted-page-stats .stat-label {
+            font-size: 8px;
+            letter-spacing: 0.5px;
+            line-height: 1.15;
+        }
+        .deleted-page-stats .stat-value {
+            font-size: clamp(14px, 1.5vw, 22px);
+            line-height: 1.1;
+        }
+        .deleted-page-stats #tat-chart-eye-btn,
+        .deleted-page-stats #missed-chart-eye-btn {
+            padding: 0.2rem !important;
+            flex-shrink: 0;
+        }
+        .deleted-page-stats #tat-chart-eye-btn i,
+        .deleted-page-stats #missed-chart-eye-btn i {
+            font-size: 1.1rem !important;
+        }
+        .deleted-page-stats .stat-content .stat-label.mt-1 {
+            font-size: 8px !important;
+        }
+
+        @media (max-width: 1399.98px) {
+            .deleted-page-stats {
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 6px;
+                scrollbar-width: thin;
+            }
+            .deleted-page-stats .stat-card-wrap {
+                flex: 0 0 auto;
+                width: min(148px, 22vw);
+                min-width: min(148px, 22vw);
+            }
+        }
+
+        /* Filter bar: label + control on one line; full bar stays one row */
+        .deleted-filters-bar {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.5rem 0.65rem;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        .deleted-filters-bar .deleted-filter-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        .deleted-filters-bar .deleted-filter-item label {
+            margin-bottom: 0;
+            white-space: nowrap;
+            font-size: 11px;
+            font-weight: 600;
+            color: #495057;
+            flex-shrink: 0;
+        }
+        .deleted-filters-bar .deleted-filter-item .form-control,
+        .deleted-filters-bar .deleted-filter-item .form-select {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+        .deleted-filters-bar .deleted-filter-item--priority {
+            flex: 0 0 auto;
+            min-width: 7rem;
+            max-width: 9rem;
+        }
+        .deleted-filters-bar .deleted-filter-item--search {
+            flex: 1.35 1 8rem;
+            min-width: 8rem;
+        }
     </style>
 @endsection
 
@@ -213,9 +317,9 @@
             </div>
         </div>
 
-        <!-- Statistics Cards -->
-        <div class="row mb-4">
-            <div class="col-xl-3 col-md-6">
+        <!-- Statistics Cards (single row, autofit) -->
+        <div class="deleted-page-stats">
+            <div class="stat-card-wrap">
                 <div class="stat-card stat-card-red">
                     <div class="stat-icon">
                         <i class="mdi mdi-delete-forever"></i>
@@ -227,7 +331,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-3 col-md-6">
+            <div class="stat-card-wrap">
                 <div class="stat-card stat-card-orange">
                     <div class="stat-icon">
                         <i class="mdi mdi-calendar-month"></i>
@@ -239,7 +343,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-3 col-md-6">
+            <div class="stat-card-wrap">
                 <div class="stat-card stat-card-purple">
                     <div class="stat-icon">
                         <i class="mdi mdi-calendar-week"></i>
@@ -251,7 +355,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-3 col-md-6">
+            <div class="stat-card-wrap">
                 <div class="stat-card stat-card-pink">
                     <div class="stat-icon">
                         <i class="mdi mdi-calendar-today"></i>
@@ -263,7 +367,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-3 col-md-6">
+            <div class="stat-card-wrap">
                 <div class="stat-card stat-card-teal">
                     <div class="stat-icon">
                         <i class="mdi mdi-clock-outline"></i>
@@ -281,7 +385,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-3 col-md-6">
+            <div class="stat-card-wrap">
                 <div class="stat-card stat-card-red-missed">
                     <div class="stat-icon">
                         <i class="mdi mdi-alert-circle"></i>
@@ -299,7 +403,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-3 col-md-6">
+            <div class="stat-card-wrap">
                 <div class="stat-card stat-card-etc">
                     <div class="stat-icon">
                         <i class="mdi mdi-timer-sand"></i>
@@ -312,7 +416,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-3 col-md-6">
+            <div class="stat-card-wrap">
                 <div class="stat-card stat-card-atc">
                     <div class="stat-icon">
                         <i class="mdi mdi-check-circle-outline"></i>
@@ -379,26 +483,26 @@
                             </div>
                         </div>
 
-                        <!-- Search/Filter Bar -->
-                        <div class="row mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
-                            <div class="col-md-3 mb-2">
-                                <label class="form-label fw-bold">Search</label>
+                        <!-- Search/Filter Bar (single row: label inline with each control) -->
+                        <div class="deleted-filters-bar mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
+                            <div class="deleted-filter-item deleted-filter-item--search">
+                                <label for="filter-search" class="form-label">Search</label>
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all">
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Deleted By</label>
+                            <div class="deleted-filter-item">
+                                <label for="filter-deleted-by" class="form-label">Deleted By</label>
                                 <input type="text" id="filter-deleted-by" class="form-control form-control-sm" placeholder="Name">
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Assignor</label>
+                            <div class="deleted-filter-item">
+                                <label for="filter-assignor" class="form-label">Assignor</label>
                                 <input type="text" id="filter-assignor" class="form-control form-control-sm" placeholder="Name">
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Assignee</label>
+                            <div class="deleted-filter-item">
+                                <label for="filter-assignee" class="form-label">Assignee</label>
                                 <input type="text" id="filter-assignee" class="form-control form-control-sm" placeholder="Name">
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Priority</label>
+                            <div class="deleted-filter-item deleted-filter-item--priority">
+                                <label for="filter-priority" class="form-label">Priority</label>
                                 <select id="filter-priority" class="form-select form-select-sm">
                                     <option value="">All</option>
                                     <option value="low">Low</option>

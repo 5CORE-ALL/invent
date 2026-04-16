@@ -2951,7 +2951,7 @@
                         }
                     });
                     
-                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, STATUS, PRIORITY, IMAGE, LINKS, ACTION
+                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, L1, FORM, STATUS, PRIORITY, IMAGE, LINKS, ACTION
                     
                     // GROUP
                     cols.push({
@@ -3118,6 +3118,44 @@
                                 }
                             }
                             return '<span style="color: #adb5bd;">0</span>';
+                        }
+                    });
+
+                    // L1 — link icon when data present (DB: link1)
+                    cols.push({
+                        title: "L1",
+                        field: "link1",
+                        width: 52,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var v = String(rowData.link1 || rowData.l1 || "").trim();
+                            if (!v) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            var href = v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "");
+                            return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open L1 link">' +
+                                '<i class="mdi mdi-link-variant text-primary" style="font-size: 18px;"></i></a>';
+                        }
+                    });
+
+                    // Form — link icon when data present (DB: link5)
+                    cols.push({
+                        title: "FORM",
+                        field: "link5",
+                        width: 56,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var v = String(rowData.link5 || rowData.form_link || "").trim();
+                            if (!v) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            var href = v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "");
+                            return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open form link">' +
+                                '<i class="mdi mdi-link-variant text-success" style="font-size: 18px;"></i></a>';
                         }
                     });
                     

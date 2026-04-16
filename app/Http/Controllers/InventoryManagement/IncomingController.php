@@ -16,6 +16,7 @@ use App\Http\Controllers\ApiController;
 use App\Models\IncomingData;
 use App\Models\IncomingOrder;
 use App\Models\IncomingReason;
+use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Collection;
@@ -610,7 +611,9 @@ class IncomingController extends Controller
                 'sku' => 'required|string|max:255',
                 'qty' => 'required|integer|min:1',
                 'warehouse_id' => 'required|integer|exists:warehouses,id',
+                // Includes optional client-side speech-to-text for incoming return Condition/Remarks.
                 'reason' => 'required|string|max:10000',
+                'returns' => 'nullable|string|max:255',
                 'images' => 'nullable|array|max:20',
                 'images.*' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:10240',
                 'voice_note' => 'nullable|file|max:15360|mimetypes:audio/webm,video/webm,audio/ogg,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav',
@@ -627,6 +630,12 @@ class IncomingController extends Controller
 
             $sku = trim($validated['sku']);
             $qty = (int) $validated['qty'];
+
+            $returnsForRow = 'returns';
+            if ($inventoryType === 'incoming_return' && Schema::hasColumn('inventories', 'returns')) {
+                $r = isset($validated['returns']) ? trim((string) $validated['returns']) : '';
+                $returnsForRow = $r !== '' ? $r : 'returns';
+            }
 
             $warehouseName = trim((string) Warehouse::where('id', $validated['warehouse_id'])->value('name'));
             $pushToShopify = $this->isMainGodownWarehouse($warehouseName);
@@ -1112,6 +1121,11 @@ class IncomingController extends Controller
                             'approved_at' => $nowOhio,
                             'updated_at' => now(),
                         ];
+                        if (Schema::hasColumn('inventories', 'returns')) {
+                            $returnsParts = $matches->pluck('returns')->map(fn ($x) => trim((string) $x))->filter()->unique()->values()->all();
+                            $returnsParts[] = $returnsForRow;
+                            $update['returns'] = implode(' | ', array_unique($returnsParts));
+                        }
                         if (Schema::hasColumn('inventories', 'incoming_images')) {
                             $update['incoming_images'] = $allPaths !== [] ? json_encode($allPaths) : null;
                         }
@@ -1124,6 +1138,11 @@ class IncomingController extends Controller
                                 $mergedVoice = $this->mergeIncomingVoicePathFromItems($matches);
                             }
                             $update['incoming_voice_note'] = $mergedVoice;
+                        }
+
+                        if (Schema::hasColumn('inventories', 'restock_fee_usd')) {
+                            $newRestockUsd = (float) $matches->sum(fn ($i) => (float) ($i->restock_fee_usd ?? 0));
+                            $update['restock_fee_usd'] = (float) round($newRestockUsd, 0);
                         }
 
                         DB::table('inventories')->where('id', $keep->id)->update($update);
@@ -1183,6 +1202,10 @@ class IncomingController extends Controller
 
                 if (Schema::hasColumn('inventories', 'incoming_voice_note')) {
                     $insert['incoming_voice_note'] = $storedVoicePath;
+                }
+
+                if ($inventoryType === 'incoming_return' && Schema::hasColumn('inventories', 'returns')) {
+                    $insert['returns'] = $returnsForRow;
                 }
 
                 DB::table('inventories')->insert($insert);
@@ -1325,14 +1348,25 @@ class IncomingController extends Controller
      */
     public function listIncomingReturnViewMerged()
     {
+        $hasFinancialCols = Schema::hasColumn('inventories', 'restock_fee_usd');
+        $hasReturnsCol = Schema::hasColumn('inventories', 'returns');
+
         $incomingItems = Inventory::with('warehouse')
             ->where('type', 'incoming')
             ->orderByDesc('id')
             ->get();
 
+        $returnItems = Inventory::with('warehouse')
+            ->where('type', 'incoming_return')
+            ->latest()
+            ->get();
+
+        $allSkus = $incomingItems->pluck('sku')->merge($returnItems->pluck('sku'))->filter(fn ($s) => trim((string) $s) !== '');
+        $amazonByUpper = $this->batchAmazonSellPriceRowsByUpperSku($allSkus);
+
         [$pmIn, $shopIn] = $this->batchProductMasterAndShopifyBySkuKeys($incomingItems->pluck('sku'));
 
-        $incomingRows = $incomingItems->map(function ($item) use ($pmIn, $shopIn) {
+        $incomingRows = $incomingItems->map(function ($item) use ($pmIn, $shopIn, $hasFinancialCols, $amazonByUpper, $hasReturnsCol) {
             $k = strtolower(trim((string) ($item->sku ?? '')));
             $pm = $pmIn->get($k);
             $shop = $shopIn->get($k);
@@ -1341,10 +1375,20 @@ class IncomingController extends Controller
                 ? trim((string) ($item->incoming_voice_note ?? ''))
                 : '';
 
-            return [
+            $skuU = strtoupper(trim((string) ($item->sku ?? '')));
+            $amz = $amazonByUpper->get($skuU);
+            $unit = $amz && $amz->price !== null && $amz->price !== ''
+                ? (float) $amz->price
+                : null;
+            $qty = (float) ($item->verified_stock ?? 0);
+            $restock = $hasFinancialCols ? $item->restock_fee_usd : null;
+            $usd = $this->packIncomingReturnFinancialsFromAmazon($unit, $qty, $restock, $hasFinancialCols);
+
+            return array_merge([
                 'sku' => $item->sku,
                 'verified_stock' => $item->verified_stock,
                 'reason' => $item->reason,
+                'returns' => $hasReturnsCol ? ($item->returns ?? null) : null,
                 'warehouse_id' => $item->warehouse_id,
                 'warehouse_name' => $item->warehouse->name ?? '',
                 'approved_by' => $item->approved_by,
@@ -1356,14 +1400,10 @@ class IncomingController extends Controller
                 'voice_note_url' => $voicePath !== '' ? $this->normalizePublicDiskImageUrl($voicePath) : null,
                 'record_type' => 'incoming',
                 'record_type_label' => 'General incoming',
+                'inventory_id' => $item->id,
                 '_sort' => $at ? Carbon::parse($at)->timestamp : 0,
-            ];
+            ], $usd);
         });
-
-        $returnItems = Inventory::with('warehouse')
-            ->where('type', 'incoming_return')
-            ->latest()
-            ->get();
 
         [$pmRet, $shopRet] = $this->batchProductMasterAndShopifyBySkuKeys($returnItems->pluck('sku'));
 
@@ -1375,22 +1415,36 @@ class IncomingController extends Controller
 
         $sortedGroups = $grouped->sortByDesc(fn ($group) => $group->max('id'));
 
-        $returnRows = $sortedGroups->values()->map(function ($group) use ($pmRet, $shopRet) {
+        $returnRows = $sortedGroups->values()->map(function ($group) use ($pmRet, $shopRet, $hasFinancialCols, $amazonByUpper, $hasReturnsCol) {
             $rep = $group->sortByDesc('id')->values()->first();
             $sumQty = $group->sum(fn ($i) => (float) ($i->verified_stock ?? 0));
             $k = strtolower(trim((string) ($rep->sku ?? '')));
             $pm = $pmRet->get($k);
             $shop = $shopRet->get($k);
             $reasonParts = $group->pluck('reason')->map(fn ($r) => trim((string) $r))->filter()->unique()->values()->all();
+            $returnsMerged = $hasReturnsCol
+                ? implode(' | ', $group->pluck('returns')->map(fn ($x) => trim((string) $x))->filter()->unique()->values()->all())
+                : null;
             $at = $rep->approved_at ?? $rep->updated_at;
             $mergedVoicePath = Schema::hasColumn('inventories', 'incoming_voice_note')
                 ? $this->mergeIncomingVoicePathFromItems($group)
                 : null;
 
-            return [
+            $skuU = strtoupper(trim((string) ($rep->sku ?? '')));
+            $amz = $amazonByUpper->get($skuU);
+            $unit = $amz && $amz->price !== null && $amz->price !== ''
+                ? (float) $amz->price
+                : null;
+            $restockSum = $hasFinancialCols
+                ? (float) round((float) $group->sum(fn ($i) => (float) ($i->restock_fee_usd ?? 0)), 0)
+                : null;
+            $usd = $this->packIncomingReturnFinancialsFromAmazon($unit, $sumQty, $restockSum, $hasFinancialCols);
+
+            return array_merge([
                 'sku' => $rep->sku,
                 'verified_stock' => $sumQty,
                 'reason' => implode(' | ', $reasonParts),
+                'returns' => $returnsMerged !== '' ? $returnsMerged : null,
                 'warehouse_id' => $rep->warehouse_id,
                 'warehouse_name' => $rep->warehouse->name ?? '',
                 'approved_by' => $rep->approved_by,
@@ -1402,21 +1456,124 @@ class IncomingController extends Controller
                 'voice_note_url' => $mergedVoicePath ? $this->normalizePublicDiskImageUrl($mergedVoicePath) : null,
                 'record_type' => 'incoming_return',
                 'record_type_label' => 'Return',
+                'inventory_id' => $rep->id,
                 '_sort' => $at ? Carbon::parse($at)->timestamp : 0,
-            ];
+            ], $usd);
         });
 
         $merged = $incomingRows->concat($returnRows)
             ->sortByDesc('_sort')
             ->values()
             ->map(function (array $row) {
+                $row['financial_at_ts'] = (int) ($row['_sort'] ?? 0);
                 unset($row['_sort']);
 
                 return $row;
             })
             ->values();
 
-        return response()->json(['data' => $merged->all()]);
+        $sumTz = 'America/Los_Angeles';
+        $nowLa = Carbon::now($sumTz);
+        $sumWindowStart = $nowLa->copy()->subDays(29)->startOfDay();
+        $sumWindowEnd = $nowLa->copy()->endOfDay();
+
+        return response()->json([
+            'data' => $merged->all(),
+            'financial_sum_window' => [
+                'timezone' => $sumTz,
+                'start_ts' => $sumWindowStart->timestamp,
+                'end_ts' => $sumWindowEnd->timestamp,
+            ],
+        ]);
+    }
+
+    /**
+     * Amazon sell price per unit from {@see AmazonDatasheet} (`amazon_datsheets.price`), keyed by UPPER(TRIM(sku)).
+     *
+     * @return \Illuminate\Support\Collection<string, AmazonDatasheet>
+     */
+    protected function batchAmazonSellPriceRowsByUpperSku(Collection $skus): Collection
+    {
+        $norm = $skus->map(fn ($s) => strtoupper(trim((string) $s)))->filter()->unique()->values();
+        if ($norm->isEmpty()) {
+            return collect();
+        }
+
+        $rows = AmazonDatasheet::query()
+            ->whereIn(DB::raw('UPPER(TRIM(sku))'), $norm->all())
+            ->get(['sku', 'price']);
+
+        return $rows->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
+    }
+
+    /**
+     * Loss $ = Amazon unit price × quantity when price exists; restock from {@see Inventory::$restock_fee_usd}; net = loss − restock.
+     *
+     * @return array{loss_usd: float|null, restock_fee_usd: float|null, net_loss_usd: float, amazon_unit_price: float|null}
+     */
+    protected function packIncomingReturnFinancialsFromAmazon(?float $amazonUnitPrice, float $qty, $restockFee, bool $hasCols): array
+    {
+        if (! $hasCols) {
+            return [
+                'loss_usd' => null,
+                'restock_fee_usd' => null,
+                'net_loss_usd' => null,
+                'amazon_unit_price' => null,
+            ];
+        }
+
+        $loss = null;
+        if ($amazonUnitPrice !== null) {
+            $loss = (float) round((float) $amazonUnitPrice * $qty, 0);
+        }
+
+        $r = $restockFee === null || $restockFee === '' ? null : (float) round((float) $restockFee, 0);
+
+        $lVal = $loss !== null ? (float) $loss : 0.0;
+        $rVal = $r !== null ? (float) $r : 0.0;
+        $net = (float) round($lVal - $rVal, 0);
+
+        return [
+            'loss_usd' => $loss,
+            'restock_fee_usd' => $r,
+            'net_loss_usd' => $net,
+            'amazon_unit_price' => $amazonUnitPrice !== null ? (float) round((float) $amazonUnitPrice, 0) : null,
+        ];
+    }
+
+    public function updateIncomingReturnRowRestock(Request $request, Inventory $inventory)
+    {
+        if (! in_array($inventory->type, ['incoming', 'incoming_return'], true)) {
+            abort(404);
+        }
+
+        if (! Schema::hasColumn('inventories', 'restock_fee_usd')) {
+            return response()->json(['success' => false, 'message' => 'Restock column not available.'], 400);
+        }
+
+        if ($request->input('restock_fee_usd') === '') {
+            $request->merge(['restock_fee_usd' => null]);
+        }
+
+        $validated = $request->validate([
+            'restock_fee_usd' => 'nullable|numeric|min:0',
+        ]);
+
+        $v = $validated['restock_fee_usd'] ?? null;
+        $inventory->restock_fee_usd = $v === null ? null : (float) round((float) $v, 0);
+        $inventory->save();
+
+        $skuU = strtoupper(trim((string) ($inventory->sku ?? '')));
+        $amazonByUpper = $this->batchAmazonSellPriceRowsByUpperSku(collect([$inventory->sku]));
+        $amz = $amazonByUpper->get($skuU);
+        $unit = $amz && $amz->price !== null && $amz->price !== ''
+            ? (float) $amz->price
+            : null;
+        $qty = (float) ($inventory->verified_stock ?? 0);
+        $payload = $this->packIncomingReturnFinancialsFromAmazon($unit, $qty, $inventory->restock_fee_usd, true);
+        $payload['inventory_id'] = (int) $inventory->id;
+
+        return response()->json(['success' => true] + $payload);
     }
 
     /**
@@ -1603,6 +1760,7 @@ class IncomingController extends Controller
             ->orderBy('name')
             ->get();
 
+        // incoming-return-view: Condition/Remarks can be filled with the browser speech-to-text control; still posted as `reason`.
         return view('inventory-management.incoming-return-view', compact('warehouses'));
     }
 

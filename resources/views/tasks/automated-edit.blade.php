@@ -106,11 +106,20 @@
                                 </div>
                             </div>
 
+                            @php
+                                $l1FieldVal = old('l1', $task->l1 ?? '');
+                                $formLinkFieldVal = old('form_link', $task->form_link ?? '');
+                            @endphp
                             <div class="row">
                                 <div class="col-md-2 mb-2">
                                     <label for="l1" class="form-label fw-bold" style="font-size: 13px;">L1</label>
-                                    <input type="text" class="form-control form-control-sm @error('l1') is-invalid @enderror" 
-                                           id="l1" name="l1" placeholder="L1" value="{{ old('l1', $task->l1) }}">
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control form-control-sm @error('l1') is-invalid @enderror" 
+                                               id="l1" name="l1" placeholder="L1" value="{{ $l1FieldVal }}">
+                                        @if(trim((string) $l1FieldVal) !== '')
+                                            <a href="{{ $l1FieldVal }}" target="_blank" rel="noopener noreferrer" class="input-group-text text-decoration-none" title="Open L1 link" aria-label="Open L1 link"><i class="mdi mdi-link-variant text-primary"></i></a>
+                                        @endif
+                                    </div>
                                 </div>
                                 <div class="col-md-2 mb-2">
                                     <label for="l2" class="form-label fw-bold" style="font-size: 13px;">L2</label>
@@ -129,8 +138,13 @@
                                 </div>
                                 <div class="col-md-2 mb-2">
                                     <label for="form_link" class="form-label fw-bold" style="font-size: 13px;">Form</label>
-                                    <input type="text" class="form-control form-control-sm @error('form_link') is-invalid @enderror" 
-                                           id="form_link" name="form_link" placeholder="Form Link" value="{{ old('form_link', $task->form_link) }}">
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control form-control-sm @error('form_link') is-invalid @enderror" 
+                                               id="form_link" name="form_link" placeholder="Form Link" value="{{ $formLinkFieldVal }}">
+                                        @if(trim((string) $formLinkFieldVal) !== '')
+                                            <a href="{{ $formLinkFieldVal }}" target="_blank" rel="noopener noreferrer" class="input-group-text text-decoration-none" title="Open form link" aria-label="Open form link"><i class="mdi mdi-link-variant text-success"></i></a>
+                                        @endif
+                                    </div>
                                 </div>
                                 <div class="col-md-2 mb-2">
                                     <label for="form_report_link" class="form-label fw-bold" style="font-size: 13px;">Form Report</label>

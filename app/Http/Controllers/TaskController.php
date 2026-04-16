@@ -750,6 +750,19 @@ class TaskController extends Controller
             }
         }
 
+        if ($request->boolean('quick_create_more')) {
+            $detail = $message;
+            if (str_starts_with($detail, 'Task created successfully!')) {
+                $detail = trim(substr($detail, strlen('Task created successfully!')));
+            }
+            $displayMessage = 'Task generated successfully!' . ($detail !== '' ? ' ' . $detail : '');
+
+            return response()->json([
+                'success' => true,
+                'message' => $displayMessage,
+            ]);
+        }
+
         return redirect()->route('tasks.index')->with($flash, $message);
     }
 
@@ -1940,6 +1953,16 @@ class TaskController extends Controller
             'schedule_time' => 'nullable',
             'assignor_id' => 'nullable|exists:users,id',
             'assignee_id' => 'nullable|exists:users,id',
+            'description' => 'nullable|string',
+            'l1' => 'nullable|string|max:2048',
+            'l2' => 'nullable|string|max:2048',
+            'training_link' => 'nullable|string|max:2048',
+            'video_link' => 'nullable|string|max:2048',
+            'form_link' => 'nullable|string|max:2048',
+            'form_report_link' => 'nullable|string|max:2048',
+            'checklist_link' => 'nullable|string|max:2048',
+            'pl' => 'nullable|string|max:2048',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240',
         ]);
         
         // Set default priority to Normal if not provided
@@ -1968,8 +1991,22 @@ class TaskController extends Controller
             $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
         }
 
+        $imageName = $existing->image ?? null;
+        if ($request->hasFile('image')) {
+            if ($imageName && file_exists(public_path('uploads/tasks/' . $imageName))) {
+                @unlink(public_path('uploads/tasks/' . $imageName));
+            }
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $image->move(public_path('uploads/tasks'), $imageName);
+        }
+
+        $description = $validated['description'] ?? $existing->description ?? '';
+
+        // automate_tasks historically had link1–link7 only; link8/link9/image may exist after migration.
         $automateUpdate = [
             'title' => $validated['title'],
+            'description' => $description,
             'group' => $validated['group'],
             'priority' => $validated['priority'],
             'eta_time' => $validated['etc_minutes'] ?? 10,
@@ -1978,20 +2015,47 @@ class TaskController extends Controller
             'schedule_time' => $validated['schedule_time'],
             'assignor' => $assignorEmail,
             'assign_to' => $assigneeEmail,
+            'link1' => $validated['l1'] ?? '',
+            'link2' => $validated['l2'] ?? '',
+            'link3' => $validated['training_link'] ?? '',
+            'link4' => $validated['video_link'] ?? '',
+            'link5' => $validated['form_link'] ?? '',
+            'link6' => $validated['form_report_link'] ?? '',
+            'link7' => $validated['checklist_link'] ?? '',
             'updated_at' => now(),
         ];
+        if (Schema::hasColumn('automate_tasks', 'link8')) {
+            $automateUpdate['link8'] = $validated['pl'] ?? '';
+        }
+        if (Schema::hasColumn('automate_tasks', 'link9')) {
+            $automateUpdate['link9'] = $existing->link9 ?? '';
+        }
+        if (Schema::hasColumn('automate_tasks', 'image')) {
+            $automateUpdate['image'] = $imageName;
+        }
 
         \DB::table('automate_tasks')->where('id', $id)->update($automateUpdate);
 
-        // Update any existing executed instances in tasks table (including assignor/assignee)
+        // Update any existing executed instances in tasks table (including assignor/assignee and links)
         $tasksUpdate = [
             'title' => $validated['title'],
+            'description' => $description,
             'group' => $validated['group'],
             'priority' => $validated['priority'],
             'eta_time' => $validated['etc_minutes'] ?? 10,
             'schedule_type' => $validated['schedule_type'],
             'assignor' => $assignorEmail,
             'assign_to' => $assigneeEmail,
+            'link1' => $validated['l1'] ?? '',
+            'link2' => $validated['l2'] ?? '',
+            'link3' => $validated['training_link'] ?? '',
+            'link4' => $validated['video_link'] ?? '',
+            'link5' => $validated['form_link'] ?? '',
+            'link6' => $validated['form_report_link'] ?? '',
+            'link7' => $validated['checklist_link'] ?? '',
+            'link8' => $validated['pl'] ?? '',
+            'link9' => $existing->link9 ?? '',
+            'image' => $imageName,
             'updated_at' => now(),
         ];
         \DB::table('tasks')->where('automate_task_id', $id)->update($tasksUpdate);

@@ -24,7 +24,7 @@ class PurchasingPowerController extends Controller
         $demo = $request->query('demo');
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 65;
 
         return view('market-places.purchasing_power_tabulator_view', [
             'mode'         => $mode,
@@ -71,7 +71,7 @@ class PurchasingPowerController extends Controller
             ->pluck('total_qty', 'sku_upper');
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.70;
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.65;
 
         $result = [];
 
@@ -195,7 +195,7 @@ class PurchasingPowerController extends Controller
             }
 
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
-            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 70)) : 70;
+            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 65)) : 65;
             $margin     = $percentage / 100;
 
             $pm = ProductMaster::where('sku', $sku)->first();
@@ -253,7 +253,7 @@ class PurchasingPowerController extends Controller
             if (empty($updates)) return response()->json(['error' => 'No updates provided'], 400);
 
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
-            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 70)) : 70;
+            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 65)) : 65;
             $margin     = $percentage / 100;
 
             $updatedCount = 0;
@@ -344,9 +344,13 @@ class PurchasingPowerController extends Controller
 
     public function salesView(Request $request)
     {
+        $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');
+        $ppMargin = ($rawPct !== null && (float) $rawPct > 0) ? (float) $rawPct : 65.0;
+
         return view('market-places.purchasing_power_sales_view', [
             'mode' => $request->query('mode'),
             'demo' => $request->query('demo'),
+            'ppMargin' => $ppMargin,
         ]);
     }
 
@@ -354,15 +358,43 @@ class PurchasingPowerController extends Controller
     {
         $sales = PurchasingPowerSale::orderBy('date_created', 'desc')->get();
 
-        $percentage = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage') ?? 70;
+        $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');
+        $percentage = ($rawPct !== null && (float) $rawPct > 0) ? (float) $rawPct : 65.0;
         $pct = $percentage / 100;
 
-        $data = $sales->map(function ($s) use ($pct) {
+        $skus = $sales->pluck('offer_sku')->filter()->map(fn ($sku) => trim((string) $sku))->unique()->values()->all();
+        $productMasters = collect();
+        if (!empty($skus)) {
+            $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)));
+        }
+
+        $data = $sales->map(function ($s) use ($pct, $percentage, $productMasters) {
+            $skuKey = strtoupper(trim((string) ($s->offer_sku ?? '')));
+            $pm = $skuKey !== '' ? ($productMasters[$skuKey] ?? null) : null;
+
+            $lp = 0;
+            $ship = 0;
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0);
+            }
+
             $unitPrice = floatval($s->unit_price ?? 0);
-            $lp        = 0; // LP not available in sales file; placeholder
-            $qty       = intval($s->quantity ?? 0);
-            $pft       = round(($unitPrice * $pct - $lp) * $qty, 2);
-            $gpft      = $unitPrice > 0 ? round((($unitPrice * $pct - $lp) / $unitPrice) * 100, 2) : 0;
+            $qty       = max(0, (int) ($s->quantity ?? 0));
+            $pftEach   = ($unitPrice * $pct) - $lp - $ship;
+            $pft       = round($pftEach * $qty, 2);
+            $gpft      = $unitPrice > 0 ? round(($pftEach / $unitPrice) * 100, 2) : 0;
+            $cogs      = round($lp * $qty, 2);
+            $groi      = $lp > 0 ? round(($pftEach / $lp) * 100, 2) : 0;
 
             return [
                 'id'                   => $s->id,
@@ -388,8 +420,13 @@ class PurchasingPowerController extends Controller
                 'state'                => $s->customer_state,
                 'country'              => $s->customer_country,
                 'category_label'       => $s->category_label,
+                'lp'                   => round($lp, 2),
+                'ship'                 => round($ship, 2),
+                'cogs'                 => $cogs,
                 'pft'                  => $pft,
                 'gpft_pct'             => $gpft,
+                'groi_pct'             => $groi,
+                'margin_pct'           => $percentage,
             ];
         });
 

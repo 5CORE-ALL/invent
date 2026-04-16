@@ -104,6 +104,144 @@
             margin-top: 4px;
         }
 
+        /* Condition/Remarks: speech-to-text mic (Web Speech API) */
+        .incoming-reason-stt-wrap textarea.incoming-reason-with-mic {
+            padding-right: 3rem;
+        }
+
+        .incoming-reason-mic-btn {
+            z-index: 2;
+            line-height: 1;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        .incoming-reason-mic-btn:hover .fa-microphone {
+            color: #0d6efd !important;
+        }
+
+        .incoming-reason-mic-btn.is-listening .fa-microphone {
+            color: #dc3545 !important;
+        }
+
+        /* Toolbar: one row — shared control height (button = badges = filter = search) */
+        .incoming-return-toolbar-row {
+            --incoming-toolbar-h: 3.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: stretch;
+            gap: 0.5rem 0.75rem;
+            width: 100%;
+        }
+
+        @media (min-width: 992px) {
+            .incoming-return-toolbar-row {
+                flex-wrap: nowrap;
+            }
+        }
+
+        .incoming-return-toolbar-row .incoming-toolbar-create {
+            flex: 0 0 auto;
+            min-height: var(--incoming-toolbar-h);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-radius: 0.375rem;
+        }
+
+        .incoming-sum-badges-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.5rem;
+            flex: 1 1 0;
+            min-width: 0;
+            min-height: var(--incoming-toolbar-h);
+            align-items: stretch;
+        }
+
+        .incoming-sum-badge-cell {
+            min-width: 0;
+            min-height: var(--incoming-toolbar-h);
+            padding: 0.35rem 0.65rem;
+            border-radius: 0.375rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-weight: 600;
+            line-height: 1.15;
+        }
+
+        /* Half of Bootstrap’s typical `.small` (~0.875rem); numbers stay larger below */
+        .incoming-sum-badge-cell .incoming-sum-badge-label {
+            font-size: calc(0.875rem / 2);
+            letter-spacing: 0.02em;
+            line-height: 1.2;
+        }
+
+        .incoming-sum-badge-cell .incoming-sum-value {
+            font-size: 0.95rem;
+            font-variant-numeric: tabular-nums;
+            word-break: break-all;
+        }
+
+        .incoming-restock-cell {
+            text-align: center;
+        }
+
+        .incoming-restock-cell .incoming-restock-input.form-control {
+            width: 50%;
+            max-width: 50%;
+            margin-left: auto;
+            margin-right: auto;
+            text-align: center;
+        }
+
+        .incoming-return-toolbar-row .incoming-toolbar-wh {
+            flex: 0 1 12rem;
+            min-width: 10rem;
+        }
+
+        .incoming-return-toolbar-row .incoming-toolbar-search {
+            flex: 1 1 12rem;
+            min-width: 10rem;
+        }
+
+        /* Match warehouse trigger + search group to toolbar height */
+        .incoming-return-toolbar-row .incoming-toolbar-wh .incoming-wh-dd-trigger {
+            min-height: var(--incoming-toolbar-h);
+            height: 100%;
+            border-radius: 0.375rem;
+            font-size: 0.9375rem;
+        }
+
+        .incoming-return-toolbar-row .incoming-toolbar-search .input-group {
+            min-height: var(--incoming-toolbar-h);
+        }
+
+        .incoming-return-toolbar-row .incoming-toolbar-search .input-group-text,
+        .incoming-return-toolbar-row .incoming-toolbar-search .form-control,
+        .incoming-return-toolbar-row .incoming-toolbar-search .btn {
+            min-height: var(--incoming-toolbar-h);
+            display: flex;
+            align-items: center;
+        }
+
+        .incoming-return-toolbar-row .incoming-toolbar-search .form-control {
+            font-size: 0.9375rem;
+        }
+
+        @media (max-width: 991.98px) {
+            .incoming-sum-badges-grid {
+                flex: 1 1 100%;
+                width: 100%;
+                min-width: 100%;
+            }
+        }
+
         /* Success Toast Styles */
         /* Success Modal Styles */
         #successModal .modal-content {
@@ -431,17 +569,30 @@
                 <div class="card-body">
 
 
-                    <!-- Search Box, warehouse filter, and Add Button-->
-                    <div class="row mb-3 g-2 align-items-end">
-                        <div class="col-xl-4 col-lg-5 col-md-12 d-flex align-items-center flex-wrap gap-2">
-                            <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
-                                <i class="fas fa-plus me-1"></i> CREATE INCOMING RETURN
-                            </button>
-                            <div class="dataTables_length"></div>
+                    <!-- Toolbar: create + equal-width sums + warehouse + search (one row on lg+) -->
+                    <div class="incoming-return-toolbar-row mb-3" role="region" aria-label="Incoming return actions and totals">
+                        <button type="button" class="btn btn-primary incoming-toolbar-create" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
+                            <i class="fas fa-plus me-1"></i> CREATE INCOMING RETURN
+                        </button>
+                        <div class="dataTables_length d-none" aria-hidden="true"></div>
+
+                        <div class="incoming-sum-badges-grid incoming-inventory-sum-badges" aria-label="Totals for visible rows in the last 30 calendar days, Pacific time" title="Loss, Restock, and Net include only rows whose date falls in the last 30 calendar days in California (America/Los_Angeles), among rows matching your warehouse and search filters.">
+                            <span class="incoming-sum-badge-cell border border-danger bg-danger bg-opacity-10 text-danger" role="status">
+                                <span class="incoming-sum-badge-label fw-semibold text-uppercase">Loss $</span>
+                                <span class="incoming-sum-value" id="incomingSumLoss">0</span>
+                            </span>
+                            <span class="incoming-sum-badge-cell bg-secondary text-white" role="status">
+                                <span class="incoming-sum-badge-label fw-semibold text-uppercase">Restock $</span>
+                                <span class="incoming-sum-value" id="incomingSumRestock">0</span>
+                            </span>
+                            <span class="incoming-sum-badge-cell bg-primary text-white" role="status" id="incomingSumNetBadge">
+                                <span class="incoming-sum-badge-label fw-semibold text-uppercase">Net loss $</span>
+                                <span class="incoming-sum-value" id="incomingSumNet">0</span>
+                            </span>
                         </div>
 
-                        <div class="col-xl-3 col-lg-4 col-md-6">
-                            <label for="filterWarehouseMain_btn" class="form-label small fw-semibold mb-1">Warehouse filter</label>
+                        <div class="incoming-toolbar-wh">
+                            <label for="filterWarehouseMain_btn" class="visually-hidden">Warehouse filter</label>
                             <div class="incoming-wh-dd-wrap position-relative">
                                 <select id="filterWarehouseMain" class="d-none incoming-wh-dd-native" aria-hidden="true" tabindex="-1">
                                     <option value="">All warehouses</option>
@@ -449,33 +600,22 @@
                                         <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
                                     @endforeach
                                 </select>
-                                <button type="button" id="filterWarehouseMain_btn" class="form-select form-select-sm incoming-wh-dd-trigger warehouse-filter-select w-100 text-start d-flex align-items-center" aria-haspopup="listbox" aria-expanded="false">
+                                <button type="button" id="filterWarehouseMain_btn" class="form-select incoming-wh-dd-trigger warehouse-filter-select w-100 text-start d-flex align-items-center" aria-haspopup="listbox" aria-expanded="false" title="Warehouse filter">
                                     <span class="incoming-wh-dd-trigger-inner d-flex align-items-center min-w-0 flex-grow-1"></span>
                                 </button>
                                 <div class="incoming-wh-dd-panel list-group position-absolute top-100 start-0 end-0 d-none bg-white border rounded shadow-sm mt-1 py-1" role="listbox"></div>
                             </div>
                         </div>
 
-                        <div class="col-xl-5 col-lg-12 col-md-6">
-                            <label for="customSearch" class="form-label small fw-semibold mb-1 d-none d-md-block">&nbsp;</label>
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="fas fa-search"></i></span>
-                                <input type="text" id="customSearch" class="form-control" placeholder="Search incoming & returns">
-                                <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear</button>
+                        <div class="incoming-toolbar-search">
+                            <label for="customSearch" class="visually-hidden">Search incoming and returns</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-search" aria-hidden="true"></i></span>
+                                <input type="text" id="customSearch" class="form-control" placeholder="Search incoming & returns" title="Search incoming & returns">
+                                <button class="btn btn-outline-secondary px-3" type="button" id="clearSearch">Clear</button>
                             </div>
                         </div>
                     </div>
-
-                    <p class="small text-muted mb-3">
-                        <strong>Data source:</strong>
-                        <code>inventories</code> table via
-                        <code>{{ url('/incoming-return-merged-list') }}</code>
-                        (<code>incoming.return.merged.list</code>)
-                        — rows with <code>type = incoming</code> (general incoming) and <code>type = incoming_return</code> (returns grouped by SKU + warehouse).
-                        <strong>IMAGE</strong> column: product master / Shopify thumbnail, or first user upload if no catalog image.
-                        <strong>U Images</strong> column: all paths from <code>incoming_images</code> (user uploads only).
-                        <strong>Voice</strong> column: optional recording from <code>incoming_voice_note</code> (public storage path).
-                    </p>
 
 
                     <!-- <div class="col-md-6 text-end">
@@ -493,6 +633,7 @@
                         <div class="modal-dialog modal-fullscreen-sm-down modal-xl modal-dialog-scrollable incoming-return-modal-dialog">
                             <form id="incomingReturnForm" enctype="multipart/form-data">
                                 @csrf
+                                <input type="hidden" name="returns" id="returns" value="returns">
                                 <div class="modal-content incoming-mobile">
 
                                     <div class="modal-header bg-primary text-white">
@@ -544,7 +685,13 @@
 
                                         <div class="mb-3">
                                             <label for="reason" class="form-label fw-bold">Condition / Remarks</label>
-                                            <textarea class="form-control" id="reason" name="reason" rows="4" required maxlength="10000" style="min-height: 100px;" placeholder="Describe the item condition, return notes, visible damage, packaging, etc."></textarea>
+                                            <div class="position-relative incoming-reason-stt-wrap">
+                                                <textarea class="form-control incoming-reason-with-mic" id="reason" name="reason" rows="4" required maxlength="10000" style="min-height: 100px;" placeholder="Describe the item condition, return notes, visible damage, packaging, etc."></textarea>
+                                                <button type="button" class="btn btn-link incoming-reason-mic-btn position-absolute top-0 end-0 mt-1 me-1 p-2" id="btnReasonSpeechToText" title="Speech to text (click to start/stop)" aria-label="Speech to text" aria-pressed="false">
+                                                    <i class="fas fa-microphone fa-lg text-primary" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                            <small id="reasonSpeechHint" class="text-muted d-none">Speech-to-text uses your browser (Chrome, Edge, or Safari). Grant microphone access if prompted. Text is saved when you submit the form.</small>
                                         </div>
 
                                         <div class="mb-3">
@@ -782,10 +929,14 @@
                                 <tr>
                                     <th>IMAGE</th>
                                     <th>TYPE</th>
+                                    <th>RETURNS</th>
                                     <th>SKU</th>
                                     <th>QUANTITY</th>
                                     <th>WAREHOUSE</th>
                                     <th>CONDITION / REMARKS</th>
+                                    <th>LOSS $</th>
+                                    <th>RESTOCK $</th>
+                                    <th>NET LOSS $</th>
                                     <th>U Images</th>
                                     <th>Voice</th>
                                     <th>CREATED BY</th>
@@ -860,6 +1011,7 @@
 
             // Store the loaded data globally
             let tableData = [];
+            let incomingFinancialSumWindow = null;
 
             function setupProgressModal() {
                 const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
@@ -1348,6 +1500,102 @@
                     t.show();
                 }
 
+                let incomingReasonSpeechRecognition = null;
+                let incomingReasonSpeechListening = false;
+
+                function incomingReasonSpeechSupported() {
+                    return typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+                }
+
+                function appendIncomingReasonText(chunk) {
+                    const ta = document.getElementById('reason');
+                    if (!ta || chunk === undefined || chunk === null) return;
+                    const max = parseInt(ta.getAttribute('maxlength'), 10) || 10000;
+                    const piece = String(chunk).trim();
+                    if (!piece) return;
+                    let cur = ta.value || '';
+                    const sep = cur.length && !/\s$/.test(cur) ? ' ' : '';
+                    ta.value = (cur + sep + piece).slice(0, max);
+                    $(ta).trigger('input');
+                }
+
+                function stopIncomingReasonSpeech() {
+                    incomingReasonSpeechListening = false;
+                    if (incomingReasonSpeechRecognition) {
+                        try {
+                            incomingReasonSpeechRecognition.stop();
+                        } catch (e) { /* ignore */ }
+                    }
+                    const $btn = $('#btnReasonSpeechToText');
+                    $btn.removeClass('is-listening').attr('aria-pressed', 'false');
+                    $btn.find('i').removeClass('text-danger').addClass('text-primary');
+                }
+
+                function initIncomingReasonSpeech() {
+                    const $btn = $('#btnReasonSpeechToText');
+                    const $hint = $('#reasonSpeechHint');
+                    if (!$btn.length) return;
+                    if (!incomingReasonSpeechSupported()) {
+                        $btn.prop('disabled', true).attr('title', 'Speech recognition is not available in this browser');
+                        return;
+                    }
+                    $hint.removeClass('d-none');
+                    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    incomingReasonSpeechRecognition = new Rec();
+                    incomingReasonSpeechRecognition.continuous = true;
+                    incomingReasonSpeechRecognition.interimResults = true;
+                    incomingReasonSpeechRecognition.lang = navigator.language || 'en-US';
+
+                    incomingReasonSpeechRecognition.onresult = function (event) {
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                            if (event.results[i].isFinal) {
+                                appendIncomingReasonText(event.results[i][0].transcript);
+                            }
+                        }
+                    };
+
+                    incomingReasonSpeechRecognition.onerror = function (ev) {
+                        if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+                            showIncomingToast('Microphone denied for speech recognition. Allow access in browser settings.');
+                            stopIncomingReasonSpeech();
+                        }
+                    };
+
+                    incomingReasonSpeechRecognition.onend = function () {
+                        if (incomingReasonSpeechListening) {
+                            try {
+                                incomingReasonSpeechRecognition.start();
+                            } catch (e) {
+                                stopIncomingReasonSpeech();
+                            }
+                        } else {
+                            $btn.removeClass('is-listening').attr('aria-pressed', 'false');
+                            $btn.find('i').removeClass('text-danger').addClass('text-primary');
+                        }
+                    };
+
+                    $btn.on('click', function () {
+                        if (!incomingReasonSpeechRecognition) return;
+                        if (incomingReasonSpeechListening) {
+                            stopIncomingReasonSpeech();
+                            return;
+                        }
+                        incomingReasonSpeechListening = true;
+                        $btn.addClass('is-listening').attr('aria-pressed', 'true');
+                        $btn.find('i').removeClass('text-primary').addClass('text-danger');
+                        try {
+                            incomingReasonSpeechRecognition.start();
+                        } catch (e) {
+                            incomingReasonSpeechListening = false;
+                            $btn.removeClass('is-listening').attr('aria-pressed', 'false');
+                            $btn.find('i').removeClass('text-danger').addClass('text-primary');
+                            showIncomingToast('Could not start speech recognition.');
+                        }
+                    });
+                }
+
+                initIncomingReasonSpeech();
+
                 function fetchLookupForSku(raw) {
                     const q = (raw || '').trim();
                     const hint = $('#sku-product-hint');
@@ -1682,11 +1930,13 @@
                             $('#incoming-errors').html('');
                             $('#addWarehouseModal').modal('hide');
                             $('#incomingReturnForm')[0].reset();
+                            $('#returns').val('returns');
                             if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
                             hideSkuSuggestions();
                             $('#sku-product-hint').addClass('d-none').text('');
                             clearIncomingPhotos();
                             clearIncomingVoiceNote();
+                            stopIncomingReasonSpeech();
 
                             submitBtn.prop('disabled', false).html(originalBtnText);
                             isSubmitting = false;
@@ -1729,6 +1979,7 @@
 
                 $(document).on('click', '#openAddWarehouseModal', function () {
                     $('#incomingReturnForm')[0].reset();
+                    $('#returns').val('returns');
                     if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
                     hideSkuSuggestions();
                     $('#warehouseId').val('');
@@ -1738,6 +1989,7 @@
                     $('#sku-product-hint').addClass('d-none').text('');
                     clearIncomingPhotos();
                     clearIncomingVoiceNote();
+                    stopIncomingReasonSpeech();
                     isSubmitting = false;
                     const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
                     submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return');
@@ -1750,6 +2002,7 @@
                     isSubmitting = false;
                     hideSkuSuggestions();
                     clearIncomingVoiceNote();
+                    stopIncomingReasonSpeech();
                     const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
                     submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return');
                     $('#incoming-errors').html('');
@@ -1787,6 +2040,16 @@
                 const key = warehouseThemeKeyFromName(warehouseName);
                 if (key) return 'incoming-wh-cell incoming-wh-' + key;
                 return 'incoming-wh-cell';
+            }
+
+            /** Table display: hide the literal suffix "Godown" (e.g. Main Godown → Main). */
+            function displayWarehouseNameWithoutGodown(name) {
+                const s = String(name ?? '').trim();
+                if (s === '' || s === '-') {
+                    return s || '-';
+                }
+                const stripped = s.replace(/\s+godown\s*$/i, '').trim();
+                return stripped !== '' ? stripped : s;
             }
 
             function applyMainTableFilters() {
@@ -1835,6 +2098,84 @@
                 return '<td class="align-middle incoming-voice-cell"><audio controls preload="none" class="incoming-voice-audio w-100" style="max-width: 240px; height: 36px;"><source src="' + src + '"></audio></td>';
             }
 
+            function formatIncomingUsd(n) {
+                if (n === undefined || n === null || n === '') {
+                    return null;
+                }
+                const x = parseFloat(n);
+                if (isNaN(x)) {
+                    return null;
+                }
+                const rounded = Math.round(x);
+                return rounded.toLocaleString('en-US', { maximumFractionDigits: 0 });
+            }
+
+            function buildLossCell(item) {
+                const f = formatIncomingUsd(item.loss_usd);
+                if (f === null) {
+                    return '<td class="text-center align-middle incoming-loss-cell"><span class="text-muted small">—</span></td>';
+                }
+                return '<td class="text-end align-middle incoming-loss-cell"><span class="text-nowrap">' + f + '</span></td>';
+            }
+
+            function buildRestockCell(item) {
+                const id = item.inventory_id;
+                const v = item.restock_fee_usd;
+                const val = v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v)) ? String(Math.round(parseFloat(v))) : '';
+                if (!id) {
+                    return '<td class="text-center align-middle"><span class="text-muted small">—</span></td>';
+                }
+                return '<td class="align-middle incoming-restock-cell"><input type="number" class="form-control form-control-sm incoming-restock-input" data-inventory-id="' +
+                    String(id) + '" min="0" step="1" inputmode="numeric" value="' + escapeHtml(val) + '" placeholder="0" aria-label="Restock fee USD (whole dollars)"></td>';
+            }
+
+            function buildNetCell(item) {
+                const f = formatIncomingUsd(item.net_loss_usd);
+                if (f === null) {
+                    return '<td class="text-center align-middle incoming-net-cell"><span class="text-muted small">—</span></td>';
+                }
+                const netNum = parseFloat(item.net_loss_usd);
+                const cls = !isNaN(netNum) && netNum < 0 ? 'text-warning fw-semibold' : 'text-primary fw-semibold';
+                return '<td class="text-end align-middle incoming-net-cell"><span class="text-nowrap ' + cls + '">' + f + '</span></td>';
+            }
+
+            function incomingRowInFinancialSumWindow(item) {
+                const w = incomingFinancialSumWindow;
+                if (!w || w.start_ts == null || w.end_ts == null) {
+                    return true;
+                }
+                const ts = parseInt(item.financial_at_ts, 10);
+                if (!ts) {
+                    return false;
+                }
+                return ts >= w.start_ts && ts <= w.end_ts;
+            }
+
+            function updateIncomingFinancialSums(rows) {
+                let sumLoss = 0;
+                let sumRestock = 0;
+                let sumNet = 0;
+                (rows || []).filter(incomingRowInFinancialSumWindow).forEach(function (item) {
+                    sumLoss += parseFloat(item.loss_usd) || 0;
+                    sumRestock += parseFloat(item.restock_fee_usd) || 0;
+                    sumNet += parseFloat(item.net_loss_usd) || 0;
+                });
+                const fmt = function (n) {
+                    return Math.round(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                };
+                $('#incomingSumLoss').text(fmt(sumLoss));
+                $('#incomingSumRestock').text(fmt(sumRestock));
+                $('#incomingSumNet').text(fmt(sumNet));
+                const $nb = $('#incomingSumNetBadge');
+                if ($nb.length) {
+                    $nb.toggleClass('bg-warning text-dark', sumNet < 0).toggleClass('bg-primary text-white', sumNet >= 0);
+                }
+            }
+
+            const incomingRestockPatchUrl = function (inventoryId) {
+                return @json(url('/incoming-return-row')) + '/' + inventoryId + '/restock';
+            };
+
             function loadData() {
                 $.ajax({
                     url: @json(route('incoming.return.merged.list')),
@@ -1846,6 +2187,7 @@
                         $('#rainbow-loader').show(); 
                     },
                     success: function (response) {
+                        incomingFinancialSumWindow = response.financial_sum_window || null;
                         tableData = response.data || [];
                         applyMainTableFilters();
                         $('#rainbow-loader').hide();
@@ -1862,7 +2204,8 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="14" class="text-center">No records found</td></tr>';
+                    updateIncomingFinancialSums([]);
                     return;
                 }
 
@@ -1874,16 +2217,25 @@
                         : `<td class="text-center align-middle"><span class="text-muted small">—</span></td>`;
 
                     const typeLabel = escapeHtml(String(item.record_type_label ?? (item.record_type === 'incoming_return' ? 'Return' : 'General incoming')));
+                    const returnsLabel = escapeHtml(String(item.returns != null && String(item.returns).trim() !== '' ? item.returns : '—'));
                     const whName = String(item.warehouse_name ?? '-');
+                    const whLabel = displayWarehouseNameWithoutGodown(whName);
                     const uImgCell = buildUserUploadImagesCell(item);
                     const voiceCell = buildVoiceNoteCell(item);
+                    const lossCell = buildLossCell(item);
+                    const restockCell = buildRestockCell(item);
+                    const netCell = buildNetCell(item);
                     row.innerHTML = `
                         ${imgCell}
                         <td class="small">${typeLabel}</td>
+                        <td class="small">${returnsLabel}</td>
                         <td>${escapeHtml(String(item.sku ?? '-'))}</td>
                         <td>${escapeHtml(String(item.verified_stock ?? '-'))}</td>
-                        <td class="${incomingWarehouseCellClass(whName)}">${escapeHtml(whName)}</td>
+                        <td class="${incomingWarehouseCellClass(whName)}">${escapeHtml(whLabel)}</td>
                         <td>${escapeHtml(String(item.reason ?? '-'))}</td>
+                        ${lossCell}
+                        ${restockCell}
+                        ${netCell}
                         ${uImgCell}
                         ${voiceCell}
                         <td>${escapeHtml(String(item.approved_by ?? '-'))}</td>
@@ -1892,6 +2244,7 @@
 
                     tbody.appendChild(row);
                 });
+                updateIncomingFinancialSums(data);
             }
 
 
@@ -2453,6 +2806,77 @@
                     errorElement.textContent = '';
                 }
             }
+
+            $(document).on('blur', '.incoming-restock-input', function () {
+                const $inp = $(this);
+                const id = parseInt($inp.data('inventory-id'), 10);
+                if (!id) {
+                    return;
+                }
+                const raw = $inp.val();
+                let num = null;
+                if (raw !== '' && raw !== null && raw !== undefined) {
+                    const parsed = parseFloat(raw);
+                    if (isNaN(parsed) || parsed < 0) {
+                        alert('Enter a valid restock amount (≥ 0).');
+                        return;
+                    }
+                    num = Math.round(parsed);
+                }
+                const idx = tableData.findIndex(function (r) {
+                    return parseInt(r.inventory_id, 10) === id;
+                });
+                if (idx === -1) {
+                    return;
+                }
+                const prev = tableData[idx].restock_fee_usd;
+                const prevNum = prev !== null && prev !== undefined && prev !== '' ? Math.round(parseFloat(prev)) : null;
+                if (prevNum === num || (prevNum === null && num === null)) {
+                    return;
+                }
+                const token = $('meta[name="csrf-token"]').attr('content');
+                $.ajax({
+                    url: incomingRestockPatchUrl(id),
+                    method: 'PATCH',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ restock_fee_usd: num }),
+                    headers: {
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                }).done(function (res) {
+                    if (res.success) {
+                        Object.assign(tableData[idx], {
+                            restock_fee_usd: res.restock_fee_usd,
+                            loss_usd: res.loss_usd,
+                            net_loss_usd: res.net_loss_usd,
+                            amazon_unit_price: res.amazon_unit_price,
+                        });
+                        if (res.restock_fee_usd !== null && res.restock_fee_usd !== undefined) {
+                            $inp.val(String(Math.round(parseFloat(res.restock_fee_usd))));
+                        } else {
+                            $inp.val('');
+                        }
+                        applyMainTableFilters();
+                        const el = document.getElementById('incomingToast');
+                        const body = document.getElementById('incomingToastBody');
+                        if (el && body && window.bootstrap) {
+                            body.textContent = 'Restock fee saved.';
+                            el.className = 'toast align-items-center text-bg-success border-0';
+                            bootstrap.Toast.getOrCreateInstance(el, { delay: 2500 }).show();
+                        }
+                    }
+                }).fail(function (xhr) {
+                    const pv = prevNum !== null && !isNaN(prevNum) ? String(prevNum) : '';
+                    $inp.val(pv);
+                    let msg = 'Could not save restock fee.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        msg = xhr.responseJSON.message;
+                    }
+                    alert(msg);
+                });
+            });
 
             initializeTable();
         });

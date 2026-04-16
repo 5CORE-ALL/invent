@@ -22,7 +22,10 @@ class Inventory extends Model
         'shopify_variant_id',
         'shopify_inventory_item_id',
         'loss_gain',
+        'loss_usd',
+        'restock_fee_usd',
         'reason',
+        'returns',
         'is_approved',
         'approved_by',
         'is_ra_checked',
@@ -56,6 +59,8 @@ class Inventory extends Model
         'pick_locked_qty' => 'integer',
         'incoming_images' => 'array',
         'shopify_adjustment_succeeded_at' => 'datetime',
+        'loss_usd' => 'decimal:2',
+        'restock_fee_usd' => 'decimal:2',
     ];
 
     public function warehouse()

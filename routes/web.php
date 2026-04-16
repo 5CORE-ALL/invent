@@ -1229,12 +1229,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.carrier.issue.sku.details');
     Route::get('/customer-care/carrier-issue/issues', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'issuesIndex'])
         ->name('customer.care.carrier.issue.issues.index');
+    Route::get('/customer-care/carrier-issue/claims-stats', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'claimsStats'])
+        ->name('customer.care.carrier.issue.claims.stats');
     Route::get('/customer-care/carrier-issue/history', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'historyIndex'])
         ->name('customer.care.carrier.issue.history.index');
     Route::post('/customer-care/carrier-issue/issues', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'store'])
         ->name('customer.care.carrier.issue.issues.store');
     Route::put('/customer-care/carrier-issue/issues/{id}', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'update'])
         ->name('customer.care.carrier.issue.issues.update');
+    Route::patch('/customer-care/carrier-issue/issues/{id}/claim-filed', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'toggleClaimFiled'])
+        ->name('customer.care.carrier.issue.issues.claim.filed');
+    Route::patch('/customer-care/carrier-issue/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'updateAmpUsd'])
+        ->name('customer.care.carrier.issue.issues.amp.usd');
+    Route::patch('/customer-care/carrier-issue/issues/{id}/claim-received', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'toggleClaimReceived'])
+        ->name('customer.care.carrier.issue.issues.claim.received');
+    Route::patch('/customer-care/carrier-issue/issues/{id}/issue-carrier', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'updateIssueCarrier'])
+        ->name('customer.care.carrier.issue.issues.issue.carrier');
     Route::post('/customer-care/carrier-issue/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'archive'])
         ->name('customer.care.carrier.issue.issues.archive');
     Route::get('/customer-care/carrier-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'dropdownOptionsIndex'])
@@ -1265,30 +1275,42 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/label-issues/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'dropdownOptionsDelete'])
         ->name('customer.care.label.issues.dropdown.options.delete');
 
-    Route::get('/customer-care/dispatch-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'index'])
+    Route::get('/customer-care/all-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'index'])
         ->name('customer.care.dispatch.issues');
-    Route::get('/customer-care/dispatch-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
+    Route::get('/customer-care/dispatch', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dispatchIssueBoard'])
+        ->name('customer.care.dispatch.board');
+    Route::permanentRedirect('/customer-care/dispatch-issue', '/customer-care/all-issues');
+    Route::get('/customer-care/all-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
         ->name('customer.care.dispatch.issues.sku.details');
-    Route::get('/customer-care/dispatch-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'issuesIndex'])
+    Route::get('/customer-care/all-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'issuesIndex'])
         ->name('customer.care.dispatch.issues.list.index');
-    Route::get('/customer-care/dispatch-issues/l30-loss', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'l30Loss'])
+    Route::get('/customer-care/all-issues/l30-loss', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'l30Loss'])
         ->name('customer.care.dispatch.issues.l30.loss');
-    Route::get('/customer-care/dispatch-issues/l30-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'l30Issues'])
+    Route::get('/customer-care/all-issues/l30-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'l30Issues'])
         ->name('customer.care.dispatch.issues.l30.issues');
-    Route::get('/customer-care/dispatch-issues/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'historyIndex'])
+    Route::get('/customer-care/all-issues/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'historyIndex'])
         ->name('customer.care.dispatch.issues.history.index');
-    Route::post('/customer-care/dispatch-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'store'])
+    Route::post('/customer-care/all-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'store'])
         ->name('customer.care.dispatch.issues.list.store');
-    Route::put('/customer-care/dispatch-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'update'])
+    Route::put('/customer-care/all-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'update'])
         ->name('customer.care.dispatch.issues.list.update');
-    Route::post('/customer-care/dispatch-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
+    Route::post('/customer-care/all-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
         ->name('customer.care.dispatch.issues.list.archive');
-    Route::get('/customer-care/dispatch-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsIndex'])
+    Route::get('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsIndex'])
         ->name('customer.care.dispatch.issues.dropdown.options.index');
-    Route::post('/customer-care/dispatch-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsStore'])
+    Route::post('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsStore'])
         ->name('customer.care.dispatch.issues.dropdown.options.store');
-    Route::post('/customer-care/dispatch-issues/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsDelete'])
+    Route::post('/customer-care/all-issues/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsDelete'])
         ->name('customer.care.dispatch.issues.dropdown.options.delete');
+    /* Legacy /customer-care/dispatch-issues/* URLs → /customer-care/all-issues/* (308 preserves POST method) */
+    Route::any('/customer-care/dispatch-issues/{path?}', function (?string $path = null) {
+        $target = '/customer-care/all-issues';
+        if ($path !== null && $path !== '') {
+            $target .= '/'.$path;
+        }
+
+        return redirect($target, 308);
+    })->where('path', '.*');
     Route::get('/customer-care/listing-issue', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'index'])
         ->name('customer.care.listing.issue');
     Route::get('/customer-care/listing-issue/sku-details', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'skuDetails'])
@@ -2059,7 +2081,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.carrier.issue.issues.import');
     Route::post('/customer-care/label-issues/import-csv', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'importCsv'])
         ->name('customer.care.label.issues.import');
-    Route::post('/customer-care/dispatch-issues/import-csv', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'importCsv'])
+    Route::post('/customer-care/all-issues/import-csv', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'importCsv'])
         ->name('customer.care.dispatch.issues.import');
     Route::post('/customer-care/listing-issue/import-csv', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'importCsv'])
         ->name('customer.care.listing.issue.import');
@@ -2090,6 +2112,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/incoming-return-merged-list', [IncomingController::class, 'listIncomingReturnViewMerged'])->name('incoming.return.merged.list');
     Route::get('/incoming-return-view', [IncomingController::class, 'incomingReturnIndex'])->name('incoming.return.view');
     Route::post('/incoming-return-store', [IncomingController::class, 'storeReturn'])->name('incoming.return.store');
+    Route::patch('/incoming-return-row/{inventory}/restock', [IncomingController::class, 'updateIncomingReturnRowRestock'])->name('incoming.return.row.restock');
     Route::get('/incoming-return-history-list', [IncomingController::class, 'listReturnHistory']);
     Route::get('/incoming-return-sku-suggest', [IncomingController::class, 'suggestSkusForReturn'])->name('incoming.return.sku.suggest');
     Route::get('/incoming-return-grid-inventory', [IncomingController::class, 'getIncomingReturnGridInventory']);

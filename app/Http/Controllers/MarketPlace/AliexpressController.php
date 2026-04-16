@@ -712,12 +712,9 @@ class AliexpressController extends Controller
                     ->keyBy('sku');
             }
 
-            // Net revenue % after fees (was historically ~89%). If channel row is missing or <= 0, margin
-            // becomes 0 and PFT shows 0 whenever LP/ship are also 0 — common when SKUs lack ProductMaster.
-            $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
-            $percentage = $marketplaceData !== null
-                ? (float) ($marketplaceData->channel_percentage ?? 100)
-                : 100.0;
+            // Net revenue % after fees: marketplace_percentages (same source as getViewAliexpressData).
+            $mpRow = MarketplacePercentage::where('marketplace', 'Aliexpress')->first();
+            $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 100) : 100.0;
             if ($percentage <= 0) {
                 $percentage = 89.0;
             }
