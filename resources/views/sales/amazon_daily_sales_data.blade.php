@@ -71,7 +71,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 34) . ' Days, California)',
+        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? 35) . ' Days, California)',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -80,7 +80,7 @@
                 <h4>Amazon Daily Sales Data </h4>
                 <p class="text-muted small mb-2" id="date-range-info">
                     Date range (Pacific): {{ $amazonSalesWindowStart ?? '—' }} – {{ $amazonSalesWindowEnd ?? '—' }}
-                    — {{ (int) ($amazonSalesWindowDays ?? 34) }} days through yesterday (today excluded).
+                    — {{ (int) ($amazonSalesWindowDays ?? 35) }} days through yesterday (today excluded).
                     <strong>Total Sales</strong> uses mode <code>{{ $amazonSalesTotalMode ?? 'order_greatest' }}</code>
                     (<code>AMAZON_SALES_TOTAL_MODE</code> in <code>.env</code>):
                     <code>order_greatest</code> = Σ per order max(line prices, <code>total_amount</code>, JSON OrderTotal) — default, closest to many Amazon totals;
@@ -353,7 +353,7 @@
                     title: "Period",
                     field: "period",
                     width: 80,
-                    headerTooltip: "API period label (e.g. L34). Matches the page: {{ (int) ($amazonSalesWindowDays ?? 34) }} Pacific calendar days through yesterday, today excluded."
+                    headerTooltip: "API period label (e.g. L35). Matches the page: {{ (int) ($amazonSalesWindowDays ?? 35) }} Pacific calendar days through yesterday, today excluded."
                 },
                 {
                     title: "LP",
