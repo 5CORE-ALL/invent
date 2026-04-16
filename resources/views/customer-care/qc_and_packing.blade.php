@@ -1332,9 +1332,15 @@
                 Array.from(departmentInput.options).forEach(o => { o.selected = false; });
             }
 
+            function rowMatchesActiveDeptFilter(r) {
+                if (!activeDeptFilter) return true;
+                const needle = String(activeDeptFilter).trim().toLowerCase();
+                return rowDepartments(r).some(d => String(d).trim().toLowerCase() === needle);
+            }
+
             function getFilteredRows() {
                 if (!activeDeptFilter) return holdIssueRows;
-                return holdIssueRows.filter(r => rowDepartments(r).includes(activeDeptFilter));
+                return holdIssueRows.filter(rowMatchesActiveDeptFilter);
             }
 
             function buildDeptFilters() {

@@ -873,9 +873,6 @@
                             <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.carrier.issue') }}">Carrier Issues & Claims</a>
-                        </li>
-                        <li>
                             <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
                         </li>
                         <li>

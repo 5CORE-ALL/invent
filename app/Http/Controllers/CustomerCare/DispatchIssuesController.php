@@ -21,6 +21,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return view('customer-care.dispatch', $this->issueBoardIndexData());
     }
 
+    /** Same data and APIs as All Issues (`dispatch_issue_issues`), alternate titles. */
+    public function carrierAndClaimBoard()
+    {
+        return view('customer-care.carrier_and_claim', $this->issueBoardIndexData());
+    }
+
     protected function issuesTable(): string
     {
         return 'dispatch_issue_issues';
@@ -80,17 +86,22 @@ class DispatchIssuesController extends IssueBoardControllerBase
 
         // Build image map: sku (lowercase) => image_url
         $skus = $rows->pluck('sku')->map(fn ($s) => strtolower(trim((string) $s)))->unique()->values()->all();
-        $shopifyImages = DB::table('shopify_skus')
-            ->selectRaw('LOWER(TRIM(sku)) as sku_key, image_src')
-            ->whereRaw('LOWER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
-            ->get()
-            ->keyBy('sku_key');
+        if ($skus === []) {
+            $shopifyImages = collect();
+            $pmImages = collect();
+        } else {
+            $shopifyImages = DB::table('shopify_skus')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, image_src')
+                ->whereRaw('LOWER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
+                ->get()
+                ->keyBy('sku_key');
 
-        $pmImages = DB::table('product_master')
-            ->selectRaw('LOWER(TRIM(sku)) as sku_key, main_image, image1')
-            ->whereRaw('LOWER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
-            ->get()
-            ->keyBy('sku_key');
+            $pmImages = DB::table('product_master')
+                ->selectRaw('LOWER(TRIM(sku)) as sku_key, main_image, image1')
+                ->whereRaw('LOWER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
+                ->get()
+                ->keyBy('sku_key');
+        }
 
         $normalizeImage = static function ($path) {
             $p = trim((string) ($path ?? ''));

@@ -1585,13 +1585,13 @@
                             <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.carrier.issue') }}">Carrier Issues & Claims</a>
-                        </li>
-                        <li>
                             <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.dispatch.issues') }}">All Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.dispatch.carrier.and.claim') }}">Carrier and Claim</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>

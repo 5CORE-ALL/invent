@@ -1224,37 +1224,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => "{$inserted} record(s) imported, {$skipped} skipped.", 'inserted' => $inserted, 'skipped' => $skipped, 'errors' => array_slice($errors, 0, 20)]);
     })->name('customer.care.orders.on.hold.issues.import');
-    Route::get('/customer-care/carrier-issue', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'index'])
-        ->name('customer.care.carrier.issue');
-    Route::get('/customer-care/carrier-issue/sku-details', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'skuDetails'])
-        ->name('customer.care.carrier.issue.sku.details');
-    Route::get('/customer-care/carrier-issue/issues', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'issuesIndex'])
-        ->name('customer.care.carrier.issue.issues.index');
-    Route::get('/customer-care/carrier-issue/claims-stats', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'claimsStats'])
-        ->name('customer.care.carrier.issue.claims.stats');
-    Route::get('/customer-care/carrier-issue/history', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'historyIndex'])
-        ->name('customer.care.carrier.issue.history.index');
-    Route::post('/customer-care/carrier-issue/issues', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'store'])
-        ->name('customer.care.carrier.issue.issues.store');
-    Route::put('/customer-care/carrier-issue/issues/{id}', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'update'])
-        ->name('customer.care.carrier.issue.issues.update');
-    Route::patch('/customer-care/carrier-issue/issues/{id}/claim-filed', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'toggleClaimFiled'])
-        ->name('customer.care.carrier.issue.issues.claim.filed');
-    Route::patch('/customer-care/carrier-issue/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'updateAmpUsd'])
-        ->name('customer.care.carrier.issue.issues.amp.usd');
-    Route::patch('/customer-care/carrier-issue/issues/{id}/claim-received', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'toggleClaimReceived'])
-        ->name('customer.care.carrier.issue.issues.claim.received');
-    Route::patch('/customer-care/carrier-issue/issues/{id}/issue-carrier', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'updateIssueCarrier'])
-        ->name('customer.care.carrier.issue.issues.issue.carrier');
-    Route::post('/customer-care/carrier-issue/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'archive'])
-        ->name('customer.care.carrier.issue.issues.archive');
-    Route::get('/customer-care/carrier-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'dropdownOptionsIndex'])
-        ->name('customer.care.carrier.issue.dropdown.options.index');
-    Route::post('/customer-care/carrier-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'dropdownOptionsStore'])
-        ->name('customer.care.carrier.issue.dropdown.options.store');
-    Route::post('/customer-care/carrier-issue/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'dropdownOptionsDelete'])
-        ->name('customer.care.carrier.issue.dropdown.options.delete');
-
     Route::get('/customer-care/label-issues', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'index'])
         ->name('customer.care.label.issues');
     Route::get('/customer-care/label-issues/sku-details', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'skuDetails'])
@@ -1280,6 +1249,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues');
     Route::get('/customer-care/dispatch', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dispatchIssueBoard'])
         ->name('customer.care.dispatch.board');
+    Route::get('/customer-care/carrier-and-claim', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'carrierAndClaimBoard'])
+        ->name('customer.care.dispatch.carrier.and.claim');
     Route::permanentRedirect('/customer-care/dispatch-issue', '/customer-care/all-issues');
     Route::get('/customer-care/all-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
         ->name('customer.care.dispatch.issues.sku.details');
@@ -2078,8 +2049,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         return response()->json(['message' => "{$inserted} record(s) imported, {$skipped} skipped.", 'inserted' => $inserted, 'skipped' => $skipped, 'errors' => array_slice($errors, 0, 20)]);
     })->name('customer.care.qc.and.packing.issues.import');
 
-    Route::post('/customer-care/carrier-issue/import-csv', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'importCsv'])
-        ->name('customer.care.carrier.issue.issues.import');
     Route::post('/customer-care/label-issues/import-csv', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'importCsv'])
         ->name('customer.care.label.issues.import');
     Route::post('/customer-care/all-issues/import-csv', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'importCsv'])

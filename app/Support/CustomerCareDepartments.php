@@ -87,7 +87,29 @@ class CustomerCareDepartments
     }
 
     /**
-     * Match rows where $department is one of the stored departments (JSON array or legacy exact string).
+     * Strings to try inside JSON_CONTAINS for case / formatting variants (MySQL JSON string compare is case-sensitive).
+     *
+     * @return list<string>
+     */
+    public static function departmentJsonMatchStrings(string $department): array
+    {
+        $t = trim($department);
+        if ($t === '') {
+            return [];
+        }
+        $low = strtolower($t);
+
+        return self::normalizeStringList([
+            $t,
+            $low,
+            ucfirst($low),
+            strtoupper($low),
+            ucwords($low),
+        ]);
+    }
+
+    /**
+     * Match rows where $department is one of the stored departments (JSON array or legacy plain string).
      */
     public static function applyWhereDepartmentMatches(Builder $query, string $column, string $department): void
     {
@@ -95,12 +117,20 @@ class CustomerCareDepartments
         if ($department === '') {
             return;
         }
-        $jsonFragment = json_encode($department, JSON_UNESCAPED_UNICODE);
-        $query->where(function ($q) use ($column, $department, $jsonFragment) {
-            $q->whereRaw(
-                '(JSON_VALID(`'.$column.'`) AND JSON_CONTAINS(CAST(`'.$column.'` AS JSON), CAST(? AS JSON), \'$\'))',
-                [$jsonFragment]
-            )->orWhere($column, $department);
+        $lowerNeedle = strtolower($department);
+        $query->where(function ($q) use ($column, $department, $lowerNeedle) {
+            foreach (self::departmentJsonMatchStrings($department) as $variant) {
+                $jsonFragment = json_encode($variant, JSON_UNESCAPED_UNICODE);
+                $q->orWhereRaw(
+                    '(JSON_VALID(`'.$column.'`) AND JSON_CONTAINS(CAST(`'.$column.'` AS JSON), CAST(? AS JSON), \'$\'))',
+                    [$jsonFragment]
+                );
+            }
+            $q->orWhere($column, $department)
+                ->orWhereRaw(
+                    '(NOT JSON_VALID(`'.$column.'`) OR LEFT(TRIM(`'.$column.'`), 1) <> ?) AND LOWER(TRIM(`'.$column.'`)) = ?',
+                    ['[', $lowerNeedle]
+                );
         });
     }
 }
