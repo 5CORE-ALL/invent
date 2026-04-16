@@ -1254,28 +1254,6 @@ class EbayThreeController extends Controller
         unset($row);
     }
 
-    public function getEbay3ColumnVisibility(Request $request)
-    {
-        $userId = auth()->id() ?? 'guest';
-        $key = "ebay3_tabulator_column_visibility_{$userId}";
-        
-        $visibility = Cache::get($key, []);
-        
-        return response()->json($visibility);
-    }
-
-    public function setEbay3ColumnVisibility(Request $request)
-    {
-        $userId = auth()->id() ?? 'guest';
-        $key = "ebay3_tabulator_column_visibility_{$userId}";
-        
-        $visibility = $request->input('visibility', []);
-        
-        Cache::put($key, $visibility, now()->addDays(365));
-        
-        return response()->json(['success' => true]);
-    }
-
     public function pushEbay3Price(Request $request)
     {
         $sku = strtoupper(trim($request->input('sku')));

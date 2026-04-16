@@ -922,7 +922,9 @@
 
 @section('script-bottom')
 <script>
-    const COLUMN_VIS_KEY = "ebay3_tabulator_column_visibility";
+    /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
+    const TABULATOR_COLUMN_CHANNEL = 'ebay3_tabulator';
+    const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PMT_SPENT = {{ $pmtSpent ?? 0 }};
     const TOTAL_ADS_SPENT = KW_SPENT + PMT_SPENT;
@@ -5470,7 +5472,7 @@
             if (!menu) return;
             menu.innerHTML = '';
 
-            fetch('/ebay3-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -5512,20 +5514,21 @@
                 }
             });
 
-            fetch('/ebay3-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
                 body: JSON.stringify({
+                    channel: TABULATOR_COLUMN_CHANNEL,
                     visibility: visibility
                 })
             });
         }
 
         function applyColumnVisibilityFromServer() {
-            fetch('/ebay3-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',

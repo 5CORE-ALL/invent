@@ -12,6 +12,7 @@ use App\Http\Controllers\AdvertisementMaster\Prod_Target_Advt\ProdTargetAmazonCo
 use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayController;
 use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingController;
 use App\Http\Controllers\ArrivedContainerController;
+use App\Http\Controllers\ChannelTabulatorColumnController;
 use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonUtilizedKwSheetController;
@@ -2819,8 +2820,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // eBay3 Tabulator View Routes
     Route::get('/ebay3-tabulator-view', [EbayThreeController::class, 'ebay3TabulatorView'])->name('ebay3.tabulator.view');
     Route::get('/ebay3-data-json', [EbayThreeController::class, 'ebay3DataJson'])->name('ebay3.data.json');
-    Route::get('/ebay3-column-visibility', [EbayThreeController::class, 'getEbay3ColumnVisibility'])->name('ebay3.column.visibility.get');
-    Route::post('/ebay3-column-visibility', [EbayThreeController::class, 'setEbay3ColumnVisibility'])->name('ebay3.column.visibility.set');
+    Route::get('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'showEbay3'])->name('ebay3.column.visibility.get');
+    Route::post('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'storeEbay3'])->name('ebay3.column.visibility.set');
+    Route::get('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'show'])->name('tabulator.column.visibility.get');
+    Route::post('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'store'])->name('tabulator.column.visibility.set');
     Route::post('/push-ebay3-price-tabulator', [EbayThreeController::class, 'pushEbay3Price'])->name('ebay3.push.price.tabulator');
     Route::post('/update-ebay3-sprice-status', [EbayThreeController::class, 'updateEbay3SpriceStatus'])->name('ebay3.update.sprice.status');
     Route::post('/clear-all-sprice-ebay3', [EbayThreeController::class, 'clearAllSprice'])->name('ebay3.clear.all.sprice');
