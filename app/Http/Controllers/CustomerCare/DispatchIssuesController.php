@@ -6,6 +6,7 @@ use App\Support\CustomerCareDepartments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class DispatchIssuesController extends IssueBoardControllerBase
@@ -67,7 +68,194 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'refund_amount' => $row->refund_amount  !== null ? (float) $row->refund_amount : null,
             'total_loss'    => $row->total_loss     !== null ? (float) $row->total_loss    : null,
             'group_id'      => $row->group_id       ?? null,
+        ] + $this->dispatchClaimCarrierRowSlice($row, $this->issuesTable());
+    }
+
+    protected function extraHistoryRowFields(object $row): array
+    {
+        return $this->dispatchClaimCarrierRowSlice($row, $this->historyTable());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function dispatchClaimCarrierRowSlice(object $row, string $table): array
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'claim_filed')) {
+            return [];
+        }
+
+        $amp = $row->amp_usd ?? null;
+
+        return [
+            'claim_filed' => (bool) ($row->claim_filed ?? false),
+            'amp_usd' => $amp !== null && trim((string) $amp) !== '' ? (string) $amp : null,
+            'claim_received' => (bool) ($row->claim_received ?? false),
+            'issue_carrier' => isset($row->issue_carrier) && $row->issue_carrier !== null && trim((string) $row->issue_carrier) !== ''
+                ? trim((string) $row->issue_carrier)
+                : null,
         ];
+    }
+
+    private static function parseAmpUsdAmount(mixed $raw): float
+    {
+        $s = trim((string) ($raw ?? ''));
+        if ($s === '') {
+            return 0.0;
+        }
+        $s = preg_replace('/[^0-9.\-]/', '', $s) ?? '';
+        if ($s === '' || $s === '.' || $s === '-') {
+            return 0.0;
+        }
+        $v = (float) $s;
+
+        return is_finite($v) ? round($v, 2) : 0.0;
+    }
+
+    public function claimsStats(): JsonResponse
+    {
+        $empty = [
+            'filed' => ['count' => 0, 'amount' => 0.0],
+            'pending' => ['count' => 0, 'amount' => 0.0],
+            'received' => ['count' => 0, 'amount' => 0.0],
+        ];
+        if (! Schema::hasColumn($this->issuesTable(), 'claim_filed')) {
+            return response()->json($empty);
+        }
+
+        $query = DB::table($this->issuesTable())
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            });
+        CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', 'Carrier');
+        $rows = $query->get(['claim_filed', 'claim_received', 'amp_usd']);
+
+        $filedC = 0;
+        $filedA = 0.0;
+        $pendingC = 0;
+        $pendingA = 0.0;
+        $receivedC = 0;
+        $receivedA = 0.0;
+        foreach ($rows as $r) {
+            $amt = self::parseAmpUsdAmount($r->amp_usd ?? null);
+            $filed = (bool) ($r->claim_filed ?? false);
+            $rec = (bool) ($r->claim_received ?? false);
+            if ($filed) {
+                $filedC++;
+                $filedA += $amt;
+            }
+            if ($filed && ! $rec) {
+                $pendingC++;
+                $pendingA += $amt;
+            }
+            if ($rec) {
+                $receivedC++;
+                $receivedA += $amt;
+            }
+        }
+
+        return response()->json([
+            'filed' => ['count' => $filedC, 'amount' => round($filedA, 2)],
+            'pending' => ['count' => $pendingC, 'amount' => round($pendingA, 2)],
+            'received' => ['count' => $receivedC, 'amount' => round($receivedA, 2)],
+        ]);
+    }
+
+    public function updateClaimFiled(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'claim_filed')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['claim_filed' => 'required|boolean']);
+        $next = (bool) $validated['claim_filed'];
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['claim_filed' => $next, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'claim_filed' => $next]);
+    }
+
+    public function updateClaimReceived(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'claim_received')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['claim_received' => 'required|boolean']);
+        $next = (bool) $validated['claim_received'];
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['claim_received' => $next, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'claim_received' => $next]);
+    }
+
+    public function updateAmpUsd(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'amp_usd')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['amp_usd' => 'nullable|string|max:6']);
+        $raw = isset($validated['amp_usd']) ? trim((string) $validated['amp_usd']) : '';
+        $value = $raw === '' ? null : $raw;
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['amp_usd' => $value, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'amp_usd' => $value]);
+    }
+
+    public function updateIssueCarrier(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'issue_carrier')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['issue_carrier' => 'nullable|string|max:20']);
+        $raw = isset($validated['issue_carrier']) ? trim((string) $validated['issue_carrier']) : '';
+        if ($raw === '') {
+            $normalized = null;
+        } else {
+            $normalized = strtoupper($raw);
+            if (! in_array($normalized, ['USPS', 'UPS', 'FEDEX', 'GOFO'], true)) {
+                return response()->json(['message' => 'Invalid carrier.'], 422);
+            }
+        }
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['issue_carrier' => $normalized, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'issue_carrier' => $normalized]);
     }
 
     public function issuesIndex(): JsonResponse
@@ -404,7 +592,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                     'created_at_display'   => $row->created_at
                         ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
                         : '',
-                ];
+                ] + $this->extraRowFields($row);
             }
         });
 

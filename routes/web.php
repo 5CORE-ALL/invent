@@ -1266,6 +1266,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.list.store');
     Route::put('/customer-care/all-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'update'])
         ->name('customer.care.dispatch.issues.list.update');
+    Route::patch('/customer-care/all-issues/issues/{id}/claim-filed', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimFiled'])
+        ->name('customer.care.dispatch.issues.list.patch.claim.filed');
+    Route::patch('/customer-care/all-issues/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmpUsd'])
+        ->name('customer.care.dispatch.issues.list.patch.amp.usd');
+    Route::patch('/customer-care/all-issues/issues/{id}/claim-received', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimReceived'])
+        ->name('customer.care.dispatch.issues.list.patch.claim.received');
+    Route::patch('/customer-care/all-issues/issues/{id}/issue-carrier', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateIssueCarrier'])
+        ->name('customer.care.dispatch.issues.list.patch.issue.carrier');
+    Route::get('/customer-care/all-issues/claims-stats', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'claimsStats'])
+        ->name('customer.care.dispatch.issues.claims.stats');
     Route::post('/customer-care/all-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
         ->name('customer.care.dispatch.issues.list.archive');
     Route::get('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsIndex'])
