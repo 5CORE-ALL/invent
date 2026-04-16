@@ -8,24 +8,29 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('resource_departments', function (Blueprint $table) {
-            $table->id();
-            $table->string('slug', 64)->unique();
-            $table->string('name', 128);
-            $table->unsignedSmallInteger('sort_order')->default(0);
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('resource_departments')) {
+            Schema::create('resource_departments', function (Blueprint $table) {
+                $table->id();
+                $table->string('slug', 64)->unique();
+                $table->string('name', 128);
+                $table->unsignedSmallInteger('sort_order')->default(0);
+                $table->timestamps();
+            });
+        }
 
-        Schema::create('resource_tags', function (Blueprint $table) {
-            $table->id();
-            $table->string('slug', 64);
-            $table->string('tag_name', 128);
-            $table->foreignId('department_id')->nullable()->constrained('resource_departments')->nullOnDelete();
-            $table->timestamps();
-            $table->unique(['slug', 'department_id']);
-        });
+        if (! Schema::hasTable('resource_tags')) {
+            Schema::create('resource_tags', function (Blueprint $table) {
+                $table->id();
+                $table->string('slug', 64);
+                $table->string('tag_name', 128);
+                $table->foreignId('department_id')->nullable()->constrained('resource_departments')->nullOnDelete();
+                $table->timestamps();
+                $table->unique(['slug', 'department_id']);
+            });
+        }
 
-        Schema::create('resources_master', function (Blueprint $table) {
+        if (! Schema::hasTable('resources_master')) {
+            Schema::create('resources_master', function (Blueprint $table) {
             $table->id();
             $table->string('title');
             $table->text('description')->nullable();
@@ -49,24 +54,30 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
         });
+        }
 
-        Schema::create('resource_department_map', function (Blueprint $table) {
+        if (! Schema::hasTable('resource_department_map')) {
+            Schema::create('resource_department_map', function (Blueprint $table) {
             $table->id();
             $table->foreignId('resource_id')->constrained('resources_master')->cascadeOnDelete();
             $table->foreignId('department_id')->constrained('resource_departments')->cascadeOnDelete();
             $table->timestamps();
             $table->unique(['resource_id', 'department_id']);
         });
+        }
 
-        Schema::create('resource_tag_map', function (Blueprint $table) {
+        if (! Schema::hasTable('resource_tag_map')) {
+            Schema::create('resource_tag_map', function (Blueprint $table) {
             $table->id();
             $table->foreignId('resource_id')->constrained('resources_master')->cascadeOnDelete();
             $table->foreignId('resource_tag_id')->constrained('resource_tags')->cascadeOnDelete();
             $table->timestamps();
             $table->unique(['resource_id', 'resource_tag_id']);
         });
+        }
 
-        Schema::create('resource_access_logs', function (Blueprint $table) {
+        if (! Schema::hasTable('resource_access_logs')) {
+            Schema::create('resource_access_logs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('resource_id')->constrained('resources_master')->cascadeOnDelete();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
@@ -74,8 +85,10 @@ return new class extends Migration
             $table->string('ip_address', 45)->nullable();
             $table->timestamp('created_at')->useCurrent();
         });
+        }
 
-        Schema::create('resource_audit_logs', function (Blueprint $table) {
+        if (! Schema::hasTable('resource_audit_logs')) {
+            Schema::create('resource_audit_logs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('resource_id')->nullable()->constrained('resources_master')->nullOnDelete();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
@@ -84,10 +97,13 @@ return new class extends Migration
             $table->string('ip_address', 45)->nullable();
             $table->timestamp('created_at')->useCurrent();
         });
+        }
 
-        Schema::table('users', function (Blueprint $table) {
-            $table->foreignId('resource_department_id')->nullable()->constrained('resource_departments')->nullOnDelete();
-        });
+        if (! Schema::hasColumn('users', 'resource_department_id')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->foreignId('resource_department_id')->nullable()->constrained('resource_departments')->nullOnDelete();
+            });
+        }
     }
 
     public function down(): void
