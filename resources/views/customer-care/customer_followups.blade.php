@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Customer Followups', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Follow Up CC', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -9,60 +9,119 @@
         }
 
         .followup-table-shell {
-            min-width: 1180px;
+            min-width: 980px;
         }
 
-        /* Frozen header while scrolling the page (offset = theme topbar --tz-topbar-height) */
-        .followup-table-header {
-            position: sticky;
-            top: var(--tz-topbar-height, 70px);
-            z-index: 25;
-            border-bottom: 2px solid #1a56b7;
-            background: #2c6ed5;
-            box-sizing: border-box;
-            overflow-x: hidden;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-            /* padding-right set in JS when body shows a vertical scrollbar (e.g. if max-height is reintroduced) */
+        /*
+         * Single table inside a scroll box: table.table thead th { position: sticky; top: 0 } is relative to
+         * this scrollport, so rows never paint over/under a separate “floating” header (split-table bug).
+         */
+        .followup-table-scroll {
+            max-height: min(70vh, calc(100vh - 13.5rem));
+            overflow: auto;
+            scrollbar-gutter: stable;
+            border: 1px solid #dee2e6;
         }
 
-        .followup-table-header table,
-        .followup-table-body table {
+        .followup-table-scroll table {
             table-layout: fixed;
             width: 100%;
-            min-width: 1180px;
+            min-width: 980px;
             margin-bottom: 0;
+            --followup-table-fs: calc(1rem - 1pt);
+            font-size: var(--followup-table-fs);
+            line-height: 1.5;
+        }
+
+        .followup-table-scroll table.table thead tr {
+            background: #2c6ed5;
+        }
+
+        .followup-table-scroll table.table thead th.followup-sku-col,
+        .followup-table-scroll table.table tbody td.followup-sku-col {
+            font-size: calc(var(--followup-table-fs) - 1pt);
+        }
+
+        .followup-table-scroll table.table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 6;
+            background: #2c6ed5 !important;
+            color: #fff !important;
+            font-weight: 600;
+            font-size: var(--followup-table-fs);
+            line-height: 1.45;
+            padding: 12px 10px;
+            border: 1px solid #1a56b7;
+            vertical-align: middle;
+            text-align: center !important;
+            white-space: nowrap;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .followup-notes-cell {
             white-space: pre-wrap;
             word-break: break-word;
             vertical-align: top;
+            text-align: center;
+            font-size: var(--followup-table-fs);
+            line-height: 1.5;
         }
 
-        .followup-table-header thead th {
-            background: #2c6ed5 !important;
-            color: #fff !important;
-            font-weight: 600;
-            padding: 12px 10px;
-            border: 1px solid #1a56b7;
-            vertical-align: middle;
-            white-space: nowrap;
-        }
-
-        .followup-table-body {
-            box-sizing: border-box;
-            overflow: visible;
-            border: 1px solid #dee2e6;
-            border-top: 0;
-        }
-
-        .followup-table-body td {
+        .followup-table-scroll table.table tbody td {
             padding: 10px;
-            vertical-align: middle;
+            vertical-align: top;
             word-break: break-word;
+            text-align: center !important;
+            font-size: var(--followup-table-fs);
+            line-height: 1.5;
         }
 
-        .followup-table-body tbody tr:nth-child(even) {
+        .followup-status-dot {
+            display: inline-block;
+            width: 0.65rem;
+            height: 0.65rem;
+            border-radius: 50%;
+            vertical-align: middle;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+        }
+
+        .followup-inline-status-trigger {
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .followup-inline-status-trigger:focus {
+            outline: 2px solid rgba(44, 110, 213, 0.45);
+            outline-offset: 2px;
+        }
+
+        .followup-table-scroll table.table tbody td.followup-status-cell {
+            padding: 8px 4px;
+            vertical-align: middle;
+        }
+
+        .followup-inline-status-select {
+            min-width: 6.5rem;
+            max-width: 100%;
+        }
+
+        .followup-table-scroll table.table tbody td.followup-dt-cell,
+        .followup-table-scroll table.table tbody td.followup-readonly-date {
+            padding: 6px 8px;
+            vertical-align: middle;
+        }
+
+        .followup-table-scroll table.table .followup-inline-dt {
+            font-size: var(--followup-table-fs);
+            line-height: 1.4;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        .followup-table-scroll table.table tbody tr:nth-child(even) {
             background-color: #f8fafc;
         }
 
@@ -70,9 +129,23 @@
         tr.followup-row-overdue:hover { background-color: rgba(220, 53, 69, 0.2) !important; }
         .stat-card { border-radius: 0.5rem; border: 1px solid #e9ecef; }
 
-        /* Fixed layout was squeezing Actions (~6%); three btn-sm need a stable slot */
-        .followup-table-header thead th.followup-actions-col,
-        .followup-table-body tbody td.followup-actions-col {
+        .followup-table-scroll table.table thead th.followup-link-col,
+        .followup-table-scroll table.table tbody td.followup-ref-link-cell {
+            width: 3.25rem;
+            min-width: 3.25rem;
+            max-width: 4rem;
+            padding-left: 6px;
+            padding-right: 6px;
+            vertical-align: middle;
+        }
+
+        .followup-ref-link-cell a {
+            font-size: 1.15rem;
+            color: #2c6ed5;
+        }
+
+        .followup-table-scroll table.table thead th.followup-actions-col,
+        .followup-table-scroll table.table tbody td.followup-actions-col {
             width: 11rem;
             min-width: 11rem;
             max-width: 11rem;
@@ -83,19 +156,20 @@
         .followup-actions-col .followup-actions-btns {
             display: inline-flex;
             align-items: center;
-            justify-content: flex-end;
+            justify-content: center;
             gap: 0.25rem;
             flex-wrap: nowrap;
         }
 
-        /*
-         * Ord column: clipboard like all-issues, but full id is shown in a flyout on hover so
-         * table-layout:fixed does not grow this column (inline expand + word-break on td caused layout issues).
-         */
-        .followup-table-body td.order-num-cell {
+        .followup-table-scroll table.table tbody td.order-num-cell {
             word-break: normal;
             overflow: visible;
-            text-align: center;
+            text-align: center !important;
+        }
+
+        .followup-table-scroll table.table tbody td.followup-customer-cell {
+            white-space: normal;
+            line-height: 1.35;
         }
 
         .order-num-wrap {
@@ -114,7 +188,7 @@
             left: 50%;
             top: calc(100% + 6px);
             transform: translateX(-50%);
-            z-index: 40;
+            z-index: 20;
             min-width: max(100%, 10rem);
             max-width: min(42ch, 90vw);
             padding: 6px 10px;
@@ -159,6 +233,88 @@
         .copy-order-btn.copied {
             color: #198754;
         }
+
+        /*
+         * Toolbar: one typographic scale, light surfaces + dark text, label row then control row
+         * so every block lines up on the same baseline (do not reintroduce colored badges/buttons here).
+         */
+        .followup-toolbar.card {
+            background: #fff;
+            border-color: #dee2e6 !important;
+        }
+
+        .followup-toolbar-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: flex-end;
+            gap: 0.5rem;
+        }
+
+        @media (min-width: 768px) {
+            .followup-toolbar-row {
+                gap: 0.75rem;
+            }
+        }
+
+        .followup-toolbar-item {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+        }
+
+        .followup-toolbar-label {
+            font-size: 0.6875rem;
+            line-height: 1.15;
+            min-height: 1.05rem;
+            margin-bottom: 0.2rem;
+            color: #5c636a;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+        }
+
+        .followup-toolbar-value,
+        .followup-toolbar .form-control,
+        .followup-toolbar .form-select {
+            font-size: 0.875rem;
+            line-height: 1.25;
+            color: #212529;
+        }
+
+        .followup-toolbar .stat-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2.75rem;
+            min-height: 2.125rem;
+            padding: 0.2rem 0.55rem;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            font-weight: 600;
+        }
+
+        .followup-toolbar .form-control,
+        .followup-toolbar .form-select {
+            min-height: 2.125rem;
+            background: #f8f9fa;
+            border-color: #ced4da;
+        }
+
+        .followup-toolbar .btn-toolbar-add {
+            min-height: 2.125rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #212529;
+            background: #f8f9fa;
+            border: 1px solid #ced4da;
+        }
+
+        .followup-toolbar .btn-toolbar-add:hover {
+            color: #212529;
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }
     </style>
 @endsection
 
@@ -172,71 +328,36 @@
     --}}
 
     <div class="container-fluid">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-            <h4 class="mb-0">Customer Followups</h4>
-            <button type="button" class="btn btn-primary" id="btnAddFollowup" data-bs-toggle="modal"
-                data-bs-target="#followupModal">
-                <i class="mdi mdi-plus me-1"></i> Add Followup
-            </button>
-        </div>
-
-        {{-- Performance summary --}}
-        <div class="row g-3 mb-4" id="statsRow">
-            <div class="col-6 col-md-4 col-xl">
-                <div class="card stat-card h-100 shadow-sm">
-                    <div class="card-body py-3">
-                        <h6 class="text-muted text-uppercase small mb-1">Total tickets</h6>
-                        <span class="h4 mb-0" id="statTotal">—</span>
+        {{-- Title, stats, TAT, search, status, Add — one horizontal strip (scrolls on small screens) --}}
+        <div class="card mb-3 shadow-sm followup-toolbar border">
+            <div class="card-body py-2 px-2 px-md-3">
+                <div class="followup-toolbar-row overflow-x-auto pb-1">
+                    <div class="followup-toolbar-item flex-shrink-0">
+                        <div class="followup-toolbar-label" aria-hidden="true">&nbsp;</div>
+                        <div class="followup-toolbar-value fw-semibold text-nowrap">Follow Up CC</div>
                     </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-4 col-xl">
-                <div class="card stat-card h-100 shadow-sm">
-                    <div class="card-body py-3">
-                        <h6 class="text-muted text-uppercase small mb-1">Pending</h6>
-                        <span class="h4 mb-0" id="statPending">—</span>
+                    <div class="followup-toolbar-item flex-shrink-0">
+                        <div class="followup-toolbar-label">Pending</div>
+                        <div class="followup-toolbar-value stat-chip text-nowrap" id="statPending">—</div>
                     </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-4 col-xl">
-                <div class="card stat-card h-100 shadow-sm">
-                    <div class="card-body py-3">
-                        <h6 class="text-muted text-uppercase small mb-1">Resolved today</h6>
-                        <span class="h4 mb-0 text-success" id="statResolved">—</span>
+                    <div class="followup-toolbar-item flex-shrink-0">
+                        <div class="followup-toolbar-label">Escalations</div>
+                        <div class="followup-toolbar-value stat-chip text-nowrap" id="statEscalations">—</div>
                     </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-4 col-xl">
-                <div class="card stat-card h-100 shadow-sm">
-                    <div class="card-body py-3">
-                        <h6 class="text-muted text-uppercase small mb-1">Escalations</h6>
-                        <span class="h4 mb-0 text-danger" id="statEscalations">—</span>
+                    <div class="followup-toolbar-item flex-shrink-0"
+                        title="Average time from ticket created to Resolved. New resolves use exact time; older Resolved rows may use backfilled times."
+                        id="tatBadge">
+                        <div class="followup-toolbar-label">TAT</div>
+                        <div class="followup-toolbar-value stat-chip text-nowrap"><span id="tatValue">—</span></div>
                     </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-4 col-xl">
-                <div class="card stat-card h-100 shadow-sm">
-                    <div class="card-body py-3">
-                        <h6 class="text-muted text-uppercase small mb-1">Avg response</h6>
-                        <span class="h5 mb-0 text-muted" id="statAvg">—</span>
-                        <div class="small text-muted">(placeholder)</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- Filters + search --}}
-        <div class="card mb-3">
-            <div class="card-body">
-                <div class="row g-2 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label small mb-0">Search</label>
+                    <div class="followup-toolbar-item flex-grow-1 flex-shrink-1" style="min-width: 11rem;">
+                        <label class="followup-toolbar-label mb-0 d-block" for="filterSearch">Search</label>
                         <input type="text" class="form-control" id="filterSearch"
-                            placeholder="Order ID, SKU, customer, notes">
+                            placeholder="Order ID, SKU, channel, customer, issue…"
+                            autocomplete="off">
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label small mb-0">Channel</label>
-                        <select class="form-select" id="filterChannel">
+                    <div class="d-none" aria-hidden="true">
+                        <select class="form-select" id="filterChannel" tabindex="-1">
                             <option value="">All</option>
                             @foreach ($channels as $ch)
                                 @if ($ch->id)
@@ -245,60 +366,21 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label small mb-0">Status</label>
+                    <div class="followup-toolbar-item flex-shrink-0" style="min-width: 9rem;">
+                        <label class="followup-toolbar-label mb-0 d-block" for="filterStatus">Status</label>
                         <select class="form-select" id="filterStatus">
-                            <option value="">All</option>
+                            <option value="all" selected>All statuses</option>
                             <option value="Pending">Pending</option>
-                            <option value="In Progress">In Progress</option>
                             <option value="Resolved">Resolved</option>
                             <option value="Escalated">Escalated</option>
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label small mb-0">Priority</label>
-                        <select class="form-select" id="filterPriority">
-                            <option value="">All</option>
-                            <option value="Low">Low</option>
-                            <option value="Medium">Medium</option>
-                            <option value="High">High</option>
-                            <option value="Urgent">Urgent</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label small mb-0">Executive</label>
-                        <div class="input-group">
-                            <select class="form-select" id="filterExecutive">
-                                <option value="">All</option>
-                            </select>
-                            <button type="button" class="btn btn-outline-primary px-2" id="btnFilterAddExecutive"
-                                data-bs-toggle="collapse" data-bs-target="#filterExecutiveAddPanel"
-                                aria-expanded="false" aria-controls="filterExecutiveAddPanel"
-                                title="Add executive to list" aria-label="Add executive">
-                                <i class="mdi mdi-plus"></i>
-                            </button>
-                        </div>
-                        <div class="collapse" id="filterExecutiveAddPanel">
-                            <div class="input-group input-group-sm mt-2">
-                                <input type="text" class="form-control" id="filterNewExecutiveName"
-                                    placeholder="New executive name" autocomplete="off" maxlength="255">
-                                <button type="button" class="btn btn-primary" id="btnFilterSaveNewExecutive">Add</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label small mb-0">From</label>
-                        <input type="date" class="form-control" id="filterDateFrom">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label small mb-0">To</label>
-                        <input type="date" class="form-control" id="filterDateTo">
-                    </div>
-                    <div class="col-md-2">
-                        <button type="button" class="btn btn-outline-primary w-100" id="btnApplyFilters">Apply</button>
-                    </div>
-                    <div class="col-md-2">
-                        <button type="button" class="btn btn-outline-secondary w-100" id="btnResetFilters">Reset</button>
+                    <div class="followup-toolbar-item flex-shrink-0 ms-md-auto">
+                        <div class="followup-toolbar-label" aria-hidden="true">&nbsp;</div>
+                        <button type="button" class="btn btn-toolbar-add text-nowrap px-3" id="btnAddFollowup"
+                            data-bs-toggle="modal" data-bs-target="#followupModal">
+                            <i class="mdi mdi-plus me-1"></i> Add Followup
+                        </button>
                     </div>
                 </div>
             </div>
@@ -308,45 +390,34 @@
             <div class="card-body p-0">
                 <div class="followup-table-outer">
                 <div class="followup-table-shell">
-                    <div class="followup-table-header">
-                        <table class="table align-middle mb-0">
+                    <div class="followup-table-scroll">
+                        <table class="table table-hover mb-0 align-middle">
                             <colgroup>
-                                <col style="width:6%"><col style="width:7%"><col
-                                    style="width:10%"><col style="width:10%"><col style="width:12%"><col
-                                    style="width:6%"><col style="width:7%"><col style="width:6%"><col
-                                    style="width:9%"><col style="width:9%"><col style="width:8%"><col
+                                <col style="width:5%"><col style="width:7.2%"><col
+                                    style="width:33.6%"><col style="width:7.7%"><col style="width:9.2%"><col
+                                    style="width:4.5%"><col
+                                    style="width:7.5%"><col style="width:7.5%"><col style="width:7%"><col
+                                    style="width:3.5%"><col
                                     style="width:11rem">
                             </colgroup>
                             <thead>
                                 <tr>
                                     <th scope="col">Ord</th>
-                                    <th scope="col">SKU</th>
-                                    <th scope="col">Notes</th>
+                                    <th scope="col" class="followup-sku-col">SKU</th>
+                                    <th scope="col">Follow up issue</th>
                                     <th scope="col">Channel</th>
                                     <th scope="col">Customer</th>
-                                    <th scope="col">Issue</th>
                                     <th scope="col">Status</th>
-                                    <th scope="col">Priority</th>
-                                    <th scope="col">Follow-up</th>
+                                    <th scope="col">Date</th>
                                     <th scope="col">Next</th>
                                     <th scope="col">Executive</th>
-                                    <th scope="col" class="text-end followup-actions-col">Actions</th>
+                                    <th scope="col" class="followup-link-col">Link</th>
+                                    <th scope="col" class="followup-actions-col">Actions</th>
                                 </tr>
                             </thead>
-                        </table>
-                    </div>
-                    <div class="followup-table-body">
-                        <table class="table table-hover mb-0 align-middle">
-                            <colgroup>
-                                <col style="width:6%"><col style="width:7%"><col
-                                    style="width:10%"><col style="width:10%"><col style="width:12%"><col
-                                    style="width:6%"><col style="width:7%"><col style="width:6%"><col
-                                    style="width:9%"><col style="width:9%"><col style="width:8%"><col
-                                    style="width:11rem">
-                            </colgroup>
                             <tbody id="followupTableBody">
                                 <tr>
-                                    <td colspan="12" class="text-center py-4 text-muted">Loading…</td>
+                                    <td colspan="11" class="text-center py-4 text-muted">Loading…</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -377,18 +448,6 @@
         </div>
     </div>
 
-    {{-- View (read-only) --}}
-    <div class="modal fade" id="viewFollowupModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Ticket details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" id="viewFollowupBody"></div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script')
@@ -398,10 +457,8 @@
             const storeUrl = @json(route('customer.care.followups.store'));
             const followupBase = @json(url('/customer-care/followups'));
             const skuSearchUrl = @json(route('customer.care.followups.skus'));
-            const defaultExecutives = @json($defaultExecutives ?? []);
-            const EXEC_LS_KEY = 'invent_customer_followup_executives_v1';
+            const canDeleteFollowups = @json($canDeleteFollowups ?? false);
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            let lastApiExecutives = [];
 
             function escapeHtml(s) {
                 if (s == null) return '';
@@ -417,9 +474,22 @@
                     .replace(/</g, '&lt;');
             }
 
+            /** Customer column: max 15 characters per line; longer text wraps with &lt;br&gt;. */
+            function customerNameCellHtml(raw) {
+                const trimmed = raw == null ? '' : String(raw).trim();
+                if (trimmed === '') {
+                    return '<td class="followup-customer-cell text-muted">—</td>';
+                }
+                const lines = [];
+                for (let i = 0; i < trimmed.length; i += 15) {
+                    lines.push(escapeHtml(trimmed.slice(i, i + 15)));
+                }
+                return '<td class="followup-customer-cell">' + lines.join('<br>') + '</td>';
+            }
+
             function notesCellHtml(raw) {
                 if (raw == null || String(raw).trim() === '') {
-                    return '<td class="text-muted">—</td>';
+                    return '<td class="followup-notes-cell text-muted">—</td>';
                 }
                 const t = String(raw);
                 return '<td class="followup-notes-cell">' + escapeHtml(t) + '</td>';
@@ -440,27 +510,34 @@
                     '<span class="order-num-flyout">' + escapeHtml(trimmed) + '</span></div></td>';
             }
 
-            function updateFollowupBodyScrollbarGutter() {
-                const body = document.querySelector('.followup-table-body');
-                const header = document.querySelector('.followup-table-header');
-                if (!body || !header) return;
-                const sw = Math.max(0, body.offsetWidth - body.clientWidth);
-                header.style.paddingRight = sw + 'px';
+            /** Scheduled date/time text only (non-editable in grid; edit via modal). */
+            function followupDateDisplayCellHtml(row) {
+                const raw = row.followup_display;
+                const t = raw != null && String(raw).trim() !== '' ? String(raw) : '—';
+                return '<td class="followup-readonly-date">' + escapeHtml(t) + '</td>';
             }
 
-            function bindFollowupScrollbarGutter() {
-                const body = document.querySelector('.followup-table-body');
-                if (!body || body.dataset.followupGutterBound === '1') return;
-                body.dataset.followupGutterBound = '1';
-                let resizeTimer = null;
-                const run = () => updateFollowupBodyScrollbarGutter();
-                window.addEventListener('resize', () => {
-                    clearTimeout(resizeTimer);
-                    resizeTimer = setTimeout(run, 100);
-                });
-                if (typeof ResizeObserver !== 'undefined') {
-                    new ResizeObserver(run).observe(body);
+            function nextFollowupAtCellHtml(row) {
+                const v = escapeAttr(row.next_followup_at || '');
+                return '<td class="followup-dt-cell">' +
+                    '<input type="datetime-local" class="form-control form-control-sm followup-inline-dt" ' +
+                    'step="60" autocomplete="off" data-id="' + row.id +
+                    '" data-field="next_followup_at" value="' + v + '" title="Next follow-up date & time">' +
+                    '</td>';
+            }
+
+            /** Reference URL: icon opens in new tab; `--` when empty. */
+            function referenceLinkCellHtml(row) {
+                const raw = row.reference_link;
+                const trimmed = raw != null ? String(raw).trim() : '';
+                if (!trimmed) {
+                    return '<td class="followup-ref-link-cell text-muted">--</td>';
                 }
+                const safe = escapeAttr(trimmed);
+                return '<td class="followup-ref-link-cell">' +
+                    '<a href="' + safe + '" target="_blank" rel="noopener noreferrer" title="Open reference link">' +
+                    '<i class="bi bi-link-45deg" aria-hidden="true"></i><span class="visually-hidden">Open link</span>' +
+                    '</a></td>';
             }
 
             let skuSearchTimer = null;
@@ -510,89 +587,26 @@
 
             bindSkuProductMasterAutocomplete();
 
-            function getStoredExtraExecutives() {
-                try {
-                    const raw = localStorage.getItem(EXEC_LS_KEY);
-                    if (!raw) return [];
-                    const arr = JSON.parse(raw);
-                    if (!Array.isArray(arr)) return [];
-                    return [...new Set(arr.map(x => String(x).trim()).filter(Boolean))];
-                } catch (e) {
-                    return [];
-                }
+            function statusDotHtml(status) {
+                const s = status == null ? '' : String(status);
+                let color = '#6c757d';
+                let label = s || '—';
+                if (s === 'Pending') color = '#dc3545';
+                else if (s === 'Escalated') color = '#6f42c1';
+                else if (s === 'Resolved') color = '#198754';
+                return '<span class="followup-status-dot" style="background-color:' + color +
+                    '" title="' + escapeAttr(label) + '" role="img" aria-label="' + escapeAttr('Status: ' + label) +
+                    '"></span>';
             }
 
-            function setStoredExtraExecutives(names) {
-                const uniq = [...new Set(names.map(n => String(n).trim()).filter(Boolean))].sort((a, b) =>
-                    a.localeCompare(b));
-                localStorage.setItem(EXEC_LS_KEY, JSON.stringify(uniq));
-            }
-
-            function addStoredExecutive(name) {
-                const t = String(name || '').trim();
-                if (!t) return false;
-                const cur = getStoredExtraExecutives();
-                if (cur.includes(t)) return true;
-                setStoredExtraExecutives([...cur, t]);
-                return true;
-            }
-
-            function getMergedExecutiveNames(apiNames) {
-                const set = new Set();
-                (defaultExecutives || []).forEach(e => {
-                    if (e && String(e).trim()) set.add(String(e).trim());
-                });
-                (apiNames || []).forEach(e => {
-                    if (e && String(e).trim()) set.add(String(e).trim());
-                });
-                getStoredExtraExecutives().forEach(e => set.add(e));
-                return [...set].sort((a, b) => a.localeCompare(b));
-            }
-
-            function syncExecutiveDatalist(apiNames) {
-                const dl = document.getElementById('assigned_executive_datalist');
-                if (!dl) return;
-                const names = getMergedExecutiveNames(apiNames);
-                dl.innerHTML = names.map(e => '<option value="' + escapeAttr(e) + '"></option>').join('');
-            }
-
-            function rebuildExecutiveFilterSelect(selectEl, apiNames, previousValue) {
-                const names = getMergedExecutiveNames(apiNames);
-                const htmlOpts = ['<option value="">All</option>'].concat(names.map(e =>
-                    '<option value="' + escapeAttr(e) + '">' + escapeHtml(e) + '</option>'));
-                selectEl.innerHTML = htmlOpts.join('');
-                if (previousValue && names.includes(previousValue)) selectEl.value = previousValue;
-            }
-
-            function refreshExecutivePickers(preferredFilterValue) {
-                const execSel = document.getElementById('filterExecutive');
-                const prev = preferredFilterValue !== undefined ? preferredFilterValue : execSel.value;
-                rebuildExecutiveFilterSelect(execSel, lastApiExecutives, prev);
-                syncExecutiveDatalist(lastApiExecutives);
-            }
-
-            function statusBadgeHtml(status) {
-                const map = {
-                    'Pending': 'secondary',
-                    'In Progress': 'primary',
-                    'Resolved': 'success',
-                    'Escalated': 'danger'
-                };
-                const cls = map[status] || 'secondary';
-                return '<span class="badge bg-' + cls + '">' + escapeHtml(status) + '</span>';
-            }
-
-            function priorityBadgeHtml(priority) {
-                let cls = 'bg-secondary';
-                let style = '';
-                if (priority === 'Low') cls = 'bg-light text-dark border';
-                else if (priority === 'Medium') cls = 'bg-warning text-dark';
-                else if (priority === 'High') {
-                    cls = 'text-white';
-                    style = 'background-color:#fd7e14;';
-                } else if (priority === 'Urgent') cls = 'bg-danger';
-                const st = style ? ' style="' + style + '"' : '';
-                return '<span class="badge ' + cls + '"' + st + '>' + escapeHtml(priority) + '</span>';
+            function statusCellHtml(row) {
+                const id = row.id;
+                const st = row.status == null ? '' : String(row.status);
+                const dot = statusDotHtml(st);
+                return '<td class="followup-status-cell text-center">' +
+                    '<button type="button" class="btn btn-link p-0 align-middle text-decoration-none followup-inline-status-trigger" ' +
+                    'data-id="' + escapeAttr(String(id)) + '" data-status="' + escapeAttr(st) +
+                    '" title="Change status" aria-label="Change status">' + dot + '</button></td>';
             }
 
             function buildQuery() {
@@ -601,16 +615,7 @@
                 if (s) p.set('search', s);
                 const ch = document.getElementById('filterChannel').value;
                 if (ch) p.set('channel_id', ch);
-                const st = document.getElementById('filterStatus').value;
-                if (st) p.set('status', st);
-                const pr = document.getElementById('filterPriority').value;
-                if (pr) p.set('priority', pr);
-                const ex = document.getElementById('filterExecutive').value.trim();
-                if (ex) p.set('executive', ex);
-                const df = document.getElementById('filterDateFrom').value;
-                if (df) p.set('date_from', df);
-                const dt = document.getElementById('filterDateTo').value;
-                if (dt) p.set('date_to', dt);
+                p.set('status', document.getElementById('filterStatus').value);
                 return p.toString();
             }
 
@@ -626,21 +631,14 @@
                     const json = await res.json();
                     if (!json.data) throw new Error('Invalid response');
 
-                    document.getElementById('statTotal').textContent = json.stats?.total ?? '—';
                     document.getElementById('statPending').textContent = json.stats?.pending ?? '—';
-                    document.getElementById('statResolved').textContent = json.stats?.resolved_today ?? '—';
                     document.getElementById('statEscalations').textContent = json.stats?.escalations ?? '—';
-                    document.getElementById('statAvg').textContent = json.stats?.avg_response ?? '—';
-
-                    const execSel = document.getElementById('filterExecutive');
-                    const cur = execSel.value;
-                    lastApiExecutives = json.executives || [];
-                    refreshExecutivePickers(cur);
+                    const tatEl = document.getElementById('tatValue');
+                    if (tatEl) tatEl.textContent = json.stats?.tat_avg_label ?? '—';
 
                     if (!json.data.length) {
                         tbody.innerHTML =
-                            '<tr><td colspan="12" class="text-center py-4 text-muted">No records match filters.</td></tr>';
-                        requestAnimationFrame(() => updateFollowupBodyScrollbarGutter());
+                            '<tr><td colspan="11" class="text-center py-4 text-muted">No records match filters.</td></tr>';
                         return;
                     }
 
@@ -648,36 +646,32 @@
                         const overdue = row.overdue ? ' followup-row-overdue' : '';
                         return '<tr class="' + overdue.trim() + '" data-id="' + row.id + '">' +
                             orderIdCellHtml(row) +
-                            '<td>' + escapeHtml(row.sku) + '</td>' +
+                            '<td class="followup-sku-col">' + escapeHtml(row.sku) + '</td>' +
                             notesCellHtml(row.notes) +
                             '<td>' + escapeHtml(row.channel_name) + '</td>' +
-                            '<td>' + escapeHtml(row.customer_name) + '</td>' +
-                            '<td>' + escapeHtml(row.issue_type) + '</td>' +
-                            '<td>' + statusBadgeHtml(row.status) + '</td>' +
-                            '<td>' + priorityBadgeHtml(row.priority) + '</td>' +
-                            '<td>' + escapeHtml(row.followup_display) + '</td>' +
-                            '<td>' + escapeHtml(row.next_followup) + '</td>' +
+                            customerNameCellHtml(row.customer_name) +
+                            statusCellHtml(row) +
+                            followupDateDisplayCellHtml(row) +
+                            nextFollowupAtCellHtml(row) +
                             '<td>' + escapeHtml(row.executive) + '</td>' +
-                            '<td class="text-end text-nowrap followup-actions-col">' +
+                            referenceLinkCellHtml(row) +
+                            '<td class="text-nowrap text-center followup-actions-col">' +
                             '<div class="followup-actions-btns">' +
-                            '<button type="button" class="btn btn-sm btn-outline-info btn-view" data-id="' + row.id +
-                            '" data-bs-toggle="tooltip" title="View"><i class="mdi mdi-eye"></i></button>' +
                             '<button type="button" class="btn btn-sm btn-outline-primary btn-edit" data-id="' +
                             row.id +
                             '" data-bs-toggle="tooltip" title="Edit"><i class="mdi mdi-pencil"></i></button>' +
-                            '<button type="button" class="btn btn-sm btn-outline-danger btn-del" data-id="' + row.id +
-                            '" data-bs-toggle="tooltip" title="Delete"><i class="mdi mdi-delete"></i></button>' +
+                            (canDeleteFollowups ?
+                                '<button type="button" class="btn btn-sm btn-outline-danger btn-del" data-id="' +
+                                row.id +
+                                '" data-bs-toggle="tooltip" title="Delete"><i class="mdi mdi-delete"></i></button>' :
+                                '') +
                             '</div></td></tr>';
                     }).join('');
 
                     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
-                    requestAnimationFrame(() => {
-                        requestAnimationFrame(() => updateFollowupBodyScrollbarGutter());
-                    });
                 } catch (e) {
                     tbody.innerHTML =
-                        '<tr><td colspan="12" class="text-center text-danger py-4">Failed to load data.</td></tr>';
-                    requestAnimationFrame(() => updateFollowupBodyScrollbarGutter());
+                        '<tr><td colspan="11" class="text-center text-danger py-4">Failed to load data.</td></tr>';
                 }
             }
 
@@ -723,14 +717,8 @@
                     sku: fd.get('sku') || null,
                     channel_master_id: ch ? parseInt(ch, 10) : null,
                     customer_name: fd.get('customer_name'),
-                    email: fd.get('email') || null,
-                    phone: fd.get('phone') || null,
-                    issue_type: fd.get('issue_type'),
                     status: fd.get('status'),
-                    priority: fd.get('priority'),
-                    assigned_executive: fd.get('assigned_executive') || null,
                     comments: fd.get('comments') || null,
-                    internal_remarks: fd.get('internal_remarks') || null,
                     reference_link: fd.get('reference_link') || null,
                 };
                 if (payload.channel_master_id === 0 || isNaN(payload.channel_master_id)) payload.channel_master_id =
@@ -738,64 +726,23 @@
                 return payload;
             }
 
-            document.getElementById('btnApplyFilters').addEventListener('click', loadTable);
-            document.getElementById('btnResetFilters').addEventListener('click', () => {
-                document.getElementById('filterSearch').value = '';
-                document.getElementById('filterChannel').value = '';
-                document.getElementById('filterStatus').value = '';
-                document.getElementById('filterPriority').value = '';
-                document.getElementById('filterExecutive').value = '';
-                document.getElementById('filterDateFrom').value = '';
-                document.getElementById('filterDateTo').value = '';
-                loadTable();
-            });
-
-            document.getElementById('btnAddExecutiveToList').addEventListener('click', () => {
-                const inp = document.getElementById('assigned_executive');
-                const name = (inp && inp.value || '').trim();
-                if (!name) {
-                    inp.focus();
-                    inp.classList.add('is-invalid');
-                    setTimeout(() => inp.classList.remove('is-invalid'), 1200);
-                    return;
-                }
-                addStoredExecutive(name);
-                refreshExecutivePickers();
-            });
-
-            const filterExecutiveAddPanel = document.getElementById('filterExecutiveAddPanel');
-            filterExecutiveAddPanel.addEventListener('shown.bs.collapse', () => {
-                document.getElementById('filterNewExecutiveName').focus();
-            });
-
-            function hideFilterExecutiveAddPanel() {
-                const inst = bootstrap.Collapse.getInstance(filterExecutiveAddPanel);
-                if (inst) inst.hide();
+            let followupSearchDebounce = null;
+            const filterSearchInput = document.getElementById('filterSearch');
+            if (filterSearchInput) {
+                filterSearchInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        clearTimeout(followupSearchDebounce);
+                        loadTable();
+                    }
+                });
+                filterSearchInput.addEventListener('input', () => {
+                    clearTimeout(followupSearchDebounce);
+                    followupSearchDebounce = setTimeout(() => loadTable(), 320);
+                });
             }
 
-            function saveFilterNewExecutive() {
-                const inp = document.getElementById('filterNewExecutiveName');
-                const name = (inp.value || '').trim();
-                if (!name) {
-                    inp.focus();
-                    inp.classList.add('is-invalid');
-                    setTimeout(() => inp.classList.remove('is-invalid'), 1200);
-                    return;
-                }
-                addStoredExecutive(name);
-                refreshExecutivePickers(name);
-                inp.value = '';
-                inp.classList.remove('is-invalid');
-                hideFilterExecutiveAddPanel();
-            }
-
-            document.getElementById('btnFilterSaveNewExecutive').addEventListener('click', saveFilterNewExecutive);
-            document.getElementById('filterNewExecutiveName').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    saveFilterNewExecutive();
-                }
-            });
+            document.getElementById('filterStatus').addEventListener('change', loadTable);
 
             document.getElementById('btnAddFollowup').addEventListener('click', () => {
                 document.getElementById('followupModalLabel').textContent = 'Add Followup';
@@ -850,7 +797,97 @@
                 }
             });
 
+            document.getElementById('followupTableBody').addEventListener('change', async (e) => {
+                const statusSel = e.target.closest('.followup-inline-status-select');
+                if (statusSel && !statusSel.disabled) {
+                    const id = statusSel.getAttribute('data-id');
+                    if (!id) return;
+                    statusSel.disabled = true;
+                    try {
+                        const res = await fetch(followupBase + '/' + id + '/inline-status', {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrf,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({ status: statusSel.value })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            alert(data.message || (data.errors ? Object.values(data.errors).flat().join(' ') :
+                                'Could not save status.'));
+                        }
+                        await loadTable();
+                    } catch (err) {
+                        alert('Network error while saving status.');
+                        await loadTable();
+                    }
+                    return;
+                }
+                const inp = e.target.closest('.followup-inline-dt');
+                if (!inp || inp.disabled) return;
+                const id = inp.getAttribute('data-id');
+                const field = inp.getAttribute('data-field');
+                if (!id || field !== 'next_followup_at') return;
+                const body = { next_followup_at: inp.value || null };
+                inp.disabled = true;
+                try {
+                    const res = await fetch(followupBase + '/' + id + '/inline-dates', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        const msg = data.message || (data.errors ? Object.values(data.errors).flat().join(' ') :
+                            'Could not save date.');
+                        alert(msg);
+                    }
+                    await loadTable();
+                } catch (err) {
+                    alert('Network error while saving date.');
+                    await loadTable();
+                }
+            });
+
             document.getElementById('followupTableBody').addEventListener('click', async (e) => {
+                const statusTrig = e.target.closest('.followup-inline-status-trigger');
+                if (statusTrig) {
+                    e.preventDefault();
+                    const td = statusTrig.closest('td');
+                    const id = statusTrig.getAttribute('data-id');
+                    const rawSt = statusTrig.getAttribute('data-status') || '';
+                    const statuses = ['Pending', 'Resolved', 'Escalated'];
+                    const cur = statuses.includes(rawSt) ? rawSt : 'Pending';
+                    td.innerHTML =
+                        '<select class="form-select form-select-sm followup-inline-status-select" data-id="' +
+                        escapeAttr(id) + '" aria-label="Status">' +
+                        statuses.map(v =>
+                            '<option value="' + escapeAttr(v) + '"' + (v === cur ? ' selected' : '') + '>' +
+                            escapeHtml(v) + '</option>').join('') +
+                        '</select>';
+                    const sel = td.querySelector('select');
+                    sel.focus();
+                    let saved = false;
+                    sel.addEventListener('change', () => {
+                        saved = true;
+                    }, { once: true });
+                    sel.addEventListener('blur', () => {
+                        setTimeout(() => {
+                            if (!saved) {
+                                loadTable();
+                            }
+                        }, 180);
+                    }, { once: true });
+                    return;
+                }
                 const copyOrderBtn = e.target.closest('.copy-order-btn');
                 if (copyOrderBtn) {
                     e.preventDefault();
@@ -889,43 +926,6 @@
                     loadTable();
                     return;
                 }
-                if (btn.classList.contains('btn-view')) {
-                    const res = await fetch(followupBase + '/' + id, {
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    });
-                    const d = await res.json();
-                    const ref = d.reference_link ?
-                        '<a href="' + escapeHtml(d.reference_link) +
-                        '" target="_blank" rel="noopener noreferrer">' + escapeHtml(d.reference_link) + '</a>' :
-                        '—';
-                    document.getElementById('viewFollowupBody').innerHTML =
-                        '<dl class="row mb-0">' +
-                        '<dt class="col-sm-4">Ticket</dt><dd class="col-sm-8">' + escapeHtml(d.ticket_id) +
-                        '</dd>' +
-                        '<dt class="col-sm-4">Order ID</dt><dd class="col-sm-8">' + escapeHtml(d.order_id || '—') +
-                        '</dd>' +
-                        '<dt class="col-sm-4">SKU</dt><dd class="col-sm-8">' + escapeHtml(d.sku || '—') +
-                        '</dd>' +
-                        '<dt class="col-sm-4">Customer</dt><dd class="col-sm-8">' + escapeHtml(d.customer_name) +
-                        '</dd>' +
-                        '<dt class="col-sm-4">Email / Phone</dt><dd class="col-sm-8">' + escapeHtml(d.email ||
-                            '—') + ' / ' + escapeHtml(d.phone || '—') + '</dd>' +
-                        '<dt class="col-sm-4">Issue</dt><dd class="col-sm-8">' + escapeHtml(d.issue_type) +
-                        '</dd>' +
-                        '<dt class="col-sm-4">Status</dt><dd class="col-sm-8">' + statusBadgeHtml(d.status) +
-                        '</dd>' +
-                        '<dt class="col-sm-4">Priority</dt><dd class="col-sm-8">' + priorityBadgeHtml(d.priority) +
-                        '</dd>' +
-                        '<dt class="col-sm-4">Notes</dt><dd class="col-sm-8">' + escapeHtml(d.comments || '—')
-                        .replace(/\n/g, '<br>') + '</dd>' +
-                        '<dt class="col-sm-4">Internal</dt><dd class="col-sm-8">' + escapeHtml(d.internal_remarks ||
-                            '—').replace(/\n/g, '<br>') + '</dd>' +
-                        '<dt class="col-sm-4">Reference</dt><dd class="col-sm-8">' + ref + '</dd></dl>';
-                    new bootstrap.Modal(document.getElementById('viewFollowupModal')).show();
-                    return;
-                }
                 if (btn.classList.contains('btn-edit')) {
                     const res = await fetch(followupBase + '/' + id, {
                         headers: {
@@ -943,22 +943,14 @@
                     document.getElementById('sku').value = d.sku || '';
                     document.getElementById('channel_master_id').value = d.channel_master_id || '';
                     document.getElementById('customer_name').value = d.customer_name;
-                    document.getElementById('email').value = d.email || '';
-                    document.getElementById('phone').value = d.phone || '';
-                    document.getElementById('issue_type').value = d.issue_type;
                     document.getElementById('followup_status').value = d.status;
-                    document.getElementById('priority').value = d.priority;
-                    document.getElementById('assigned_executive').value = d.assigned_executive || '';
                     document.getElementById('comments').value = d.comments || '';
-                    document.getElementById('internal_remarks').value = d.internal_remarks || '';
                     document.getElementById('reference_link').value = d.reference_link || '';
                     clearFormErrors();
                     new bootstrap.Modal(document.getElementById('followupModal')).show();
                 }
             });
 
-            refreshExecutivePickers(document.getElementById('filterExecutive').value);
-            bindFollowupScrollbarGutter();
             loadTable();
 
             // TODO: Replace static data with API integration (single endpoint for list + stats).
@@ -970,8 +962,9 @@
         $channels = \App\Models\ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])->orderBy('type')->orderBy('id')->get(['id','channel']);
     Dummy row shape from /customer-care/followups/data:
         {"id":1,"ticket_id":"TKT-DEMO-001","order_id":"ORD-1001","channel_name":"Amazon",
-         "customecr_name":"Sample Customer","issue_type":"Refund","status":"Pending",
-         "priority":"High","followup_display":"03-17-2026 10:00","next_followup":"03-18-2026 10:00",
+         "customecr_name":"Sample Customer","status":"Pending",
+         "followup_display":"05 Apr 10:00",
+         "next_followup":"03-18-2026 10:00","next_followup_at":"2026-03-18T10:00",
          "executive":"Executive A","reference_link":"https://...","overdue":false}
     --}}
 @endsection

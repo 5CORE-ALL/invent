@@ -12,12 +12,14 @@ class CustomerFollowup extends Model
         'ticket_id', 'order_id', 'sku', 'channel_master_id', 'customer_name', 'email', 'phone',
         'issue_type', 'status', 'priority', 'followup_date', 'followup_time',
         'next_followup_at', 'assigned_executive', 'comments', 'internal_remarks', 'reference_link',
+        'resolved_at',
     ];
 
     protected $casts = [
         'followup_date' => 'date',
         'followup_time' => 'datetime:H:i',
         'next_followup_at' => 'datetime',
+        'resolved_at' => 'datetime',
     ];
 
     /** Same rows as /all-marketplace-master (channel_master, status = active) */

@@ -1606,7 +1606,7 @@
                             <a href="{{ route('customer.care.other.issues') }}">Other Issues</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.followups') }}">Follow UP</a>
+                            <a href="{{ route('customer.care.followups') }}">Follow Up CC</a>
                         </li>
                         <li>
                             <a href="{{ route('dar.index') }}">DAR</a>

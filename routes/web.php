@@ -2078,6 +2078,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/followups', [CustomerFollowupController::class, 'store'])->name('customer.care.followups.store');
     Route::get('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'show'])->name('customer.care.followups.show');
     Route::put('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'update'])->name('customer.care.followups.update');
+    Route::patch('/customer-care/followups/{customer_followup}/inline-dates', [CustomerFollowupController::class, 'patchInlineDates'])->name('customer.care.followups.patch.inline.dates');
+    Route::patch('/customer-care/followups/{customer_followup}/inline-status', [CustomerFollowupController::class, 'patchInlineStatus'])->name('customer.care.followups.patch.inline.status');
     Route::delete('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'destroy'])->name('customer.care.followups.destroy');
 
     require __DIR__.'/crm-web.php';
