@@ -453,10 +453,11 @@
 @section('script')
     <script>
         (function() {
-            const dataUrl = @json(route('customer.care.followups.data'));
-            const storeUrl = @json(route('customer.care.followups.store'));
-            const followupBase = @json(url('/customer-care/followups'));
-            const skuSearchUrl = @json(route('customer.care.followups.skus'));
+            {{-- Relative URLs so AJAX hits the same host/port as the page (APP_URL often mismatches artisan serve / XAMPP). --}}
+            const dataUrl = @json(route('customer.care.followups.data', [], false));
+            const storeUrl = @json(route('customer.care.followups.store', [], false));
+            const followupBase = @json(route('customer.care.followups', [], false));
+            const skuSearchUrl = @json(route('customer.care.followups.skus', [], false));
             const canDeleteFollowups = @json($canDeleteFollowups ?? false);
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 

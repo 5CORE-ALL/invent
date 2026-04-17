@@ -3337,6 +3337,44 @@ class AmazonSpBudgetController extends Controller
                 }
             }
 
+            // KW PARENT aggregate SKU (e.g. "PARENT SS HD 2 PK 4.5 FT"): Seller Central campaigns often omit the
+            // "PARENT " prefix ("SS HD … KW"). Child rows already resolve via $parent fallback above; PARENT rows did not.
+            if ($campaignType === 'KW' && stripos($sku, 'PARENT') !== false) {
+                $strippedKwBase = preg_replace('/^PARENT\s+/i', '', $sku);
+                $strippedKwBase = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $strippedKwBase);
+                $strippedKwBase = strtoupper(trim(preg_replace('/\s+/', ' ', $strippedKwBase)));
+                $strippedKwBase = rtrim($strippedKwBase, '.');
+                if ($strippedKwBase !== '') {
+                    $kwStripVariants = [$strippedKwBase, $strippedKwBase . ' KW', $strippedKwBase . ' KW.', $strippedKwBase . 'KW', $strippedKwBase . 'KW.'];
+                    if (! $matchedCampaignL30) {
+                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($kwStripVariants) {
+                            $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                            $clean = strtoupper(trim(rtrim($campaignName, '.')));
+
+                            return in_array($clean, $kwStripVariants, true);
+                        });
+                    }
+                    if (! $matchedCampaignL15) {
+                        $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($kwStripVariants) {
+                            $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                            $clean = strtoupper(trim(rtrim($campaignName, '.')));
+
+                            return in_array($clean, $kwStripVariants, true);
+                        });
+                    }
+                }
+                if (! empty($matchedCampaignL30)) {
+                    $campaignId = trim((string) ($matchedCampaignL30->campaign_id ?? ''));
+                    $campaignName = (string) ($matchedCampaignL30->campaignName ?? '');
+                    $hasCampaign = true;
+                    $campaignMap[$mapKey]['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($campaignMap[$mapKey]['campaignBudgetAmount'] ?? 0);
+                    $campaignMap[$mapKey]['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($campaignMap[$mapKey]['campaignStatus'] ?? '');
+                    $campaignMap[$mapKey]['pink_dil_paused_at'] = $matchedCampaignL30->pink_dil_paused_at ?? ($campaignMap[$mapKey]['pink_dil_paused_at'] ?? null);
+                }
+            }
+
             if (isset($matchedCampaignL30) && $matchedCampaignL30) {
                 if ($campaignType === 'HL') {
                     $sales30 = $matchedCampaignL30->sales ?? 0;
