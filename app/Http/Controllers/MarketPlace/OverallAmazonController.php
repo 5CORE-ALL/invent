@@ -2352,6 +2352,7 @@ class OverallAmazonController extends Controller
             $row['(Child) sku'] = $pm->sku;
 
             if ($amazonSheet) {
+                $row['asin'] = $amazonSheet->asin ?? null;
                 $row['A_L30'] = $amazonSheet->units_ordered_l30 ?? 0;
                 $row['A_L15'] = $amazonSheet->units_ordered_l15 ?? 0;
                 $row['A_L7'] = $amazonSheet->units_ordered_l7 ?? 0;
@@ -2362,6 +2363,7 @@ class OverallAmazonController extends Controller
                 $row['sessions_l60'] = $amazonSheet->sessions_l60 ?? 0;
                 $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60 ?? 0;
             } else {
+                $row['asin'] = null;
                 $row['A_L30'] = 0;
                 $row['A_L15'] = 0;
                 $row['A_L7'] = 0;
@@ -4518,31 +4520,92 @@ class OverallAmazonController extends Controller
     /**
      * Push SPRICE to Amazon (Listings Items PATCH).
      *
-     * AmazonSpApiService::updateAmazonPriceUS rejects non-success outcomes: PATCH body must be
-     * accepted (status ACCEPTED, no ERROR issues), then the listing is read back with
-     * includedData=summaries,attributes,offers until the price matches or a clear error is returned.
+     * Resolves seller MSKU from `amazon_datsheets` when:
+     * - Request includes `asin` (e.g. B099LLZP2T), or
+     * - `sku` looks like a typical retail ASIN (B + 9 alphanumeric) and matches a row's `asin` column.
+     * The Listings API is then called with the datasheet `sku` (seller SKU) when lookup succeeds. If `asin` is
+     * sent but the row is missing / has no SKU and a child `sku` is present, the child SKU is used (same as before).
+     * SPRICE status is saved on the tabulator child SKU when provided, otherwise on the resolved seller SKU.
      */
     public function applyAmazonPrice(Request $request)
     {
-        // Validate and sanitize inputs
-        $sku = trim($request->input('sku', ''));
+        $rawChildSkuOriginal = trim(str_replace("\xc2\xa0", ' ', (string) $request->input('sku', '')));
+        $rowChildSku = strtoupper($rawChildSkuOriginal);
+        $asinParam = trim((string) $request->input('asin', ''));
         $price = $request->input('price');
 
-        // Validate SKU
-        if (empty($sku)) {
+        if ($rowChildSku === '' && $asinParam === '') {
             return response()->json([
                 'errors' => [[
                     'code' => 'InvalidInput',
-                    'message' => 'SKU is required and cannot be empty.'
-                ]]
+                    'message' => 'SKU or ASIN is required.',
+                ]],
             ], 400);
         }
 
-        $sku = strtoupper($sku);
+        $skuForAmazon = $rowChildSku !== '' ? $rowChildSku : '';
+        $statusSku = $rowChildSku;
+        $amazonSkuLockedFromAsin = false;
+
+        if ($asinParam !== '') {
+            $resolved = $this->sellerSkuFromAmazonDatasheetByAsin($asinParam);
+            if ($resolved !== null && $resolved !== '') {
+                // Stale/wrong ASIN on the row must not override Seller Central MSKU for a different listing.
+                if ($rawChildSkuOriginal !== '' && ! $this->datasheetMskuMatchesChildSku($resolved, $rawChildSkuOriginal)) {
+                    Log::warning('applyAmazonPrice: ignoring request ASIN — datasheet row MSKU does not match this child SKU (fix asin in amazon_datsheets)', [
+                        'asin' => $asinParam,
+                        'child_sku' => $rawChildSkuOriginal,
+                        'asin_row_msku' => $resolved,
+                    ]);
+                } else {
+                    $skuForAmazon = trim($resolved);
+                    $amazonSkuLockedFromAsin = true;
+                    $statusSku = $rowChildSku !== '' ? $rowChildSku : strtoupper(trim($resolved));
+                }
+            } elseif ($rowChildSku === '') {
+                // ASIN-only request: must resolve from datasheet
+                return response()->json([
+                    'errors' => [[
+                        'code' => 'InvalidInput',
+                        'message' => 'ASIN not found in amazon_datsheets or row has no seller SKU.',
+                    ]],
+                ], 400);
+            } else {
+                // Child SKU present but datasheet ASIN lookup failed — behave like before (push by child SKU)
+                Log::warning('applyAmazonPrice: ASIN not resolved from amazon_datsheets, using child SKU for Amazon API', [
+                    'asin' => $asinParam,
+                    'child_sku' => $rowChildSku,
+                ]);
+            }
+        } elseif ($rowChildSku !== '' && $this->looksLikeTypicalRetailAsin($rowChildSku)) {
+            $resolved = $this->sellerSkuFromAmazonDatasheetByAsin($rowChildSku);
+            if ($resolved !== null && $resolved !== '') {
+                $skuForAmazon = trim($resolved);
+                $amazonSkuLockedFromAsin = true;
+                $statusSku = $rowChildSku !== '' ? $rowChildSku : strtoupper(trim($resolved));
+            }
+        }
+
+        // Product Master / grid SKU often differs from Seller Central MSKU (spaces, casing). Prefer exact `sku` from sync.
+        if (! $amazonSkuLockedFromAsin && $rawChildSkuOriginal !== '') {
+            $fromSheet = $this->sellerSkuFromAmazonDatasheetByProductKey($rawChildSkuOriginal);
+            if ($fromSheet !== null && $fromSheet !== '') {
+                $skuForAmazon = $fromSheet;
+            }
+        }
+
+        if ($skuForAmazon === '') {
+            return response()->json([
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Could not determine seller SKU for Amazon (missing sku / asin).',
+                ]],
+            ], 400);
+        }
 
         // Validate price
         if ($price === null || $price === '') {
-            $this->saveSpriceStatus($sku, 'error');
+            $this->saveSpriceStatus($statusSku, 'error');
             return response()->json([
                 'errors' => [[
                     'code' => 'InvalidInput',
@@ -4555,7 +4618,7 @@ class OverallAmazonController extends Controller
         $priceFloat = is_numeric($price) ? (float) $price : null;
         
         if ($priceFloat === null || $priceFloat <= 0) {
-            $this->saveSpriceStatus($sku, 'error');
+            $this->saveSpriceStatus($statusSku, 'error');
             return response()->json([
                 'errors' => [[
                     'code' => 'InvalidInput',
@@ -4566,7 +4629,7 @@ class OverallAmazonController extends Controller
 
         // Validate price range (reasonable bounds: 0.01 to 999999.99)
         if ($priceFloat < 0.01 || $priceFloat > 999999.99) {
-            $this->saveSpriceStatus($sku, 'error');
+            $this->saveSpriceStatus($statusSku, 'error');
             return response()->json([
                 'errors' => [[
                     'code' => 'InvalidInput',
@@ -4580,16 +4643,18 @@ class OverallAmazonController extends Controller
 
         try {
             $service = new AmazonSpApiService();
-            $result = $service->updateAmazonPriceUS($sku, $priceFloat);
+            $result = $service->updateAmazonPriceUS($skuForAmazon, $priceFloat);
 
             // Check if the response indicates errors
             if (isset($result['errors']) && !empty($result['errors'])) {
                 // Save error status
-                $this->saveSpriceStatus($sku, 'error');
+                $this->saveSpriceStatus($statusSku, 'error');
                 
                 // Log the error for debugging
                 Log::error('Amazon price update failed', [
-                    'sku' => $sku,
+                    'status_sku' => $statusSku,
+                    'amazon_api_sku' => $skuForAmazon,
+                    'asin_param' => $asinParam,
                     'price' => $priceFloat,
                     'errors' => $result['errors']
                 ]);
@@ -4599,19 +4664,25 @@ class OverallAmazonController extends Controller
 
             // Check if response indicates success (pushed)
             // If no errors, consider it pushed initially
-            $this->saveSpriceStatus($sku, 'pushed');
+            $this->saveSpriceStatus($statusSku, 'pushed');
             
             Log::info('Amazon price update successful', [
-                'sku' => $sku,
+                'status_sku' => $statusSku,
+                'amazon_api_sku' => $skuForAmazon,
+                'asin_param' => $asinParam,
                 'price' => $priceFloat
             ]);
             
-            return response()->json($result);
+            return response()->json(array_merge(is_array($result) ? $result : [], [
+                'amazon_api_sku' => $skuForAmazon,
+                'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
+            ]));
         } catch (\Exception $e) {
             // Save error status
-            $this->saveSpriceStatus($sku, 'error');
+            $this->saveSpriceStatus($statusSku, 'error');
             Log::error('Exception in applyAmazonPrice', [
-                'sku' => $sku,
+                'status_sku' => $statusSku,
+                'amazon_api_sku' => $skuForAmazon,
                 'price' => $priceFloat,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -4623,6 +4694,99 @@ class OverallAmazonController extends Controller
                 ]]
             ], 500);
         }
+    }
+
+    /**
+     * US retail ASINs are commonly "B" + nine alphanumeric characters (avoids treating arbitrary 10-char SKUs as ASINs).
+     */
+    private function looksLikeTypicalRetailAsin(string $s): bool
+    {
+        $n = strtoupper(str_replace([' ', "\xc2\xa0"], '', trim($s)));
+
+        return (bool) preg_match('/^B[0-9A-Z]{9}$/', $n);
+    }
+
+    /**
+     * Resolve seller SKU from `amazon_datsheets` using the ASIN column (case-insensitive, spaces stripped).
+     */
+    private function sellerSkuFromAmazonDatasheetByAsin(string $asinLike): ?string
+    {
+        $n = strtoupper(str_replace([' ', "\xc2\xa0"], '', trim($asinLike)));
+        if ($n === '' || strlen($n) !== 10 || ! ctype_alnum($n)) {
+            return null;
+        }
+
+        $row = AmazonDatasheet::query()
+            ->whereRaw('UPPER(REPLACE(TRIM(COALESCE(asin, "")), " ", "")) = ?', [$n])
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->first();
+
+        if (! $row) {
+            return null;
+        }
+
+        $sku = trim((string) ($row->sku ?? ''));
+
+        return $sku !== '' ? $sku : null;
+    }
+
+    /**
+     * Match Product Master / grid key to `amazon_datsheets.sku` (spaces + case insensitive) and return the stored MSKU string.
+     */
+    private function sellerSkuFromAmazonDatasheetByProductKey(string $productOrGridSku): ?string
+    {
+        $raw = trim(str_replace("\xc2\xa0", ' ', $productOrGridSku));
+        if ($raw === '') {
+            return null;
+        }
+
+        $normSpace = strtoupper(preg_replace('/\s+/u', ' ', $raw));
+        $compact = strtoupper(str_replace([' ', "\xc2\xa0"], '', $raw));
+
+        $row = AmazonDatasheet::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($q) use ($normSpace, $compact) {
+                $q->whereRaw('UPPER(TRIM(sku)) = ?', [$normSpace])
+                    ->orWhereRaw('UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) = ?', [$compact]);
+            })
+            ->orderBy('id')
+            ->first();
+
+        if (! $row) {
+            return null;
+        }
+
+        $out = trim((string) ($row->sku ?? ''));
+
+        return $out !== '' ? $out : null;
+    }
+
+    /**
+     * True when MSKU from an ASIN datasheet row is the same listing as the grid child (spaces / case insensitive).
+     */
+    private function datasheetMskuMatchesChildSku(string $mskuFromAsinRow, string $rawChildSku): bool
+    {
+        $a = strtoupper(str_replace([' ', "\xc2\xa0"], '', trim($mskuFromAsinRow)));
+        $b = strtoupper(str_replace([' ', "\xc2\xa0"], '', trim($rawChildSku)));
+        if ($a === $b) {
+            return true;
+        }
+        $spacedEq = strtoupper(preg_replace('/\s+/u', ' ', trim($mskuFromAsinRow)))
+            === strtoupper(preg_replace('/\s+/u', ' ', trim($rawChildSku)));
+        if ($spacedEq) {
+            return true;
+        }
+        $fromKey = $this->sellerSkuFromAmazonDatasheetByProductKey($rawChildSku);
+        if ($fromKey !== null && $fromKey !== '') {
+            $k = strtoupper(str_replace([' ', "\xc2\xa0"], '', trim($fromKey)));
+
+            return $k === $a;
+        }
+
+        return false;
     }
 
     /**

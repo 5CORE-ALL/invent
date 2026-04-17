@@ -198,10 +198,24 @@ class AmazonSpApiService
         return $res['access_token'] ?? null;
     }
 
+    /**
+     * Normalize seller SKU for Listings Items API (NBSP / unicode spaces → ASCII space, collapse runs).
+     */
+    private function normalizeListingsSellerSku(string $sku): string
+    {
+        $s = trim(str_replace("\xc2\xa0", ' ', $sku));
+        if ($s === '') {
+            return '';
+        }
+        $s = preg_replace('/\p{Z}+/u', ' ', $s) ?? $s;
+
+        return trim(preg_replace('/\s+/u', ' ', $s) ?? $s);
+    }
+
     public function updateAmazonPriceUS($sku, $price, $maxRetries = 3)
     {
         // Validate inputs
-        $sku = trim($sku);
+        $sku = $this->normalizeListingsSellerSku(trim((string) $sku));
         if (empty($sku)) {
             Log::error("Amazon Price Update: Empty SKU provided");
             return [
@@ -934,7 +948,7 @@ class AmazonSpApiService
      */
     private function findAmazonSkuFormat($sku, $accessToken = null)
     {
-        $sku = trim($sku);
+        $sku = $this->normalizeListingsSellerSku(trim((string) $sku));
         if (empty($sku)) {
             return null;
         }
@@ -952,22 +966,35 @@ class AmazonSpApiService
             }
         }
 
-        // Generate case variations to try
+        $collapsed = preg_replace('/\s+/u', ' ', $sku);
+        $noSpaces = str_replace([' ', "\xc2\xa0"], '', $sku);
+
+        // Generate case + spacing variations (Seller Central MSKU may omit spaces, e.g. "CS042W" vs "CS 04 2W")
         $variations = [
-            $sku, // Original
-            strtoupper($sku), // All uppercase
-            strtolower($sku), // All lowercase
-            ucfirst(strtolower($sku)), // First letter uppercase
-            ucwords(strtolower($sku)), // Title case (each word capitalized)
+            $sku,
+            $collapsed,
+            $noSpaces,
+            strtoupper($sku),
+            strtoupper($collapsed),
+            strtoupper($noSpaces),
+            strtolower($sku),
+            strtolower($noSpaces),
+            ucfirst(strtolower($sku)),
+            ucwords(strtolower($sku)),
         ];
 
-        // Remove duplicates while preserving order
-        $variations = array_values(array_unique($variations));
+        $variations = array_values(array_unique(array_filter($variations, function ($v) {
+            return $v !== null && $v !== '';
+        })));
+
+        $marketplaceId = rawurlencode((string) ($this->marketplaceId ?: config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER'));
+        $included = rawurlencode('summaries,attributes,productTypes');
 
         foreach ($variations as $skuVariation) {
             try {
                 $encodedSku = rawurlencode($skuVariation);
-                $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+                $url = $this->endpoint . '/listings/2021-08-01/items/' . $sellerId . '/' . $encodedSku
+                    . '?marketplaceIds=' . $marketplaceId . '&includedData=' . $included;
 
                 $response = Http::withHeaders([
                     'x-amz-access-token' => $accessToken,
@@ -977,11 +1004,22 @@ class AmazonSpApiService
                 // If successful (200), return this SKU format
                 if ($response->successful()) {
                     $data = $response->json();
-                    // Check if we got valid data
-                    if (isset($data['summaries']) && !empty($data['summaries'])) {
-                        Log::info("Found matching SKU format in Amazon", [
+                    if (! is_array($data)) {
+                        $data = [];
+                    }
+                    if (! empty($data['errors'])) {
+                        continue;
+                    }
+                    $hasSummaries = ! empty($data['summaries']);
+                    $hasAttributes = ! empty($data['attributes']);
+                    $hasProductTypes = ! empty($data['productTypes']);
+                    $hasSkuField = isset($data['sku']) && (string) $data['sku'] !== '';
+                    if ($hasSummaries || $hasAttributes || $hasProductTypes || $hasSkuField) {
+                        Log::info('Found matching SKU format in Amazon', [
                             'original_sku' => $sku,
-                            'amazon_sku' => $skuVariation
+                            'amazon_sku' => $skuVariation,
+                            'has_summaries' => $hasSummaries,
+                            'has_attributes' => $hasAttributes,
                         ]);
                         return $skuVariation;
                     }

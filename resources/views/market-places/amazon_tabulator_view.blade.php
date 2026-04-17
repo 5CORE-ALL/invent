@@ -1011,7 +1011,8 @@
                 iconColor = '#ffc107';
                 titleText = 'Price pushing in progress...';
             }
-            return '<button type="button" class="btn btn-sm parent-pricing-modal-apply-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-status="' + escAttr(status || '') + '" title="' + escAttr(titleText) + '" style="border: none; background: none; color: ' + iconColor + '; padding: 0;">' + icon + '</button>';
+            const asinVal = (row.asin != null && String(row.asin).trim() !== '') ? escAttr(String(row.asin).trim()) : '';
+            return '<button type="button" class="btn btn-sm parent-pricing-modal-apply-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-asin="' + asinVal + '" data-status="' + escAttr(status || '') + '" title="' + escAttr(titleText) + '" style="border: none; background: none; color: ' + iconColor + '; padding: 0;">' + icon + '</button>';
         }
         /** S PFT % — same colors as Spft% column */
         function amazonModalSpftColoredHtml(row) {
@@ -1856,12 +1857,16 @@
             // Retry function for applying price with up to 5 attempts
             // NOTE: Backend now includes automatic verification and retry (2 attempts with fresh token)
             // This frontend retry is for network errors, timeouts, or persistent failures
-            function applyPriceWithRetry(sku, price, cell, maxRetries = 5, delay = 5000) {
+            function applyPriceWithRetry(sku, price, cell, maxRetries = 5, delay = 5000, asin = null) {
                 return new Promise((resolve, reject) => {
                     let attempt = 0;
                     
                     function attemptApply() {
                         attempt++;
+                        const post = { sku: sku, price: price };
+                        if (asin) {
+                            post.asin = asin;
+                        }
                         
                         $.ajax({
                             url: '/apply-amazon-price',
@@ -1869,10 +1874,7 @@
                             headers: {
                                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                             },
-                            data: {
-                                sku: sku,
-                                price: price
-                            },
+                            data: post,
                             success: function(response) {
                                 // Check for errors in response
                                 if (response.errors && response.errors.length > 0) {
@@ -1969,7 +1971,8 @@
                     if (row) {
                         const sprice = parseFloat(row.SPRICE) || 0;
                         if (sprice > 0) {
-                            skusToProcess.push({ sku: sku, price: sprice });
+                            const asin = (row.asin != null && String(row.asin).trim() !== '') ? String(row.asin).trim() : null;
+                            skusToProcess.push({ sku: sku, price: sprice, asin: asin });
                         }
                     }
                 });
@@ -2011,7 +2014,7 @@
                         return;
                     }
                     
-                    const { sku, price } = skusToProcess[currentIndex];
+                    const { sku, price, asin } = skusToProcess[currentIndex];
                     
                     // Find the row and update button to show clock spinner
                     const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
@@ -2037,8 +2040,8 @@
                         }
                     }
                     
-                    // Use retry function to apply price
-                    applyPriceWithRetry(sku, price, null, 5, 5000)
+                    // Use retry function to apply price (optional ASIN → seller SKU via amazon_datsheets on server)
+                    applyPriceWithRetry(sku, price, null, 5, 5000, asin || null)
                         .then((result) => {
                             successCount++;
                             
@@ -2425,7 +2428,8 @@
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> Applying...');
                 
                 // Same retry path as Accept column (backend verifies listing price after PATCH)
-                applyPriceWithRetry(sku, price, null, 5, 5000)
+                const asinBtn = ($btn.attr('data-asin') || '').trim();
+                applyPriceWithRetry(sku, price, null, 5, 5000, asinBtn || null)
                     .then(function() {
                         $btn.prop('disabled', false);
                         showToast('success', `Price $${price.toFixed(2)} applied successfully to Amazon for SKU: ${sku}`);
@@ -2471,7 +2475,8 @@
                     'justify-content': 'center'
                 });
                 $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
-                applyPriceWithRetry(sku, price, null, 5, 5000)
+                const asinModal = ($btn.attr('data-asin') || '').trim();
+                applyPriceWithRetry(sku, price, null, 5, 5000, asinModal || null)
                     .then(function() {
                         if (table) {
                             const tabRow = table.getRows().find(function(r) {
@@ -4419,6 +4424,7 @@
                             const sku = rowData['(Child) sku'];
                             const sprice = parseFloat(rowData.SPRICE) || 0;
                             const status = rowData.SPRICE_STATUS || null;
+                            const asinVal = (rowData.asin != null && String(rowData.asin).trim() !== '') ? escAttr(String(rowData.asin).trim()) : '';
                             
                             if (!sprice || sprice === 0) {
                                 return '<span style="color: #999;">N/A</span>';
@@ -4447,8 +4453,8 @@
                                 titleText = 'Price pushing in progress...';
                             }
                             
-                            // Show only icon with color, no background
-                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${escAttr(sku)}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
+                            // Show only icon with color, no background (data-asin lets server map B0… ASIN → seller SKU in amazon_datsheets)
+                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${escAttr(sku)}" data-asin="${asinVal}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
                                 ${icon}
                             </button>`;
                         },
@@ -4460,6 +4466,7 @@
                                 const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
                                 const sku = $btn.attr('data-sku') || $btn.data('sku');
                                 const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
+                                const asinCell = ($btn.attr('data-asin') || '').trim();
                                 
                                 if (!sku || !price || price <= 0 || isNaN(price)) {
                                     showToast('error', 'Invalid SKU or price');
@@ -4481,7 +4488,7 @@
                                 $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
                                 
                                 // Use retry function
-                                applyPriceWithRetry(sku, price, cell, 5, 5000)
+                                applyPriceWithRetry(sku, price, cell, 5, 5000, asinCell || null)
                                     .then((result) => {
                                         // Success - update row data with pushed status
                                         const row = cell.getRow();

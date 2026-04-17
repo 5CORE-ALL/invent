@@ -3,7 +3,6 @@
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
-        /* Header table stays visible; body scrolls (avoids sticky thead bugs inside overflow) */
         .followup-table-outer {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -13,9 +12,17 @@
             min-width: 1180px;
         }
 
+        /* Frozen header while scrolling the page (offset = theme topbar --tz-topbar-height) */
         .followup-table-header {
+            position: sticky;
+            top: var(--tz-topbar-height, 70px);
+            z-index: 25;
             border-bottom: 2px solid #1a56b7;
             background: #2c6ed5;
+            box-sizing: border-box;
+            overflow-x: hidden;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+            /* padding-right set in JS when body shows a vertical scrollbar (e.g. if max-height is reintroduced) */
         }
 
         .followup-table-header table,
@@ -27,10 +34,9 @@
         }
 
         .followup-notes-cell {
-            max-width: 11rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: pre-wrap;
+            word-break: break-word;
+            vertical-align: top;
         }
 
         .followup-table-header thead th {
@@ -44,8 +50,8 @@
         }
 
         .followup-table-body {
-            max-height: 60vh;
-            overflow: auto;
+            box-sizing: border-box;
+            overflow: visible;
             border: 1px solid #dee2e6;
             border-top: 0;
         }
@@ -63,6 +69,96 @@
         tr.followup-row-overdue { background-color: rgba(220, 53, 69, 0.12) !important; }
         tr.followup-row-overdue:hover { background-color: rgba(220, 53, 69, 0.2) !important; }
         .stat-card { border-radius: 0.5rem; border: 1px solid #e9ecef; }
+
+        /* Fixed layout was squeezing Actions (~6%); three btn-sm need a stable slot */
+        .followup-table-header thead th.followup-actions-col,
+        .followup-table-body tbody td.followup-actions-col {
+            width: 11rem;
+            min-width: 11rem;
+            max-width: 11rem;
+            box-sizing: border-box;
+            vertical-align: middle;
+        }
+
+        .followup-actions-col .followup-actions-btns {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.25rem;
+            flex-wrap: nowrap;
+        }
+
+        /*
+         * Ord column: clipboard like all-issues, but full id is shown in a flyout on hover so
+         * table-layout:fixed does not grow this column (inline expand + word-break on td caused layout issues).
+         */
+        .followup-table-body td.order-num-cell {
+            word-break: normal;
+            overflow: visible;
+            text-align: center;
+        }
+
+        .order-num-wrap {
+            position: relative;
+            display: inline-block;
+            vertical-align: middle;
+            max-width: 100%;
+        }
+
+        .order-num-cell {
+            white-space: nowrap;
+        }
+
+        .order-num-flyout {
+            position: absolute;
+            left: 50%;
+            top: calc(100% + 6px);
+            transform: translateX(-50%);
+            z-index: 40;
+            min-width: max(100%, 10rem);
+            max-width: min(42ch, 90vw);
+            padding: 6px 10px;
+            font-size: 0.8125rem;
+            line-height: 1.35;
+            text-align: left;
+            color: #212529;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 0.35rem;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+            white-space: normal;
+            word-break: break-all;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.15s ease, visibility 0.15s ease;
+        }
+
+        .order-num-wrap:hover .order-num-flyout {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        .copy-order-btn {
+            color: #0d6efd;
+            font-size: 0.8rem;
+            line-height: 1;
+            padding: 0 2px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            vertical-align: middle;
+            transition: color 0.15s;
+        }
+
+        .copy-order-btn:hover {
+            color: #0a58ca;
+        }
+
+        .copy-order-btn.copied {
+            color: #198754;
+        }
     </style>
 @endsection
 
@@ -136,7 +232,7 @@
                     <div class="col-md-3">
                         <label class="form-label small mb-0">Search</label>
                         <input type="text" class="form-control" id="filterSearch"
-                            placeholder="Ticket ID, order ID, SKU, customer, notes">
+                            placeholder="Order ID, SKU, customer, notes">
                     </div>
                     <div class="col-md-2">
                         <label class="form-label small mb-0">Channel</label>
@@ -215,16 +311,15 @@
                     <div class="followup-table-header">
                         <table class="table align-middle mb-0">
                             <colgroup>
-                                <col style="width:8%"><col style="width:8%"><col style="width:7%"><col
+                                <col style="width:6%"><col style="width:7%"><col
                                     style="width:10%"><col style="width:10%"><col style="width:12%"><col
                                     style="width:6%"><col style="width:7%"><col style="width:6%"><col
                                     style="width:9%"><col style="width:9%"><col style="width:8%"><col
-                                    style="width:6%">
+                                    style="width:11rem">
                             </colgroup>
                             <thead>
                                 <tr>
-                                    <th scope="col">Ticket ID</th>
-                                    <th scope="col">Order ID</th>
+                                    <th scope="col">Ord</th>
                                     <th scope="col">SKU</th>
                                     <th scope="col">Notes</th>
                                     <th scope="col">Channel</th>
@@ -235,7 +330,7 @@
                                     <th scope="col">Follow-up</th>
                                     <th scope="col">Next</th>
                                     <th scope="col">Executive</th>
-                                    <th scope="col" class="text-end">Actions</th>
+                                    <th scope="col" class="text-end followup-actions-col">Actions</th>
                                 </tr>
                             </thead>
                         </table>
@@ -243,15 +338,15 @@
                     <div class="followup-table-body">
                         <table class="table table-hover mb-0 align-middle">
                             <colgroup>
-                                <col style="width:8%"><col style="width:8%"><col style="width:7%"><col
+                                <col style="width:6%"><col style="width:7%"><col
                                     style="width:10%"><col style="width:10%"><col style="width:12%"><col
                                     style="width:6%"><col style="width:7%"><col style="width:6%"><col
                                     style="width:9%"><col style="width:9%"><col style="width:8%"><col
-                                    style="width:6%">
+                                    style="width:11rem">
                             </colgroup>
                             <tbody id="followupTableBody">
                                 <tr>
-                                    <td colspan="13" class="text-center py-4 text-muted">Loading…</td>
+                                    <td colspan="12" class="text-center py-4 text-muted">Loading…</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -326,9 +421,46 @@
                 if (raw == null || String(raw).trim() === '') {
                     return '<td class="text-muted">—</td>';
                 }
-                const t = String(raw).replace(/\s+/g, ' ').trim();
-                return '<td class="followup-notes-cell" title="' + escapeAttr(t) + '">' + escapeHtml(t) +
-                    '</td>';
+                const t = String(raw);
+                return '<td class="followup-notes-cell">' + escapeHtml(t) + '</td>';
+            }
+
+            /** Ord: clipboard (like all-issues) + hover flyout so the column width stays fixed. */
+            function orderIdCellHtml(row) {
+                const raw = row.order_id;
+                const trimmed = raw == null ? '' : String(raw).trim();
+                const missing = trimmed === '' || trimmed === '—';
+                if (missing) {
+                    return '<td class="order-num-cell text-muted">—</td>';
+                }
+                return '<td class="order-num-cell">' +
+                    '<div class="order-num-wrap">' +
+                    '<button type="button" class="copy-order-btn" data-copy="' + escapeAttr(trimmed) +
+                    '" title="' + escapeAttr(trimmed) + '"><i class="bi bi-clipboard"></i></button>' +
+                    '<span class="order-num-flyout">' + escapeHtml(trimmed) + '</span></div></td>';
+            }
+
+            function updateFollowupBodyScrollbarGutter() {
+                const body = document.querySelector('.followup-table-body');
+                const header = document.querySelector('.followup-table-header');
+                if (!body || !header) return;
+                const sw = Math.max(0, body.offsetWidth - body.clientWidth);
+                header.style.paddingRight = sw + 'px';
+            }
+
+            function bindFollowupScrollbarGutter() {
+                const body = document.querySelector('.followup-table-body');
+                if (!body || body.dataset.followupGutterBound === '1') return;
+                body.dataset.followupGutterBound = '1';
+                let resizeTimer = null;
+                const run = () => updateFollowupBodyScrollbarGutter();
+                window.addEventListener('resize', () => {
+                    clearTimeout(resizeTimer);
+                    resizeTimer = setTimeout(run, 100);
+                });
+                if (typeof ResizeObserver !== 'undefined') {
+                    new ResizeObserver(run).observe(body);
+                }
             }
 
             let skuSearchTimer = null;
@@ -507,15 +639,15 @@
 
                     if (!json.data.length) {
                         tbody.innerHTML =
-                            '<tr><td colspan="13" class="text-center py-4 text-muted">No records match filters.</td></tr>';
+                            '<tr><td colspan="12" class="text-center py-4 text-muted">No records match filters.</td></tr>';
+                        requestAnimationFrame(() => updateFollowupBodyScrollbarGutter());
                         return;
                     }
 
                     tbody.innerHTML = json.data.map(row => {
                         const overdue = row.overdue ? ' followup-row-overdue' : '';
                         return '<tr class="' + overdue.trim() + '" data-id="' + row.id + '">' +
-                            '<td>' + escapeHtml(row.ticket_id) + '</td>' +
-                            '<td>' + escapeHtml(row.order_id) + '</td>' +
+                            orderIdCellHtml(row) +
                             '<td>' + escapeHtml(row.sku) + '</td>' +
                             notesCellHtml(row.notes) +
                             '<td>' + escapeHtml(row.channel_name) + '</td>' +
@@ -526,23 +658,26 @@
                             '<td>' + escapeHtml(row.followup_display) + '</td>' +
                             '<td>' + escapeHtml(row.next_followup) + '</td>' +
                             '<td>' + escapeHtml(row.executive) + '</td>' +
-                            '<td class="text-end text-nowrap">' +
-                            '<button type="button" class="btn btn-sm btn-outline-info btn-view me-1" data-id="' + row
-                            .id +
+                            '<td class="text-end text-nowrap followup-actions-col">' +
+                            '<div class="followup-actions-btns">' +
+                            '<button type="button" class="btn btn-sm btn-outline-info btn-view" data-id="' + row.id +
                             '" data-bs-toggle="tooltip" title="View"><i class="mdi mdi-eye"></i></button>' +
-                            '<button type="button" class="btn btn-sm btn-outline-primary btn-edit me-1" data-id="' +
+                            '<button type="button" class="btn btn-sm btn-outline-primary btn-edit" data-id="' +
                             row.id +
                             '" data-bs-toggle="tooltip" title="Edit"><i class="mdi mdi-pencil"></i></button>' +
-                            '<button type="button" class="btn btn-sm btn-outline-danger btn-del" data-id="' + row
-                            .id +
+                            '<button type="button" class="btn btn-sm btn-outline-danger btn-del" data-id="' + row.id +
                             '" data-bs-toggle="tooltip" title="Delete"><i class="mdi mdi-delete"></i></button>' +
-                            '</td></tr>';
+                            '</div></td></tr>';
                     }).join('');
 
                     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => updateFollowupBodyScrollbarGutter());
+                    });
                 } catch (e) {
                     tbody.innerHTML =
-                        '<tr><td colspan="13" class="text-center text-danger py-4">Failed to load data.</td></tr>';
+                        '<tr><td colspan="12" class="text-center text-danger py-4">Failed to load data.</td></tr>';
+                    requestAnimationFrame(() => updateFollowupBodyScrollbarGutter());
                 }
             }
 
@@ -716,6 +851,28 @@
             });
 
             document.getElementById('followupTableBody').addEventListener('click', async (e) => {
+                const copyOrderBtn = e.target.closest('.copy-order-btn');
+                if (copyOrderBtn) {
+                    e.preventDefault();
+                    const text = copyOrderBtn.getAttribute('data-copy') || '';
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        copyOrderBtn.classList.add('copied');
+                        copyOrderBtn.innerHTML = '<i class="bi bi-clipboard-check"></i>';
+                        setTimeout(() => {
+                            copyOrderBtn.classList.remove('copied');
+                            copyOrderBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                        }, 1500);
+                    } catch (err) {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                    }
+                    return;
+                }
                 const btn = e.target.closest('button');
                 if (!btn) return;
                 const id = btn.dataset.id;
@@ -801,6 +958,7 @@
             });
 
             refreshExecutivePickers(document.getElementById('filterExecutive').value);
+            bindFollowupScrollbarGutter();
             loadTable();
 
             // TODO: Replace static data with API integration (single endpoint for list + stats).
