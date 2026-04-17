@@ -69,6 +69,13 @@
                                 </select>
                             </div>
                             <div class="col-md-3 col-lg-2">
+                                <label class="form-label mb-1" for="amazonAdsFilterAll">ALL</label>
+                                <select id="amazonAdsFilterAll" class="form-select form-select-sm" title="Show every report table on one page (each grid loads its own full data)">
+                                    <option value="">Single table (tabs)</option>
+                                    <option value="all">All tables — full data</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 col-lg-2">
                                 <label class="form-label mb-1" for="amazonAdsFilterSummaryRange">Report range (L30, L7…)</label>
                                 <select id="amazonAdsFilterSummaryRange" class="form-select form-select-sm">
                                     <option value="">— Calendar dates below —</option>
@@ -139,6 +146,14 @@
                                 <span class="badge bg-secondary ms-1 source-pill">amazon_fbm_targeting_checks</span>
                             </a>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" id="tab-all-stacked" data-bs-toggle="tab"
+                               href="#pane-all-stacked" role="tab"
+                               aria-controls="pane-all-stacked" aria-selected="false">
+                                ALL — stacked
+                                <span class="badge bg-dark ms-1 source-pill">all sources</span>
+                            </a>
+                        </li>
                     </ul>
 
                     <div class="tab-content" id="amazonAdsAllTabContent">
@@ -201,6 +216,66 @@
                                 </table>
                             </div>
                         </div>
+
+                        <div class="tab-pane fade" id="pane-all-stacked" role="tabpanel"
+                             aria-labelledby="tab-all-stacked">
+                            <p class="text-muted small mb-3">Each table below loads independently (same filters as single-tab view). Scroll to compare SP, SB, SD, bid caps, and FBM targeting.</p>
+                            <div class="mb-4">
+                                <h6 class="text-success mb-2">SP — <code>amazon_sp_campaign_reports</code></h6>
+                                <div class="amazon-raw-table-wrap">
+                                    <table id="amazonAdsAllStackSpTable"
+                                           class="table table-hover table-striped table-bordered nowrap w-100"
+                                           data-raw-source="sp_reports">
+                                        <thead><tr></tr></thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="mb-4">
+                                <h6 class="text-primary mb-2">SB — <code>amazon_sb_campaign_reports</code></h6>
+                                <div class="amazon-raw-table-wrap">
+                                    <table id="amazonAdsAllStackSbTable"
+                                           class="table table-hover table-striped table-bordered nowrap w-100"
+                                           data-raw-source="sb_reports">
+                                        <thead><tr></tr></thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="mb-4">
+                                <h6 class="text-info mb-2">SD — <code>amazon_sd_campaign_reports</code></h6>
+                                <div class="amazon-raw-table-wrap">
+                                    <table id="amazonAdsAllStackSdTable"
+                                           class="table table-hover table-striped table-bordered nowrap w-100"
+                                           data-raw-source="sd_reports">
+                                        <thead><tr></tr></thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="mb-4">
+                                <h6 class="text-secondary mb-2"><code>amazon_bid_caps</code></h6>
+                                <div class="amazon-raw-table-wrap">
+                                    <table id="amazonAdsAllStackBidCapsTable"
+                                           class="table table-hover table-striped table-bordered nowrap w-100"
+                                           data-raw-source="bid_caps">
+                                        <thead><tr></tr></thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="mb-0">
+                                <h6 class="text-secondary mb-2"><code>amazon_fbm_targeting_checks</code></h6>
+                                <div class="amazon-raw-table-wrap">
+                                    <table id="amazonAdsAllStackFbmTable"
+                                           class="table table-hover table-striped table-bordered nowrap w-100"
+                                           data-raw-source="fbm_targeting">
+                                        <thead><tr></tr></thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -244,15 +319,24 @@
                 'sb_reports': '#tab-sb-reports',
                 'sd_reports': '#tab-sd-reports',
                 'bid_caps': '#tab-bid-caps',
-                'fbm_targeting': '#tab-fbm-targeting'
+                'fbm_targeting': '#tab-fbm-targeting',
+                'all': '#tab-all-stacked'
             };
             var tabIdToSource = {
                 'tab-sp-reports': 'sp_reports',
                 'tab-sb-reports': 'sb_reports',
                 'tab-sd-reports': 'sd_reports',
                 'tab-bid-caps': 'bid_caps',
-                'tab-fbm-targeting': 'fbm_targeting'
+                'tab-fbm-targeting': 'fbm_targeting',
+                'tab-all-stacked': 'all'
             };
+            var stackedAllTables = [
+                ['amazonAdsAllStackSpTable', 'sp_reports'],
+                ['amazonAdsAllStackSbTable', 'sb_reports'],
+                ['amazonAdsAllStackSdTable', 'sd_reports'],
+                ['amazonAdsAllStackBidCapsTable', 'bid_caps'],
+                ['amazonAdsAllStackFbmTable', 'fbm_targeting']
+            ];
 
             function amazonAdsFilterPayload() {
                 var sumEl = document.getElementById('amazonAdsFilterSummaryRange');
@@ -282,9 +366,34 @@
                 }
             }
 
+            /** Short labels for Amazon ad_type values in the grid (display only; sort/filter use raw). */
+            function formatAdTypeDisplay(data, type) {
+                if (type !== 'display') {
+                    return data;
+                }
+                if (data === null || data === undefined) {
+                    return '';
+                }
+                var s = String(data).trim();
+                var u = s.toUpperCase();
+                if (u === 'SPONSORED_PRODUCTS') {
+                    return 'SP';
+                }
+                if (u === 'SPONSORED_BRANDS') {
+                    return 'SB';
+                }
+                return s;
+            }
+
             function buildColumns(sourceKey) {
                 return rawSources[sourceKey].columns.map(function (c) {
-                    return { data: c, title: c, defaultContent: '' };
+                    var col = { data: c, title: c, defaultContent: '' };
+                    if (c === 'ad_type') {
+                        col.render = function (data, type) {
+                            return formatAdTypeDisplay(data, type);
+                        };
+                    }
+                    return col;
                 });
             }
 
@@ -314,6 +423,17 @@
                 var cols = buildColumns(sourceKey);
                 initialized[tableId] = true;
 
+                var hiddenRawColumnKeys = ['id', 'campaign_id'];
+                var hiddenColumnDefs = [];
+                hiddenRawColumnKeys.forEach(function (key) {
+                    for (var ci = 0; ci < cols.length; ci++) {
+                        if (cols[ci].data === key) {
+                            hiddenColumnDefs.push({ targets: ci, visible: false });
+                            break;
+                        }
+                    }
+                });
+
                 var dt = $t.DataTable({
                     processing: true,
                     serverSide: true,
@@ -325,6 +445,7 @@
                     order: [[0, 'desc']],
                     scrollX: true,
                     scrollCollapse: true,
+                    columnDefs: hiddenColumnDefs,
                     ajax: {
                         url: dataUrlTemplate + encodeURIComponent(sourceKey),
                         type: 'POST',
@@ -352,6 +473,12 @@
                 if (!pane) {
                     return;
                 }
+                if (targetSelector === '#pane-all-stacked') {
+                    stackedAllTables.forEach(function (pair) {
+                        initTable(pair[0], pair[1]);
+                    });
+                    return;
+                }
                 var $table = pane.querySelector('table[data-raw-source]');
                 if (!$table || !$table.id) {
                     return;
@@ -368,9 +495,23 @@
                     onTabTarget('#pane-sp-reports');
 
                     var typeSel = document.getElementById('amazonAdsFilterReportType');
+                    var allSel = document.getElementById('amazonAdsFilterAll');
                     if (typeSel) {
                         typeSel.addEventListener('change', function () {
+                            if (allSel) {
+                                allSel.value = '';
+                            }
                             amazonAdsShowTabForSource(this.value);
+                        });
+                    }
+                    if (allSel) {
+                        allSel.addEventListener('change', function () {
+                            if (this.value === 'all') {
+                                amazonAdsShowTabForSource('all');
+                            } else {
+                                var src = typeSel ? typeSel.value : 'sp_reports';
+                                amazonAdsShowTabForSource(src);
+                            }
                         });
                     }
 
@@ -410,8 +551,12 @@
                         }
                         var src = tabIdToSource[e.target.id];
                         var typeSel = document.getElementById('amazonAdsFilterReportType');
-                        if (src && typeSel) {
+                        var allSelSync = document.getElementById('amazonAdsFilterAll');
+                        if (src && typeSel && src !== 'all') {
                             typeSel.value = src;
+                        }
+                        if (allSelSync) {
+                            allSelSync.value = (e.target.id === 'tab-all-stacked') ? 'all' : '';
                         }
                     });
                 }
