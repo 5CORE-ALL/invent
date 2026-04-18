@@ -2854,6 +2854,8 @@
                                     </li> --}}
                         <li><a href="{{ route('tiktok.pricing') }}">TikTok Shop Analytics</a>
                         </li>
+                        <li><a href="{{ route('tiktok2.pricing') }}">TikTok 2 Shop Analytics</a>
+                        </li>
                         <li><a href="{{ route('tiktok.utilized') }}">TikTok Shop Ads</a>
                         </li>
                     </ul>

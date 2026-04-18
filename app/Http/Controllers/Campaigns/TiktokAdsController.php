@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Models\ReverbViewData;
 use App\Models\ShopifySku;
 use App\Models\TiktokShopDataView;
+use App\Models\TiktokTwoShopDataView;
 use App\Models\TikTokDailyData;
 use App\Models\TikTokProduct;
 use Illuminate\Http\Request;
@@ -559,6 +560,21 @@ class TiktokAdsController extends Controller
         }
     }
 
+    /**
+     * TikTok Shop 1: tiktok_shop_data_views. TikTok 2 pricing: tiktok_two_shop_data_views.
+     * Client sends `channel` matching pricing page (e.g. "tiktok2" from TTP_CFG.summaryChannel).
+     *
+     * @return class-string
+     */
+    private function tiktokDataViewModelClassForRequest(Request $request): string
+    {
+        $ch = (string) $request->input('channel', 'tiktok');
+        if ($ch === 'tiktok2') {
+            return TiktokTwoShopDataView::class;
+        }
+        return TiktokShopDataView::class;
+    }
+
     public function updateUtilized(Request $request)
     {
         // Ensure JSON body is merged for requests from tiktok tabulator view
@@ -589,8 +605,8 @@ class TiktokAdsController extends Controller
                 ], 400);
             }
 
-            // Store NR in tiktok_shop_data_views (TiktokShopDataView) so it shows on TikTok pricing / utilized page
-            $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            $viewClass = $this->tiktokDataViewModelClassForRequest($request);
+            $view = $viewClass::firstOrNew(['sku' => $sku]);
             $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
             $values['NR'] = $value;
             $view->value = $values;
@@ -611,7 +627,8 @@ class TiktokAdsController extends Controller
                 ], 400);
             }
 
-            $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            $viewClass = $this->tiktokDataViewModelClassForRequest($request);
+            $view = $viewClass::firstOrNew(['sku' => $sku]);
             $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
             $values['variation_req'] = $value;
             $view->value = $values;
@@ -632,7 +649,8 @@ class TiktokAdsController extends Controller
                 ], 400);
             }
 
-            $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            $viewClass = $this->tiktokDataViewModelClassForRequest($request);
+            $view = $viewClass::firstOrNew(['sku' => $sku]);
             $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
             $values['video_req'] = $value;
             $view->value = $values;
@@ -647,7 +665,8 @@ class TiktokAdsController extends Controller
         if ($field === 'video_uploaded') {
             $value = ($value === true || $value === 1 || $value === '1') ? 1 : 0;
 
-            $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            $viewClass = $this->tiktokDataViewModelClassForRequest($request);
+            $view = $viewClass::firstOrNew(['sku' => $sku]);
             $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
             $values['video_uploaded'] = $value;
             $view->value = $values;

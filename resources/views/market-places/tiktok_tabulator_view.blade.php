@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'TikTok Shop Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok Shop Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -136,8 +136,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'TikTok Shop Analytics',
-        'sub_title' => 'TikTok Shop Analytics',
+        'page_title' => $tiktokPageTitle ?? 'TikTok Shop Analytics',
+        'sub_title' => $tiktokPageTitle ?? 'TikTok Shop Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -147,7 +147,7 @@
 
                 <!-- Upload Section -->
                 <div class="mb-3 p-3 bg-light rounded">
-                    <form action="{{ url('/tiktok-upload-csv') }}" method="POST" enctype="multipart/form-data">
+                    <form action="{{ url($tiktokUploadPath ?? '/tiktok-upload-csv') }}" method="POST" enctype="multipart/form-data">
                         @csrf
                         <div class="d-flex align-items-center gap-2">
                             <input type="file" name="csv_file" class="form-control" accept=".csv" required
@@ -155,7 +155,7 @@
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-upload"></i> Upload CSV
                             </button>
-                            <a href="{{ url('/tiktok-download-sample-csv') }}" class="btn btn-secondary">
+                            <a href="{{ url($tiktokDownloadSamplePath ?? '/tiktok-download-sample-csv') }}" class="btn btn-secondary">
                                 <i class="fas fa-download"></i> Download Sample
                             </a>
                         </div>
@@ -500,9 +500,24 @@
     </div>
 @endsection
 
+@php
+    $ttpCfg = array_merge(
+        [
+            'dataJson' => '/tiktok-data-json',
+            'badgeChart' => '/tiktok-badge-chart-data',
+            'saveSprice' => '/tiktok-save-sprice',
+            'columnGet' => '/tiktok-pricing-column-visibility',
+            'columnSet' => '/tiktok-pricing-column-visibility',
+            'distinctCampaign' => '/tiktok-distinct-campaign-count',
+            'summaryChannel' => 'tiktok',
+        ],
+        $tiktokPricingClientConfig ?? [],
+    );
+@endphp
+
 @section('script-bottom')
     <script>
-        const COLUMN_VIS_KEY = "tiktok_tabulator_column_visibility";
+        const TTP_CFG = @json($ttpCfg);
         const DEFAULT_TIKTOK_MARGIN_PERCENT = Number(@json($tiktokPercentage ?? 80));
         const DEFAULT_TIKTOK_MARGIN_FACTOR = DEFAULT_TIKTOK_MARGIN_PERCENT / 100;
         // Ads section columns: hidden by default, only show when "Show Ads Columns" btn is clicked
@@ -640,11 +655,12 @@
                 $('#ttBadgeChartLoading').show();
 
                 ttBadgeChartAjax = $.ajax({
-                    url: '/tiktok-badge-chart-data',
+                    url: TTP_CFG.badgeChart,
                     method: 'GET',
                     data: {
                         metric: ttBadgeChartMetricKey,
-                        days: ttBadgeChartDays
+                        days: ttBadgeChartDays,
+                        channel: TTP_CFG.summaryChannel
                     },
                     success: function(res) {
                         ttBadgeChartAjax = null;
@@ -1121,7 +1137,7 @@
 
             function saveSpriceUpdates(updates) {
                 $.ajax({
-                    url: '/tiktok-save-sprice',
+                    url: TTP_CFG.saveSprice,
                     method: 'POST',
                     headers: {
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1151,7 +1167,7 @@
 
             // Initialize Tabulator
             table = new Tabulator("#tiktok-table", {
-                ajaxURL: "/tiktok-data-json",
+                ajaxURL: TTP_CFG.dataJson,
                 ajaxResponse: function(url, params, response) {
                     var data = Array.isArray(response) ? response : (response && response.data);
                     if (data && Array.isArray(data)) {
@@ -2201,7 +2217,8 @@
                         data: JSON.stringify({
                             sku: sku,
                             field: 'in_roas',
-                            value: value
+                            value: value,
+                            channel: TTP_CFG.summaryChannel
                         }),
                         success: function(response) {
                             if (response && response.success) {
@@ -2234,7 +2251,8 @@
                         data: JSON.stringify({
                             sku: sku,
                             field: 'budget',
-                            value: value
+                            value: value,
+                            channel: TTP_CFG.summaryChannel
                         }),
                         success: function(response) {
                             if (response && response.success) {
@@ -2278,7 +2296,8 @@
                     data: JSON.stringify({
                         sku: sku,
                         field: field,
-                        value: value
+                        value: value,
+                        channel: TTP_CFG.summaryChannel
                     }),
                     success: function(response) {
                         if (response && response.success) {
@@ -2328,7 +2347,8 @@
                     data: JSON.stringify({
                         sku: sku,
                         field: field,
-                        value: value
+                        value: value,
+                        channel: TTP_CFG.summaryChannel
                     }),
                     success: function(response) {
                         if (response && response.success) {
@@ -2934,10 +2954,11 @@
                 });
 
                 $.ajax({
-                    url: '/tiktok-pricing-column-visibility',
+                    url: TTP_CFG.columnSet,
                     method: 'POST',
                     data: {
                         visibility: visibility,
+                        channel: TTP_CFG.summaryChannel,
                         _token: '{{ csrf_token() }}'
                     }
                 });
@@ -2945,8 +2966,11 @@
 
             function applyColumnVisibilityFromServer() {
                 $.ajax({
-                    url: '/tiktok-pricing-column-visibility',
+                    url: TTP_CFG.columnGet,
                     method: 'GET',
+                    data: {
+                        channel: TTP_CFG.summaryChannel
+                    },
                     success: function(visibility) {
                         if (visibility && Object.keys(visibility).length > 0) {
                             Object.keys(visibility).forEach(field => {
@@ -2989,7 +3013,7 @@
                         updateUtilizedCounts();
                     }, 100);
                 }
-                fetch('/tiktok-distinct-campaign-count')
+                fetch(TTP_CFG.distinctCampaign)
                     .then(function(r) {
                         return r.json();
                     })

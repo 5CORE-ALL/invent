@@ -2509,12 +2509,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // TikTok Pricing Routes (Tabulator)
     Route::get('/tiktok-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokTabulatorView'])->name('tiktok.pricing');
+    Route::get('/tiktok-2-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2TabulatorView'])->name('tiktok2.pricing');
     Route::get('/tiktok-data-json', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokDataJson'])->name('tiktok.data.json');
+    Route::get('/tiktok-2-data-json', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2DataJson'])->name('tiktok2.data.json');
     Route::get('/tiktok-distinct-campaign-count', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokDistinctCampaignCount'])->name('tiktok.distinct.campaign.count');
     Route::get('/tiktok-badge-chart-data', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokBadgeChartData'])->name('tiktok.badge.chart.data');
     Route::post('/tiktok-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTokCsv'])->name('tiktok.upload.csv');
+    Route::post('/tiktok-2-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTok2Csv'])->name('tiktok2.upload.csv');
     Route::get('/tiktok-download-sample-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'downloadSampleCsv'])->name('tiktok.download.sample');
     Route::post('/tiktok-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceUpdates'])->name('tiktok.save.sprice');
+    Route::post('/tiktok-2-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceTiktokTwoUpdates'])->name('tiktok2.save.sprice');
     Route::get('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getColumnVisibility'])->name('tiktok.pricing.column.get');
     Route::post('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'setColumnVisibility'])->name('tiktok.pricing.column.set');
 
