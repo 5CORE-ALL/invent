@@ -646,8 +646,23 @@
                         </div>
                     </div>
 
-                    <!-- ETC-M total -->
-                    <div class="stat-card stat-card-yellow" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
+                    <!-- ETC (H): raw hours = sum(ETC minutes) ÷ 60 for visible rows (matches ETC column) -->
+                    <div class="stat-card stat-card-teal" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;"
+                         title="Sum of the ETC column (minutes per run) for visible rows, divided by 60. This is raw ETC hours, not frequency-weighted.">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
+                                <i class="mdi mdi-timer-sand"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-label" style="font-size: 9px;">ETC (H)</div>
+                                <div class="stat-value" style="font-size: 20px;">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ETC-M: ETC × frequency weight (not comparable to ETC (H) without context) -->
+                    <div class="stat-card stat-card-yellow" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;"
+                         title="Frequency-weighted: each row is ETC minutes × (Daily=25, Weekly=6, Monthly=1), summed, then ÷ 60. Higher when tasks repeat often.">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
                                 <i class="mdi mdi-calculator-variant"></i>
@@ -1254,7 +1269,7 @@
                     // ETC — whole minutes (values still ETA minutes; hover for hint)
                     cols.push({
                         title: "ETC",
-                        headerTooltip: "Minutes (ETA)",
+                        headerTooltip: "Minutes per run. Sum of this column for visible rows ÷ 60 matches the ETC (H) stat (not ETC-M).",
                         field: "eta_time", 
                         width: 72,
                         minWidth: 56,
@@ -1275,6 +1290,7 @@
                     // ETC-M (ETC x frequency multiplier) — whole number
                     cols.push({
                         title: "ETC-M",
+                        headerTooltip: "ETC minutes × weight (Daily 25, Weekly 6, Monthly 1). Stat card ETC-M uses the same sum ÷ 60 (h).",
                         field: "etc_monthly",
                         width: 110,
                         hozAlign: "center",
@@ -1621,6 +1637,11 @@
                 var etcMonthlyTotal = filteredData.reduce(function(sum, task) {
                     return sum + calculateEtcMonthly(task);
                 }, 0);
+                var etcRawMinutes = filteredData.reduce(function(sum, task) {
+                    var m = parseFloat(task && task.eta_time != null && task.eta_time !== '' ? task.eta_time : 0);
+                    return sum + (isNaN(m) ? 0 : m);
+                }, 0);
+                var etcRawHours = Math.round(etcRawMinutes / 60);
                 
                 // Update stat cards
                 $('.stat-card').each(function() {
@@ -1633,6 +1654,7 @@
                         case 'WEEKLY': valueEl.text(weekly); break;
                         case 'MONTHLY': valueEl.text(monthly); break;
                         case 'ACTIVE': valueEl.text(active); break;
+                        case 'ETC (H)': valueEl.text(etcRawHours + 'h'); break;
                         case 'ETC-M': valueEl.text(Math.round(etcMonthlyTotal / 60) + 'h'); break;
                     }
                 });

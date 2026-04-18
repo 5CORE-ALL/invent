@@ -287,15 +287,15 @@ class TaskController extends Controller
      * Does not apply {@see Session::get('selected_user_name')} — Task Summary stays global within that visibility;
      * the /tasks page keeps its own session + UI filters.
      *
-     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, need_approval: int, done: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned)
+     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, a_task_h: int, need_approval: int, done: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned). a_task_h is rounded total ETC hours for automated (is_automate_task) assignee tasks.
      */
     protected function getTaskSummaryMemberRows(): array
     {
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
-        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date']);
+        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'is_automate_task', 'eta_time']);
 
-        $defaultCounts = ['task' => 0, 'overdue' => 0, 'a_task' => 0, 'need_approval' => 0, 'assignor_task' => 0, 'done' => 0];
+        $defaultCounts = ['task' => 0, 'overdue' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0, 'assignor_task' => 0, 'done' => 0];
 
         $byEmail = [];
         foreach ($tasks as $task) {
@@ -349,6 +349,9 @@ class TaskController extends Controller
                 if ($isOverdue) {
                     $byEmail[$email]['overdue']++;
                 }
+                if (!empty($task->is_automate_task)) {
+                    $byEmail[$email]['a_task_h'] += (float) ($task->eta_time ?? 0);
+                }
             }
         }
 
@@ -369,10 +372,21 @@ class TaskController extends Controller
                 'assignor_task' => $counts['assignor_task'],
                 'overdue' => $counts['overdue'],
                 'a_task' => $counts['a_task'],
+                'a_task_h' => (int) round($counts['a_task_h'] / 60),
                 'need_approval' => $counts['need_approval'],
                 'done' => $counts['done'],
             ];
         }
+
+        usort($rows, function (array $a, array $b): int {
+            $ta = (int) ($a['task'] ?? 0);
+            $tb = (int) ($b['task'] ?? 0);
+            if ($ta !== $tb) {
+                return $tb <=> $ta;
+            }
+
+            return strcasecmp((string) ($a['team_member'] ?? ''), (string) ($b['team_member'] ?? ''));
+        });
 
         return $rows;
     }

@@ -477,6 +477,9 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="a_task" data-sort-type="number" title="Sort by A Task count" role="button" tabindex="0">
                                         A Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="a_task_h" data-sort-type="number" title="Sort by automated task ETC hours (rounded)" role="button" tabindex="0">
+                                        A Task H <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="need_approval" data-sort-type="number" title="Sort by Need Approval count" role="button" tabindex="0">
                                         Need Approval <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
@@ -501,6 +504,7 @@
                                         data-sort-assignor_task="{{ (int) ($row['assignor_task'] ?? 0) }}"
                                         data-sort-overdue="{{ (int) ($row['overdue'] ?? 0) }}"
                                         data-sort-a_task="{{ (int) ($row['a_task'] ?? 0) }}"
+                                        data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
                                         data-sort-need_approval="{{ (int) ($row['need_approval'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}">
                                         <td class="task-summary-col-member">
@@ -524,16 +528,17 @@
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
                                         <td class="task-summary-num @if(($row['overdue'] ?? 0) > 0) task-summary-col-overdue-positive @endif">{{ $row['overdue'] }}</td>
                                         <td class="task-summary-num">{{ $row['a_task'] }}</td>
+                                        <td class="task-summary-num" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
                                         <td class="task-summary-num">{{ $row['need_approval'] }}</td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="9" class="text-center text-muted py-4">No team members found.</td>
+                                        <td colspan="10" class="text-center text-muted py-4">No team members found.</td>
                                     </tr>
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="9" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="10" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -720,6 +725,7 @@
                         assignor_task: parseInt(tr.getAttribute('data-sort-assignor_task'), 10) || 0,
                         overdue: parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0,
                         a_task: parseInt(tr.getAttribute('data-sort-a_task'), 10) || 0,
+                        a_task_h: parseInt(tr.getAttribute('data-sort-a_task_h'), 10) || 0,
                         need_approval: parseInt(tr.getAttribute('data-sort-need_approval'), 10) || 0,
                         done: parseInt(tr.getAttribute('data-sort-done'), 10) || 0
                     };
@@ -1032,8 +1038,8 @@
                 if (!grid) {
                     return;
                 }
-                var labels = ['As assignee', 'As assignor', 'Done', 'Overdue', 'A task', 'Need appr.'];
-                var classes = ['', '', 'ts-stat-done', 'ts-stat-overdue', '', ''];
+                var labels = ['As assignee', 'As assignor', 'Done', 'Overdue', 'A task', 'A task H', 'Need appr.'];
+                var classes = ['', '', 'ts-stat-done', 'ts-stat-overdue', '', '', ''];
                 grid.innerHTML = '';
                 labels.forEach(function (lbl, i) {
                     var div = document.createElement('div');
@@ -1054,10 +1060,14 @@
                 var done = 0;
                 var overdue = 0;
                 var aTask = 0;
+                var aTaskH = 0;
                 var needAppr = 0;
                 (tasks || []).forEach(function (t) {
                     if (tsPanelFieldMatchesUser(userNorm, t.assignee_name)) {
                         asAssignee += 1;
+                        if (t.is_automate_task == 1 || t.is_automate_task === true) {
+                            aTaskH += (parseFloat(t.eta_time) || 0) / 60;
+                        }
                     }
                     if (tsPanelFieldMatchesUser(userNorm, t.assignor_name)) {
                         asAssignor += 1;
@@ -1082,6 +1092,7 @@
                     { lbl: 'Done', val: done, cls: 'ts-stat-done' },
                     { lbl: 'Overdue', val: overdue, cls: 'ts-stat-overdue' },
                     { lbl: 'A task', val: aTask, cls: '' },
+                    { lbl: 'A task H', val: String(Math.round(aTaskH)), cls: '' },
                     { lbl: 'Need appr.', val: needAppr, cls: '' }
                 ];
                 grid.innerHTML = '';
@@ -1346,6 +1357,11 @@
                     vb = parseInt(vb, 10) || 0;
                     return va - vb;
                 }
+                if (type === 'float') {
+                    va = parseFloat(va) || 0;
+                    vb = parseFloat(vb) || 0;
+                    return va - vb;
+                }
                 return va.toString().localeCompare(vb.toString(), undefined, { sensitivity: 'base' });
             }
 
@@ -1361,7 +1377,8 @@
                         activeTh = th;
                     }
                 });
-                var type = activeTh && activeTh.getAttribute('data-sort-type') === 'number' ? 'number' : 'text';
+                var st = activeTh && activeTh.getAttribute('data-sort-type');
+                var type = st === 'number' ? 'number' : st === 'float' ? 'float' : 'text';
                 var rows = getDataRows();
                 rows.sort(function (a, b) {
                     var c = compareRows(a, b, key, type);
@@ -1401,6 +1418,12 @@
                     }
                 });
             });
+
+            // Default: highest assignee task count first (matches server order; shows sort on Task column)
+            sortState.key = 'task';
+            sortState.dir = 'desc';
+            updateHeaderIcons('task', 'desc');
+            applySort();
         })();
     </script>
 @endsection

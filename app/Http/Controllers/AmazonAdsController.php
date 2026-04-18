@@ -569,6 +569,14 @@ class AmazonAdsController extends Controller
 
         $recordsFiltered = (int) $query->clone()->count();
 
+        $distinctCampaignCount = null;
+        if (in_array('campaign_id', $dbColumns, true)) {
+            $distinctCampaignCount = (int) DB::query()
+                ->fromSub($query->clone(), 'r')
+                ->selectRaw('COUNT(DISTINCT r.campaign_id) AS c')
+                ->value('c');
+        }
+
         $query->orderBy($orderColumn, $orderDir);
         if ($orderColumn !== 'id' && in_array('id', $dbColumns, true)) {
             $query->orderBy('id', 'desc');
@@ -594,11 +602,16 @@ class AmazonAdsController extends Controller
             $data[] = $arr;
         }
 
-        return response()->json([
+        $payload = [
             'draw' => $draw,
             'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
             'data' => $data,
-        ]);
+        ];
+        if ($distinctCampaignCount !== null) {
+            $payload['distinctCampaignCount'] = $distinctCampaignCount;
+        }
+
+        return response()->json($payload);
     }
 }

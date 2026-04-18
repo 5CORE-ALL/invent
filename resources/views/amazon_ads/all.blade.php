@@ -43,6 +43,7 @@
                 <code>AmazonSpBudgetController::getAmazonUtilizedAdsData</code>, mainly from
                 <code>amazon_sp_campaign_reports</code> and <code>amazon_sb_campaign_reports</code>,
                 plus <code>amazon_acos_action_history</code>, <code>amazon_datsheets</code>, <code>product_master</code>, etc.
+                The grid counts <strong>report table rows</strong> (one campaign can have many: daily, L7, L30, …). Amazon&rsquo;s <strong>campaign</strong> total in Campaign Manager is unique campaigns &mdash; compare to <strong>Distinct campaign_id</strong> below the table for the same filters, not the row <em>of N entries</em> alone.
                 Choose the dataset from <strong>Table</strong> below: <strong>SP</strong>, <strong>SB</strong>, and <strong>SD</strong> load <strong>every column</strong> from
                 <code>amazon_sp_campaign_reports</code>, <code>amazon_sb_campaign_reports</code>, and <code>amazon_sd_campaign_reports</code> (server-side paging; use length menu up to 500 rows per request to walk the full table). <code>yes_sbid</code> / bid fields are pinned left when present. Also available: <code>amazon_bid_caps</code>, <code>amazon_fbm_targeting_checks</code>.
             </div>
@@ -131,6 +132,7 @@
                         <p class="text-muted small mb-0 mt-2">
                             <strong>SP / SB / SD:</strong> Calendar range matches (1) daily keys in <code>report_date_range</code> (first 10 chars <code>YYYY-MM-DD</code>), (2) the <code>date</code> column if set, (3) summary rows (<code>L30</code>, etc.) whose <code>startDate</code>/<code>endDate</code> overlap your range. For exact <code>L30</code> only, use <em>Report range</em>. <strong>U7/U2/U1 filters</strong> apply on campaign tables only (same formula as the columns: <code>COALESCE(spend,cost)</code> when both exist). <strong>Status</strong> filters <code>campaignStatus</code> when present. <strong>Bid caps / FBM:</strong> <code>created_at</code> (status filter no-op if no <code>campaignStatus</code> column). Data loads via POST so filters always reach the server.
                         </p>
+                        <p class="text-muted small mb-0 mt-1" id="amazonAdsActiveStats" aria-live="polite">After the table loads, <strong>matching rows</strong> and <strong>distinct campaign_id</strong> (SP/SB/SD) appear here.</p>
                     </div>
 
                     <div id="amazonAdsSourcePanels">
@@ -434,6 +436,21 @@
                             d.filter_u1 = p.filter_u1;
                             d.filter_campaign_status = p.filter_campaign_status;
                             d._token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                        },
+                        dataSrc: function (json) {
+                            var el = document.getElementById('amazonAdsActiveStats');
+                            if (el) {
+                                var n = (json && json.recordsFiltered !== undefined) ? String(json.recordsFiltered) : '—';
+                                if (json && (json.distinctCampaignCount !== undefined && json.distinctCampaignCount !== null)) {
+                                    el.innerHTML = 'This table: <strong>Matching rows</strong> ' + n
+                                        + ' · <strong>Distinct campaign_id</strong> ' + String(json.distinctCampaignCount)
+                                        + ' <span class="text-secondary">(compare this second number to Amazon&rsquo;s campaign list for the same scope)</span>.';
+                                } else {
+                                    el.innerHTML = 'This table: <strong>Matching rows</strong> ' + n
+                                        + ' <span class="text-secondary">(no campaign_id on this source)</span>.';
+                                }
+                            }
+                            return json && json.data ? json.data : [];
                         },
                         error: function (xhr) {
                             console.error('Amazon Ads raw DataTable error', xhr.status, xhr.responseText);
