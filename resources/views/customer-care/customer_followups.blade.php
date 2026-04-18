@@ -369,7 +369,7 @@
                     <div class="followup-toolbar-item flex-shrink-0" style="min-width: 9rem;">
                         <label class="followup-toolbar-label mb-0 d-block" for="filterStatus">Status</label>
                         <select class="form-select" id="filterStatus">
-                            <option value="all" selected>All statuses</option>
+                            <option value="all" selected>All (excl. resolved)</option>
                             <option value="Pending">Pending</option>
                             <option value="Resolved">Resolved</option>
                             <option value="Escalated">Escalated</option>

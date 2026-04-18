@@ -183,7 +183,8 @@ class CustomerFollowupController extends Controller
         }
         if ($request->filled('status')) {
             if ($request->status === 'all') {
-                // Show every status including Resolved.
+                // Match default list: hide Resolved (green status dot) until user picks "Resolved".
+                $q->where('status', '!=', 'Resolved');
             } else {
                 $q->where('status', $request->status);
             }
