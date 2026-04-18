@@ -968,15 +968,23 @@ class AmazonSpApiService
 
         $collapsed = preg_replace('/\s+/u', ' ', $sku);
         $noSpaces = str_replace([' ', "\xc2\xa0"], '', $sku);
+        $hyphenAsSpace = preg_replace('/\s+/u', ' ', str_replace(['-', '_'], ' ', $sku));
+        $noSep = str_replace([' ', '-', '_', "\xc2\xa0"], '', $sku);
 
         // Generate case + spacing variations (Seller Central MSKU may omit spaces, e.g. "CS042W" vs "CS 04 2W")
         $variations = [
             $sku,
             $collapsed,
             $noSpaces,
+            $hyphenAsSpace,
+            str_replace([' ', "\xc2\xa0"], '', $hyphenAsSpace),
+            $noSep,
             strtoupper($sku),
             strtoupper($collapsed),
             strtoupper($noSpaces),
+            strtoupper($hyphenAsSpace),
+            strtoupper(str_replace([' ', "\xc2\xa0"], '', $hyphenAsSpace)),
+            strtoupper($noSep),
             strtolower($sku),
             strtolower($noSpaces),
             ucfirst(strtolower($sku)),

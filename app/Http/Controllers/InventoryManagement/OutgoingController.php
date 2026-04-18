@@ -11,6 +11,8 @@ use App\Models\OutgoingEditHistory;
 use App\Models\OutgoingReason;
 use App\Models\ShopifySku;
 use App\Models\AmazonDatasheet;
+use App\Models\ChannelMaster;
+use App\Models\OutgoingOrderMeta;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use App\Http\Controllers\ShopifyApiInventoryController;
@@ -48,8 +50,13 @@ class OutgoingController extends Controller
         ->get();
 
         $reasons = OutgoingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
+        $channels = ChannelMaster::where('status', 'Active')
+            ->orderBy('channel')
+            ->pluck('channel')
+            ->values()
+            ->all();
 
-        return view('inventory-management.outgoing-view', compact('warehouses', 'skus', 'reasons'));
+        return view('inventory-management.outgoing-view', compact('warehouses', 'skus', 'reasons', 'channels'));
     }
 
     public function getReasons()
@@ -92,6 +99,7 @@ class OutgoingController extends Controller
      */
     public function store(Request $request)
     {
+        $requireChannel = ChannelMaster::where('status', 'Active')->exists();
         $request->validate([
             'sku' => 'required|array',
             'sku.*' => 'required|string',
@@ -99,8 +107,10 @@ class OutgoingController extends Controller
             'qty.*' => 'required|integer|min:1',
             'warehouse_id' => 'required|exists:warehouses,id',
             'reason' => 'required|string',
+            'channel' => ($requireChannel ? 'required' : 'nullable') . '|string|max:255',
             'comment' => 'nullable|string|max:80',
             'replacement_tracking' => 'nullable|string|max:22',
+            'order_id' => 'nullable|string|max:128',
         ]);
 
         $skus = $request->sku;
@@ -109,6 +119,14 @@ class OutgoingController extends Controller
         $reason = $request->reason;
         $comment = $request->filled('comment') ? trim($request->comment) : null;
         $replacementTracking = $request->filled('replacement_tracking') ? trim($request->replacement_tracking) : null;
+        $channel = $request->filled('channel') ? trim((string) $request->channel) : null;
+        if ($channel === '') {
+            $channel = null;
+        }
+        $orderIdForMeta = $request->filled('order_id') ? trim((string) $request->order_id) : null;
+        if ($orderIdForMeta === '') {
+            $orderIdForMeta = null;
+        }
 
         for ($i = 0; $i < $count; $i++) {
             $sku = trim($skus[$i]);
@@ -269,19 +287,26 @@ class OutgoingController extends Controller
         }
 
         try {
-                Inventory::create([
+                $inv = Inventory::create([
                     'sku' => $sku,
                     'verified_stock' => $outgoingQty,
                     'to_adjust' => -$outgoingQty,
                     'reason' => $reason,
                     'comment' => $comment,
                     'replacement_tracking' => $replacementTracking,
+                    'channel' => $channel,
                     'is_approved' => true,
                     'approved_by' => Auth::user()->name ?? 'N/A',
                     'approved_at' => Carbon::now('America/New_York'),
                     'type' => 'outgoing',
                     'warehouse_id' => $warehouseId,
                 ]);
+                if ($orderIdForMeta !== null) {
+                    OutgoingOrderMeta::updateOrCreate(
+                        ['inventory_id' => $inv->id],
+                        ['order_id' => $orderIdForMeta]
+                    );
+                }
             } catch (\Exception $e) {
                 Log::error('Outgoing: Failed to save to database after Shopify update', [
                     'sku' => $normalizedSku,
@@ -471,6 +496,8 @@ class OutgoingController extends Controller
             'id' => 'required|integer|exists:inventories,id',
             'reason' => 'required|string|max:255',
             'comment' => 'nullable|string|max:80',
+            'channel' => 'nullable|string|max:255',
+            'order_id' => 'nullable|string|max:128',
         ]);
 
         $inv = Inventory::where('id', $request->id)->where('type', 'outgoing')->first();
@@ -482,6 +509,7 @@ class OutgoingController extends Controller
         $comment = $request->filled('comment') ? trim($request->comment) : null;
         $user = Auth::user()->name ?? 'N/A';
         $now = Carbon::now('America/New_York');
+        $input = $request->all();
 
         if ($inv->reason !== $reason) {
             OutgoingEditHistory::create([
@@ -513,7 +541,58 @@ class OutgoingController extends Controller
             }
         }
 
+        if (array_key_exists('order_id', $input)) {
+            $rawOrder = $input['order_id'];
+            $newOrderId = ($rawOrder === null || $rawOrder === '') ? null : trim((string) $rawOrder);
+            if ($newOrderId === '') {
+                $newOrderId = null;
+            }
+            $oldMeta = OutgoingOrderMeta::where('inventory_id', $inv->id)->first();
+            $oldOrderId = $oldMeta?->order_id;
+            if ((string) ($oldOrderId ?? '') !== (string) ($newOrderId ?? '')) {
+                OutgoingEditHistory::create([
+                    'inventory_id' => $inv->id,
+                    'sku' => $inv->sku,
+                    'field' => 'order_id',
+                    'old_value' => (string) ($oldOrderId ?? ''),
+                    'new_value' => (string) ($newOrderId ?? ''),
+                    'updated_by' => $user,
+                    'updated_at' => $now,
+                ]);
+                if ($newOrderId === null) {
+                    if ($oldMeta) {
+                        $oldMeta->delete();
+                    }
+                } else {
+                    OutgoingOrderMeta::updateOrCreate(
+                        ['inventory_id' => $inv->id],
+                        ['order_id' => $newOrderId]
+                    );
+                }
+            }
+        }
+
+        if (array_key_exists('channel', $input)) {
+            $ch = $input['channel'];
+            $newChannel = ($ch === null || $ch === '') ? null : trim((string) $ch);
+            $oldChannel = $inv->channel;
+            if ((string) ($oldChannel ?? '') !== (string) ($newChannel ?? '')) {
+                OutgoingEditHistory::create([
+                    'inventory_id' => $inv->id,
+                    'sku' => $inv->sku,
+                    'field' => 'channel',
+                    'old_value' => (string) ($oldChannel ?? ''),
+                    'new_value' => (string) ($newChannel ?? ''),
+                    'updated_by' => $user,
+                    'updated_at' => $now,
+                ]);
+                $inv->channel = $newChannel;
+            }
+        }
+
         $inv->save();
+
+        $orderIdOut = OutgoingOrderMeta::where('inventory_id', $inv->id)->value('order_id');
 
         return response()->json([
             'success' => true,
@@ -523,6 +602,8 @@ class OutgoingController extends Controller
                 'sku' => $inv->sku,
                 'reason' => $inv->reason,
                 'remarks' => $inv->comment ?? $inv->remarks,
+                'channel' => $inv->channel,
+                'order_id' => $orderIdOut,
             ],
         ]);
     }
@@ -544,7 +625,7 @@ class OutgoingController extends Controller
             ->map(function ($h) {
                 return [
                     'field' => $h->field,
-                    'field_label' => $h->field === 'reason' ? 'Reason' : 'Comment',
+                    'field_label' => $h->field === 'reason' ? 'Reason' : ($h->field === 'channel' ? 'Channel' : ($h->field === 'order_id' ? 'Order Id' : ($h->field === 'comment' ? 'Comments/Remarks' : 'Comment'))),
                     'old_value' => $h->old_value,
                     'new_value' => $h->new_value,
                     'updated_by' => $h->updated_by,
@@ -579,7 +660,7 @@ class OutgoingController extends Controller
 
     public function list(Request $request)
     {
-        $query = Inventory::with('warehouse')
+        $query = Inventory::with(['warehouse', 'outgoingOrderMeta'])
             ->where('type', 'outgoing');
 
         if ($request->filled('reason')) {
@@ -593,6 +674,9 @@ class OutgoingController extends Controller
         }
         if ($request->filled('end_date')) {
             $query->whereDate('approved_at', '<=', Carbon::parse($request->end_date)->endOfDay());
+        }
+        if ($request->filled('channel')) {
+            $query->where('channel', $request->channel);
         }
 
         $items = $query->latest()->get();
@@ -623,6 +707,8 @@ class OutgoingController extends Controller
                 'sku' => $item->sku,
                 'verified_stock' => $item->verified_stock,
                 'reason' => $item->reason,
+                'channel' => $item->channel,
+                'order_id' => $item->outgoingOrderMeta?->order_id,
                 'remarks' => $item->comment ?? $item->remarks,
                 'replacement_tracking' => $item->replacement_tracking,
                 'warehouse_name' => $item->warehouse->name ?? '',
@@ -638,11 +724,15 @@ class OutgoingController extends Controller
 
         $reasons = OutgoingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
         $persons = Inventory::where('type', 'outgoing')->distinct()->pluck('approved_by')->filter()->values()->all();
+        $channelRows = ChannelMaster::where('status', 'Active')->orderBy('channel')->pluck('channel');
+        $channelsFromData = Inventory::where('type', 'outgoing')->whereNotNull('channel')->where('channel', '!=', '')->distinct()->pluck('channel');
+        $channels = $channelRows->merge($channelsFromData)->unique()->sort()->values()->all();
 
         return response()->json([
             'data' => $data,
             'reasons' => $reasons,
             'persons' => $persons,
+            'channels' => $channels,
         ]);
     }
 

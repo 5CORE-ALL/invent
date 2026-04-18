@@ -3162,9 +3162,16 @@ class CvrMasterController extends Controller
     private function pushToAmazon($sku, $price)
     {
         try {
+            // Prefer exact seller MSKU from `amazon_datsheets` (same as OverallAmazonController::applyAmazonPrice);
+            // CVR was passing strtoupper($sku) only, which can miss case/spacing and fail Listings API lookup.
+            $resolved = \App\Models\AmazonDatasheet::resolveSellerMskuByProductKey(
+                str_replace("\xc2\xa0", ' ', (string) $sku)
+            );
+            $apiSku = ($resolved !== null && $resolved !== '') ? $resolved : (string) $sku;
+
             // Push to Amazon using SP API
             $service = new AmazonSpApiService();
-            $result = $service->updateAmazonPriceUS($sku, $price);
+            $result = $service->updateAmazonPriceUS($apiSku, $price);
 
             // Check if the response indicates errors
             if (isset($result['errors']) && !empty($result['errors'])) {

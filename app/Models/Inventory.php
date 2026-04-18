@@ -49,6 +49,7 @@ class Inventory extends Model
         'incoming_images',
         'incoming_voice_note',
         'replacement_tracking',
+        'channel',
         'shopify_adjustment_status',
         'shopify_adjustment_error',
         'shopify_retry_count',
@@ -87,5 +88,9 @@ class Inventory extends Model
     {
         return $this->hasMany(InventoryLog::class, 'sku', 'sku');
     }
-    
+
+    public function outgoingOrderMeta()
+    {
+        return $this->hasOne(OutgoingOrderMeta::class, 'inventory_id');
+    }
 }

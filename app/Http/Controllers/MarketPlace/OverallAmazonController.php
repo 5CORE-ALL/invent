@@ -4737,31 +4737,7 @@ class OverallAmazonController extends Controller
      */
     private function sellerSkuFromAmazonDatasheetByProductKey(string $productOrGridSku): ?string
     {
-        $raw = trim(str_replace("\xc2\xa0", ' ', $productOrGridSku));
-        if ($raw === '') {
-            return null;
-        }
-
-        $normSpace = strtoupper(preg_replace('/\s+/u', ' ', $raw));
-        $compact = strtoupper(str_replace([' ', "\xc2\xa0"], '', $raw));
-
-        $row = AmazonDatasheet::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->where(function ($q) use ($normSpace, $compact) {
-                $q->whereRaw('UPPER(TRIM(sku)) = ?', [$normSpace])
-                    ->orWhereRaw('UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) = ?', [$compact]);
-            })
-            ->orderBy('id')
-            ->first();
-
-        if (! $row) {
-            return null;
-        }
-
-        $out = trim((string) ($row->sku ?? ''));
-
-        return $out !== '' ? $out : null;
+        return AmazonDatasheet::resolveSellerMskuByProductKey($productOrGridSku);
     }
 
     /**
