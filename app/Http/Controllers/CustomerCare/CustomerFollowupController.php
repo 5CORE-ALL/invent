@@ -127,17 +127,24 @@ class CustomerFollowupController extends Controller
 
     /**
      * SKU suggestions from product_master (same source as Product Master table), for follow-up form autocomplete.
+     *
+     * Note: many SKUs share a broad substring (e.g. "GS" → 100+ matches). A flat ORDER BY sku + small limit
+     * hides valid rows (e.g. "GSTOOL RND YLW REST" was past row 25 for "GSTOOL"). Prefer prefix / exact matches.
      */
     public function searchProductSkus(Request $request)
     {
         $q = trim((string) $request->query('q', ''));
-        $limit = min(40, max(1, (int) $request->query('limit', 25)));
+        // "GS" can match 100+ SKUs; cap high enough that alphabetically late SKUs (e.g. "GSTOOL RND YLW REST") still return.
+        $limit = min(200, max(1, (int) $request->query('limit', 80)));
 
         if ($q === '') {
             return response()->json(['skus' => []]);
         }
 
-        $like = '%' . addcslashes($q, '%_\\') . '%';
+        $esc = addcslashes($q, '%_\\');
+        $like = '%' . $esc . '%';
+        $prefix = $esc . '%';
+        $upperQ = strtoupper($q);
 
         $rows = ProductMaster::query()
             ->select(['sku', 'parent'])
@@ -145,6 +152,16 @@ class CustomerFollowupController extends Controller
                 $qq->where('sku', 'like', $like)
                     ->orWhere('parent', 'like', $like);
             })
+            ->orderByRaw(
+                'CASE
+                    WHEN UPPER(TRIM(sku)) = ? THEN 0
+                    WHEN sku LIKE ? THEN 1
+                    WHEN UPPER(TRIM(parent)) = ? THEN 2
+                    WHEN parent LIKE ? THEN 3
+                    ELSE 4
+                END',
+                [$upperQ, $prefix, $upperQ, $prefix]
+            )
             ->orderBy('sku')
             ->limit($limit)
             ->get();

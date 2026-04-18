@@ -300,13 +300,18 @@ class AmazonSpApiService
 
                 // Find the correct SKU format in Amazon (only on first attempt)
                 if ($amazonSku === null) {
-                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    // Must match US marketplace: PATCH below uses ATVPDKIKX0DER; if .env
+                    // SPAPI_MARKETPLACE_ID is a different region, a bare find would 404
+                    // while Seller Central (amazon.com) shows the SKU.
+                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken, 'ATVPDKIKX0DER');
                     if (empty($amazonSku)) {
                         Log::error("Amazon Price Update: SKU not found in Amazon", ['sku' => $sku]);
                         return [
                             'errors' => [[
                                 'code' => 'InvalidInput',
-                                'message' => 'SKU not found in Amazon. Please ensure the SKU exists in your Amazon listings.'
+                                'message' => 'Listings API could not find this offer (US). ' .
+                                    'The SKU in Seller Central can still be right: verify .env AMAZON_SELLER_ID matches the account, ' .
+                                    'LWA/refresh token is current, the SP-API app has product listing (Listings) access, and check the log for 401/403/404.',
                             ]]
                         ];
                     }
@@ -946,7 +951,12 @@ class AmazonSpApiService
      * Find the correct SKU format in Amazon by trying different case variations
      * Returns the SKU format that works with Amazon API, or null if not found
      */
-    private function findAmazonSkuFormat($sku, $accessToken = null)
+    /**
+     * @param  string|null  $listingsMarketplaceId  e.g. ATVPDKIKX0DER. When null, uses
+     *                                              config; pass explicitly when a caller
+     *                                              (e.g. updateAmazonPriceUS) must align with a fixed region.
+     */
+    private function findAmazonSkuFormat($sku, $accessToken = null, ?string $listingsMarketplaceId = null)
     {
         $sku = $this->normalizeListingsSellerSku(trim((string) $sku));
         if (empty($sku)) {
@@ -995,8 +1005,10 @@ class AmazonSpApiService
             return $v !== null && $v !== '';
         })));
 
-        $marketplaceId = rawurlencode((string) ($this->marketplaceId ?: config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER'));
-        $included = rawurlencode('summaries,attributes,productTypes');
+        $mp = $listingsMarketplaceId
+            ?? ($this->marketplaceId ?: config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER');
+        $marketplaceId = rawurlencode((string) $mp);
+        $included = rawurlencode('summaries,attributes,productTypes,offers,fulfillmentAvailability');
 
         foreach ($variations as $skuVariation) {
             try {
@@ -1008,6 +1020,15 @@ class AmazonSpApiService
                     'x-amz-access-token' => $accessToken,
                     'Content-Type' => 'application/json',
                 ])->timeout(30)->get($url);
+
+                if (in_array($response->status(), [401, 403], true)) {
+                    Log::error('Listings Items API: access denied (fix LWA token refresh or add Listings role)', [
+                        'status' => $response->status(),
+                        'body' => $response->json(),
+                    ]);
+
+                    return null;
+                }
 
                 // If successful (200), return this SKU format
                 if ($response->successful()) {
@@ -1022,7 +1043,10 @@ class AmazonSpApiService
                     $hasAttributes = ! empty($data['attributes']);
                     $hasProductTypes = ! empty($data['productTypes']);
                     $hasSkuField = isset($data['sku']) && (string) $data['sku'] !== '';
-                    if ($hasSummaries || $hasAttributes || $hasProductTypes || $hasSkuField) {
+                    $hasOffers = ! empty($data['offers']);
+                    $hasFulfillment = ! empty($data['fulfillmentAvailability']);
+                    if ($hasSummaries || $hasAttributes || $hasProductTypes || $hasSkuField
+                        || $hasOffers || $hasFulfillment) {
                         Log::info('Found matching SKU format in Amazon', [
                             'original_sku' => $sku,
                             'amazon_sku' => $skuVariation,
@@ -1091,14 +1115,14 @@ class AmazonSpApiService
 
             // Use provided Amazon SKU or find it
             if (empty($amazonSku)) {
-                $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken, 'ATVPDKIKX0DER');
                 if (empty($amazonSku)) {
                     Log::warning("getAmazonProductType: Could not find SKU in Amazon", ['sku' => $sku]);
                     return null;
                 }
             }
 
-            // Use the correct SKU format to get product type
+            // Use the correct SKU format to get product type (US listing; URL matches find above)
             $encodedSku = rawurlencode($amazonSku);
             $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
 
