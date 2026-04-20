@@ -1,8 +1,9 @@
 <?php
 
 /**
- * eBay 1 / 2 / 3 (any matching channel name) share one field-definition scope.
- * Match is case-insensitive on channel_master.channel.
+ * eBay 1 / 2 / 3 share one field-definition scope (`ebay_group`).
+ * Membership: channel_master.type in ebay / ebaytwo / ebaythree (and numeric variants), plus
+ * any channel whose normalized name matches an entry below (spaces/punctuation stripped, lowercased).
  */
 return [
     'ebay_group_channel_names' => [

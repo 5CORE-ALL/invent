@@ -1953,12 +1953,26 @@ class AccountHealthMasterController extends Controller
         return $this->definitionScopeForChannel($c);
     }
 
+    /**
+     * eBay 1 / 2 / 3 share one definition scope. Channel rows often use type "ebay", "ebaytwo", "ebaythree"
+     * (see marketplace dashboard map) while display names vary — match type and normalized names.
+     */
     private function channelBelongsToEbayGroup(ChannelMaster $channel): bool
     {
+        $typeNorm = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($channel->type ?? ''))));
+        $ebayTypeSlugs = [
+            'ebay', 'ebay1', 'ebay2', 'ebay3',
+            'ebaytwo', 'ebaythree',
+        ];
+        if ($typeNorm !== '' && in_array($typeNorm, $ebayTypeSlugs, true)) {
+            return true;
+        }
+
+        $chKey = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $channel->channel)));
         $names = config('account_health_scopes.ebay_group_channel_names', []);
-        $ch = strtolower(trim((string) $channel->channel));
         foreach ($names as $n) {
-            if (strtolower(trim((string) $n)) === $ch) {
+            $nKey = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $n)));
+            if ($nKey !== '' && $nKey === $chKey) {
                 return true;
             }
         }
@@ -1972,14 +1986,9 @@ class AccountHealthMasterController extends Controller
     private function channelIdsForDefinitionScope(string $scope): array
     {
         if ($scope === self::SCOPE_EBAY_GROUP) {
-            $names = config('account_health_scopes.ebay_group_channel_names', []);
-
             return ChannelMaster::query()
-                ->where(function ($q) use ($names) {
-                    foreach ($names as $n) {
-                        $q->orWhereRaw('LOWER(TRIM(channel)) = ?', [strtolower(trim((string) $n))]);
-                    }
-                })
+                ->get(['id', 'channel', 'type'])
+                ->filter(fn (ChannelMaster $c) => $this->channelBelongsToEbayGroup($c))
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)
                 ->unique()

@@ -263,6 +263,10 @@
             const factorInfoTbody = document.getElementById('ahm-factor-info-tbody');
             const factorInfoEmpty = document.getElementById('ahm-factor-info-empty');
             let factorInfoHistoryAll = [];
+            let metricsModalOpenSeq = 0;
+            let factorInfoModalOpenSeq = 0;
+            let saveMetricsInFlight = false;
+            let addMetricFieldInFlight = false;
 
             function appendHistoryRowsToTbody(tbody, rows) {
                 if (!tbody) {
@@ -387,6 +391,7 @@
                 if (typeof bootstrap === 'undefined') {
                     return;
                 }
+                const fiSeq = ++factorInfoModalOpenSeq;
                 if (factorInfoChannel) {
                     factorInfoChannel.textContent = rowData.channel || '—';
                 }
@@ -402,11 +407,17 @@
                     factorInfoDateFilter.disabled = true;
                 }
                 api(urlHistory + '?channel_id=' + encodeURIComponent(rowData.id)).then(function(hist) {
+                    if (fiSeq !== factorInfoModalOpenSeq) {
+                        return;
+                    }
                     const h = (hist && hist.history) ? hist.history : [];
                     populateFactorInfoDateSelect(h);
                     renderFactorInfoTableForSelectedDate();
                     bootstrap.Modal.getOrCreateInstance(factorInfoModal).show();
                 }).catch(function() {
+                    if (fiSeq !== factorInfoModalOpenSeq) {
+                        return;
+                    }
                     alert('Could not load factor history.');
                 });
             }
@@ -571,6 +582,7 @@
                 if (typeof bootstrap === 'undefined' || ! metricsModal) {
                     return;
                 }
+                const mySeq = ++metricsModalOpenSeq;
                 currentModalRow = rowData;
                 if (metricsChannelDisplay) {
                     metricsChannelDisplay.textContent = rowData.channel || '—';
@@ -585,6 +597,9 @@
                     api(urlFields + '?channel_id=' + encodeURIComponent(rowData.id)),
                     api(urlHistory + '?channel_id=' + encodeURIComponent(rowData.id))
                 ]).then(function(results) {
+                    if (mySeq !== metricsModalOpenSeq) {
+                        return;
+                    }
                     const data = results[0];
                     const hist = results[1] || {};
                     if (data && data.is_ebay_shared && ebayNote) {
@@ -596,8 +611,11 @@
                     modalFieldList = fields;
                     renderModalFieldRows(fields);
                     buildValueInputs(fields, hist.latest_by_key);
-                    new bootstrap.Modal(metricsModal).show();
+                    bootstrap.Modal.getOrCreateInstance(metricsModal).show();
                 }).catch(function() {
+                    if (mySeq !== metricsModalOpenSeq) {
+                        return;
+                    }
                     alert('Could not load form for this marketplace.');
                 });
             }
@@ -714,6 +732,9 @@
             document.getElementById('ahm-modal-save') && document.getElementById('ahm-modal-save').addEventListener(
                 'click',
                 function() {
+                    if (saveMetricsInFlight) {
+                        return;
+                    }
                     const chId = metricsChannelId && metricsChannelId.value ? metricsChannelId.value : null;
                     if (!chId) {
                         return;
@@ -739,6 +760,11 @@
                         alert('Enter at least one value (%).');
                         return;
                     }
+                    const saveBtn = document.getElementById('ahm-modal-save');
+                    saveMetricsInFlight = true;
+                    if (saveBtn) {
+                        saveBtn.disabled = true;
+                    }
                     api(urlMetricsBatch, {
                         method: 'POST',
                         body: JSON.stringify(payload)
@@ -752,6 +778,11 @@
                         const msg = (e.body && (e.body.message || (e.body.errors && JSON.stringify(e
                             .body.errors)))) || 'Save failed. Try again.';
                         alert(msg);
+                    }).finally(function() {
+                        saveMetricsInFlight = false;
+                        if (saveBtn) {
+                            saveBtn.disabled = false;
+                        }
                     });
                 });
 
@@ -759,6 +790,9 @@
                 .getElementById('add-metric-field-in-modal')
                 .addEventListener('submit', function(ev) {
                     ev.preventDefault();
+                    if (addMetricFieldInFlight) {
+                        return;
+                    }
                     const chId = metricsChannelId && metricsChannelId.value;
                     if (!chId) {
                         return;
@@ -779,6 +813,7 @@
                         return;
                     }
                     const b = document.getElementById('inmodal-add-btn');
+                    addMetricFieldInFlight = true;
                     if (b) {
                         b.disabled = true;
                     }
@@ -795,6 +830,7 @@
                         const msg = (e.body && (e.body.message)) || 'Could not add';
                         alert(msg);
                     }).finally(function() {
+                        addMetricFieldInFlight = false;
                         if (b) {
                             b.disabled = false;
                         }
