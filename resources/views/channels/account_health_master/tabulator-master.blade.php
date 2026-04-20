@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Account Health Master'])
+@extends('layouts.vertical', ['title' => 'Account Health'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
@@ -56,7 +56,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Account Health Master',
+        'page_title' => 'Account Health',
         'sub_title' =>
             'Each marketplace has its own form fields. eBay 1, 2, and 3 share one field list but save separate values. Open a row to customize fields and enter %.',
     ])

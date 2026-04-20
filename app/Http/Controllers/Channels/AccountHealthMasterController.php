@@ -1622,7 +1622,7 @@ class AccountHealthMasterController extends Controller
     // refund rate end
 
     /**
-     * Account Health tabulator: user-defined metric fields + per-channel JSON values.
+     * Account Health grid: user-defined metric fields + per-channel JSON values.
      */
     public function tabulatorMaster()
     {
@@ -1916,7 +1916,7 @@ class AccountHealthMasterController extends Controller
     }
 
     /**
-     * JSON for Tabulator: active marketplaces only (per-marketplace metrics live in the modal).
+     * JSON for Account Health grid: active marketplaces only (per-marketplace metrics live in the modal).
      */
     public function tabulatorChannelData()
     {
