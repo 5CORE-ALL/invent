@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ReverbProduct;
@@ -25,6 +26,9 @@ use App\Models\Ebay3PriorityReport;
 use App\Models\Ebay3GeneralReport;
 use App\Models\AmazonDataView;
 use App\Models\TemuDataView;
+use App\Models\Temu2Pricing;
+use App\Models\Temu2DailyData;
+use App\Models\Temu2DataView;
 use App\Models\DobaDataView;
 use App\Models\TikTokDataView;
 use App\Models\BestbuyUSADataView;
@@ -293,6 +297,26 @@ class CvrMasterController extends Controller
                 'temu_pricings' => $temuPricings->count(),
                 'temu_percentage' => $temuPercentage * 100 . '%'
             ]);
+
+            $temu2L30ByProductSku = array_fill_keys($skus, 0);
+            $temu2PricingByProductSku = array_fill_keys($skus, null);
+            if (Schema::hasTable('temu2_pricing') && Schema::hasTable('temu2_daily_data')) {
+                try {
+                    $temu2L30ByProductSku = $this->buildTemu2L30ByProductSkusMap($skus, true);
+                    $temu2PricingsAll = Temu2Pricing::query()->get(['sku', 'base_price', 'goods_id']);
+                    $temu2PricingByProductSku = $this->buildTemu2PricingMapForProductSkus($temu2PricingsAll, $skus);
+                    Log::info('CVR Master - Temu 2 Data fetched', [
+                        'temu2_pricing_rows'   => $temu2PricingsAll->count(),
+                        'temu2_skus_w_l30'     => count(array_filter($temu2L30ByProductSku, fn ($q) => (int) $q > 0)),
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::warning('CVR Master - Temu 2 batch load skipped: ' . $e->getMessage());
+                    $temu2L30ByProductSku = array_fill_keys($skus, 0);
+                    $temu2PricingByProductSku = array_fill_keys($skus, null);
+                }
+            } else {
+                Log::info('CVR Master - temu2_pricing / temu2_daily_data not found; Temu 2 CVR fields skipped. Run: php artisan migrate (see 2026_04_20_000001_create_temu2_pricing_and_temu2_data_view_tables, 2026_03_14_100000_create_temu2_daily_data_table).');
+            }
 
             // Fetch eBay data (eBay 1, 2, 3)
             $ebayMetrics = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -838,6 +862,24 @@ class CvrMasterController extends Controller
                     $temuPFT = $temuGPFT - $temuAD;
                 }
 
+                // === TEMU 2 CALCULATIONS (same price/GPFT as Temu; no ad % in rollups) ===
+                $temu2Pricing = $temu2PricingByProductSku[$sku] ?? null;
+                $temu2BasePrice = $temu2Pricing ? floatval($temu2Pricing->base_price ?? 0) : 0;
+                $temu2Price = $temu2BasePrice > 0 ? ($temu2BasePrice <= 26.99 ? $temu2BasePrice + 2.99 : $temu2BasePrice) : 0;
+                $temu2L30 = (int) ($temu2L30ByProductSku[$sku] ?? 0);
+                $temu2GPFT = $temu2Price > 0 ? ((($temu2Price * $temuPercentage - $lp - $temuShip) / $temu2Price) * 100) : 0;
+                $temu2PFT = $temu2GPFT;
+                $temu2Views = 0;
+                if ($temu2Pricing) {
+                    $temu2GoodsId = $temu2Pricing->goods_id ?? null;
+                    if ($temu2GoodsId) {
+                        $temu2ViewAgg = TemuViewData::where('goods_id', $temu2GoodsId)
+                            ->selectRaw('SUM(product_clicks) as product_clicks')
+                            ->first();
+                        $temu2Views = $temu2ViewAgg ? intval($temu2ViewAgg->product_clicks ?? 0) : 0;
+                    }
+                }
+
                 // === SHEIN CALCULATIONS ===
                 // Price = special_offer_price (same logic as Shein pricing page)
                 $sheinPricing = $sheinPricings->get($sku);
@@ -897,9 +939,9 @@ class CvrMasterController extends Controller
                 $dobaViews = $dobaMetric ? intval($dobaMetric->impressions ?? 0) : 0;
                 
                 // Total Views (sum of all marketplace views)
-                $totalViews = $amazonViews + $ebay1Views + $ebay2Views + $ebay3Views + $temuViews + 
-                              $walmartViews + $tiktokViews + $bbViews + $sb2cViews + 
-                              $macyViews + $reverbViews + $dobaViews + $sheinViews; // AliExpress has no views tracked                
+                $totalViews = $amazonViews + $ebay1Views + $ebay2Views + $ebay3Views + $temuViews + $temu2Views
+                              + $walmartViews + $tiktokViews + $bbViews + $sb2cViews
+                              + $macyViews + $reverbViews + $dobaViews + $sheinViews; // AliExpress has no views tracked
                 // Get L30 from all marketplaces
                 $ebay1L30 = $ebay1Metric ? intval($ebay1Metric->ebay_l30 ?? 0) : 0;
                 $ebay2L30 = $ebay2Metric ? intval($ebay2Metric->ebay_l30 ?? 0) : 0;
@@ -913,9 +955,9 @@ class CvrMasterController extends Controller
                 $dobaL30 = $dobaMetric ? intval($dobaMetric->quantity_l30 ?? 0) : 0;
                 
                 // Total L30 across all marketplaces
-                $totalL30 = $amazonL30 + $ebay1L30 + $ebay2L30 + $ebay3L30 + $temuL30 + 
-                           $walmartL30 + $tiktokL30 + $bbL30 + $sb2cL30 + 
-                           $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30 + $ppL30;
+                $totalL30 = $amazonL30 + $ebay1L30 + $ebay2L30 + $ebay3L30 + $temuL30 + $temu2L30
+                           + $walmartL30 + $tiktokL30 + $bbL30 + $sb2cL30
+                           + $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30 + $ppL30;
                 
                 // Calculate Avg CVR using CVR formula: (Total L30 / Total Views) × 100
                 $avgCVR = $totalViews > 0 ? round(($totalL30 / $totalViews) * 100, 2) : 0;
@@ -927,6 +969,7 @@ class CvrMasterController extends Controller
                 if ($ebay2Price > 0) $prices[] = $ebay2Price;
                 if ($ebay3Price > 0) $prices[] = $ebay3Price;
                 if ($temuPrice > 0) $prices[] = $temuPrice;
+                if ($temu2Price > 0) $prices[] = $temu2Price;
                 if ($walmartPrice > 0) $prices[] = $walmartPrice;
                 if ($tiktokPrice > 0) $prices[] = $tiktokPrice;
                 if ($bbPrice > 0) $prices[] = $bbPrice;
@@ -945,6 +988,7 @@ class CvrMasterController extends Controller
                 if ($ebay2Price > 0) $gpftValues[] = $ebay2GPFT;
                 if ($ebay3Price > 0) $gpftValues[] = $ebay3GPFT;
                 if ($temuPrice > 0) $gpftValues[] = $temuGPFT;
+                if ($temu2Price > 0) $gpftValues[] = $temu2GPFT;
                 if ($walmartPrice > 0) $gpftValues[] = $walmartGPFT;
                 if ($tiktokPrice > 0) $gpftValues[] = $tiktokGPFT;
                 if ($bbPrice > 0) $gpftValues[] = $bbGPFT;
@@ -969,6 +1013,7 @@ class CvrMasterController extends Controller
                 if ($ebay2Price > 0) $pftValues[] = $ebay2PFT;
                 if ($ebay3Price > 0) $pftValues[] = $ebay3PFT;
                 if ($temuPrice > 0) $pftValues[] = $temuPFT;
+                if ($temu2Price > 0) $pftValues[] = $temu2PFT;
                 if ($walmartPrice > 0) $pftValues[] = $walmartPFT;
                 if ($tiktokPrice > 0) $pftValues[] = $tiktokPFT;
                 if ($bbPrice > 0) $pftValues[] = $bbPFT;
@@ -1030,7 +1075,7 @@ class CvrMasterController extends Controller
                 // eBay2 is excluded from the check if SKU weight > 0.75 LB
                 // Walmart excluded – removed from this page
                 $missingChannelPrices = [
-                    $amazonPrice, $ebay1Price, $ebay3Price, $temuPrice,
+                    $amazonPrice, $ebay1Price, $ebay3Price, $temuPrice, $temu2Price,
                     $tiktokPrice, $bbPrice, $sb2cPrice,
                     $macyPrice, $reverbPrice, $dobaPrice, $sheinPrice, $aePrice,
                 ];
@@ -2223,9 +2268,93 @@ class CvrMasterController extends Controller
                 'seller_link' => $temuLinks[1],
             ];
 
+            $temu2PricingRow = null;
+            $temu2PriceBr = 0;
+            $temu2L30Br = 0;
+            $temu2GPFTBr = 0;
+            $temu2NPFTBr = 0;
+            $temu2ViewsBr = 0;
+            $temu2DataView = null;
+            $temu2Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $temu2Buyer = null;
+            $temu2Seller = null;
+            if (Schema::hasTable('temu2_pricing') && Schema::hasTable('temu2_daily_data')) {
+                try {
+                    $l30MapOne = $this->buildTemu2L30ByProductSkusMap([$fullSku], true);
+                    $temu2L30Br = (int) ($l30MapOne[$fullSku] ?? 0);
+                    $temu2AllPricing = Temu2Pricing::query()->get(['sku', 'base_price', 'goods_id']);
+                    $t2PriceMap = $this->buildTemu2PricingMapForProductSkus($temu2AllPricing, [$fullSku]);
+                    $temu2PricingRow = $t2PriceMap[$fullSku] ?? null;
+                    if ($temu2PricingRow) {
+                        $temu2BaseBr = $temu2PricingRow->base_price ?? 0;
+                        $temu2PriceBr = $temu2BaseBr > 0 ? ($temu2BaseBr <= 26.99 ? $temu2BaseBr + 2.99 : $temu2BaseBr) : 0;
+                    }
+                    $temu2GPFTBr = $temu2PriceBr > 0 ? (($temu2PriceBr * $temuMargin - $lp - $temuShip) / $temu2PriceBr) * 100 : 0;
+                    $temu2NPFTBr = $temu2L30Br == 0 ? $temu2GPFTBr : $temu2GPFTBr;
+                    if ($temu2PricingRow && ($g2b = $temu2PricingRow->goods_id ?? null)) {
+                        $v2b = TemuViewData::where('goods_id', $g2b)
+                            ->selectRaw('SUM(product_clicks) as product_clicks')
+                            ->first();
+                        $temu2ViewsBr = $v2b ? (int) ($v2b->product_clicks ?? 0) : 0;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR breakdown Temu2 (pricing / daily): ' . $e->getMessage());
+                }
+            }
+            if (Schema::hasTable('temu2_data_view')) {
+                try {
+                    $temu2DataView = Temu2DataView::whereIn('sku', array_filter([$fullSku, $normalizedSku]))->first();
+                    if ($temu2DataView) {
+                        $v2d = is_array($temu2DataView->value) ? $temu2DataView->value : json_decode($temu2DataView->value, true);
+                        if (is_array($v2d)) {
+                            $suggSp = $v2d['SPRICE'] ?? $v2d['sprice'] ?? 0;
+                            $temu2Suggested = [
+                                'sprice' => floatval($suggSp),
+                                'sgpft' => floatval($v2d['SGPFT'] ?? $v2d['sgprft_percent'] ?? 0),
+                                'sroi' => floatval($v2d['SROI'] ?? $v2d['sroi_percent'] ?? 0),
+                                'spft' => floatval($v2d['SPFT'] ?? 0),
+                            ];
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR breakdown Temu2 (temu2_data_view): ' . $e->getMessage());
+                }
+            }
+            if ($temu2DataView && is_array($temu2DataView->value)) {
+                $temu2Buyer = $temu2DataView->value['buyer_link'] ?? null;
+                $temu2Seller = $temu2DataView->value['seller_link'] ?? null;
+            }
+            $suggSpT2 = (float) ($temu2Suggested['sprice'] ?? 0);
+            $temu2HasListSignal = ($temu2PricingRow && (float) ($temu2PricingRow->base_price ?? 0) > 0)
+                || $temu2L30Br > 0
+                || $suggSpT2 > 0.01;
+            $breakdownData[] = [
+                'marketplace' => 'Temu2',
+                'sku' => $temu2HasListSignal ? $fullSku : 'Not Listed',
+                'price' => $temu2PriceBr,
+                'views' => $temu2ViewsBr,
+                'l30' => $temu2L30Br,
+                'gpft' => $temu2GPFTBr,
+                'ad' => 0,
+                'npft' => $temu2NPFTBr,
+                'is_listed' => $temu2HasListSignal,
+                'sprice' => $temu2Suggested['sprice'],
+                'sgpft' => $temu2Suggested['sgpft'],
+                'sroi' => $temu2Suggested['sroi'],
+                'spft' => $temu2Suggested['spft'],
+                'lp' => $lp,
+                'ship' => $temuShip,
+                'margin' => $temuMargin,
+                'pushed_by' => null,
+                'pushed_at' => null,
+                'buyer_link' => $temu2Buyer,
+                'seller_link' => $temu2Seller,
+            ];
+
             // NOTE: Macy is added earlier as 'MACY' with enhanced suggested data (line ~1500)
-            
-            // Add BestBuy            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first();
+
+            // Add BestBuy
+            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first();
             $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
             $bestbuyMargin = $bestbuyMarketplace ? ($bestbuyMarketplace->percentage / 100) : 0.80;
             $bestbuyPrice = $bestbuyProduct->price ?? 0;
@@ -2946,6 +3075,11 @@ class CvrMasterController extends Controller
                 $dataView = EbayThreeDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'temu') {
                 $dataView = TemuDataView::firstOrNew(['sku' => $skuToUse]);
+            } elseif ($marketplace === 'temu2') {
+                if (!Schema::hasTable('temu2_data_view')) {
+                    return response()->json(['error' => 'Temu 2 is not set up. Run migrations (temu2_data_view).'], 503);
+                }
+                $dataView = Temu2DataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'doba') {
                 $dataView = DobaDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'walmart') {
@@ -3015,12 +3149,16 @@ class CvrMasterController extends Controller
             $value['SROI'] = $sroi;
             $value['SPFT'] = $spft;
             
-            // Remove lowercase duplicates (but not for Walmart which uses lowercase 'sprice')
-            if ($marketplace !== 'walmart') {
-                unset($value['sprice'], $value['sgpft'], $value['sroi'], $value['spft']);
-            } else {
-                // For Walmart, remove uppercase duplicates instead
+            // Remove lowercase duplicates (but not for Walmart which uses lowercase 'sprice');
+            // Temu 2: also persist sprice + sgprft_percent + sroi_percent (same as Temu2 decrease / saveTemu2Sprice)
+            if ($marketplace === 'walmart') {
                 unset($value['SPRICE']);
+            } elseif ($marketplace === 'temu2') {
+                $value['sprice'] = $sprice;
+                $value['sgprft_percent'] = round($sgpft, 2);
+                $value['sroi_percent'] = round($sroi, 2);
+            } else {
+                unset($value['sprice'], $value['sgpft'], $value['sroi'], $value['spft']);
             }
             
             // Save to correct field (Reverb uses 'values', others use 'value')
@@ -3897,5 +4035,112 @@ class CvrMasterController extends Controller
             $dataView->value = $value;
             $dataView->save();
         }
+    }
+
+    /**
+     * Same as TemuController::buildTemuDecreaseDataResponse: normalize for Temu / Temu 2 SKU + order line matching
+     */
+    private static function normalizeTemuSkuForCvr(string $sku): string
+    {
+        $sku = str_replace("\xc2\xa0", ' ', (string) $sku);
+        $sku = strtoupper(trim($sku));
+        $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+        $sku = preg_replace('/\s+/', ' ', $sku);
+        return $sku;
+    }
+
+    /**
+     * L30 from temu2_daily_data, rolled up to Product Master SKUs (same as Temu 2 decrease / temu2-decrease-data).
+     *
+     * @param  string[]  $productSkus
+     * @return array<string, int> product sku => quantity L30
+     */
+    private function buildTemu2L30ByProductSkusMap(array $productSkus, bool $tablesOk): array
+    {
+        $out = array_fill_keys($productSkus, 0);
+        if (!$tablesOk) {
+            return $out;
+        }
+        if (!Schema::hasTable('temu2_daily_data')) {
+            return $out;
+        }
+        $l30ByNormalizedPm = [];
+        foreach ($productSkus as $s) {
+            $l30ByNormalizedPm[self::normalizeTemuSkuForCvr($s)] = 0;
+        }
+        $noSpaceToNormalized = [];
+        foreach (array_keys($l30ByNormalizedPm) as $nk) {
+            $ns = str_replace(' ', '', $nk);
+            if ($ns !== '') {
+                $noSpaceToNormalized[$ns] = $nk;
+            }
+        }
+        try {
+            $groups = Temu2DailyData::query()
+                ->selectRaw('contribution_sku, SUM(quantity_purchased) as t')
+                ->whereNotNull('contribution_sku')
+                ->where('contribution_sku', '!=', '')
+                ->groupBy('contribution_sku')
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('buildTemu2L30ByProductSkusMap: ' . $e->getMessage());
+            return $out;
+        }
+        foreach ($groups as $row) {
+            $raw = trim((string) ($row->contribution_sku ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            $n = self::normalizeTemuSkuForCvr($raw);
+            $qty = (int) ($row->t ?? 0);
+            if (isset($l30ByNormalizedPm[$n])) {
+                $l30ByNormalizedPm[$n] += $qty;
+            } else {
+                $nNoSpace = str_replace(' ', '', $n);
+                if (isset($noSpaceToNormalized[$nNoSpace])) {
+                    $pk = $noSpaceToNormalized[$nNoSpace];
+                    $l30ByNormalizedPm[$pk] += $qty;
+                }
+            }
+        }
+        foreach ($productSkus as $s) {
+            $k = self::normalizeTemuSkuForCvr($s);
+            $out[$s] = (int) ($l30ByNormalizedPm[$k] ?? 0);
+        }
+        return $out;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection|array  $temu2PricingAll
+     * @param  string[]  $productSkus
+     * @return array<string, \App\Models\Temu2Pricing|null>
+     */
+    private function buildTemu2PricingMapForProductSkus($temu2PricingAll, array $productSkus): array
+    {
+        $out = array_fill_keys($productSkus, null);
+        $byNorm = [];
+        $byNoSpace = [];
+        foreach ($temu2PricingAll as $p) {
+            $n = self::normalizeTemuSkuForCvr((string) ($p->sku ?? ''));
+            if ($n === '') {
+                continue;
+            }
+            if (!isset($byNorm[$n])) {
+                $byNorm[$n] = $p;
+            }
+            $byNoSpace[str_replace(' ', '', $n)] = $p;
+        }
+        foreach ($productSkus as $s) {
+            $ns = self::normalizeTemuSkuForCvr($s);
+            if (isset($byNorm[$ns])) {
+                $out[$s] = $byNorm[$ns];
+            } else {
+                $k = str_replace(' ', '', $ns);
+                if (isset($byNoSpace[$k])) {
+                    $out[$s] = $byNoSpace[$k];
+                }
+            }
+        }
+        return $out;
     }
 }

@@ -1412,7 +1412,7 @@
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'purchasingpower'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'purchasingpower'].includes((item.marketplace || '').toLowerCase());
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -1863,7 +1863,7 @@
                     hozAlign: "center",
                     minWidth: 80,
                     sorter: "number",
-                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Walmart, Temu, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
+                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Walmart, Temu, Temu 2, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sw = parseFloat(cell.getValue() || 0);
