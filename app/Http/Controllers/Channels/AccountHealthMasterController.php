@@ -28,6 +28,18 @@ class AccountHealthMasterController extends Controller
 {
     private const SCOPE_EBAY_GROUP = 'ebay_group';
 
+    /** Normalized type values (underscores/spaces stripped) for eBay 1 / 2 / 3 rows. */
+    private const EBAY_GROUP_TYPE_SLUGS = [
+        'ebay', 'ebay1', 'ebay2', 'ebay3',
+        'ebaytwo', 'ebaythree',
+    ];
+
+    /** Normalized channel names that map to eBay 1 / 2 / 3 in Channel Master. */
+    private const EBAY_GROUP_CHANNEL_NAME_SLUGS = [
+        'ebay', 'ebay1', 'ebay2', 'ebay3',
+        'ebaytwo', 'ebaythree',
+    ];
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -1954,27 +1966,117 @@ class AccountHealthMasterController extends Controller
     }
 
     /**
-     * eBay 1 / 2 / 3 share one definition scope. Channel rows often use type "ebay", "ebaytwo", "ebaythree"
-     * (see marketplace dashboard map) while display names vary — match type and normalized names.
+     * Normalize channel or type string the same way as the Account Health dashboard channel key.
      */
-    private function channelBelongsToEbayGroup(ChannelMaster $channel): bool
+    private function accountHealthChannelSlug(string $value): string
     {
-        $typeNorm = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($channel->type ?? ''))));
-        $ebayTypeSlugs = [
-            'ebay', 'ebay1', 'ebay2', 'ebay3',
-            'ebaytwo', 'ebaythree',
-        ];
-        if ($typeNorm !== '' && in_array($typeNorm, $ebayTypeSlugs, true)) {
-            return true;
-        }
+        $v = Str::lower(trim($value));
 
-        $chKey = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $channel->channel)));
+        return str_replace([' ', '-', '–', '—', '&', '/', '_'], '', $v);
+    }
+
+    /**
+     * Case-insensitive exact match for channel labels (trim + strip zero-width / BOM).
+     * Use the same spelling as channel_master.channel in phpMyAdmin.
+     */
+    private function normalizeChannelLabelForCompare(string $value): string
+    {
+        $s = trim($value);
+        $s = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $s) ?? $s;
+
+        return Str::lower($s);
+    }
+
+    /**
+     * Channel name matches a configured eBay row: exact label (after normalize) or same slug.
+     */
+    private function channelMatchesConfiguredEbayNames(ChannelMaster $channel): bool
+    {
         $names = config('account_health_scopes.ebay_group_channel_names', []);
+        if (! is_array($names) || $names === []) {
+            return false;
+        }
+        $chKey = $this->accountHealthChannelSlug((string) $channel->channel);
+        $chExact = $this->normalizeChannelLabelForCompare((string) $channel->channel);
         foreach ($names as $n) {
-            $nKey = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $n)));
+            $n = trim((string) $n);
+            if ($n === '') {
+                continue;
+            }
+            if ($this->normalizeChannelLabelForCompare($n) === $chExact) {
+                return true;
+            }
+            $nKey = $this->accountHealthChannelSlug($n);
             if ($nKey !== '' && $nKey === $chKey) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    /**
+     * True when normalized channel name is exactly an eBay slug, or starts with one and then a suffix
+     * like " (ProLight)" — e.g. "eBay 2 (ProLight)" → "ebay2(prolight)" must still match.
+     */
+    private function channelNameSlugMatchesEbayGroup(string $chKey): bool
+    {
+        if ($chKey === '') {
+            return false;
+        }
+        if (in_array($chKey, self::EBAY_GROUP_CHANNEL_NAME_SLUGS, true)) {
+            return true;
+        }
+        $prefixes = ['ebaythree', 'ebaytwo', 'ebay3', 'ebay2', 'ebay1', 'ebay'];
+        foreach ($prefixes as $p) {
+            if (! str_starts_with($chKey, $p)) {
+                continue;
+            }
+            if ($chKey === $p) {
+                return true;
+            }
+            $next = $chKey[strlen($p)] ?? '';
+            if ($next !== '' && ! ctype_alnum($next)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * eBay 1 / 2 / 3 share one definition scope. Match channel_master.type (ebay, ebay2, ebaytwo, …)
+     * and normalized channel names (dashboard uses ebay / ebaytwo / ebaythree keys).
+     */
+    private function channelBelongsToEbayGroup(ChannelMaster $channel): bool
+    {
+        $forcedIds = config('account_health_scopes.ebay_group_channel_ids', []);
+        if (is_array($forcedIds) && $forcedIds !== [] && in_array((int) $channel->id, array_map('intval', $forcedIds), true)) {
+            return true;
+        }
+
+        if ($this->channelMatchesConfiguredEbayNames($channel)) {
+            return true;
+        }
+
+        $typeRaw = trim((string) ($channel->type ?? ''));
+        if ($typeRaw !== '') {
+            $typeNorm = $this->accountHealthChannelSlug($typeRaw);
+            if (in_array($typeNorm, self::EBAY_GROUP_TYPE_SLUGS, true)) {
+                return true;
+            }
+            if (str_starts_with($typeNorm, 'ebay')) {
+                $suffix = substr($typeNorm, 4);
+                if ($suffix === '' || $suffix === '1' || $suffix === '2' || $suffix === '3'
+                    || $suffix === 'two' || $suffix === 'three') {
+                    return true;
+                }
+            }
+        }
+
+        $chKey = $this->accountHealthChannelSlug((string) $channel->channel);
+        if ($chKey !== '' && $this->channelNameSlugMatchesEbayGroup($chKey)) {
+            return true;
         }
 
         return false;
