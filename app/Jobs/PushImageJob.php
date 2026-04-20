@@ -51,9 +51,18 @@ class PushImageJob implements ShouldQueue
 
         $service = $this->resolveService($map->marketplace);
         if (! $service) {
+            $code = (string) $map->marketplace->code;
+            $class = 'App\\Services\\Marketplaces\\'.Str::studly($code).'Service';
+            Log::warning('PushImageJob: no marketplace service class', [
+                'map_id' => $map->id,
+                'marketplace_code' => $code,
+                'expected_class' => $class,
+            ]);
             $map->update([
                 'status' => ImageMarketplaceMap::STATUS_FAILED,
-                'response' => ['error' => 'No service for code: '.$map->marketplace->code],
+                'response' => [
+                    'error' => 'No service for marketplace code "'.$code.'". Expected class '.$class.' to exist.',
+                ],
             ]);
 
             return;
@@ -62,10 +71,17 @@ class PushImageJob implements ShouldQueue
         try {
             $result = $service->uploadImage($map->skuImage);
             if (! ($result['success'] ?? false)) {
+                $msg = (string) ($result['message'] ?? 'Upload failed');
+                Log::warning('PushImageJob: marketplace reported failure', [
+                    'map_id' => $map->id,
+                    'marketplace_code' => $map->marketplace->code,
+                    'sku_image_id' => $map->sku_image_id,
+                    'message' => $msg,
+                ]);
                 $map->update([
                     'status' => ImageMarketplaceMap::STATUS_FAILED,
                     'response' => [
-                        'message' => $result['message'] ?? 'Upload failed',
+                        'message' => $msg,
                         'data' => $result['data'] ?? null,
                     ],
                 ]);

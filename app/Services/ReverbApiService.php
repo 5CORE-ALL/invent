@@ -326,9 +326,10 @@ class ReverbApiService
         }
 
         // Prefer reverb_listing_id from reverb_products (fast, no API call)
-        $product = ReverbProduct::where('sku', $normalizedSku)
+        $product = ReverbProduct::query()
             ->whereNotNull('reverb_listing_id')
             ->where('reverb_listing_id', '!=', '')
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($normalizedSku)])
             ->first();
         if ($product && $product->reverb_listing_id) {
             return (string) trim($product->reverb_listing_id);
@@ -703,7 +704,8 @@ class ReverbApiService
     private function reverbPutListingWithRetry(string $token, string $listingId, array $payload, int $maxRetries = 4): Response
     {
         $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
-        $updateUrl = $apiBase.'/listings/'.$listingId;
+        $listingSegment = rawurlencode(trim((string) $listingId));
+        $updateUrl = $apiBase.'/listings/'.$listingSegment;
         $bearer = $token;
         $last = null;
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
@@ -961,71 +963,88 @@ class ReverbApiService
 
         $lockKey = 'reverb:append-listing-image:'.sha1((string) $listingId);
 
+        $run = function () use ($listingId, $newPublicImageUrl) {
+            return $this->appendImageUrlToListingBySkuBody($listingId, $newPublicImageUrl);
+        };
+
         try {
-            return Cache::lock($lockKey, 120)->block(90, function () use ($listingId, $newPublicImageUrl) {
-                $token = self::getReverbBearerToken();
-                if (! $token) {
-                    return [
-                        'success' => false,
-                        'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
-                        'listing_id' => $listingId,
-                    ];
-                }
-
-                $existing = $this->fetchListingImagePublicUrls($token, $listingId);
-                $norm = static function (string $u): string {
-                    return rtrim(strtolower($u), '/');
-                };
-                $newN = $norm($newPublicImageUrl);
-                foreach ($existing as $u) {
-                    if ($norm((string) $u) === $newN) {
-                        return [
-                            'success' => true,
-                            'message' => 'This image is already on the Reverb listing.',
-                            'listing_id' => $listingId,
-                        ];
-                    }
-                }
-
-                $all = array_values(array_unique([...$existing, $newPublicImageUrl]));
-                if (count($all) > 25) {
-                    $all = array_slice($all, 0, 25);
-                }
-
-                $payload = [
-                    'photos' => $all,
-                    'photo_upload_method' => 'override_position',
-                ];
-
-                try {
-                    $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
-                    if ($response->successful()) {
-                        return [
-                            'success' => true,
-                            'message' => 'Image added to the Reverb listing; Reverb is processing the photo from your URL.',
-                            'listing_id' => $listingId,
-                        ];
-                    }
-
-                    $body = $response->body();
-
-                    return [
-                        'success' => false,
-                        'message' => 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($body, 0, 1000),
-                        'listing_id' => $listingId,
-                    ];
-                } catch (\Throwable $e) {
-                    return [
-                        'success' => false,
-                        'message' => 'Reverb request failed: '.$e->getMessage(),
-                        'listing_id' => $listingId,
-                    ];
-                }
-            });
+            return Cache::lock($lockKey, 120)->block(90, $run);
         } catch (LockTimeoutException $e) {
             return [
                 'success' => false,
                 'message' => 'Timed out waiting to update this listing (other image pushes are still running). Retry in a few seconds.',
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Reverb append image: cache lock unavailable; running without lock (possible race if parallel workers)', [
+                'listing_id' => $listingId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $run();
+        }
+    }
+
+    /**
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    private function appendImageUrlToListingBySkuBody(string $listingId, string $newPublicImageUrl): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+                'listing_id' => $listingId,
+            ];
+        }
+
+        $existing = $this->fetchListingImagePublicUrls($token, $listingId);
+        $norm = static function (string $u): string {
+            return rtrim(strtolower($u), '/');
+        };
+        $newN = $norm($newPublicImageUrl);
+        foreach ($existing as $u) {
+            if ($norm((string) $u) === $newN) {
+                return [
+                    'success' => true,
+                    'message' => 'This image is already on the Reverb listing.',
+                    'listing_id' => $listingId,
+                ];
+            }
+        }
+
+        $all = array_values(array_unique([...$existing, $newPublicImageUrl]));
+        if (count($all) > 25) {
+            $all = array_slice($all, 0, 25);
+        }
+
+        $payload = [
+            'photos' => $all,
+            'photo_upload_method' => 'override_position',
+        ];
+
+        try {
+            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Image added to the Reverb listing; Reverb is processing the photo from your URL.',
+                    'listing_id' => $listingId,
+                ];
+            }
+
+            $body = $response->body();
+
+            return [
+                'success' => false,
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($body, 0, 1000),
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Reverb request failed: '.$e->getMessage(),
                 'listing_id' => $listingId,
             ];
         }

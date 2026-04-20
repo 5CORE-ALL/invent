@@ -18,6 +18,10 @@ class ReverbService implements MarketplaceInterface
      * Pushes the image to Reverb by public URL: finds the listing for the product SKU, fetches current
      * gallery URLs, appends this file’s URL, then PUTs the listing (Reverb fetches the image from your APP_URL).
      *
+     * Listing resolution matches Title Master: both use {@see \App\Services\ReverbApiService::getListingIdBySku}
+     * (reverb_products / my/listings). Title Master uses {@see \App\Services\ReverbApiService::updateTitle} (PUT title only);
+     * this flow uses {@see \App\Services\ReverbApiService::appendImageUrlToListingBySku} (merge + PUT photos).
+     *
      * @return array{success: bool, data: array<string, mixed>, message: string}
      */
     public function uploadImage(SkuImage $image): array

@@ -70,11 +70,17 @@ class SkuImageController extends Controller
         }
 
         $summaryRows = ImageMarketplaceMap::query()
+            ->whereHas('marketplace', static function ($mq): void {
+                $mq->whereRaw('LOWER(TRIM(code)) = ?', ['reverb']);
+            })
             ->select('marketplace_id', 'status', DB::raw('count(*) as c'))
             ->groupBy('marketplace_id', 'status')
             ->get();
 
-        $marketplaces = Marketplace::query()->orderBy('name')->get();
+        $marketplaces = Marketplace::query()
+            ->whereRaw('LOWER(TRIM(code)) = ?', ['reverb'])
+            ->orderBy('name')
+            ->get();
         $summary = [];
         foreach ($marketplaces as $mp) {
             $summary[$mp->id] = [
@@ -117,6 +123,9 @@ class SkuImageController extends Controller
 
         $maps = ImageMarketplaceMap::query()
             ->with(['marketplace', 'skuImage.product'])
+            ->whereHas('marketplace', static function ($mq): void {
+                $mq->whereRaw('LOWER(TRIM(code)) = ?', ['reverb']);
+            })
             ->when($marketplaceId, static fn ($q) => $q->where('marketplace_id', $marketplaceId))
             ->when($statusFilter, static fn ($q) => $q->where('status', $statusFilter))
             ->when($qSku, function ($q) use ($qSku) {
@@ -130,7 +139,7 @@ class SkuImageController extends Controller
             ->withQueryString();
 
         return view('sku_images.push_status', [
-            'title' => 'SKU image push status',
+            'title' => 'SKU image push status (Reverb)',
             'maps' => $maps,
             'summary' => $summary,
             'filterMarketplaceId' => $marketplaceId,
@@ -246,6 +255,27 @@ class SkuImageController extends Controller
 
         if (count($imageIds) !== count($data['image_ids'])) {
             return response()->json(['ok' => false, 'message' => 'Invalid image selection for this product.'], 422);
+        }
+
+        $reverbMarketplaceIds = Marketplace::query()
+            ->where('status', true)
+            ->whereRaw('LOWER(TRIM(code)) = ?', ['reverb'])
+            ->pluck('id')
+            ->map(static fn ($id) => (int) $id)
+            ->all();
+        if ($reverbMarketplaceIds === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Reverb is not configured as an active marketplace (code "reverb").',
+            ], 422);
+        }
+        foreach ($data['marketplace_ids'] as $marketplaceId) {
+            if (! in_array((int) $marketplaceId, $reverbMarketplaceIds, true)) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Only Reverb image push is enabled.',
+                ], 422);
+            }
         }
 
         $dispatched = 0;
@@ -467,59 +497,31 @@ class SkuImageController extends Controller
     }
 
     /**
-     * Push targets are `marketplaces` rows (for FK + services); labels follow `marketplace_percentages.marketplace`
-     * when a row matches by name or code (case-insensitive).
+     * Reverb only. Uses the same listing resolution as Title Master (see {@see \App\Services\ReverbApiService::getListingIdBySku}).
+     * Title Master calls {@see \App\Services\ReverbApiService::updateTitle}; image push uses {@see \App\Services\ReverbApiService::appendImageUrlToListingBySku}.
      *
      * @return Collection<int, object{id: int, label: string}>
      */
     private function marketplacePushSelectOptions(): Collection
     {
-        if (! Schema::hasTable('marketplace_percentages')) {
-            return Marketplace::query()
-                ->where('status', true)
-                ->orderBy('name')
-                ->get()
-                ->map(static fn (Marketplace $m) => (object) [
-                    'id' => $m->id,
-                    'label' => $m->name,
-                ]);
+        $mp = Marketplace::query()
+            ->where('status', true)
+            ->whereRaw('LOWER(TRIM(code)) = ?', ['reverb'])
+            ->first();
+
+        if (! $mp) {
+            return collect();
         }
 
-        $seen = [];
-        $options = collect();
-        foreach (MarketplacePercentage::query()->orderBy('marketplace')->cursor() as $pct) {
-            $needle = strtolower(trim((string) $pct->marketplace));
-            if ($needle === '') {
-                continue;
-            }
-            $mp = Marketplace::query()
-                ->where('status', true)
-                ->where(function ($q) use ($needle) {
-                    $q->whereRaw('LOWER(TRIM(name)) = ?', [$needle])
-                        ->orWhereRaw('LOWER(TRIM(code)) = ?', [$needle]);
-                })
-                ->first();
-            if ($mp && ! isset($seen[$mp->id])) {
-                $seen[$mp->id] = true;
-                $options->push((object) [
-                    'id' => $mp->id,
-                    'label' => (string) $pct->marketplace,
-                ]);
+        $label = $mp->name;
+        if (Schema::hasTable('marketplace_percentages')) {
+            $fromPct = MarketplacePercentage::displayNameForMarketplace($mp);
+            if ($fromPct !== null && $fromPct !== '') {
+                $label = $fromPct;
             }
         }
 
-        if ($options->isEmpty()) {
-            return Marketplace::query()
-                ->where('status', true)
-                ->orderBy('name')
-                ->get()
-                ->map(static fn (Marketplace $m) => (object) [
-                    'id' => $m->id,
-                    'label' => $m->name,
-                ]);
-        }
-
-        return $options;
+        return collect([(object) ['id' => $mp->id, 'label' => (string) $label]]);
     }
 
     private function sanitizePathSegment(string $sku): string

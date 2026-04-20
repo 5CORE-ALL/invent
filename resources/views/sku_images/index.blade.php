@@ -127,10 +127,10 @@
                     <div class="d-flex flex-wrap gap-2 align-items-start">
                         @if ($pushMarketplaceOptions->isEmpty())
                             <div class="alert alert-warning small py-2 px-3 mb-0" role="alert" style="max-width:26rem">
-                                No push targets found: need active rows in <code class="small">marketplaces</code> that match
-                                <code class="small">marketplace_percentages.marketplace</code> (by name or code), or run
-                                <code class="small">php artisan migrate --force</code> /
-                                <code class="small">php artisan db:seed --class=SkuImageMarketplaceSeeder --force</code>.
+                                Reverb push is not available: add an active <code class="small">marketplaces</code> row with
+                                code <code class="small">reverb</code> (run
+                                <code class="small">php artisan migrate --force</code> or
+                                <code class="small">php artisan db:seed --class=SkuImageMarketplaceSeeder --force</code>).
                             </div>
                         @endif
                         <select class="form-select form-select-sm" id="im-markets" name="marketplace_ids[]" multiple
@@ -489,7 +489,7 @@
                                 alertMsg('danger', d.message || ('Push failed: ' + status));
                             } else {
                                 alertMsg('success', 'Queued ' + (d.dispatched || 0) +
-                                    ' job(s). Run the queue worker; refresh the SKU list to update green/gray and reload images to see new statuses.');
+                                    ' job(s). Keep queue:work running. Open SKU Image Push Status (sidebar) for Sent/Failed and API details. Reverb needs a listing for the SKU and a public HTTPS image URL (APP_URL).');
                             }
                         })
                         .catch(() => alertMsg('danger', 'Network error on push'))
