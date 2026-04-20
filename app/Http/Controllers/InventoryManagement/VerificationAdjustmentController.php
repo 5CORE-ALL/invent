@@ -428,6 +428,9 @@ class VerificationAdjustmentController extends Controller
                 return array_merge($item->toArray(), [
                     'to_adjust' => $ta,
                     'approved_at_ymd' => $approvedAtYmd,
+                    'shopify_adjustment_status' => $inv?->shopify_adjustment_status,
+                    'shopify_adjustment_error' => $inv?->shopify_adjustment_error,
+                    'shopify_adjustment_succeeded_at' => $inv?->shopify_adjustment_succeeded_at?->toIso8601String(),
                 ]);
             }
 
@@ -736,6 +739,7 @@ class VerificationAdjustmentController extends Controller
                     'shopify_adjustment_error' => $record->shopify_adjustment_error,
                     'shopify_retry_count' => (int) $record->shopify_retry_count,
                     'shopify_success_ymd' => $successYmd,
+                    'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
                     'approved_at_ymd' => $record->approved_at
                         ? Carbon::parse($record->approved_at)->timezone('America/New_York')->format('Y-m-d')
                         : null,

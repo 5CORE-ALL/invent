@@ -313,3 +313,24 @@
         font-size: 12px;
     }
 }
+
+/* Shopify push column: spinner, check, cross, or n/a (tooltip on hover) */
+#ebay-table td.va-shopify-push-col,
+#ebay-table td.skuColumn .va-shopify-push {
+    vertical-align: middle;
+}
+#ebay-table td.va-shopify-push-col i,
+#ebay-table td.skuColumn .va-shopify-push i {
+    font-size: 0.95em;
+    line-height: 1;
+}
+#ebay-table th[data-field="shopify_push"] .va-th-v-inner,
+#ebay-table th[data-field="shopify_push"] {
+    text-align: center;
+}
+#ebay-table td.va-shopify-push-col {
+    min-width: 2.5rem;
+}
+#ebay-table td.va-shopify-push-col .va-shopify-push {
+    margin-left: 0 !important; /* was sized for in-SKU; column has its own cell */
+}

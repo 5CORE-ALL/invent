@@ -1818,6 +1818,9 @@
                                     <th data-field="tacos" class="va-th-v">
                                         <div class="va-th-v-inner">ACCEPT <span class="sort-arrow"></span></div>
                                     </th>
+                                    <th data-field="shopify_push" class="text-center va-th-v" style="min-width: 64px; white-space: nowrap;" title="Last Shopify push when you save an approved adjustment. Hover for details.">
+                                        <div class="va-th-v-inner">PUSH <span class="sort-arrow"></span></div>
+                                    </th>
                                     <th data-field="tacos" class="va-th-v" style="display: none;">
                                         <div class="va-th-v-inner">ADJ HISTORY <span class="sort-arrow"></span></div>
                                     </th>
@@ -2589,6 +2592,55 @@
                 return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`;
             }
 
+            /** Escape for HTML attributes (SKUs with inch mark e.g. WF 8"-890 2PC break value="..." otherwise). */
+            function escAttr(s) {
+                if (s == null) return '';
+                return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function shopifyPushTimeLabel(isoOrStr) {
+                if (!isoOrStr) return '';
+                const t = new Date(isoOrStr);
+                if (isNaN(t)) return String(isoOrStr);
+                return formatOhioTime(t);
+            }
+
+            /** Per-SKU latest Shopify push state: loader, check, cross, or n/a (0 adjustment) — for title tooltip use escAttr. */
+            function shopifyPushMarkupFromState(status, err, succeededAt) {
+                const base = (title, icon, extraClass) =>
+                    '<span class="va-shopify-push d-inline-block align-middle" style="min-width:1.1em;margin-left:4px" title="' + escAttr(title) + '">' +
+                    '<i class="fas ' + icon + (extraClass ? ' ' + extraClass : '') + '"></i></span>';
+                if (status === 'success') {
+                    const when = shopifyPushTimeLabel(succeededAt);
+                    const label = when ? 'Pushed to Shopify · ' + when : 'Pushed to Shopify';
+                    return base(label, 'fa-check-circle', 'text-success');
+                }
+                if (status === 'failed') {
+                    const msg = (err == null || err === '') ? 'Push to Shopify failed' : String(err).trim();
+                    return base(msg.slice(0, 500), 'fa-times-circle', 'text-danger');
+                }
+                if (status === 'na') {
+                    return base('No Shopify change (0 adjustment) · record saved in history', 'fa-minus-circle', 'text-secondary');
+                }
+                return '';
+            }
+
+            function shopifyPushLoadingHtml() {
+                return '<span class="va-shopify-push d-inline-block align-middle" style="min-width:1.1em;margin-left:4px" title="Pushing to Shopify…"><i class="fas fa-spinner fa-spin text-primary" style="font-size:0.9em"></i></span>';
+            }
+
+            function setRowShopifyPushUi($row, status, err, succeededAt) {
+                if ($row.is('.parent-row')) {
+                    return;
+                }
+                const $cell = $row.find('td.va-shopify-push-col');
+                if (!$cell.length) {
+                    return;
+                }
+                const m = shopifyPushMarkupFromState(status, err, succeededAt);
+                const html = m || '<span class="va-shopify-push" style="display:none" aria-hidden="true"></span>';
+                $cell.html(html);
+            }
 
             // Load data from server
             function loadData() {
@@ -2659,6 +2711,11 @@
                                     IS_HIDE: 0,
                                     is_hide: 0,
 
+                                    // Latest save row: Shopify push result (for check / cross next to SKU)
+                                    SHOPIFY_PUSH_STATUS: item.shopify_adjustment_status != null && item.shopify_adjustment_status !== '' ? item.shopify_adjustment_status : null,
+                                    SHOPIFY_PUSH_ERROR: item.shopify_adjustment_error || null,
+                                    SHOPIFY_PUSH_AT: item.shopify_adjustment_succeeded_at || null,
+
                                     raw_data: item || {} // Full original row, in case needed later
                                 };
                             });
@@ -2699,7 +2756,7 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="27" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
                     return;
                 }
 
@@ -2709,7 +2766,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="27" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
                     return;
                 }
 
@@ -2834,7 +2891,7 @@
 
                     // Add checkbox column as first column
                     const $checkboxCell = $('<td>').css('text-align', 'center').html(
-                        `<input type="checkbox" class="row-checkbox" data-sku="${item.SKU || ''}" data-index="${rowIndex}">`
+                        `<input type="checkbox" class="row-checkbox" data-sku="${escAttr(item.SKU || '')}" data-index="${rowIndex}">`
                     );
                     $row.append($checkboxCell);
 
@@ -2856,7 +2913,7 @@
                     
                     // Copy icon button for copying SKU to clipboard
                     const copyButton = `<i class="fas fa-copy text-secondary copy-sku-icon" 
-                        data-sku="${item.SKU || ''}" 
+                        data-sku="${escAttr(item.SKU || '')}" 
                         title="Copy SKU to clipboard" 
                         style="cursor: pointer; margin-left: 5px; font-size: 12px; opacity: 0.7;" 
                         onmouseover="this.style.opacity='1'" 
@@ -2873,7 +2930,7 @@
                     } else {
                         // Regular SKU - show history for this SKU only
                         eyeButton = `<i class="fas fa-eye text-primary view-sku-history-icon" 
-                            data-sku="${item.SKU || ''}" 
+                            data-sku="${escAttr(item.SKU || '')}" 
                             title="View SKU History" 
                             style="cursor: pointer; margin-left: 8px; font-size: 14px;"></i>`;
                     }
@@ -2884,14 +2941,14 @@
                     const shopifyLinkIcon = !isParentRow ? `<a href="${shopifyInventoryUrl}" target="_blank" class="shopify-link-icon" title="View in Shopify" style="margin-left: 8px; color: #28a745; text-decoration: none;"><i class="fas fa-external-link-alt"></i></a>` : '';
                     
                     if (isParentRow) {
-                        $skuCell.html(`<strong>${sku}</strong> ${copyButton} ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
+                        $skuCell.html(`<strong>${escAttr(sku)}</strong> ${copyButton} ${eyeButton}<input type="hidden" class="sku-hidden" value="${escAttr(item.SKU || '')}" />`);
                     } else {
                         const buyerLink = item.raw_data?.['B Link'] || '';
                         const sellerLink = item.raw_data?.['AMZ LINK SL'] || '';
                         if (buyerLink || sellerLink) {
                             $skuCell.html(`
                                 <div class="sku-tooltip-container d-inline-block">
-                                    <span class="sku-text">${sku}</span>
+                                    <span class="sku-text">${escAttr(sku)}</span>
                                     <div class="sku-tooltip">
                                         ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
                                         ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
@@ -2900,10 +2957,10 @@
                                 ${copyButton}
                                 ${eyeButton}
                                 ${shopifyLinkIcon}
-                                <input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />
+                                <input type="hidden" class="sku-hidden" value="${escAttr(item.SKU || '')}" />
                             `);
                         } else {
-                            $skuCell.html(`${sku} ${copyButton} ${eyeButton}${shopifyLinkIcon}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
+                            $skuCell.html(`${escAttr(sku)} ${copyButton} ${eyeButton}${shopifyLinkIcon}<input type="hidden" class="sku-hidden" value="${escAttr(item.SKU || '')}" />`);
                         }
                     }
                     $row.append($skuCell);
@@ -2953,7 +3010,7 @@
 
                     $row.append($('<td>').html(`
                         <input type="number" class="form-control verified-stock-input" 
-                            data-sku="${item.SKU}" data-index="${rowIndex}" value="${item.VERIFIED_STOCK ?? ''}" />
+                            data-sku="${escAttr(item.SKU)}" data-index="${rowIndex}" value="${escAttr(item.VERIFIED_STOCK ?? '')}" />
                     `));
 
                     const toAdjust = item.VERIFIED_STOCK !== '' ? parseInt(item.VERIFIED_STOCK) - parseInt(item.ON_HAND || 0) : '';
@@ -2966,7 +3023,7 @@
                     const selectedReason = reasonStr ? reasonStr.split(',').map(r => r.trim())[0] : 'Count';
 
                     $row.append($('<td>').html(`
-                        <select class="form-control reason-select" data-sku="${item.SKU}" data-index="${rowIndex}">
+                        <select class="form-control reason-select" data-sku="${escAttr(item.SKU)}" data-index="${rowIndex}">
                             <option value="">Select reason...</option>
                             <option value="Count" ${selectedReason === 'Count' ? 'selected' : ''}>Count</option>
                             <option value="Received" ${selectedReason === 'Received' ? 'selected' : ''}>Received</option>
@@ -2985,7 +3042,7 @@
                     // REMARK column - contains remarks input only
                     // Field should be blank (not showing latest remark) per requirement
                     $row.append(`<td>
-                        <input type="text" class="form-control remarks-input" data-sku="${item.SKU}" value="" placeholder="Enter remark...">
+                        <input type="text" class="form-control remarks-input" data-sku="${escAttr(item.SKU)}" value="" placeholder="Enter remark...">
                     </td>`);
 
                     $row.append($('<td>').html(`
@@ -2996,10 +3053,17 @@
                         </div>
                     `));
 
+                    // Dedicated PUSH column (Shopify) — right after Accept
+                    const pushColumnHtml = isParentRow
+                        ? '<span class="text-muted" title="N/A for parent">—</span>'
+                        : (shopifyPushMarkupFromState(item.SHOPIFY_PUSH_STATUS, item.SHOPIFY_PUSH_ERROR, item.SHOPIFY_PUSH_AT) ||
+                            '<span class="va-shopify-push" style="display:none" aria-hidden="true"></span>');
+                    $row.append($('<td>').addClass('text-center align-middle va-shopify-push-col').html(pushColumnHtml));
+
                     const $historyIcon = $(`
                         <td class="text-center" style="display: none;">
                             <i class="fas fa-external-link-alt text-primary view-history-icon" 
-                            data-sku="${item.SKU}" 
+                            data-sku="${escAttr(item.SKU)}" 
                             title="View History" 
                             style="cursor: pointer;"></i>
                         </td>
@@ -3022,7 +3086,7 @@
                     const isVerified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1 || item.is_verified === '1';
                     const dotColor = isVerified ? '#28a745' : '#dc3545'; // Green for verified, Red for unverified
                     const verifiedHTML = `<button type="button" class="btn btn-sm verified-status-btn" 
-                        data-sku="${item.SKU || ''}" data-index="${rowIndex}" data-verified="${isVerified ? '1' : '0'}"
+                        data-sku="${escAttr(item.SKU || '')}" data-index="${rowIndex}" data-verified="${isVerified ? '1' : '0'}"
                         style="background: none; border: none; padding: 0; cursor: pointer;">
                         <i class="fas fa-circle" style="color: ${dotColor}; font-size: 12px;"></i>
                     </button>`;
@@ -3046,7 +3110,7 @@
                     $row.append($('<td>').addClass('history-column').html(historyHTML));
 
                     // Activity Logs column - View SKU-wise log history
-                    const activityLogsHTML = `<button type="button" class="btn btn-sm btn-outline-primary view-activity-logs-btn" data-sku="${item.SKU || ''}" title="View activity log for this SKU">
+                    const activityLogsHTML = `<button type="button" class="btn btn-sm btn-outline-primary view-activity-logs-btn" data-sku="${escAttr(item.SKU || '')}" title="View activity log for this SKU">
                         <i class="fas fa-list-alt"></i> View
                     </button>`;
                     $row.append($('<td>').addClass('activity-logs-column text-center').css('vertical-align', 'middle').html(activityLogsHTML));
@@ -3531,6 +3595,15 @@
                         is_approved: isApproved,
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },
+                    beforeSend: function () {
+                        if (!isApproved || $row.is('.parent-row')) {
+                            return;
+                        }
+                        const $pc = $row.find('td.va-shopify-push-col');
+                        if ($pc.length) {
+                            $pc.html(shopifyPushLoadingHtml());
+                        }
+                    },
                     success: function (res) {
                         if (res.success) {
                             const approvedAt = res.data.approved_at;
@@ -3557,7 +3630,7 @@
 
                             }
 
-                            if (!isNaN(index)) {
+                            if (!isNaN(index) && filteredData[index]) {
                                 filteredData[index].APPROVED = !!isApproved;
                                 filteredData[index].APPROVED_BY = isApproved ? approvedBy : '-';
                                 filteredData[index].APPROVED_AT = isApproved ? approvedAt : '-';
@@ -3567,10 +3640,20 @@
                                 filteredData[index].IS_VERIFIED = 1;
                                 filteredData[index].is_verified = true;
                             }
-                            const tableDataIdx = tableData.findIndex(item => String(item.SKU || '').trim() === String(sku || '').trim());
-                            if (tableDataIdx !== -1) {
-                                tableData[tableDataIdx].IS_VERIFIED = 1;
-                                tableData[tableDataIdx].is_verified = true;
+                            [tableData, filteredData].forEach(function (arr) {
+                                const j = arr.findIndex(function (it) { return String(it.SKU || '').trim() === String(sku || '').trim(); });
+                                if (j !== -1) {
+                                    arr[j].IS_VERIFIED = 1;
+                                    arr[j].is_verified = true;
+                                    if (res.data) {
+                                        arr[j].SHOPIFY_PUSH_STATUS = res.data.shopify_adjustment_status;
+                                        arr[j].SHOPIFY_PUSH_ERROR = res.data.shopify_adjustment_error || null;
+                                        arr[j].SHOPIFY_PUSH_AT = res.data.shopify_adjustment_succeeded_at || null;
+                                    }
+                                }
+                            });
+                            if (res.data) {
+                                setRowShopifyPushUi($row, res.data.shopify_adjustment_status, res.data.shopify_adjustment_error, res.data.shopify_adjustment_succeeded_at);
                             }
 
                             setRowVerifiedGreen($row);
@@ -3626,13 +3709,21 @@
                                 }
                             }
                         } else {
+                            if (isApproved) {
+                                setRowShopifyPushUi($row, 'failed', res.message || 'Save failed', null);
+                            }
                             $checkbox.prop('checked', !isApproved);
                             showNotification('danger', res.message || 'Something went wrong.');
                         }
                     },
-                    error: function () {
+                    error: function (xhr) {
+                        if (isApproved) {
+                            const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to update data. Please try again.';
+                            setRowShopifyPushUi($row, 'failed', msg, null);
+                        }
                         $checkbox.prop('checked', !isApproved);
-                        showNotification('danger', 'Failed to update data. Please try again.');
+                        const errMsg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to update data. Please try again.';
+                        showNotification('danger', errMsg);
                     }
                 });
             });
