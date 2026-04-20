@@ -438,8 +438,12 @@
 
                         <span class="vr align-self-stretch opacity-25"></span>
 
-                        <!-- Stage Filter -->
-                        <select id="stage-filter" class="form-select form-select-sm border border-primary" style="width:140px;">
+                        <!-- Stage Filter + blue summary badge (filtered child rows + column sum) -->
+                        <div class="d-inline-flex flex-column align-items-start">
+                            <span class="text-muted fw-semibold" style="font-size:0.62rem;line-height:1.1;white-space:nowrap;"
+                                title="Child SKU rows currently visible after Stage and all other filters. QTY is the sum of that stage’s quantity column (e.g. appr_req_qty for Appr Req).">Stage summary</span>
+                            <div class="d-flex align-items-center gap-1 flex-wrap">
+                                <select id="stage-filter" class="form-select form-select-sm border border-primary" style="width:140px;">
                                 <option value="">All</option>
                                 <option value="__blank__">Not Req Now</option>
                                 <option value="two_ord_nonneg">2 Ord</option>
@@ -449,7 +453,9 @@
                                 <option value="transit">Trn</option>
                                 <option value="to_order_analysis">Order</option>
                             </select>
-                        <span id="stage-filter-badge" style="display:none;background:#0d6efd;color:#fff;font-size:0.78rem;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap;box-shadow:0 1px 4px rgba(13,110,253,.35);"></span>
+                                <span id="stage-filter-badge" style="display:none;background:#0d6efd;color:#fff;font-size:0.78rem;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap;box-shadow:0 1px 4px rgba(13,110,253,.35);"></span>
+                            </div>
+                        </div>
 
                         <!-- Row Type -->
                         <select id="row-data-type" class="form-select form-select-sm border border-primary" style="width:150px;" aria-label="Row type"></select>
@@ -467,9 +473,12 @@
                             </ul>
                             </div>
 
-                        <!-- Appr Req filter -->
+                        <!-- Appr Req yellow filter (star count = apprReqYellowRowVisible rule, not stage badge) -->
+                        <div class="d-inline-flex flex-column align-items-start">
+                            <span class="text-muted fw-semibold" style="font-size:0.62rem;line-height:1.1;white-space:nowrap;"
+                                title="Count of lines where 2 Ord ≥ 0, Order/MIP/R2S/Trn have no pipeline qty, and NRP is not NR or LATER. This drives the star / yellow Appr Req filter, not the blue Stage summary.">Yellow queue</span>
                             <div class="dropdown">
-                            <button class="btn btn-sm btn-warning dropdown-toggle fw-semibold text-dark px-2" type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Appr Req. filter">
+                            <button class="btn btn-sm btn-warning dropdown-toggle fw-semibold text-dark px-2" type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Yellow Appr Req filter: 2 Ord ≥ 0, empty pipeline (Order/MIP/R2S/Trn), REQ only (not NR/LATER). Count is independent of the blue Stage summary badge.">
                                 <span class="d-none" aria-hidden="true"><i class="bi bi-funnel-fill"></i><span id="appr-req-badge-label">All</span></span>
                                     <span class="vr align-self-stretch my-n1 opacity-50 d-none" aria-hidden="true"></span>
                                 <i class="bi bi-star-fill"></i> <span id="yellow-count-box">Appr Req: 0</span>
@@ -479,6 +488,7 @@
                                     <li><button class="dropdown-item" type="button" data-filter="yellow">Appr Req.</button></li>
                                 </ul>
                             </div>
+                        </div>
 
                         <!-- Column Management -->
                         <div class="dropdown">
@@ -3593,9 +3603,11 @@
                     }
                     const qtyPart = qtyField ? ' &nbsp;|&nbsp; QTY: <strong>' + Math.round(totalQty).toLocaleString() + '</strong>' : '';
                     badge.innerHTML = label + ': <strong>' + childCount + '</strong> SKU' + (childCount !== 1 ? 's' : '') + qtyPart;
+                    badge.title = 'Filtered child rows (Stage + all filters). QTY = sum of column ' + (qtyField || '—') + ' for those rows.';
                     badge.style.display = 'inline-block';
                 } else {
                     badge.style.display = 'none';
+                    badge.title = '';
                 }
             }
 
@@ -4429,7 +4441,11 @@
                 !r.is_parent && apprReqYellowRowVisible(r)
             ).length;
 
-            document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
+            const yc = document.getElementById('yellow-count-box');
+            if (yc) {
+                yc.textContent = `Appr Req: ${yellowCount}`;
+                yc.title = 'Yellow queue: 2 Ord ≥ 0, no Order/MIP/R2S/Trn qty, NRP not NR/LATER. Not the same as the blue Stage summary.';
+            }
             } finally {
                 isApplyingCombinedFilters = false;
                 if (pendingCombinedFiltersRun) {

@@ -20,6 +20,8 @@ use App\Models\Temu2DailyData;
 use App\Models\Temu2DailyDataL60;
 use App\Models\Temu2DailyDataL7;
 use App\Models\TemuPricing;
+use App\Models\Temu2Pricing;
+use App\Models\Temu2DataView;
 use App\Models\TemuViewData;
 use App\Models\TemuAdData;
 use App\Models\TemuRPricing;
@@ -392,7 +394,13 @@ class TemuController extends Controller
         $sku = $validated['sku'];
         $status = TemuListingStatus::where('sku', $sku)->first();
 
+        $rawValue = $status ? $status->getRawOriginal('value') : null;
         $existing = $status ? $status->value : [];
+        if (!is_array($existing)) {
+            $existing = is_string($rawValue) && $rawValue !== ''
+                ? (json_decode($rawValue, true) ?: [])
+                : [];
+        }
 
         // Only update the fields that are present in the request
         $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
@@ -412,7 +420,61 @@ class TemuController extends Controller
             ['value' => $existing]
         );
 
-        return response()->json(['status' => 'success']);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'NR/REQ updated successfully',
+            'nr_req' => $existing['nr_req'] ?? null,
+        ]);
+    }
+
+    /**
+     * Temu 2: persist nr_req / listed / links inside temu2_data_view.value (same JSON as SPRICE).
+     */
+    public function saveTemu2ListingFieldsToDataView(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'nr_req' => 'nullable|string|in:REQ,NRL,NR',
+            'listed' => 'nullable|string|in:Listed,Pending',
+            'buyer_link' => 'nullable|url',
+            'seller_link' => 'nullable|url',
+        ]);
+
+        $sku = trim((string) $validated['sku']);
+
+        $row = Temu2DataView::firstOrNew(['sku' => $sku]);
+        $row->sku = $sku;
+
+        $existing = is_array($row->value)
+            ? $row->value
+            : (is_string($row->value) ? json_decode($row->value, true) : []);
+        if (!is_array($existing)) {
+            $raw = $row->getRawOriginal('value');
+            $existing = is_string($raw) && $raw !== '' ? (json_decode($raw, true) ?: []) : [];
+        }
+        if (!is_array($existing)) {
+            $existing = [];
+        }
+
+        $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
+        foreach ($fields as $field) {
+            if ($request->has($field)) {
+                if ($field === 'nr_req' && isset($validated[$field]) && $validated[$field] === 'NR') {
+                    $existing[$field] = 'NRL';
+                } else {
+                    $existing[$field] = $validated[$field];
+                }
+            }
+        }
+
+        $row->value = $existing;
+        $row->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'NR/REQ updated (temu2_data_view)',
+            'nr_req' => $existing['nr_req'] ?? null,
+        ]);
     }
 
 
@@ -2226,11 +2288,438 @@ class TemuController extends Controller
     }
 
     /**
+     * Upload Temu 2 Pricing Data (same Excel format as Temu; stores in temu2_pricing).
+     */
+    public function uploadTemu2Pricing(Request $request)
+    {
+        try {
+            $request->validate([
+                'pricing_file' => 'required|file|mimes:xlsx,xls,csv',
+            ]);
+
+            $file = $request->file('pricing_file');
+            $spreadsheet = IOFactory::load($file->getPathName());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            $headers = $rows[0];
+            unset($rows[0]);
+
+            $imported = 0;
+            $errors = [];
+
+            DB::beginTransaction();
+            try {
+                Temu2Pricing::truncate();
+
+                foreach ($rows as $index => $row) {
+                    if (empty(array_filter($row))) {
+                        continue;
+                    }
+
+                    $rowData = array_combine($headers, $row);
+
+                    $sku = $rowData['SKU'] ?? $rowData['Contribution Goods'] ?? null;
+
+                    if (empty($sku)) {
+                        $errors[] = 'Row ' . ($index + 2) . ': Missing SKU';
+                        continue;
+                    }
+
+                    $dateCreated = null;
+                    if (!empty($rowData['Date created'])) {
+                        try {
+                            $dateCreated = Carbon::parse($rowData['Date created']);
+                        } catch (\Exception $e) {
+                            try {
+                                $dateCreated = Carbon::createFromFormat('d/m/Y H:i:s', $rowData['Date created']);
+                            } catch (\Exception $e2) {
+                                Log::warning('Could not parse date: ' . $rowData['Date created']);
+                            }
+                        }
+                    }
+
+                    $pricingData = [
+                        'category' => $rowData['Category'] ?? null,
+                        'category_id' => $rowData['Category id'] ?? null,
+                        'product_name' => $rowData['Product name'] ?? null,
+                        'contribution_goods' => $rowData['Contribution Goods'] ?? null,
+                        'goods_id' => $rowData['Goods ID'] ?? null,
+                        'sku_id' => $rowData['SKU ID'] ?? null,
+                        'variation' => $rowData['Variation'] ?? null,
+                        'quantity' => !empty($rowData['Quantity']) ? (int) $rowData['Quantity'] : 0,
+                        'base_price' => !empty($rowData['Base price']) ? (float) $rowData['Base price'] : null,
+                        'external_product_id_type' => $rowData['External Product ID Type'] ?? null,
+                        'external_product_id' => $rowData['External product ID'] ?? null,
+                        'status' => $rowData['Status'] ?? null,
+                        'detail_status' => $rowData['Detail status'] ?? null,
+                        'date_created' => $dateCreated,
+                        'incomplete_product_information' => $rowData['Incomplete product information'] ?? null,
+                    ];
+
+                    Temu2Pricing::create(array_merge(['sku' => $sku], $pricingData));
+                    $imported++;
+                }
+
+                DB::commit();
+
+                return back()->with('success', "Temu 2: successfully imported {$imported} pricing records. (temu2_pricing was cleared first.)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu 2 pricing: ' . $e->getMessage());
+
+            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download Temu 2 Pricing sample (same columns as Temu pricing sample).
+     */
+    public function downloadTemu2PricingSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'Category',
+            'Category id',
+            'Product name',
+            'Contribution Goods',
+            'SKU',
+            'Goods ID',
+            'SKU ID',
+            'Variation',
+            'Quantity',
+            'Base price',
+            'External Product ID Type',
+            'External product ID',
+            'Status',
+            'Detail status',
+            'Date created',
+            'Incomplete product information',
+        ];
+
+        $sheet->fromArray($headers, null, 'A1');
+
+        $sampleData = [
+            [
+                'Musical Instruments/Electronic Music',
+                '18434',
+                '5Core Speaker Stand 2Pc Heavy Duty',
+                'SS SQ WH',
+                'SS SQ WH',
+                '603239688828956',
+                '47514283725096',
+                'White',
+                '100',
+                '249.99',
+                '',
+                '',
+                'Active',
+                'Active',
+                '24/12/2025 03:44:26',
+                '',
+            ],
+            [
+                'Musical Instruments/Electronic Music',
+                '18434',
+                '5Core Speaker Stand 2Pc Heavy Duty',
+                'SS SQ BLK',
+                'SS SQ BLK',
+                '603239688833129',
+                '43116237163596',
+                'Black',
+                '200',
+                '249.99',
+                '',
+                '',
+                'Active',
+                'Active',
+                '24/12/2025 03:33:55',
+                '',
+            ],
+        ];
+
+        $sheet->fromArray($sampleData, null, 'A2');
+
+        foreach (range('A', 'P') as $col) {
+            $sheet->getColumnDimension($col)->setWidth(20);
+        }
+
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']],
+        ];
+        $sheet->getStyle('A1:P1')->applyFromArray($headerStyle);
+
+        $fileName = 'Temu2_Pricing_Sample_' . date('Y-m-d') . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    /**
+     * Update Temu 2 base price (temu2_pricing).
+     */
+    public function updateTemu2Price(Request $request)
+    {
+        try {
+            $request->validate([
+                'sku' => 'required|string',
+                'base_price' => 'required|numeric|min:0',
+            ]);
+
+            $pricing = Temu2Pricing::where('sku', $request->sku)->first();
+
+            if (!$pricing) {
+                return response()->json(['error' => 'SKU not found in temu2_pricing'], 404);
+            }
+
+            $pricing->base_price = $request->base_price;
+            $pricing->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Price updated successfully',
+                'data' => $pricing,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating Temu 2 price: ' . $e->getMessage());
+
+            return response()->json(['error' => 'Failed to update price'], 500);
+        }
+    }
+
+    /**
+     * Save Temu 2 SPRICE (temu2_data_view).
+     */
+    public function saveTemu2Sprice(Request $request)
+    {
+        try {
+            $request->validate([
+                'sku' => 'required|string',
+                'sprice' => 'required|numeric|min:0',
+            ]);
+
+            $sku = trim((string) $request->sku);
+            $sprice = floatval($request->sprice);
+
+            $productMaster = ProductMaster::where('sku', $sku)->first()
+                ?? ProductMaster::whereRaw('TRIM(sku) = ?', [$sku])->first();
+
+            $lp = 0;
+            $temuShip = 0;
+
+            if ($productMaster) {
+                $values = is_array($productMaster->Values)
+                    ? $productMaster->Values
+                    : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'lp') {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($productMaster->lp)) {
+                    $lp = floatval($productMaster->lp);
+                }
+
+                $temuShip = floatval($values['temu_ship'] ?? 0);
+            }
+
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
+
+            $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
+
+            $sgprftPercent = $stemuPrice > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $stemuPrice) * 100 : 0;
+
+            $sroiPercent = $lp > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+
+            $temuDataView = Temu2DataView::firstOrNew(['sku' => $sku]);
+            $temuDataView->sku = $sku;
+            $existingValue = is_array($temuDataView->value)
+                ? $temuDataView->value
+                : (is_string($temuDataView->value) ? json_decode($temuDataView->value, true) : []);
+            if (!is_array($existingValue)) {
+                $existingValue = [];
+            }
+
+            $existingValue['sprice'] = $sprice;
+            $existingValue['sgprft_percent'] = round($sgprftPercent, 2);
+            $existingValue['sroi_percent'] = round($sroiPercent, 2);
+
+            $temuDataView->value = $existingValue;
+            $temuDataView->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'SPRICE saved successfully',
+                'sprice' => $sprice,
+                'sgprft_percent' => round($sgprftPercent, 2),
+                'sroi_percent' => round($sroiPercent, 2),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving Temu 2 SPRICE: ' . $e->getMessage());
+
+            return response()->json(['error' => 'Failed to save SPRICE'], 500);
+        }
+    }
+
+    /**
+     * Copy temu_data_view rows into temu2_data_view (same JSON value).
+     * Use after splitting Temu / Temu 2 so old SPRICE rows still appear on Temu 2 Pricing.
+     * Optional: pass sku (string) or skus (array); omit both to sync all rows.
+     */
+    public function syncTemu2DataViewFromTemuDataView(Request $request)
+    {
+        try {
+            if (!Schema::hasTable('temu2_data_view') || !Schema::hasTable('temu_data_view')) {
+                return response()->json(['success' => false, 'message' => 'Required tables are missing.'], 500);
+            }
+
+            $sku = $request->input('sku');
+            $skus = $request->input('skus');
+
+            $query = TemuDataView::query()->orderBy('id');
+            if (is_array($skus) && count($skus) > 0) {
+                $query->whereIn('sku', array_map('trim', $skus));
+            } elseif ($sku !== null && $sku !== '') {
+                $t = trim((string) $sku);
+                $rawSku = $sku;
+                $query->where(function ($q) use ($t, $rawSku) {
+                    $q->where('sku', $t)->orWhere('sku', $rawSku);
+                });
+            }
+
+            $synced = 0;
+            $query->chunkById(500, function ($rows) use (&$synced) {
+                foreach ($rows as $row) {
+                    $rowSku = trim((string) ($row->sku ?? ''));
+                    if ($rowSku === '') {
+                        continue;
+                    }
+                    $v = $row->value;
+                    if (!is_array($v)) {
+                        $raw = $row->getAttributes()['value'] ?? null;
+                        $v = is_string($raw) ? (json_decode($raw, true) ?: []) : [];
+                    }
+                    if (!is_array($v)) {
+                        $v = [];
+                    }
+                    Temu2DataView::updateOrCreate(
+                        ['sku' => $rowSku],
+                        ['value' => $v]
+                    );
+                    $synced++;
+                }
+            });
+
+            return response()->json([
+                'success' => true,
+                'synced' => $synced,
+                'message' => $synced === 0
+                    ? 'No matching rows in temu_data_view.'
+                    : "Copied {$synced} row(s) from temu_data_view to temu2_data_view.",
+            ]);
+        } catch (\Exception $e) {
+            Log::error('syncTemu2DataViewFromTemuDataView: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Clear SPRICE for selected SKUs (temu2_data_view only).
+     */
+    public function clearAllTemu2Sprice(Request $request)
+    {
+        try {
+            DB::beginTransaction();
+
+            $cleared = 0;
+            $skus = $request->input('skus', []);
+
+            if (empty($skus)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No SKUs selected',
+                ], 400);
+            }
+
+            $dataViewRecords = Temu2DataView::whereIn('sku', $skus)->get();
+
+            foreach ($dataViewRecords as $record) {
+                $value = $record->value ?? [];
+
+                $fieldsToRemove = [
+                    'sprice',
+                    'spft_percent',
+                    'sroi_percent',
+                    'ship',
+                    'amazon_price_applied_at',
+                    'r_price_applied_at',
+                    'sprice_status',
+                ];
+
+                $wasModified = false;
+                foreach ($fieldsToRemove as $field) {
+                    if (isset($value[$field])) {
+                        unset($value[$field]);
+                        $wasModified = true;
+                    }
+                }
+
+                if ($wasModified) {
+                    if (empty($value)) {
+                        $record->delete();
+                    } else {
+                        $record->update([
+                            'value' => $value,
+                            'updated_at' => now(),
+                        ]);
+                    }
+                    $cleared++;
+                }
+            }
+
+            DB::commit();
+
+            Log::info("Cleared Temu 2 SPRICE data for {$cleared} selected SKUs");
+
+            return response()->json([
+                'success' => true,
+                'cleared' => $cleared,
+                'message' => "Successfully cleared SPRICE for {$cleared} SKU(s)",
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error clearing Temu 2 SPRICE: ' . $e->getMessage());
+
+            return response()->json(['error' => 'Failed to clear SPRICE data'], 500);
+        }
+    }
+
+    /**
      * Show Temu Decrease View
      */
     public function temuDecreaseView()
     {
         return view('market-places.temu_decrease');
+    }
+
+    public function temu2DecreaseView()
+    {
+        return view('market-places.temu2_decrease');
     }
 
     /**
@@ -2342,6 +2831,26 @@ class TemuController extends Controller
      */
     public function getTemuDecreaseData(Request $request)
     {
+        return $this->buildTemuDecreaseDataResponse($request, false);
+    }
+
+    /**
+     * Temu 2 pricing table: same structure as Temu Decrease, but order aggregates use temu2_daily_data (and L7/L60 Temu 2 tables); no ads, Amazon, or eBay fields.
+     */
+    public function getTemu2DecreaseData(Request $request)
+    {
+        return $this->buildTemuDecreaseDataResponse($request, true);
+    }
+
+    public function getTemu2DecreaseDataL7(Request $request)
+    {
+        $request->query->set('period', 'L7');
+
+        return $this->buildTemuDecreaseDataResponse($request, true);
+    }
+
+    private function buildTemuDecreaseDataResponse(Request $request, bool $isTemu2Pricing)
+    {
         try {
             $selectedPeriod = strtoupper((string) $request->query('period', 'L30'));
             if (!in_array($selectedPeriod, ['L30', 'L7'], true)) {
@@ -2387,8 +2896,8 @@ class TemuController extends Controller
                 $normalizedSkuMap[$normalizeSku($sku)] = $sku;
             }
 
-            // 3. Fetch ALL Temu pricing data and match by normalized SKU
-            $allPricingData = TemuPricing::select([
+            // 3. Fetch ALL Temu / Temu 2 pricing (same columns; Temu 2 uses temu2_pricing)
+            $pricingSelect = [
                 'sku',
                 'product_name',
                 'category',
@@ -2399,8 +2908,11 @@ class TemuController extends Controller
                 'detail_status',
                 'goods_id',
                 'sku_id',
-                'date_created'
-            ])->get();
+                'date_created',
+            ];
+            $allPricingData = $isTemu2Pricing
+                ? Temu2Pricing::select($pricingSelect)->get()
+                : TemuPricing::select($pricingSelect)->get();
 
             // Build pricing data with normalized matching
             $pricingData = collect();
@@ -2437,12 +2949,22 @@ class TemuController extends Controller
                     $noSpaceToNormalized[$noSpace] = $nk;
                 }
             }
-            $hasL7Rows = $isL7Period
-                && Schema::hasTable('temu_daily_data_l7')
-                && TemuDailyDataL7::query()->exists();
+            if ($isTemu2Pricing) {
+                $hasL7Rows = $isL7Period
+                    && Schema::hasTable('temu2_daily_data_l7')
+                    && Temu2DailyDataL7::query()->exists();
+            } else {
+                $hasL7Rows = $isL7Period
+                    && Schema::hasTable('temu_daily_data_l7')
+                    && TemuDailyDataL7::query()->exists();
+            }
             $orderRowsQuery = $hasL7Rows
-                ? TemuDailyDataL7::select('contribution_sku', 'quantity_purchased')
-                : TemuDailyData::select('contribution_sku', 'quantity_purchased');
+                ? ($isTemu2Pricing
+                    ? Temu2DailyDataL7::select('contribution_sku', 'quantity_purchased')
+                    : TemuDailyDataL7::select('contribution_sku', 'quantity_purchased'))
+                : ($isTemu2Pricing
+                    ? Temu2DailyData::select('contribution_sku', 'quantity_purchased')
+                    : TemuDailyData::select('contribution_sku', 'quantity_purchased'));
             if ($isL7Period && !$hasL7Rows) {
                 $orderRowsQuery->where('purchase_date', '>=', Carbon::now()->subDays(7));
             }
@@ -2468,9 +2990,11 @@ class TemuController extends Controller
                 return [$sku => (object) ['sku' => $sku, 'temu_l30' => $temuL30]];
             });
 
-            // L60 = orders from temu_daily_data_l60 (same structure as L30, separate table)
+            // L60 = orders from temu_daily_data_l60 or temu2_daily_data_l60 (same structure as L30, separate table)
             $l60ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
-            $orderRowsL60 = TemuDailyDataL60::select('contribution_sku', 'quantity_purchased')->get();
+            $orderRowsL60 = $isTemu2Pricing
+                ? Temu2DailyDataL60::select('contribution_sku', 'quantity_purchased')->get()
+                : TemuDailyDataL60::select('contribution_sku', 'quantity_purchased')->get();
             foreach ($orderRowsL60 as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -2492,7 +3016,9 @@ class TemuController extends Controller
             $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
                 return [$normalizeSku($s) => true];
             })->all();
-            $salesSource = $hasL7Rows ? TemuDailyDataL7::query() : TemuDailyData::query();
+            $salesSource = $hasL7Rows
+                ? ($isTemu2Pricing ? Temu2DailyDataL7::query() : TemuDailyDataL7::query())
+                : ($isTemu2Pricing ? Temu2DailyData::query() : TemuDailyData::query());
             if ($isL7Period && !$hasL7Rows) {
                 $salesSource->where('purchase_date', '>=', Carbon::now()->subDays(7));
             }
@@ -2539,27 +3065,28 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('goods_id');
 
-            // Fetch ad data (temu_ad_data) — period-agnostic snapshot from "Up Ad Data" upload
-            $adData = TemuAdData::select(
-                'goods_id',
-                'spend',
-                'net_roas',
-                'acos_ad',
-                'clicks',
-                'target',
-                'impressions',
-                'add_to_cart_number'
-            )
-                ->get()
-                ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
-            
-            // Fetch campaign report data (period-aware) for saved status, in_roas, out_roas, ad_sales, ad_sold
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignRange = $isL7Period ? 'L7' : 'L30';
-            $campaignReportL30 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
-                ->where('report_range', $campaignRange)
-                ->selectRaw('goods_id,
+            if (!$isTemu2Pricing) {
+                // Fetch ad data (temu_ad_data) — period-agnostic snapshot from "Up Ad Data" upload
+                $adData = TemuAdData::select(
+                    'goods_id',
+                    'spend',
+                    'net_roas',
+                    'acos_ad',
+                    'clicks',
+                    'target',
+                    'impressions',
+                    'add_to_cart_number'
+                )
+                    ->get()
+                    ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+                    ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
+
+                // Fetch campaign report data (period-aware) for saved status, in_roas, out_roas, ad_sales, ad_sold
+                $campaignReportL30 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
+                    ->where('report_range', $campaignRange)
+                    ->selectRaw('goods_id,
                     SUM(spend) as spend_l30,
                     SUM(clicks) as clicks_l30,
                     AVG(roas) as roas_l30,
@@ -2570,25 +3097,31 @@ class TemuController extends Controller
                     SUM(COALESCE(sub_orders, 0)) as ad_sold_l30,
                     SUM(COALESCE(impressions, 0)) as impressions_l30,
                     SUM(COALESCE(add_to_cart_number, 0)) as add_to_cart_l30')
-                ->groupBy('goods_id')
-                ->get()
-                ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
+                    ->groupBy('goods_id')
+                    ->get()
+                    ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+                    ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
 
-            // Fetch campaign report data (L60) for spend, ad sold, ad sales (use sub_orders like L30; ad_sales from base_price_sales with net_declared_sales fallback)
-            $campaignReportL60 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
-                ->where('report_range', 'L60')
-                ->selectRaw('goods_id,
+                // Fetch campaign report data (L60) for spend, ad sold, ad sales (use sub_orders like L30; ad_sales from base_price_sales with net_declared_sales fallback)
+                $campaignReportL60 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
+                    ->where('report_range', 'L60')
+                    ->selectRaw('goods_id,
                     SUM(spend) as spend_l60,
                     SUM(COALESCE(sub_orders, 0)) as ad_sold_l60,
                     SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)) as ad_sales_l60')
-                ->groupBy('goods_id')
-                ->get()
-                ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
+                    ->groupBy('goods_id')
+                    ->get()
+                    ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+                    ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
+            } else {
+                $adData = collect();
+                $campaignReportL30 = collect();
+                $campaignReportL60 = collect();
+            }
 
-            // Fetch saved SPRICE values from TemuDataView
-            $temuDataViewData = TemuDataView::whereIn('sku', $skus)
+            // Fetch saved SPRICE values (Temu 2 uses temu2_data_view)
+            $temuDataViewData = ($isTemu2Pricing ? Temu2DataView::query() : TemuDataView::query())
+                ->whereIn('sku', $skus)
                 ->select('sku', 'value')
                 ->get()
                 ->keyBy('sku');
@@ -2599,14 +3132,18 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('goods_id');
             
-            // Fetch Amazon pricing data
-            $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+            $amazonData = $isTemu2Pricing
+                ? collect()
+                : AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            // Fetch eBay price data (same source as EbayController / ebay tabulator)
-            $ebayData = EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
+            $ebayData = $isTemu2Pricing
+                ? collect()
+                : EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
             
-            // Fetch Temu Listing Status data (nr_req and listed)
-            $statusData = TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+            // Temu 1: temu_listing_statuses. Temu 2: same keys live in temu2_data_view JSON (value).
+            $statusData = $isTemu2Pricing
+                ? collect()
+                : TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // Fetch Temu LMP data (lmp, lmp_link from temu_lmp table) - match by normalized SKU
             $allTemuLmp = TemuLmp::all();
@@ -2619,7 +3156,7 @@ class TemuController extends Controller
             }
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $adData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL60, $temuLmpByNormalizedSku) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $viewData, $adData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL60, $temuLmpByNormalizedSku, $isTemu2Pricing) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -2745,8 +3282,10 @@ class TemuController extends Controller
                 
                 // Calculate CVR% (Conversion Rate: Temu L30 / Product Clicks * 100)
                 $cvrPercent = $productClicks > 0 ? ($temuL30 / $productClicks) * 100 : 0;
-                // Temu L60 = from L60 sales upload table (temu_daily_data_l60); fallback to campaign ad_sold_l60 if no L60 sales data
-                $temuL60 = $temuL60FromSales > 0 ? $temuL60FromSales : $adSoldL60;
+                // Temu L60 = from L60 sales upload table; Temu 2: sales only (no ad fallback)
+                $temuL60 = $temuL60FromSales > 0
+                    ? $temuL60FromSales
+                    : ($isTemu2Pricing ? 0 : $adSoldL60);
                 $temuL45 = round(($temuL30 + $temuL60) / 2, 2);
                 $cvr45 = $productClicks > 0 ? round(($temuL45 / $productClicks) * 100, 2) : 0;
                 $cvr60 = $productClicks > 0 ? round(($temuL60 / $productClicks) * 100, 2) : 0;
@@ -2776,13 +3315,14 @@ class TemuController extends Controller
                     $nroiPercent = $roiPercent - $adsPercent;
                 }
                 
-                // Get saved SPRICE from TemuDataView
+                // Saved SPRICE / starget / (Temu 2) listing fields: temu_data_view or temu2_data_view JSON
                 $temuDataViewItem = $temuDataViewData->get($sku);
-                $temuDataViewValue = null;
+                $temuDataViewValue = [];
                 if ($temuDataViewItem) {
-                    $temuDataViewValue = is_array($temuDataViewItem->value) 
-                        ? $temuDataViewItem->value 
+                    $decoded = is_array($temuDataViewItem->value)
+                        ? $temuDataViewItem->value
                         : (is_string($temuDataViewItem->value) ? json_decode($temuDataViewItem->value, true) : []);
+                    $temuDataViewValue = is_array($decoded) ? $decoded : [];
                 }
                 $sprice = $temuDataViewValue['sprice'] ?? null;
                 $starget = $temuDataViewValue['starget'] ?? null;
@@ -2804,18 +3344,26 @@ class TemuController extends Controller
                 $normalizedCurrentSku = $normalizeSku($sku);
                 $missing = isset($temuPricingSkusNormalized[$normalizedCurrentSku]) ? '' : 'M';
                 
-                // Get nr_req and listed from TemuListingStatus
-                $status = $statusData->get($sku);
-                $statusValue = null;
-                if ($status) {
-                    $statusValue = is_array($status->value) 
-                        ? $status->value 
-                        : (is_string($status->value) ? json_decode($status->value, true) : []);
+                // nr_req / listed / links: Temu 2 → temu2_data_view JSON; Temu 1 → temu_listing_statuses
+                if ($isTemu2Pricing) {
+                    $nr_req = $temuDataViewValue['nr_req'] ?? ($inventory > 0 ? 'REQ' : 'NRL');
+                    $listed = $temuDataViewValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
+                    $buyer_link = $temuDataViewValue['buyer_link'] ?? null;
+                    $seller_link = $temuDataViewValue['seller_link'] ?? null;
+                } else {
+                    $status = $statusData->get($sku);
+                    $statusValue = [];
+                    if ($status) {
+                        $decoded = is_array($status->value)
+                            ? $status->value
+                            : (is_string($status->value) ? json_decode($status->value, true) : []);
+                        $statusValue = is_array($decoded) ? $decoded : [];
+                    }
+                    $nr_req = $statusValue['nr_req'] ?? ($inventory > 0 ? 'REQ' : 'NRL');
+                    $listed = $statusValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
+                    $buyer_link = $statusValue['buyer_link'] ?? null;
+                    $seller_link = $statusValue['seller_link'] ?? null;
                 }
-                $nr_req = $statusValue['nr_req'] ?? ($inventory > 0 ? 'REQ' : 'NRL');
-                $listed = $statusValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
-                $buyer_link = $statusValue['buyer_link'] ?? null;
-                $seller_link = $statusValue['seller_link'] ?? null;
 
                 // LMP entries from Temu LMP table (array of {price, link}); first price used for lmp column display
                 $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($sku)] ?? null;
@@ -2913,36 +3461,45 @@ class TemuController extends Controller
                 ];
             });
 
-            // Auto-save daily summary in background (L30 only)
-            if (!$isL7Period) {
+            // Auto-save daily summary in background (L30 only, Temu channel table only)
+            if (!$isL7Period && !$isTemu2Pricing) {
                 $this->saveDailySummaryIfNeeded($processedData->toArray());
             }
 
-            // Campaign count: same as Temu Utilized / TemuAdsController (distinct goods_id in temu_campaign_reports)
-            $totalCampaignCount = TemuCampaignReport::distinct('goods_id')
-                ->pluck('goods_id')
-                ->filter()
-                ->unique()
-                ->count();
+            if ($isTemu2Pricing) {
+                $totalCampaignCount = 0;
+            } else {
+                // Campaign count: same as Temu Utilized / TemuAdsController (distinct goods_id in temu_campaign_reports)
+                $totalCampaignCount = TemuCampaignReport::distinct('goods_id')
+                    ->pluck('goods_id')
+                    ->filter()
+                    ->unique()
+                    ->count();
+            }
 
             // Get exact total_sales from marketplace_daily_metrics (same as all-marketplace-master uses)
-            $metrics = MarketplaceDailyMetric::where('channel', 'Temu')->latest('date')->first();
+            $metrics = MarketplaceDailyMetric::where('channel', $isTemu2Pricing ? 'Temu 2' : 'Temu')->latest('date')->first();
             $totalSalesFromMetrics = $metrics ? ($metrics->total_sales ?? 0) : 0;
-            
-            // Get total ad spend from temu_campaign_reports (same as fetchTotalAdSpendFromTables for Temu)
-            // Sum spend_l30 from all rows (matches fetchAdMetricsFromTables logic)
-            $goodsIds = $processedData->pluck('goods_id')->filter()->unique()->values()->all();
-            $totalAdSpend = TemuCampaignReport::whereIn('goods_id', $goodsIds)
-                ->where('report_range', $campaignRange)
-                ->selectRaw('SUM(spend) as total_spend')
-                ->value('total_spend') ?? 0;
-            $totalAdSpend = round((float) $totalAdSpend, 2);
-            
+
+            $summaryGoodsIds = $processedData->pluck('goods_id')->filter()->unique()->values()->all();
+            if ($isTemu2Pricing) {
+                $totalAdSpend = 0.0;
+            } else {
+                // Get total ad spend from temu_campaign_reports (same as fetchTotalAdSpendFromTables for Temu)
+                $totalAdSpend = TemuCampaignReport::whereIn('goods_id', $summaryGoodsIds)
+                    ->where('report_range', $campaignRange)
+                    ->selectRaw('SUM(spend) as total_spend')
+                    ->value('total_spend') ?? 0;
+                $totalAdSpend = round((float) $totalAdSpend, 2);
+            }
+
             // Calculate exact Ads% same as all-marketplace-master
-            $aggregateAdsPercent = $totalSalesFromMetrics > 0 ? ($totalAdSpend / $totalSalesFromMetrics) * 100 : 0;
+            $aggregateAdsPercent = $isTemu2Pricing
+                ? 0.0
+                : ($totalSalesFromMetrics > 0 ? ($totalAdSpend / $totalSalesFromMetrics) * 100 : 0);
 
             // Recalculate NPFT% and NROI% for all rows using aggregate Ads% (not per-row ads_percent)
-            // Formula: NPFT% = GPFT% - Aggregate ADS%
+            // Formula: NPFT% = GPFT% - Aggregate ADS% (Temu 2: aggregate = 0)
             $processedData = $processedData->map(function($row) use ($aggregateAdsPercent) {
                 $profitPercent = (float) ($row['profit_percent'] ?? 0);
                 $roiPercent = (float) ($row['roi_percent'] ?? 0);
@@ -3133,6 +3690,37 @@ class TemuController extends Controller
             return response()->json($visibility);
         } catch (\Exception $e) {
             Log::error('Error getting Temu Decrease column visibility: ' . $e->getMessage());
+            return response()->json([], 500);
+        }
+    }
+
+    public function saveTemu2DecreaseColumnVisibility(Request $request)
+    {
+        try {
+            $userId = auth()->id() ?? 'guest';
+            $key = "temu2_decrease_column_visibility_{$userId}";
+
+            $visibility = $request->input('visibility', []);
+            Cache::put($key, $visibility, now()->addDays(30));
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Error saving Temu 2 Decrease column visibility: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save preferences'], 500);
+        }
+    }
+
+    public function getTemu2DecreaseColumnVisibility()
+    {
+        try {
+            $userId = auth()->id() ?? 'guest';
+            $key = "temu2_decrease_column_visibility_{$userId}";
+
+            $visibility = Cache::get($key, []);
+
+            return response()->json($visibility);
+        } catch (\Exception $e) {
+            Log::error('Error getting Temu 2 Decrease column visibility: ' . $e->getMessage());
             return response()->json([], 500);
         }
     }
@@ -3914,6 +4502,8 @@ class TemuController extends Controller
                 return response()->json(['error' => 'No updates provided'], 400);
             }
 
+            $dataViewClass = $request->boolean('temu2') ? Temu2DataView::class : TemuDataView::class;
+
             DB::beginTransaction();
             
             $updated = 0;
@@ -3928,8 +4518,7 @@ class TemuController extends Controller
                     continue;
                 }
                 
-                // Find or create temu_data_view record
-                $dataViewRecord = TemuDataView::where('sku', $sku)->first();
+                $dataViewRecord = $dataViewClass::where('sku', $sku)->first();
                 
                 if ($dataViewRecord) {
                     $existingValue = $dataViewRecord->value ?? [];
@@ -3941,7 +4530,7 @@ class TemuController extends Controller
                         'updated_at' => now()
                     ]);
                 } else {
-                    TemuDataView::create([
+                    $dataViewClass::create([
                         'sku' => $sku,
                         'value' => [
                             'amazon_price_applied_at' => now()->toDateTimeString(),
@@ -3979,6 +4568,8 @@ class TemuController extends Controller
                 return response()->json(['error' => 'No updates provided'], 400);
             }
 
+            $dataViewClass = $request->boolean('temu2') ? Temu2DataView::class : TemuDataView::class;
+
             DB::beginTransaction();
             
             $updated = 0;
@@ -3993,8 +4584,7 @@ class TemuController extends Controller
                     continue;
                 }
                 
-                // Find or create temu_data_view record
-                $dataViewRecord = TemuDataView::where('sku', $sku)->first();
+                $dataViewRecord = $dataViewClass::where('sku', $sku)->first();
                 
                 if ($dataViewRecord) {
                     $existingValue = $dataViewRecord->value ?? [];
@@ -4006,7 +4596,7 @@ class TemuController extends Controller
                         'updated_at' => now()
                     ]);
                 } else {
-                    TemuDataView::create([
+                    $dataViewClass::create([
                         'sku' => $sku,
                         'value' => [
                             'r_price_applied_at' => now()->toDateTimeString(),
@@ -4163,11 +4753,14 @@ class TemuController extends Controller
             // Use 0.96 so chart matches table formatter (table uses 0.96 hardcoded for GPRFT%)
             $percentage = 0.96;
 
-            // Current base_price from TemuPricing for this SKU so latest chart point matches table
+            $useTemu2PricingChart = $request->boolean('temu2');
+            $pricingModel = $useTemu2PricingChart ? Temu2Pricing::class : TemuPricing::class;
+
+            // Current base_price from temu_pricing / temu2_pricing so latest chart point matches table
             $currentBasePrice = null;
-            $temuPricingRow = TemuPricing::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+            $temuPricingRow = $pricingModel::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
             if (!$temuPricingRow && $targetNormalized !== $sku) {
-                $temuPricingRow = TemuPricing::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
+                $temuPricingRow = $pricingModel::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
                     return $normalizeSku($row->sku ?? '') === $targetNormalized;
                 });
             }
@@ -4175,9 +4768,9 @@ class TemuController extends Controller
                 $currentBasePrice = floatval($temuPricingRow->base_price);
             }
 
-            // Current spend from TemuAdData (by goods_id) so latest point ADS% and NPFT% match table
+            // Current spend from TemuAdData (Temu 2 chart: no ad overlay)
             $currentSpend = null;
-            if ($temuPricingRow && !empty($temuPricingRow->goods_id)) {
+            if (!$useTemu2PricingChart && $temuPricingRow && !empty($temuPricingRow->goods_id)) {
                 $adRow = TemuAdData::where('goods_id', $temuPricingRow->goods_id)->first();
                 if ($adRow && $adRow->spend !== null) {
                     $currentSpend = floatval($adRow->spend);

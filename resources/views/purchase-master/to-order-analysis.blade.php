@@ -218,10 +218,19 @@
                         <div class="filter-item">
                             <label class="form-label fw-semibold d-block">🎯 Stage</label>
                             <select id="stage-filter" class="form-select">
-                                <option value="">All</option>
-                                <option value="to_order_analysis" selected>2 Order</option>
+                                <option value="" selected>All</option>
+                                <option value="appr_req">Appr Req</option>
+                                <option value="to_order_analysis">2 Order</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">📦 MOQ</label>
+                            <select id="moq-filter" class="form-select border border-primary" title="Filter by approved quantity (MOQ)">
+                                <option value="" selected>All (0 &amp; &gt;0)</option>
+                                <option value="zero">MOQ = 0</option>
+                                <option value="gt0">MOQ &gt; 0</option>
                             </select>
                         </div>
                         <div class="filter-item">
@@ -540,6 +549,7 @@
             const table = new Tabulator("#toOrderAnalysis-table", {
                 ajaxURL: "/to-order-analysis/data",
                 ajaxConfig: "GET",
+                index: "SKU",
                 layout: "fitData",
                 height: "700px",
                 initialSort: [{ column: "Date of Appr", dir: "asc" }],
@@ -1129,14 +1139,11 @@
                 ajaxResponse: (url, params, response) => {
                     let data = response.data;
 
-                    // Backend already filters NR and LATER based on showNR/showLATER params
-                    // So we only filter for qty, parent, and stage here
+                    // Backend already returns the Forecast yellow cohort only; do not drop MIP (or other) stage
+                    // rows here — Forecast star count (e.g. 146) can include stage=mip when pipeline qty is still empty.
                     let filtered = data.filter(item => {
-                        let qty = parseFloat(item.approved_qty) || 0;
                         let isParent = item.SKU && item.SKU.startsWith("PARENT");
-                        let isMfrg = item.stage && item.stage.trim().toLowerCase() === "mip";
-
-                        return qty > 0 && !isParent && !isMfrg;
+                        return !isParent;
                     });
 
                     uniqueSuppliers = [...new Set(filtered.map(item => item.Supplier))].filter(Boolean);
@@ -1680,6 +1687,7 @@
                 const type = document.getElementById("row-data-type").value;
                 const pending = document.getElementById("row-data-pending-status").value;
                 const stage = document.getElementById("stage-filter").value.toLowerCase().trim();
+                const moqFilter = (document.getElementById("moq-filter") && document.getElementById("moq-filter").value) || "";
                 const searchText = document.getElementById("search-input").value.trim().toLowerCase();
                 const supplierFilterEl = document.getElementById("supplier-filter");
                 const supplierFilter = supplierOverride != null ? supplierOverride : (supplierFilterEl ? supplierFilterEl.value.trim() : '');
@@ -1693,6 +1701,12 @@
                     else if (type === 'sku') keep = keep && !row.SKU.startsWith("PARENT");
 
                     if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
+
+                    const moqNum = parseFloat(row.approved_qty);
+                    const moqVal = Number.isFinite(moqNum) ? moqNum : 0;
+                    if (moqFilter === "zero") keep = keep && moqVal === 0;
+                    else if (moqFilter === "gt0") keep = keep && moqVal > 0;
+
                     if (pending) keep = keep && getRowColor(row) === pending;
                     if (supplierFilter) {
                         if (supplierFilter === '__blank__') {
@@ -1758,18 +1772,19 @@
             document.getElementById("row-data-type").addEventListener("change", () => applyFilters());
             document.getElementById("row-data-pending-status").addEventListener("change", () => applyFilters());
             document.getElementById("stage-filter").addEventListener("change", () => applyFilters());
+            document.getElementById("moq-filter").addEventListener("change", () => applyFilters());
             document.getElementById("supplier-filter").addEventListener("change", () => applyFilters());
             document.getElementById("search-input").addEventListener("input", debounce(() => applyFilters(), 300));
 
-            // Set default stage filter to "2 Order"
-            document.getElementById("stage-filter").value = "to_order_analysis";
+            document.getElementById("stage-filter").value = "";
+            document.getElementById("moq-filter").value = "";
 
             // Table events
             table.on("dataLoaded", function() {
                 updateSupplierKeys();
                 currentIndex = 0;
-                // Set default stage filter to "2 Order" on data load
-                document.getElementById("stage-filter").value = "to_order_analysis";
+                document.getElementById("stage-filter").value = "";
+                document.getElementById("moq-filter").value = "";
                 applyFilters();
             });
 

@@ -3079,6 +3079,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-pricing/upload', [TemuController::class, 'uploadTemuPricing'])->name('temu.pricing.upload');
     Route::get('/temu-pricing/sample', [TemuController::class, 'downloadTemuPricingSample'])->name('temu.pricing.sample');
 
+    // Temu 2 Pricing Upload (same Excel format → temu2_pricing)
+    Route::post('/temu2-pricing/upload', [TemuController::class, 'uploadTemu2Pricing'])->name('temu2.pricing.upload');
+    Route::get('/temu2-pricing/sample', [TemuController::class, 'downloadTemu2PricingSample'])->name('temu2.pricing.sample');
+
     // Temu View Data Upload
     Route::post('/temu-view-data/upload', [TemuController::class, 'uploadTemuViewData'])->name('temu.viewdata.upload');
     Route::get('/temu-view-data/sample', [TemuController::class, 'downloadTemuViewDataSample'])->name('temu.viewdata.sample');
@@ -3095,12 +3099,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-decrease', [TemuController::class, 'temuDecreaseView'])->name('temu.decrease');
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
     Route::get('/temu-decrease-data-l7', [TemuController::class, 'getTemuDecreaseDataL7'])->name('temu.decrease.l7');
+    // Temu 2 pricing (temu2_daily_data orders; no ads / Amazon / eBay)
+    Route::get('/temu2-decrease', [TemuController::class, 'temu2DecreaseView'])->name('temu2.decrease');
+    Route::get('/temu2-decrease-data', [TemuController::class, 'getTemu2DecreaseData']);
+    Route::get('/temu2-decrease-data-l7', [TemuController::class, 'getTemu2DecreaseDataL7'])->name('temu2.decrease.l7');
+    Route::post('/temu2-decrease-column-visibility', [TemuController::class, 'saveTemu2DecreaseColumnVisibility']);
+    Route::get('/temu2-decrease-column-visibility', [TemuController::class, 'getTemu2DecreaseColumnVisibility']);
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
+    Route::post('/temu2-pricing/update-price', [TemuController::class, 'updateTemu2Price']);
+    Route::post('/temu2-pricing/save-sprice', [TemuController::class, 'saveTemu2Sprice']);
+    Route::post('/temu2-sync-data-view-from-temu', [TemuController::class, 'syncTemu2DataViewFromTemuDataView'])->name('temu2.sync.dataview');
     Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
     Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
     Route::post('/temu-decrease/save-listing-status', [TemuController::class, 'saveListingStatus']);
+    Route::post('/temu2-data-view/save-listing-fields', [TemuController::class, 'saveTemu2ListingFieldsToDataView'])->name('temu2.dataview.save.listing');
 
     // Temu LMP (table + upload)
     Route::get('/temu-lmp', [TemuController::class, 'temuLmpPage'])->name('temu.lmp');
@@ -3113,6 +3127,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-save-amazon-prices', [TemuController::class, 'saveTemuAmazonPriceUpdates'])->name('temu.save.amazon.prices');
     Route::post('/temu-save-r-prices', [TemuController::class, 'saveTemuRPriceUpdates'])->name('temu.save.r.prices');
     Route::post('/temu-clear-sprice', [TemuController::class, 'clearAllTemuSprice'])->name('temu.clear.sprice');
+    Route::post('/temu2-clear-sprice', [TemuController::class, 'clearAllTemu2Sprice'])->name('temu2.clear.sprice');
     Route::post('/temu-save-amazon-prices', [TemuController::class, 'saveTemuAmazonPriceUpdates'])->name('temu.save.amazon.prices');
     Route::post('/temu-store-daily-avg-views', [TemuController::class, 'storeDailyAvgViews'])->name('temu.store.daily.avg.views');
     Route::get('/temu-avg-views-history', [TemuController::class, 'getAvgViewsHistory'])->name('temu.avg.views.history');

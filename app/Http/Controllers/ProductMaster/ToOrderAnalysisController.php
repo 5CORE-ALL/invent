@@ -293,8 +293,30 @@ class ToOrderAnalysisController extends Controller
             $showNR = request()->get('showNR', '0') === '1';
             $showLATER = request()->get('showLATER', '0') === '1';
             
-            // orderBy id asc so duplicate SKUs: keyBy keeps last occurrence = highest id (latest row)
-            $toOrderRecords = DB::table('to_order_analysis')->whereNull('deleted_at')->orderBy('id', 'asc')->get()->keyBy('sku');
+            // Same forecast row set as the Forecast Analysis page (read-only build — no derived-stage DB writes).
+            $snapshotRows = app(ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
+            $yellowForecastBySku = [];
+            foreach ($snapshotRows as $faRow) {
+                if (!$this->forecastRowMatchesYellowApprReqQueue($faRow)) {
+                    continue;
+                }
+                $norm = strtoupper(trim((string) ($faRow->SKU ?? '')));
+                if ($norm !== '') {
+                    $yellowForecastBySku[$norm] = $faRow;
+                }
+            }
+            $allSkus = array_keys($yellowForecastBySku);
+            sort($allSkus);
+
+            // orderBy id asc: last row per normalized SKU wins
+            $toOrderByNorm = [];
+            foreach (DB::table('to_order_analysis')->whereNull('deleted_at')->orderBy('id', 'asc')->get() as $row) {
+                $norm = strtoupper(trim((string) ($row->sku ?? '')));
+                if ($norm !== '') {
+                    $toOrderByNorm[$norm] = $row;
+                }
+            }
+
             $productData = DB::table('product_master')->get()->keyBy(fn($item) => strtoupper(trim($item->sku)));
             $instructionsPkgByProductId = InstructionsItemPkg::query()
                 ->whereIn('product_master_id', $productData->pluck('id')->filter()->unique()->values())
@@ -309,7 +331,7 @@ class ToOrderAnalysisController extends Controller
             $shopifySkus = ShopifySku::all()->keyBy(fn($item) => strtoupper(trim($item->sku)));
             $allReviews = \App\Models\ToOrderReview::all()->keyBy(fn($r) => strtoupper(trim($r->sku)) . '|' . strtoupper(trim($r->parent)));
 
-            $skusForReviews = $toOrderRecords->keys()->map(fn($s) => strtoupper(trim($s)))->unique()->filter()->values()->all();
+            $skusForReviews = $allSkus;
             $ratingReviewsMap = $this->getRatingReviewsBySku($skusForReviews);
 
             // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
@@ -317,12 +339,23 @@ class ToOrderAnalysisController extends Controller
 
             $processedData = [];
 
-            foreach ($toOrderRecords as $sku => $toOrder) {
-                $sheetSku = strtoupper(trim($sku));
-                if (empty($sheetSku)) continue;
+            foreach ($allSkus as $sheetSku) {
+                if ($sheetSku === '') {
+                    continue;
+                }
+
+                $faItem = $yellowForecastBySku[$sheetSku] ?? null;
+                if ($faItem === null) {
+                    continue;
+                }
+
+                $toOrder = $toOrderByNorm[$sheetSku] ?? null;
+                $forecast = $forecastData->get($sheetSku);
+                if ($toOrder === null) {
+                    $toOrder = $this->virtualToOrderRowFromForecast($sheetSku, $forecast);
+                }
 
                 $product = $productData->get($sheetSku);
-                $forecast = $forecastData->get($sheetSku);
                 $amazonData = $amazonDataMap->get($sheetSku);
                 $amazonValue = [];
                 if ($amazonData) {
@@ -332,7 +365,7 @@ class ToOrderAnalysisController extends Controller
                 }
                 
                 // Skip if SKU has NR or LATER in forecast_analysis table (unless explicitly shown)
-                $nrValue = strtoupper(trim($forecast->nr ?? ''));
+                $nrValue = strtoupper(trim((string) ($forecast?->nr ?? '')));
                 if ($forecast) {
                     if ($nrValue === 'NR' && !$showNR) {
                         continue; // Skip NR SKU
@@ -342,7 +375,7 @@ class ToOrderAnalysisController extends Controller
                     }
                 }
                 
-                $parent = $toOrder->parent ?? $product->parent ?? '';
+                $parent = trim((string) ($faItem->Parent ?? $toOrder->parent ?? $product?->parent ?? ''));
                 $supplierName = '';
 
                 $parentList = explode(',', $parent);
@@ -377,7 +410,7 @@ class ToOrderAnalysisController extends Controller
                     }
                 }
 
-                $shopifyImage = $shopifySkus[$sheetSku]->image_src ?? null;
+                $shopifyImage = $shopifySkus->get($sheetSku)?->image_src ?? null;
                 $finalImage = $shopifyImage ?: $imagePath;
 
                 $approvedQty = (int)($toOrder->approved_qty ?? 0);
@@ -429,7 +462,7 @@ class ToOrderAnalysisController extends Controller
                     'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
                     'sheet_link'      => $toOrder->sheet_link ?? '',
                     'Rfq Report Link' => $toOrder->rfq_report_link ?? '',
-                    'stage'           => ($forecast ? ($forecast->stage ?? '') : ''),
+                    'stage'           => strtolower(trim((string) ($faItem->stage ?? ($forecast?->stage ?? '')))),
                     'nr'              => ($forecast ? ($forecast->nr ?? '') : ''),
                     'nrl'             => $toOrder->nrl ?? '',
                     'Adv date'        => $toOrder->advance_date ?? '',
@@ -524,6 +557,123 @@ class ToOrderAnalysisController extends Controller
         }
         $sMsl = $forecast ? (int) ($forecast->s_msl ?? 0) : 0;
         return $sMsl;
+    }
+
+    private function forecastNullOrDashQtyForYellow(mixed $value): bool
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+        $raw = trim((string) $value);
+        if ($raw === '' || $raw === '-' || $raw === '—') {
+            return true;
+        }
+        $n = (float) $raw;
+
+        return !is_finite($n) || $n === 0.0;
+    }
+
+    /**
+     * Mirror forecastAnalysis.blade.php ajaxResponse map for one row (fields used by apprReqYellowRowVisible).
+     */
+    private function forecastBuildClientRowForYellowCheck(object $item): \stdClass
+    {
+        $sku = (string) ($item->SKU ?? '');
+        $total = (float) ($item->{'Total'} ?? 0);
+        $totalMonth = (float) ($item->{'Total month'} ?? 0);
+        $inv = (float) ($item->INV ?? 0);
+        $transit = (float) ($item->{'Transit'} ?? $item->transit ?? 0);
+        $orderGiven = (float) ($item->order_given ?? $item->{'Order Given'} ?? 0);
+        $r2s = (float) ($item->readyToShipQty ?? 0);
+
+        // JS: parseFloat(item.msl) || (totalMonth > 0 ? (total / totalMonth) * 4 : 0) — 0 is falsy, use movement MSL
+        $mslFromProp = isset($item->msl) && $item->msl !== '' && is_numeric($item->msl) ? (float) $item->msl : null;
+        $msl = ($mslFromProp !== null && abs($mslFromProp) > 1e-9)
+            ? $mslFromProp
+            : ($totalMonth > 0 ? ($total / $totalMonth) * 4 : 0.0);
+
+        $sMslVal = (float) ($item->{'s_msl'} ?? $item->{'s-msl'} ?? 0);
+        $effectiveMslForToOrder = max($msl, $sMslVal);
+
+        $itemStage = strtolower(trim((string) ($item->stage ?? '')));
+
+        $effectiveOrderGiven = $itemStage === 'mip' ? $orderGiven : 0.0;
+        $effectiveR2s = $itemStage === 'r2s' ? $r2s : 0.0;
+        $effectiveTransit = $transit;
+
+        $toOrder = (float) round($effectiveMslForToOrder - $inv - $effectiveTransit - $effectiveOrderGiven - $effectiveR2s);
+
+        $twoOrderQty = $itemStage === 'to_order_analysis'
+            ? (float) ($item->two_order_qty ?? $item->{'MOQ'} ?? $item->{'Approved QTY'} ?? 0)
+            : 0.0;
+
+        $originalOrderGiven = (float) ($item->order_given ?? $item->{'Order Given'} ?? 0);
+        $originalReadyToShipQty = (float) ($item->readyToShipQty ?? 0);
+        $originalTransit = (float) ($item->transit ?? $item->{'Transit'} ?? 0);
+
+        $finalOrderGiven = $itemStage === 'mip' ? $originalOrderGiven : 0.0;
+        $finalReadyToShipQty = $itemStage === 'r2s' ? $originalReadyToShipQty : 0.0;
+        $finalTransit = $originalTransit;
+
+        $ip = $item->is_parent ?? false;
+        $isParent = $ip === true || $ip === 'true' || $ip === 1 || $ip === '1' || stripos($sku, 'PARENT') !== false;
+
+        $row = new \stdClass();
+        $row->to_order = $toOrder;
+        $row->two_order_qty = $twoOrderQty;
+        $row->transit = $finalTransit;
+        $row->order_given = $finalOrderGiven;
+        $row->readyToShipQty = $finalReadyToShipQty;
+        $row->nr = (string) ($item->nr ?? '');
+        $row->is_parent = $isParent;
+
+        return $row;
+    }
+
+    /** Same rules as forecastAnalysis.blade.js apprReqYellowRowVisible + pipeline helpers. */
+    private function forecastRowMatchesYellowApprReqQueue(object $item): bool
+    {
+        $row = $this->forecastBuildClientRowForYellowCheck($item);
+        if ($row->is_parent) {
+            return false;
+        }
+
+        $twoOrdVal = (float) $row->to_order;
+        if (!is_finite($twoOrdVal) || $twoOrdVal < 0) {
+            return false;
+        }
+
+        if (!$this->forecastNullOrDashQtyForYellow($row->transit)
+            || !$this->forecastNullOrDashQtyForYellow($row->readyToShipQty)
+            || !$this->forecastNullOrDashQtyForYellow($row->order_given)
+            || !$this->forecastNullOrDashQtyForYellow($row->two_order_qty)) {
+            return false;
+        }
+
+        $nr = strtoupper(trim($row->nr));
+
+        return $nr !== 'NR' && $nr !== 'LATER';
+    }
+
+    /**
+     * Minimal to_order_analysis-shaped row when there is no DB row yet (still used for yellow-cohort SKUs).
+     */
+    private function virtualToOrderRowFromForecast(string $sheetSku, $forecast): object
+    {
+        return (object) [
+            'id' => null,
+            'sku' => $sheetSku,
+            'parent' => $forecast?->parent ?? null,
+            'approved_qty' => (int) ($forecast?->approved_qty ?? 0),
+            'date_apprvl' => $forecast?->date_apprvl ?? null,
+            'rfq_form_link' => $forecast?->rfq_form_link ?? null,
+            'sheet_link' => null,
+            'rfq_report_link' => $forecast?->rfq_report ?? null,
+            'supplier_name' => null,
+            'nrl' => null,
+            'advance_date' => null,
+            'order_qty' => null,
+        ];
     }
 
     public function updateLink(Request $request)

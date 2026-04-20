@@ -36,7 +36,7 @@ class ForecastAnalysisController extends Controller
         $this->apiController = $apiController;
     }
 
-    private function buildForecastAnalysisData()
+    private function buildForecastAnalysisData(bool $persistDerivedForecastStages = true)
     {
         // ── Ads% calculation identical to getAmazonChannelData() / all-marketplace-master ──
         // 28-day window ending yesterday (Pacific) — same window used by the active-channel page.
@@ -957,8 +957,8 @@ class ForecastAnalysisController extends Controller
             $processedData[] = $item;
         }
 
-        // Flush stage updates in one batch instead of per-row writes
-        if (!empty($stagePendingUpdates)) {
+        // Flush stage updates in one batch instead of per-row writes (skip when used read-only, e.g. To Order yellow sync)
+        if ($persistDerivedForecastStages && !empty($stagePendingUpdates)) {
             $now = now();
             DB::transaction(function () use ($stagePendingUpdates, $now) {
                 foreach ($stagePendingUpdates as $sku => $stage) {
@@ -970,6 +970,14 @@ class ForecastAnalysisController extends Controller
         }
 
         return $processedData;
+    }
+
+    /**
+     * Same row objects as the Forecast Analysis grid payload, without persisting pipeline-derived stages to DB.
+     */
+    public function getForecastAnalysisSnapshotRows(): array
+    {
+        return $this->buildForecastAnalysisData(false);
     }
 
     public function getViewForecastAnalysisData()

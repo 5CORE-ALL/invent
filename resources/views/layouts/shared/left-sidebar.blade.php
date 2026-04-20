@@ -1090,8 +1090,6 @@
 
                         <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
 
-                        <li><a href="{{ url('temu2-tabulator') }}">Temu 2 Sales Data</a></li>
-
                         <li><a href="{{ url('shein-tabulator') }}">Shein Sales Data</a></li>
 
                         <li><a href="{{ url('mercari-with-ship') }}">Mercari With Ship Sales</a></li>
@@ -2449,6 +2447,21 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('temu.ads') }}">Temu Ads</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarTemu2Analytics" aria-expanded="false"
+                                aria-controls="sidebarTemu2Analytics">
+                                <span> Temu 2 Analytics </span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarTemu2Analytics">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ url('temu2-decrease') }}">Temu 2 Pricing</a>
                                     </li>
                                 </ul>
                             </div>
