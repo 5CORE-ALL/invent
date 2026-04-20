@@ -6,6 +6,7 @@ use App\Models\ProductStockMapping;
 use App\Models\ReverbListingStatus;
 use App\Models\ReverbProduct;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -932,6 +933,9 @@ class ReverbApiService
      * Append a gallery image to a Reverb listing by public HTTPS URL (Reverb fetches the image from your server).
      * Merges with existing photos then PUTs with {@see photo_upload_method} override (same as image docs).
      *
+     * Uses a per-listing cache lock so concurrent image-push jobs do not read the same snapshot and
+     * overwrite each other (which previously left only one new image on the listing).
+     *
      * @return array{success: bool, message: string, listing_id?: string}
      */
     public function appendImageUrlToListingBySku(string $sku, string $newPublicImageUrl): array
@@ -947,14 +951,6 @@ class ReverbApiService
             ];
         }
 
-        $token = self::getReverbBearerToken();
-        if (! $token) {
-            return [
-                'success' => false,
-                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
-            ];
-        }
-
         $listingId = $this->getListingIdBySku(trim($sku));
         if ($listingId === null) {
             return [
@@ -963,52 +959,73 @@ class ReverbApiService
             ];
         }
 
-        $existing = $this->fetchListingImagePublicUrls($token, $listingId);
-        $norm = static function (string $u): string {
-            return rtrim(strtolower($u), '/');
-        };
-        $newN = $norm($newPublicImageUrl);
-        foreach ($existing as $u) {
-            if ($norm((string) $u) === $newN) {
-                return [
-                    'success' => true,
-                    'message' => 'This image is already on the Reverb listing.',
-                    'listing_id' => $listingId,
-                ];
-            }
-        }
-
-        $all = array_values(array_unique([...$existing, $newPublicImageUrl]));
-        if (count($all) > 25) {
-            $all = array_slice($all, 0, 25);
-        }
-
-        $payload = [
-            'photos' => $all,
-            'photo_upload_method' => 'override_position',
-        ];
+        $lockKey = 'reverb:append-listing-image:'.sha1((string) $listingId);
 
         try {
-            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
-            if ($response->successful()) {
-                return [
-                    'success' => true,
-                    'message' => 'Image added to the Reverb listing; Reverb is processing the photo from your URL.',
-                    'listing_id' => $listingId,
+            return Cache::lock($lockKey, 120)->block(90, function () use ($listingId, $newPublicImageUrl) {
+                $token = self::getReverbBearerToken();
+                if (! $token) {
+                    return [
+                        'success' => false,
+                        'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+                        'listing_id' => $listingId,
+                    ];
+                }
+
+                $existing = $this->fetchListingImagePublicUrls($token, $listingId);
+                $norm = static function (string $u): string {
+                    return rtrim(strtolower($u), '/');
+                };
+                $newN = $norm($newPublicImageUrl);
+                foreach ($existing as $u) {
+                    if ($norm((string) $u) === $newN) {
+                        return [
+                            'success' => true,
+                            'message' => 'This image is already on the Reverb listing.',
+                            'listing_id' => $listingId,
+                        ];
+                    }
+                }
+
+                $all = array_values(array_unique([...$existing, $newPublicImageUrl]));
+                if (count($all) > 25) {
+                    $all = array_slice($all, 0, 25);
+                }
+
+                $payload = [
+                    'photos' => $all,
+                    'photo_upload_method' => 'override_position',
                 ];
-            }
 
-            $body = $response->body();
+                try {
+                    $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+                    if ($response->successful()) {
+                        return [
+                            'success' => true,
+                            'message' => 'Image added to the Reverb listing; Reverb is processing the photo from your URL.',
+                            'listing_id' => $listingId,
+                        ];
+                    }
 
+                    $body = $response->body();
+
+                    return [
+                        'success' => false,
+                        'message' => 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($body, 0, 1000),
+                        'listing_id' => $listingId,
+                    ];
+                } catch (\Throwable $e) {
+                    return [
+                        'success' => false,
+                        'message' => 'Reverb request failed: '.$e->getMessage(),
+                        'listing_id' => $listingId,
+                    ];
+                }
+            });
+        } catch (LockTimeoutException $e) {
             return [
                 'success' => false,
-                'message' => 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($body, 0, 1000),
-                'listing_id' => $listingId,
-            ];
-        } catch (\Throwable $e) {
-            return [
-                'success' => false,
-                'message' => 'Reverb request failed: '.$e->getMessage(),
+                'message' => 'Timed out waiting to update this listing (other image pushes are still running). Retry in a few seconds.',
                 'listing_id' => $listingId,
             ];
         }

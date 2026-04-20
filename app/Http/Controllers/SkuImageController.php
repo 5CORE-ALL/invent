@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class SkuImageController extends Controller
@@ -151,20 +152,58 @@ class SkuImageController extends Controller
         $base = 'skus/'.$safePath;
 
         $out = [];
+        $disk = Storage::disk('public');
+
         foreach ($request->file('images', []) as $file) {
             if (! $file) {
                 continue;
             }
-            $path = $file->store($base, 'public');
-            $image = SkuImage::query()->create([
-                'product_id' => $product->id,
-                'file_name' => $file->getClientOriginalName(),
-                'file_path' => $path,
-                'file_size' => $file->getSize(),
-                'mime_type' => $file->getClientMimeType(),
-            ]);
-            $image->setRelation('product', $product);
-            $out[] = $this->imageToArray($image);
+
+            $originalName = (string) $file->getClientOriginalName();
+            $nameKey = strtolower(trim($originalName));
+
+            $existing = SkuImage::query()
+                ->where('product_id', $product->id)
+                ->whereRaw('LOWER(TRIM(file_name)) = ?', [$nameKey])
+                ->first();
+
+            if ($existing) {
+                $oldPath = $existing->file_path;
+                $path = $file->store($base, 'public');
+
+                $existing->update([
+                    'file_name' => $originalName,
+                    'file_path' => $path,
+                    'file_size' => $file->getSize(),
+                    'mime_type' => $file->getClientMimeType(),
+                ]);
+
+                if ($oldPath !== '' && $oldPath !== $path && $disk->exists($oldPath)) {
+                    $disk->delete($oldPath);
+                }
+
+                $existing->imageMarketplaceMaps()->update([
+                    'status' => ImageMarketplaceMap::STATUS_PENDING,
+                    'response' => null,
+                    'sent_at' => null,
+                ]);
+
+                $existing->refresh();
+                $existing->load('imageMarketplaceMaps');
+                $existing->setRelation('product', $product);
+                $out[] = $this->imageToArray($existing);
+            } else {
+                $path = $file->store($base, 'public');
+                $image = SkuImage::query()->create([
+                    'product_id' => $product->id,
+                    'file_name' => $originalName,
+                    'file_path' => $path,
+                    'file_size' => $file->getSize(),
+                    'mime_type' => $file->getClientMimeType(),
+                ]);
+                $image->setRelation('product', $product);
+                $out[] = $this->imageToArray($image);
+            }
         }
 
         return response()->json(['ok' => true, 'images' => $out]);
