@@ -10,6 +10,7 @@ use Illuminate\Console\Command;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\DB;
+use App\Support\AmazonAcosSbgtRule;
 
 /**
  * Sponsored Brands (HL / "HEAD") campaign budgets — same ACOS → SBGT rules as KW/PT tabulator.
@@ -323,14 +324,7 @@ class AutoUpdateAmazonBgtHl extends Command
             foreach ($validCampaignsForTotal as $row) {
                 $acos = (float) ($row['acos_L30'] ?? 0);
 
-                // ACOS-based SBGT: <20 -> 10, [20,30) -> 5, >=30 -> 2
-                if ($acos < 20) {
-                    $row['sbgt'] = 10;
-                } elseif ($acos < 30) {
-                    $row['sbgt'] = 5;
-                } else {
-                    $row['sbgt'] = 2;
-                }
+                $row['sbgt'] = AmazonAcosSbgtRule::sbgtFromAcosL30($acos);
 
                 $result[] = (object) $row;
             }

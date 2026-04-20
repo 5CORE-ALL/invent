@@ -8,6 +8,7 @@ use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaTable;
 use App\Models\ShopifySku;
+use App\Support\AmazonAcosSbgtRule;
 
 class UpdateAmazonFbaPtBudgetCronCommand extends Command
 {
@@ -168,21 +169,11 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
                 $acos = 100;
             }
 
-            // Determine budget value based on ACOS (new rule)
-            // ACOS < 10% → budget = 3
-            // ACOS 10%-20% → budget = 2
-            // ACOS > 20% → budget = 1
-            $newBudget = 1;
-            if ($acos < 10) {
-                $newBudget = 3;
-            } elseif ($acos >= 10 && $acos < 20) {
-                $newBudget = 2;
-            } else {
-                $newBudget = 1;
-            }
+            // Same ACOS → SBGT tiers as FBM ACOS control / utilized KW (pink 12 … red 1)
+            $newBudget = AmazonAcosSbgtRule::sbgtFromAcosL30((float) $acos);
 
-            // CRITICAL: Validate budget is only 1, 2, or 3 - prevent any other values
-            if (!in_array($newBudget, [1, 2, 3], true)) {
+            $allowedSbgt = [1, 2, 4, 8, 12];
+            if (!in_array($newBudget, $allowedSbgt, true)) {
                 $this->error("INVALID BUDGET VALUE for SKU {$sellerSku} Campaign {$campaignId}: {$newBudget}. Skipping update!");
                 continue;
             }
@@ -211,19 +202,19 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
 
         // Batch update all campaigns in one call
         if (!empty($campaignIdsToUpdate)) {
-            // CRITICAL: Validate arrays are aligned and all budgets are valid (1, 2, or 3)
+            // CRITICAL: Validate arrays are aligned and all budgets are valid SBGT tiers
             if (count($campaignIdsToUpdate) !== count($budgetsToUpdate)) {
                 $this->error("ARRAY MISALIGNMENT: campaignIds count (" . count($campaignIdsToUpdate) . ") != budgets count (" . count($budgetsToUpdate) . "). Aborting update!");
                 return 1;
             }
 
-            // Validate all budget values are 1, 2, or 3
-            $invalidBudgets = array_filter($budgetsToUpdate, function($budget) {
-                return !in_array($budget, [1, 2, 3], true);
+            $allowedSbgt = [1, 2, 4, 8, 12];
+            $invalidBudgets = array_filter($budgetsToUpdate, function ($budget) use ($allowedSbgt) {
+                return !in_array($budget, $allowedSbgt, true);
             });
 
             if (!empty($invalidBudgets)) {
-                $this->error("INVALID BUDGET VALUES FOUND: " . implode(', ', $invalidBudgets) . ". Only 1, 2, or 3 allowed. Aborting update!");
+                $this->error("INVALID BUDGET VALUES FOUND: " . implode(', ', $invalidBudgets) . ". Only 1, 2, 4, 8, or 12 allowed. Aborting update!");
                 $this->error("Campaign IDs: " . implode(', ', $campaignIdsToUpdate));
                 $this->error("Budgets: " . implode(', ', $budgetsToUpdate));
                 return 1;

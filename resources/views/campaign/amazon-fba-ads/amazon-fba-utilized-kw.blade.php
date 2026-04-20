@@ -440,6 +440,16 @@
                 return 'pink';
             };
 
+            function amazonSbgtFromAcosL30(acos) {
+                var a = parseFloat(acos);
+                if (isNaN(a)) a = 0;
+                if (a >= 40) return 1;
+                if (a > 30) return 2;
+                if (a > 20) return 4;
+                if (a > 10) return 8;
+                return 12;
+            }
+
             // Function to update all statistics counts from table data
             function updateButtonCounts() {
                 if (typeof table === 'undefined' || !table) {
@@ -847,48 +857,16 @@
                         field: "sbgt",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
-                            // Get row data
                             var aData = aRow.getData();
                             var bData = bRow.getData();
-                            
-                            // Calculate SBGT for row A (FBA rules: acos < 10% -> 3, acos < 20% -> 2, acos >= 20% -> 1)
-                            var aAcos = Math.floor(parseFloat(aData.acos_L30 || aData.acos || 0));
-                            var aSbgt;
-                            if (aAcos < 10) {
-                                aSbgt = 3;
-                            } else if (aAcos < 20) {
-                                aSbgt = 2;
-                            } else {
-                                aSbgt = 1;
-                            }
-                            
-                            // Calculate SBGT for row B
-                            var bAcos = Math.floor(parseFloat(bData.acos_L30 || bData.acos || 0));
-                            var bSbgt;
-                            if (bAcos < 10) {
-                                bSbgt = 3;
-                            } else if (bAcos < 20) {
-                                bSbgt = 2;
-                            } else {
-                                bSbgt = 1;
-                            }
-                            
-                            // Compare values
+                            var aSbgt = amazonSbgtFromAcosL30(aData.acos_L30 || aData.acos || 0);
+                            var bSbgt = amazonSbgtFromAcosL30(bData.acos_L30 || bData.acos || 0);
                             return aSbgt - bSbgt;
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var acos = Math.floor(parseFloat(row.acos_L30 || row.acos || 0));
-                            var sbgt;
-                            if (acos < 10) {
-                                sbgt = 3;
-                            } else if (acos < 20) {
-                                sbgt = 2;
-                            } else {
-                                sbgt = 1;
-                            }
-
-                            return sbgt;
+                            var acos = parseFloat(row.acos_L30 || row.acos || 0);
+                            return amazonSbgtFromAcosL30(acos);
                         },
                     },
                     {

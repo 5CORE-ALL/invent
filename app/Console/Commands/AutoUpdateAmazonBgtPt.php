@@ -13,6 +13,7 @@ use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Support\AmazonAcosSbgtRule;
 
 class AutoUpdateAmazonBgtPt extends Command
 {
@@ -361,14 +362,7 @@ class AutoUpdateAmazonBgtPt extends Command
 
                 $price = (float) ($row['price'] ?? 0);
 
-                // ACOS-based SBGT: <20 -> 10, [20,30) -> 5, >=30 -> 2
-                if ($acos < 20) {
-                    $row['sbgt'] = 10;
-                } elseif ($acos < 30) {
-                    $row['sbgt'] = 5;
-                } else {
-                    $row['sbgt'] = 2;
-                }
+                $row['sbgt'] = AmazonAcosSbgtRule::sbgtFromAcosL30($acos);
 
                 $result[] = (object) $row;
             }

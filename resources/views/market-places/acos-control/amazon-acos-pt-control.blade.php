@@ -280,6 +280,17 @@
                 return 'pink';
             };
 
+            /** L30 ACOS (%) → SBGT: pink ≤10→12, (10,20]→8, (20,30]→4, (30,40)→2, ≥40→1 (same as AmazonAcosSbgtRule PHP). */
+            function amazonSbgtFromAcosL30(acos) {
+                var a = parseFloat(acos);
+                if (isNaN(a)) a = 0;
+                if (a >= 40) return 1;
+                if (a > 30) return 2;
+                if (a > 20) return 4;
+                if (a > 10) return 8;
+                return 12;
+            }
+
             // Store total ACOS globally for SBGT calculation
             var globalTotalACOS = 0;
             var isUpdatingTotals = false; // Flag to prevent infinite redraw loop
@@ -566,29 +577,10 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var acos = parseFloat(row.acos_L30 || 0);
-                            var sbgt;
-                            
-                            // New ACOS-based sbgt rule
-                            if (acos < 5) {
-                                sbgt = 8;
-                            } else if (acos < 10) {
-                                sbgt = 7;
-                            } else if (acos < 15) {
-                                sbgt = 6;
-                            } else if (acos < 20) {
-                                sbgt = 5;
-                            } else if (acos < 25) {
-                                sbgt = 4;
-                            } else if (acos < 30) {
-                                sbgt = 3;
-                            } else if (acos < 35) {
-                                sbgt = 2;
-                            } else {
-                                sbgt = 1;
-                            }
+                            var sbgt = amazonSbgtFromAcosL30(acos);
                             
                             return `
-                                <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="5"  data-campaign-id="${row.campaign_id}">
+                                <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="12"  data-campaign-id="${row.campaign_id}">
                             `;
                         },
                     },

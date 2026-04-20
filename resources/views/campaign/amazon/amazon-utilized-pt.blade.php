@@ -501,14 +501,11 @@
                                         </label>
                                         <select id="sbgt-filter" class="form-select form-select-sm w-100">
                                             <option value="">All</option>
-                                            <option value="8">&lt; 5%</option>
-                                            <option value="7">5-9%</option>
-                                            <option value="6">10-14%</option>
-                                            <option value="5">15-19%</option>
-                                            <option value="4">20-24%</option>
-                                            <option value="3">25-29%</option>
-                                            <option value="2">30-34%</option>
-                                            <option value="1">≥ 35%</option>
+                                            <option value="12">≤10% (SBGT 12 / pink)</option>
+                                            <option value="8">10–20% (SBGT 8 / green)</option>
+                                            <option value="4">20–30% (SBGT 4 / blue)</option>
+                                            <option value="2">30–40% (SBGT 2 / yellow)</option>
+                                            <option value="1">≥40% (SBGT 1 / red)</option>
                                             <option value="acos35spend10">&gt;35% &amp; SPEND &gt;10</option>
                                         </select>
                                     </div>
@@ -937,14 +934,11 @@
                             if (acosVal <= 35 || spendVal <= 10 || isNaN(spendVal)) return;
                         } else {
                             let acosMatch = false;
-                            if (acosFilterVal === '8' && acosVal >= 0 && acosVal < 5) acosMatch = true;
-                            else if (acosFilterVal === '7' && acosVal >= 5 && acosVal < 10) acosMatch = true;
-                            else if (acosFilterVal === '6' && acosVal >= 10 && acosVal < 15) acosMatch = true;
-                            else if (acosFilterVal === '5' && acosVal >= 15 && acosVal < 20) acosMatch = true;
-                            else if (acosFilterVal === '4' && acosVal >= 20 && acosVal < 25) acosMatch = true;
-                            else if (acosFilterVal === '3' && acosVal >= 25 && acosVal < 30) acosMatch = true;
-                            else if (acosFilterVal === '2' && acosVal >= 30 && acosVal < 35) acosMatch = true;
-                            else if (acosFilterVal === '1' && acosVal >= 35) acosMatch = true;
+                            if (acosFilterVal === '12' && acosVal <= 10) acosMatch = true;
+                            else if (acosFilterVal === '8' && acosVal > 10 && acosVal <= 20) acosMatch = true;
+                            else if (acosFilterVal === '4' && acosVal > 20 && acosVal <= 30) acosMatch = true;
+                            else if (acosFilterVal === '2' && acosVal > 30 && acosVal < 40) acosMatch = true;
+                            else if (acosFilterVal === '1' && acosVal >= 40) acosMatch = true;
                             if (!acosMatch) return;
                         }
                     }
@@ -1033,9 +1027,8 @@
                     if (comboCounts.hasOwnProperty(combo)) comboCounts[combo]++;
                 });
                 
-                // Count ACOS ranges (SBGT mapping)
-                let acosCount8 = 0, acosCount7 = 0, acosCount6 = 0, acosCount5 = 0;
-                let acosCount4 = 0, acosCount3 = 0, acosCount2 = 0, acosCount1 = 0;
+                // Count ACOS ranges (SBGT mapping: 12 / 8 / 4 / 2 / 1)
+                let acosCount12 = 0, acosCount8 = 0, acosCount4 = 0, acosCount2 = 0, acosCount1 = 0;
                 let acosCountZero = 0;
                 let acos35Spend10Count = 0; // Count ACOS > 35% AND SPEND > 10
                 
@@ -1082,13 +1075,10 @@
                         acos35Spend10Count++;
                     }
                     
-                    if (acosVal < 5) acosCount8++;
-                    else if (acosVal < 10) acosCount7++;
-                    else if (acosVal < 15) acosCount6++;
-                    else if (acosVal < 20) acosCount5++;
-                    else if (acosVal < 25) acosCount4++;
-                    else if (acosVal < 30) acosCount3++;
-                    else if (acosVal < 35) acosCount2++;
+                    if (acosVal > 0 && acosVal <= 10) acosCount12++;
+                    else if (acosVal <= 20) acosCount8++;
+                    else if (acosVal <= 30) acosCount4++;
+                    else if (acosVal < 40) acosCount2++;
                     else acosCount1++;
                 });
                 
@@ -1168,17 +1158,14 @@
                 
                 const sbgtSelect = document.getElementById('sbgt-filter');
                 if (sbgtSelect) {
-                    const totalAcos = acosCount8 + acosCount7 + acosCount6 + acosCount5 + acosCount4 + acosCount3 + acosCount2 + acosCount1 + acosCountZero;
+                    const totalAcos = acosCount12 + acosCount8 + acosCount4 + acosCount2 + acosCount1 + acosCountZero;
                     sbgtSelect.options[0].text = `All ACOS (${totalAcos})`;
-                    sbgtSelect.options[1].text = `ACOS < 5% (${acosCount8})`;
-                    sbgtSelect.options[2].text = `ACOS 5-9% (${acosCount7})`;
-                    sbgtSelect.options[3].text = `ACOS 10-14% (${acosCount6})`;
-                    sbgtSelect.options[4].text = `ACOS 15-19% (${acosCount5})`;
-                    sbgtSelect.options[5].text = `ACOS 20-24% (${acosCount4})`;
-                    sbgtSelect.options[6].text = `ACOS 25-29% (${acosCount3})`;
-                    sbgtSelect.options[7].text = `ACOS 30-34% (${acosCount2})`;
-                    sbgtSelect.options[8].text = `ACOS ≥ 35% (${acosCount1})`;
-                    sbgtSelect.options[9].text = `ACOS>35% and SPEND >10 (${acos35Spend10Count})`;
+                    sbgtSelect.options[1].text = `ACOS ≤10% / SBGT 12 (${acosCount12})`;
+                    sbgtSelect.options[2].text = `ACOS 10–20% / SBGT 8 (${acosCount8})`;
+                    sbgtSelect.options[3].text = `ACOS 20–30% / SBGT 4 (${acosCount4})`;
+                    sbgtSelect.options[4].text = `ACOS 30–40% / SBGT 2 (${acosCount2})`;
+                    sbgtSelect.options[5].text = `ACOS ≥40% / SBGT 1 (${acosCount1})`;
+                    sbgtSelect.options[6].text = `ACOS>35% and SPEND >10 (${acos35Spend10Count})`;
                 }
                 
                 // Count price slabs
@@ -2235,13 +2222,12 @@
                         field: "sbgt",
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || 0);
-                            // ACOS-based SBGT rules
-                            if (acos > 25) return 1;
-                            if (acos >= 20) return 2;
-                            if (acos >= 15) return 4;
-                            if (acos >= 10) return 6;
-                            if (acos >= 5) return 8;
-                            return 10; // Less than 5
+                            if (isNaN(acos)) acos = 0;
+                            if (acos >= 40) return 1;
+                            if (acos > 30) return 2;
+                            if (acos > 20) return 4;
+                            if (acos > 10) return 8;
+                            return 12;
                         }
 
                     },
@@ -3161,15 +3147,6 @@
 
                 let rowAcos = parseFloat(acos) || 0;
 
-                // ACOS-based SBGT rules
-                let rowSbgt = null;
-                if (rowAcos > 25) rowSbgt = 1;
-                else if (rowAcos >= 20) rowSbgt = 2;
-                else if (rowAcos >= 15) rowSbgt = 4;
-                else if (rowAcos >= 10) rowSbgt = 6;
-                else if (rowAcos >= 5) rowSbgt = 8;
-                else rowSbgt = 10; // Less than 5
-
                 // ACOS filter (sbgt-filter dropdown)
                 let acosFilterVal = $('#sbgt-filter').val();
                 if (acosFilterVal && acosFilterVal !== '') {
@@ -3181,41 +3158,12 @@
                             return false;
                         }
                     } else {
-                        // Map dropdown values to ACOS ranges
-                        // value="8" → ACOS < 5%
-                        // value="7" → ACOS 5-9%
-                        // value="6" → ACOS 10-14%
-                        // value="5" → ACOS 15-19%
-                        // value="4" → ACOS 20-24%
-                        // value="3" → ACOS 25-29%
-                        // value="2" → ACOS 30-34%
-                        // value="1" → ACOS ≥ 35%
                         let match = false;
-                        if (acosFilterVal === '8') {
-                            // ACOS < 5%
-                            if (rowAcos >= 0 && rowAcos < 5) match = true;
-                        } else if (acosFilterVal === '7') {
-                            // ACOS 5-9%
-                            if (rowAcos >= 5 && rowAcos < 10) match = true;
-                        } else if (acosFilterVal === '6') {
-                            // ACOS 10-14%
-                            if (rowAcos >= 10 && rowAcos < 15) match = true;
-                        } else if (acosFilterVal === '5') {
-                            // ACOS 15-19%
-                            if (rowAcos >= 15 && rowAcos < 20) match = true;
-                        } else if (acosFilterVal === '4') {
-                            // ACOS 20-24%
-                            if (rowAcos >= 20 && rowAcos < 25) match = true;
-                        } else if (acosFilterVal === '3') {
-                            // ACOS 25-29%
-                            if (rowAcos >= 25 && rowAcos < 30) match = true;
-                        } else if (acosFilterVal === '2') {
-                            // ACOS 30-34%
-                            if (rowAcos >= 30 && rowAcos < 35) match = true;
-                        } else if (acosFilterVal === '1') {
-                            // ACOS ≥ 35%
-                            if (rowAcos >= 35) match = true;
-                        }
+                        if (acosFilterVal === '12' && rowAcos <= 10) match = true;
+                        else if (acosFilterVal === '8' && rowAcos > 10 && rowAcos <= 20) match = true;
+                        else if (acosFilterVal === '4' && rowAcos > 20 && rowAcos <= 30) match = true;
+                        else if (acosFilterVal === '2' && rowAcos > 30 && rowAcos < 40) match = true;
+                        else if (acosFilterVal === '1' && rowAcos >= 40) match = true;
                         
                         if (!match) return false;
                     }

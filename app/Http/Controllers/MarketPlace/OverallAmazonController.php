@@ -34,6 +34,7 @@ use App\Models\AmazonSkuCompetitor;
 use App\Models\FbaPrice;
 use App\Models\FbaTable;
 use App\Services\FbaInventoryService;
+use App\Support\AmazonAcosSbgtRule;
 
 class OverallAmazonController extends Controller
 {
@@ -6222,14 +6223,7 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // ACOS-based SBGT rules (match Blade + commands): <20 => 10, 20-<30 => 5, >=30 => 2
-                if ($acos < 20) {
-                    $sbgt = 10;
-                } elseif ($acos < 30) {
-                    $sbgt = 5;
-                } else {
-                    $sbgt = 2;
-                }
+                $sbgt = AmazonAcosSbgtRule::sbgtFromAcosL30((float) $acos);
                 
                 // Get last_sbid from day-before-yesterday's records
                 // Normalize campaign_id to string for consistent matching
@@ -6454,14 +6448,7 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // ACOS-based SBGT rules (match Blade + commands): <20 => 10, 20-<30 => 5, >=30 => 2
-                if ($acos < 20) {
-                    $sbgt = 10;
-                } elseif ($acos < 30) {
-                    $sbgt = 5;
-                } else {
-                    $sbgt = 2;
-                }
+                $sbgt = AmazonAcosSbgtRule::sbgtFromAcosL30((float) $acos);
                 
                 // Get last_sbid from day-before-yesterday's records
                 // Normalize campaign_id to string for consistent matching
@@ -6685,14 +6672,7 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // ACOS-based SBGT rules (match Blade + commands): <20 => 10, 20-<30 => 5, >=30 => 2
-                if ($acos < 20) {
-                    $sbgt = 10;
-                } elseif ($acos < 30) {
-                    $sbgt = 5;
-                } else {
-                    $sbgt = 2;
-                }
+                $sbgt = AmazonAcosSbgtRule::sbgtFromAcosL30((float) $acos);
                 
                 // Fetch last_sbid from day-before-yesterday's records for HL campaigns
                 $lastSbidMapHl = [];

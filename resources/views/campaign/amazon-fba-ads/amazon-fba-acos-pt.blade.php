@@ -491,18 +491,17 @@
                         field: "sbgt",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var acos = Math.floor(parseFloat(row.acos_L30 || 0));
+                            var acos = parseFloat(row.acos_L30 || 0);
+                            if (isNaN(acos)) acos = 0;
                             var sbgt;
-                            if (acos < 10) {
-                                sbgt = 3;
-                            } else if (acos < 20) {
-                                sbgt = 2;
-                            } else {
-                                sbgt = 1;
-                            }
+                            if (acos >= 40) sbgt = 1;
+                            else if (acos > 30) sbgt = 2;
+                            else if (acos > 20) sbgt = 4;
+                            else if (acos > 10) sbgt = 8;
+                            else sbgt = 12;
 
                             return `
-                                <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="10"  data-campaign-id="${row.campaign_id}">
+                                <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="12"  data-campaign-id="${row.campaign_id}">
                             `;
                         },
                     },
