@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\PushImageJob;
 use App\Models\ImageMarketplaceMap;
 use App\Models\Marketplace;
+use App\Models\MarketplacePercentage;
 use App\Models\Product;
 use App\Models\ShopifySku;
 use App\Models\SkuImage;
@@ -12,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class SkuImageController extends Controller
@@ -40,15 +42,12 @@ class SkuImageController extends Controller
 
         $this->attachLineInventory($products);
 
-        $marketplaces = Marketplace::query()
-            ->where('status', true)
-            ->orderBy('name')
-            ->get();
+        $pushMarketplaceOptions = $this->marketplacePushSelectOptions();
 
         return view('sku_images.index', [
             'title' => 'SKU Image Manager',
             'products' => $products,
-            'marketplaces' => $marketplaces,
+            'pushMarketplaceOptions' => $pushMarketplaceOptions,
         ]);
     }
 
@@ -103,10 +102,16 @@ class SkuImageController extends Controller
         }
         uasort(
             $summary,
-            static fn (array $a, array $b) => strcasecmp(
-                (string) ($a['marketplace']?->name ?? ''),
-                (string) ($b['marketplace']?->name ?? '')
-            )
+            static function (array $a, array $b) {
+                $la = MarketplacePercentage::displayNameForMarketplace($a['marketplace'])
+                    ?? $a['marketplace']?->name
+                    ?? '';
+                $lb = MarketplacePercentage::displayNameForMarketplace($b['marketplace'])
+                    ?? $b['marketplace']?->name
+                    ?? '';
+
+                return strcasecmp((string) $la, (string) $lb);
+            }
         );
 
         $maps = ImageMarketplaceMap::query()
@@ -420,6 +425,62 @@ class SkuImageController extends Controller
             'url' => $image->url,
             'badges' => $image->pushStatusBadges(),
         ];
+    }
+
+    /**
+     * Push targets are `marketplaces` rows (for FK + services); labels follow `marketplace_percentages.marketplace`
+     * when a row matches by name or code (case-insensitive).
+     *
+     * @return Collection<int, object{id: int, label: string}>
+     */
+    private function marketplacePushSelectOptions(): Collection
+    {
+        if (! Schema::hasTable('marketplace_percentages')) {
+            return Marketplace::query()
+                ->where('status', true)
+                ->orderBy('name')
+                ->get()
+                ->map(static fn (Marketplace $m) => (object) [
+                    'id' => $m->id,
+                    'label' => $m->name,
+                ]);
+        }
+
+        $seen = [];
+        $options = collect();
+        foreach (MarketplacePercentage::query()->orderBy('marketplace')->cursor() as $pct) {
+            $needle = strtolower(trim((string) $pct->marketplace));
+            if ($needle === '') {
+                continue;
+            }
+            $mp = Marketplace::query()
+                ->where('status', true)
+                ->where(function ($q) use ($needle) {
+                    $q->whereRaw('LOWER(TRIM(name)) = ?', [$needle])
+                        ->orWhereRaw('LOWER(TRIM(code)) = ?', [$needle]);
+                })
+                ->first();
+            if ($mp && ! isset($seen[$mp->id])) {
+                $seen[$mp->id] = true;
+                $options->push((object) [
+                    'id' => $mp->id,
+                    'label' => (string) $pct->marketplace,
+                ]);
+            }
+        }
+
+        if ($options->isEmpty()) {
+            return Marketplace::query()
+                ->where('status', true)
+                ->orderBy('name')
+                ->get()
+                ->map(static fn (Marketplace $m) => (object) [
+                    'id' => $m->id,
+                    'label' => $m->name,
+                ]);
+        }
+
+        return $options;
     }
 
     private function sanitizePathSegment(string $sku): string

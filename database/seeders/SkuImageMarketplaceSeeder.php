@@ -16,6 +16,7 @@ class SkuImageMarketplaceSeeder extends Seeder
         foreach ([
             ['name' => 'Reverb', 'code' => 'reverb'],
             ['name' => 'Amazon', 'code' => 'amazon'],
+            ['name' => 'eBay', 'code' => 'ebay'],
         ] as $row) {
             Marketplace::query()->updateOrCreate(
                 ['code' => $row['code']],

@@ -124,14 +124,21 @@
             <div class="card h-100">
                 <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <h5 class="mb-0" id="im-panel-title">Select a SKU</h5>
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-2 align-items-start">
+                        @if ($pushMarketplaceOptions->isEmpty())
+                            <div class="alert alert-warning small py-2 px-3 mb-0" role="alert" style="max-width:26rem">
+                                No push targets found: need active rows in <code class="small">marketplaces</code> that match
+                                <code class="small">marketplace_percentages.marketplace</code> (by name or code), or run
+                                <code class="small">php artisan migrate --force</code> /
+                                <code class="small">php artisan db:seed --class=SkuImageMarketplaceSeeder --force</code>.
+                            </div>
+                        @endif
                         <select class="form-select form-select-sm" id="im-markets" name="marketplace_ids[]" multiple
-                            @if ($marketplaces->isEmpty()) disabled @endif
-                            size="{{ min(3, max(1, $marketplaces->count())) }}">
-                            @forelse ($marketplaces as $m)
-                                <option value="{{ $m->id }}">{{ $m->name }}</option>
-                            @empty
-                            @endforelse
+                            @if ($pushMarketplaceOptions->isEmpty()) disabled @endif
+                            size="{{ min(3, max(1, $pushMarketplaceOptions->count())) }}">
+                            @foreach ($pushMarketplaceOptions as $opt)
+                                <option value="{{ $opt->id }}">{{ $opt->label }}</option>
+                            @endforeach
                         </select>
                         <button type="button" class="btn btn-sm btn-primary" id="im-push" disabled>Push
                             selected</button>

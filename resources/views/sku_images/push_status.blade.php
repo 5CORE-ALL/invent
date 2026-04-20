@@ -1,5 +1,9 @@
 @extends('layouts.vertical', ['title' => $title ?? 'SKU image push status'])
 
+@php
+    use App\Models\MarketplacePercentage;
+@endphp
+
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'SKU image push status',
@@ -34,9 +38,10 @@
                         @forelse ($summary as $row)
                             <tr>
                                 <td>
-                                    <span class="fw-semibold">{{ $row['marketplace']?->name ?? ('#'.$row['marketplace']?->id) }}</span>
-                                    @if ($row['marketplace']?->code)
-                                        <span class="text-muted small">({{ $row['marketplace']->code }})</span>
+                                    @php $mp = $row['marketplace']; @endphp
+                                    <span class="fw-semibold">{{ MarketplacePercentage::displayNameForMarketplace($mp) ?? $mp?->name ?? ('#'.$mp?->id) }}</span>
+                                    @if ($mp?->code)
+                                        <span class="text-muted small">({{ $mp->code }})</span>
                                     @endif
                                 </td>
                                 <td class="text-end">
@@ -75,7 +80,7 @@
                             @if ($row['marketplace'])
                                 <option value="{{ $row['marketplace']->id }}"
                                     @selected($filterMarketplaceId === (int) $row['marketplace']->id)>
-                                    {{ $row['marketplace']->name }}
+                                    {{ MarketplacePercentage::displayNameForMarketplace($row['marketplace']) ?? $row['marketplace']->name }}
                                 </option>
                             @endif
                         @endforeach
@@ -140,7 +145,7 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <span class="text-nowrap">{{ $map->marketplace?->name ?? '—' }}</span>
+                                    <span class="text-nowrap">{{ MarketplacePercentage::displayNameForMarketplace($map->marketplace) ?? $map->marketplace?->name ?? '—' }}</span>
                                     @if ($map->marketplace?->code)
                                         <span class="text-muted small">({{ $map->marketplace->code }})</span>
                                     @endif
