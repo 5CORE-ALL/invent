@@ -542,6 +542,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/fetchRefundRates', 'fetchRefundRates');
         Route::post('/refund-rate/update', 'updateRefundRate');
         Route::post('/refund-health-link/update', 'updateRefundHealthLink')->name('refund-health.link.update');
+
+        Route::get('/account-health-master/tabulator', 'tabulatorMaster')->name('account.health.master.tabulator');
+        Route::get('/account-health-master/tabulator-data', 'tabulatorChannelData')->name('account.health.master.tabulator.data');
+        Route::get('/account-health-master/metric-fields', 'listAccountHealthMetricFields')->name('account.health.master.metric.fields');
+        Route::post('/account-health-master/metric-fields', 'storeAccountHealthMetricField')->name('account.health.master.metric.fields.store');
+        Route::patch('/account-health-master/metric-fields/{id}', 'updateAccountHealthMetricField')->name('account.health.master.metric.fields.update');
+        Route::delete('/account-health-master/metric-fields/{id}', 'deleteAccountHealthMetricField')->name('account.health.master.metric.fields.delete');
+        Route::post('/account-health-master/metric-fields/{id}/reorder/{direction}', 'reorderAccountHealthMetricField')->name('account.health.master.metric.fields.reorder')->where('direction', 'up|down');
+        Route::post('/account-health-master/channel-metric', 'saveAccountHealthChannelMetric')->name('account.health.master.channel.metric.save');
+        Route::post('/account-health-master/channel-metrics-batch', 'saveAccountHealthChannelMetricsBatch')->name('account.health.master.channel.metrics.batch');
+        Route::get('/account-health-master/metric-value-history', 'listAccountHealthMetricHistory')->name('account.health.master.metric.value.history');
     });
 
     // Account Health Master Channel Dashboard

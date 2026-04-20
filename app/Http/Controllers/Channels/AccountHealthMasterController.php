@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Channels;
 
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
+use App\Models\AccountHealthChannelJsonMetric;
 use App\Models\AccountHealthMaster;
+use App\Models\AccountHealthMetricFieldDefinition;
+use App\Models\AccountHealthMetricValueHistory;
 use App\Models\AtoZClaimsRate;
 use App\Models\ChannelMaster;
 use App\Models\FullfillmentRate;
@@ -17,11 +20,14 @@ use App\Models\ValidTrackingRate;
 use App\Models\VoilanceRate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Services\EbayApiService;
 
 class AccountHealthMasterController extends Controller
 {
+    private const SCOPE_EBAY_GROUP = 'ebay_group';
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -1614,4 +1620,387 @@ class AccountHealthMasterController extends Controller
     }
 
     // refund rate end
+
+    /**
+     * Account Health tabulator: user-defined metric fields + per-channel JSON values.
+     */
+    public function tabulatorMaster()
+    {
+        return view('channels.account_health_master.tabulator-master');
+    }
+
+    public function listAccountHealthMetricFields(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+        ]);
+        $channel = ChannelMaster::query()->findOrFail((int) $request->input('channel_id'));
+        $scope = $this->definitionScopeForChannel($channel);
+
+        $rows = AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['id', 'field_key', 'label', 'sort_order', 'definition_scope']);
+
+        return response()->json([
+            'scope' => $scope,
+            'is_ebay_shared' => $scope === self::SCOPE_EBAY_GROUP,
+            'fields' => $rows,
+        ]);
+    }
+
+    public function storeAccountHealthMetricField(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'label' => 'required|string|max:255',
+            'field_key' => 'nullable|string|max:64|regex:/^[a-z0-9_]+$/',
+        ]);
+
+        $channel = ChannelMaster::query()->findOrFail((int) $request->input('channel_id'));
+        $scope = $this->definitionScopeForChannel($channel);
+
+        $label = trim($request->input('label'));
+        $rawKey = $request->input('field_key');
+        if ($rawKey !== null && trim($rawKey) !== '') {
+            $baseKey = Str::slug(trim($rawKey), '_');
+        } else {
+            $baseKey = Str::slug($label, '_');
+        }
+
+        if ($baseKey === '') {
+            return response()->json(['message' => 'Could not derive a storage key. Use a different title or set “Storage key”.'], 422);
+        }
+
+        if (AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->where('field_key', $baseKey)
+            ->exists()) {
+            return response()->json(['message' => 'That storage key is already used for this marketplace (scope).'], 422);
+        }
+
+        $maxOrder = (int) AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->max('sort_order');
+
+        $row = AccountHealthMetricFieldDefinition::query()->create([
+            'definition_scope' => $scope,
+            'field_key' => $baseKey,
+            'label' => $label,
+            'sort_order' => $maxOrder + 1,
+        ]);
+
+        return response()->json(['success' => true, 'field' => $row]);
+    }
+
+    public function updateAccountHealthMetricField(Request $request, int $id)
+    {
+        $def = AccountHealthMetricFieldDefinition::query()->findOrFail($id);
+        $request->validate([
+            'label' => 'required|string|max:255',
+        ]);
+        $def->update(['label' => trim($request->input('label'))]);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function deleteAccountHealthMetricField(int $id)
+    {
+        $def = AccountHealthMetricFieldDefinition::query()->findOrFail($id);
+        $key = $def->field_key;
+        $scope = $def->definition_scope ?? 'legacy';
+        $def->delete();
+
+        $channelIds = $this->channelIdsForDefinitionScope($scope);
+        if ($channelIds === []) {
+            return response()->json(['success' => true]);
+        }
+
+        AccountHealthMetricValueHistory::query()
+            ->whereIn('channel_id', $channelIds)
+            ->where('field_key', $key)
+            ->delete();
+
+        AccountHealthChannelJsonMetric::query()
+            ->whereIn('channel_id', $channelIds)
+            ->get()
+            ->each(function (AccountHealthChannelJsonMetric $row) use ($key) {
+                $m = (array) ($row->metrics ?? []);
+                if (! array_key_exists($key, $m)) {
+                    return;
+                }
+                unset($m[$key]);
+                $row->update(['metrics' => $m]);
+            });
+
+        return response()->json(['success' => true]);
+    }
+
+    public function reorderAccountHealthMetricField(int $id, string $direction)
+    {
+        if (! in_array($direction, ['up', 'down'], true)) {
+            return response()->json(['message' => 'Invalid direction'], 422);
+        }
+
+        $pivot = AccountHealthMetricFieldDefinition::query()->findOrFail($id);
+        $scope = $pivot->definition_scope ?? 'legacy';
+
+        $ids = AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+
+        $pos = array_search($id, $ids, true);
+        if ($pos === false) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        if ($direction === 'up' && $pos > 0) {
+            $t = $ids[$pos - 1];
+            $ids[$pos - 1] = $ids[$pos];
+            $ids[$pos] = $t;
+        } elseif ($direction === 'down' && $pos < count($ids) - 1) {
+            $t = $ids[$pos + 1];
+            $ids[$pos + 1] = $ids[$pos];
+            $ids[$pos] = $t;
+        } else {
+            return response()->json(['success' => true]);
+        }
+
+        foreach ($ids as $i => $fieldId) {
+            AccountHealthMetricFieldDefinition::query()->whereKey($fieldId)->update(['sort_order' => $i + 1]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    public function saveAccountHealthChannelMetric(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'field_key' => 'required|string|max:64',
+            'value' => 'nullable',
+        ]);
+
+        $key = $request->input('field_key');
+        $channel = ChannelMaster::query()->findOrFail((int) $request->input('channel_id'));
+        $scope = $this->definitionScopeForChannel($channel);
+        AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->where('field_key', $key)
+            ->firstOrFail();
+
+        $channelId = (int) $request->input('channel_id');
+        $v = $request->input('value');
+        if ($v === null || $v === '') {
+            $parsed = null;
+        } else {
+            $parsed = is_numeric($v) ? round((float) $v, 6) : $v;
+        }
+
+        $row = AccountHealthChannelJsonMetric::query()->where('channel_id', $channelId)->first();
+        $metrics = (array) ($row?->metrics ?? []);
+        if ($parsed === null) {
+            $metrics[$key] = null;
+        } else {
+            $metrics[$key] = $parsed;
+        }
+
+        AccountHealthChannelJsonMetric::query()->updateOrCreate(
+            ['channel_id' => $channelId],
+            ['metrics' => $metrics]
+        );
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Value history: Factor + Value (%) by date. Append-only (new row per save, same key can repeat for new dates).
+     */
+    public function listAccountHealthMetricHistory(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+        ]);
+        $channelId = (int) $request->input('channel_id');
+        $scope = $this->definitionScopeForChannelId($channelId);
+        $defs = AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->get()
+            ->keyBy('field_key');
+
+        $rows = AccountHealthMetricValueHistory::query()
+            ->where('channel_id', $channelId)
+            ->orderByDesc('recorded_on')
+            ->orderByDesc('id')
+            ->get();
+
+        $history = $rows->map(function (AccountHealthMetricValueHistory $r) use ($defs) {
+            $def = $defs->get($r->field_key);
+
+            return [
+                'id' => $r->id,
+                'field_key' => $r->field_key,
+                'factor_label' => $def?->label ?? $r->field_key,
+                'value' => $r->value,
+                'recorded_on' => $r->recorded_on?->format('Y-m-d'),
+            ];
+        })->values()->all();
+
+        $latestByKey = [];
+        foreach ($rows as $h) {
+            if (! array_key_exists($h->field_key, $latestByKey)) {
+                $latestByKey[$h->field_key] = $h->value;
+            }
+        }
+
+        return response()->json([
+            'history' => $history,
+            'latest_by_key' => $latestByKey,
+        ]);
+    }
+
+    /**
+     * Update all defined metric keys for one channel (modal form) — appends history rows, does not overwrite past dates.
+     */
+    public function saveAccountHealthChannelMetricsBatch(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'metrics' => 'required|array',
+        ]);
+
+        $channelId = (int) $request->input('channel_id');
+        $recordedOn = now()->toDateString();
+        $incoming = $request->input('metrics', []);
+        $scope = $this->definitionScopeForChannelId($channelId);
+        $allowedKeys = AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->pluck('field_key')
+            ->all();
+
+        if ($allowedKeys === []) {
+            return response()->json(['message' => 'Add at least one factor in step 1 before saving values.'], 422);
+        }
+
+        $inserted = 0;
+        foreach ($incoming as $k => $v) {
+            if (! in_array((string) $k, $allowedKeys, true)) {
+                continue;
+            }
+            if ($v === null || $v === '') {
+                continue;
+            }
+            if (! is_numeric($v)) {
+                continue;
+            }
+            AccountHealthMetricValueHistory::query()->create([
+                'channel_id' => $channelId,
+                'field_key' => (string) $k,
+                'value' => round((float) $v, 6),
+                'recorded_on' => $recordedOn,
+            ]);
+            $inserted++;
+        }
+
+        if ($inserted === 0) {
+            return response()->json([
+                'message' => 'Enter at least one value (%) for a defined factor, or check the “as of” date.',
+            ], 422);
+        }
+
+        return response()->json(['success' => true, 'inserted' => $inserted]);
+    }
+
+    /**
+     * JSON for Tabulator: active marketplaces only (per-marketplace metrics live in the modal).
+     */
+    public function tabulatorChannelData()
+    {
+        $rows = ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->orderBy('type')
+            ->orderBy('channel')
+            ->get(['id', 'channel', 'type', 'status'])
+            ->map(function ($c) {
+                return [
+                    'id' => $c->id,
+                    'channel' => $c->channel,
+                    'type' => $c->type,
+                    'status' => $c->status,
+                ];
+            });
+
+        return response()->json($rows);
+    }
+
+    public function definitionScopeForChannel(ChannelMaster $channel): string
+    {
+        if ($this->channelBelongsToEbayGroup($channel)) {
+            return self::SCOPE_EBAY_GROUP;
+        }
+
+        return 'ch_'.$channel->id;
+    }
+
+    public function definitionScopeForChannelId(int $channelId): string
+    {
+        $c = ChannelMaster::query()->findOrFail($channelId);
+
+        return $this->definitionScopeForChannel($c);
+    }
+
+    private function channelBelongsToEbayGroup(ChannelMaster $channel): bool
+    {
+        $names = config('account_health_scopes.ebay_group_channel_names', []);
+        $ch = strtolower(trim((string) $channel->channel));
+        foreach ($names as $n) {
+            if (strtolower(trim((string) $n)) === $ch) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function channelIdsForDefinitionScope(string $scope): array
+    {
+        if ($scope === self::SCOPE_EBAY_GROUP) {
+            $names = config('account_health_scopes.ebay_group_channel_names', []);
+
+            return ChannelMaster::query()
+                ->where(function ($q) use ($names) {
+                    foreach ($names as $n) {
+                        $q->orWhereRaw('LOWER(TRIM(channel)) = ?', [strtolower(trim((string) $n))]);
+                    }
+                })
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        if (str_starts_with($scope, 'ch_')) {
+            $id = (int) substr($scope, 3);
+
+            return $id > 0 ? [$id] : [];
+        }
+
+        if ($scope === 'legacy') {
+            return ChannelMaster::query()
+                ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        return [];
+    }
 }

@@ -1012,6 +1012,9 @@
                                             target="_blank">Dashboard</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('account.health.master.tabulator') }}">Tabulator</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('odr.rate') }}">ODR Rate</a>
                                     </li>
                                     <li>
