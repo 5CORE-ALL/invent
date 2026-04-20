@@ -2,30 +2,33 @@
 
 namespace App\Services;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Request;
-use Aws\Signature\SignatureV4;
-use Aws\Credentials\Credentials;
+use App\Models\ProductStockMapping;
+use App\Models\ReverbListingStatus;
+use App\Models\ReverbProduct;
+use App\Services\Support\DescriptionWithImagesFormatter;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use App\Models\ProductStockMapping;
-use App\Models\ReverbProduct;
-use App\Models\ReverbListingStatus;
-use App\Services\Support\DescriptionWithImagesFormatter;
-use Illuminate\Http\Client\Response;
 
 class ReverbApiService
 {
     protected $clientId;
+
     protected $clientSecret;
+
     protected $refreshToken;
+
     protected $region;
+
     protected $marketplaceId;
+
     protected $awsAccessKey;
+
     protected $awsSecretKey;
+
     protected $endpoint;
 
     public function __construct()
@@ -118,7 +121,7 @@ class ReverbApiService
     /**
      * Normalize listing state/status from API response.
      *
-     * @param array<string, mixed> $item
+     * @param  array<string, mixed>  $item
      */
     public function normalizeListingState(array $item): string
     {
@@ -130,6 +133,7 @@ class ReverbApiService
             $emb = $item['_embedded']['state'];
             $state = is_array($emb) ? ($emb['slug'] ?? $emb['name'] ?? 'unknown') : (string) $emb;
         }
+
         return $state ? strtolower(trim((string) $state)) : 'unknown';
     }
 
@@ -148,7 +152,7 @@ class ReverbApiService
         $startedAt = now()->toIso8601String();
 
         try {
-            if (!File::isDirectory(storage_path('logs/reverb'))) {
+            if (! File::isDirectory(storage_path('logs/reverb'))) {
                 File::ensureDirectoryExists(storage_path('logs/reverb'));
             }
             $log->info('Reverb getInventory started', [
@@ -190,6 +194,7 @@ class ReverbApiService
                         'status' => $response->status(),
                         'body' => substr($response->body(), 0, 500),
                     ]);
+
                     return [];
                 }
 
@@ -301,6 +306,7 @@ class ReverbApiService
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [];
         }
     }
@@ -309,7 +315,6 @@ class ReverbApiService
      * Get Reverb listing ID for a SKU.
      * First checks reverb_products.reverb_listing_id; if not found, paginates through API my/listings.
      *
-     * @param string $sku
      * @return string|null Listing ID or null if not found
      */
     public function getListingIdBySku(string $sku): ?string
@@ -332,6 +337,7 @@ class ReverbApiService
         $token = self::getReverbBearerToken();
         if (! $token) {
             Log::warning('Reverb API token not configured (REVERB_CLIENT_ID/REVERB_CLIENT_SECRET or REVERB_TOKEN)');
+
             return null;
         }
 
@@ -340,7 +346,7 @@ class ReverbApiService
                 $response = Http::withoutVerifying()
                     ->timeout(60)
                     ->withHeaders([
-                        'Authorization' => 'Bearer ' . $token,
+                        'Authorization' => 'Bearer '.$token,
                         'Accept' => 'application/hal+json',
                         'Accept-Version' => '3.0',
                     ])
@@ -352,6 +358,7 @@ class ReverbApiService
                         'status' => $response->status(),
                         'body' => $response->body(),
                     ]);
+
                     return null;
                 }
 
@@ -372,10 +379,11 @@ class ReverbApiService
 
             return null;
         } catch (\Throwable $e) {
-            Log::error('Reverb getListingIdBySku exception: ' . $e->getMessage(), [
+            Log::error('Reverb getListingIdBySku exception: '.$e->getMessage(), [
                 'sku' => $sku,
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return null;
         }
     }
@@ -384,8 +392,6 @@ class ReverbApiService
      * Update listing price on Reverb by SKU.
      * Uses getListingIdBySku then PUT to /api/listings/{id} with price.
      *
-     * @param string $sku
-     * @param float $price
      * @return array{success: bool, message: string, listing_id?: string}
      */
     public function updatePrice(string $sku, float $price): array
@@ -414,7 +420,7 @@ class ReverbApiService
             ];
         }
 
-        $updateUrl = 'https://api.reverb.com/api/listings/' . $listingId;
+        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
         $payload = [
             'price' => [
                 'amount' => number_format($price, 2, '.', ''),
@@ -426,7 +432,7 @@ class ReverbApiService
             $response = Http::withoutVerifying()
                 ->timeout(30)
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $token,
+                    'Authorization' => 'Bearer '.$token,
                     'Accept' => 'application/hal+json',
                     'Accept-Version' => '3.0',
                     'Content-Type' => 'application/hal+json',
@@ -439,6 +445,7 @@ class ReverbApiService
                     'listing_id' => $listingId,
                     'price' => $price,
                 ]);
+
                 return [
                     'success' => true,
                     'message' => "Price \${$price} updated for SKU: {$sku} (listing ID: {$listingId}).",
@@ -454,20 +461,22 @@ class ReverbApiService
                 'status' => $status,
                 'body' => $body,
             ]);
+
             return [
                 'success' => false,
-                'message' => "Reverb API error (HTTP {$status}): " . $body,
+                'message' => "Reverb API error (HTTP {$status}): ".$body,
                 'listing_id' => $listingId,
             ];
         } catch (\Throwable $e) {
-            Log::error('Reverb updatePrice exception: ' . $e->getMessage(), [
+            Log::error('Reverb updatePrice exception: '.$e->getMessage(), [
                 'sku' => $sku,
                 'listing_id' => $listingId,
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'success' => false,
-                'message' => 'Exception: ' . $e->getMessage(),
+                'message' => 'Exception: '.$e->getMessage(),
                 'listing_id' => $listingId,
             ];
         }
@@ -477,8 +486,6 @@ class ReverbApiService
      * Update product title on Reverb by SKU.
      * Uses getListingIdBySku then PUT to /api/listings/{id} with title.
      *
-     * @param string $sku
-     * @param string $title
      * @return array{success: bool, message: string, listing_id?: string}
      */
     public function updateTitle(string $sku, string $title): array
@@ -507,14 +514,14 @@ class ReverbApiService
             ];
         }
 
-        $updateUrl = 'https://api.reverb.com/api/listings/' . $listingId;
+        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
         $payload = ['title' => $title];
 
         try {
             $response = Http::withoutVerifying()
                 ->timeout(30)
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $token,
+                    'Authorization' => 'Bearer '.$token,
                     'Accept' => 'application/hal+json',
                     'Accept-Version' => '3.0',
                     'Content-Type' => 'application/hal+json',
@@ -522,12 +529,13 @@ class ReverbApiService
                 ->put($updateUrl, $payload);
 
             if ($response->successful()) {
-                $titlePreview = strlen($title) > 80 ? substr($title, 0, 80) . '...' : $title;
+                $titlePreview = strlen($title) > 80 ? substr($title, 0, 80).'...' : $title;
                 Log::info('Reverb title updated successfully', [
                     'sku' => $sku,
                     'listing_id' => $listingId,
                     'title_preview' => $titlePreview,
                 ]);
+
                 return [
                     'success' => true,
                     'message' => "Title updated for SKU: {$sku} (listing ID: {$listingId}).",
@@ -543,19 +551,21 @@ class ReverbApiService
                 'status' => $status,
                 'body' => $body,
             ]);
+
             return [
                 'success' => false,
-                'message' => "Reverb API error (HTTP {$status}): " . $body,
+                'message' => "Reverb API error (HTTP {$status}): ".$body,
                 'listing_id' => $listingId,
             ];
         } catch (\Throwable $e) {
-            Log::error('Reverb updateTitle exception: ' . $e->getMessage(), [
+            Log::error('Reverb updateTitle exception: '.$e->getMessage(), [
                 'sku' => $sku,
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'success' => false,
-                'message' => 'Exception: ' . $e->getMessage(),
+                'message' => 'Exception: '.$e->getMessage(),
                 'listing_id' => $listingId,
             ];
         }
@@ -639,6 +649,7 @@ class ReverbApiService
 
             if ($response->successful()) {
                 $this->saveFeaturesToReverbProducts($trim, $listingId, $features);
+
                 return [
                     'success' => true,
                     'message' => 'Reverb listing features updated.',
@@ -915,6 +926,163 @@ class ReverbApiService
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
         }
+    }
+
+    /**
+     * Append a gallery image to a Reverb listing by public HTTPS URL (Reverb fetches the image from your server).
+     * Merges with existing photos then PUTs with {@see photo_upload_method} override (same as image docs).
+     *
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function appendImageUrlToListingBySku(string $sku, string $newPublicImageUrl): array
+    {
+        $newPublicImageUrl = trim($newPublicImageUrl);
+        if ($newPublicImageUrl === '') {
+            return ['success' => false, 'message' => 'Image URL is empty.'];
+        }
+        if (! str_starts_with($newPublicImageUrl, 'http')) {
+            return [
+                'success' => false,
+                'message' => 'Reverb needs an absolute public URL. Set APP_URL to your publicly reachable site (HTTPS).',
+            ];
+        }
+
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+            ];
+        }
+
+        $listingId = $this->getListingIdBySku(trim($sku));
+        if ($listingId === null) {
+            return [
+                'success' => false,
+                'message' => 'No Reverb listing found for SKU: '.trim($sku).'. Create or link the listing on Reverb first.',
+            ];
+        }
+
+        $existing = $this->fetchListingImagePublicUrls($token, $listingId);
+        $norm = static function (string $u): string {
+            return rtrim(strtolower($u), '/');
+        };
+        $newN = $norm($newPublicImageUrl);
+        foreach ($existing as $u) {
+            if ($norm((string) $u) === $newN) {
+                return [
+                    'success' => true,
+                    'message' => 'This image is already on the Reverb listing.',
+                    'listing_id' => $listingId,
+                ];
+            }
+        }
+
+        $all = array_values(array_unique([...$existing, $newPublicImageUrl]));
+        if (count($all) > 25) {
+            $all = array_slice($all, 0, 25);
+        }
+
+        $payload = [
+            'photos' => $all,
+            'photo_upload_method' => 'override_position',
+        ];
+
+        try {
+            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Image added to the Reverb listing; Reverb is processing the photo from your URL.',
+                    'listing_id' => $listingId,
+                ];
+            }
+
+            $body = $response->body();
+
+            return [
+                'success' => false,
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($body, 0, 1000),
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Reverb request failed: '.$e->getMessage(),
+                'listing_id' => $listingId,
+            ];
+        }
+    }
+
+    /**
+     * @return list<string> Public Reverb image URLs (empty if the listing has no images or the endpoint shape differs)
+     */
+    private function fetchListingImagePublicUrls(string $token, string $listingId): array
+    {
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $listingId = rawurlencode(trim($listingId));
+        $candidates = [
+            $apiBase.'/listings/'.$listingId.'/images',
+            $apiBase.'/listings/'.$listingId.'/images/',
+        ];
+        foreach ($candidates as $url) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->timeout(60)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer '.$token,
+                        'Accept' => 'application/hal+json',
+                        'Accept-Version' => '3.0',
+                    ])->get($url);
+                if (! $response->successful()) {
+                    continue;
+                }
+                $data = $response->json() ?? [];
+                if (! is_array($data)) {
+                    continue;
+                }
+                $urls = $this->parseReverbListingImagesResponse($data);
+                if ($urls !== []) {
+                    return $urls;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<string>
+     */
+    private function parseReverbListingImagesResponse(array $data): array
+    {
+        $out = [];
+        $buckets = [
+            $data['images'] ?? null,
+            $data['photos'] ?? null,
+        ];
+        if (isset($data['_embedded']['images']) && is_array($data['_embedded']['images'])) {
+            $buckets[] = $data['_embedded']['images'];
+        }
+        if (isset($data['_embedded']['photos']) && is_array($data['_embedded']['photos'])) {
+            $buckets[] = $data['_embedded']['photos'];
+        }
+        foreach ($buckets as $candidates) {
+            if (! is_array($candidates)) {
+                continue;
+            }
+            foreach ($candidates as $img) {
+                if (is_string($img) && str_starts_with($img, 'http')) {
+                    $out[] = $img;
+                } elseif (is_array($img) && ! empty($img['url']) && is_string($img['url']) && str_starts_with($img['url'], 'http')) {
+                    $out[] = (string) $img['url'];
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**

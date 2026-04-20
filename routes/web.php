@@ -448,6 +448,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-master/amz-data/debug/{sku}', [AmzListingController::class, 'debugSku'])->name('listing.master.amz.data.debug');
     Route::get('/listing-master/amz-data/check-raw/{sku}', [AmzListingController::class, 'checkRawData'])->name('listing.master.amz.data.check-raw');
 
+    // SKU Image Manager (product_master + skus/{sku} storage + marketplace push)
+    Route::prefix('sku-images')->name('sku-images.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\SkuImageController::class, 'index'])->name('index');
+        Route::get('/push-status', [\App\Http\Controllers\SkuImageController::class, 'pushStatus'])->name('push-status');
+        Route::post('/upload', [\App\Http\Controllers\SkuImageController::class, 'upload'])->name('upload');
+        Route::post('/push', [\App\Http\Controllers\SkuImageController::class, 'pushImages'])->name('push');
+        Route::get('/{product}', [\App\Http\Controllers\SkuImageController::class, 'getImages'])->whereNumber('product')->name('images');
+    });
+
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)
     Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');

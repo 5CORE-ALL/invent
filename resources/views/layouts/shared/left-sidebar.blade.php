@@ -573,6 +573,12 @@
                             <a href="{{ route('title.master') }}">Title Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('sku-images.index') }}">SKU Image Manager</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('sku-images.push-status') }}">SKU Image Push Status</a>
+                        </li>
+                        <li>
                             <a href="{{ route('image.master') }}">Image Master</a>
                         </li>
                         <li>
