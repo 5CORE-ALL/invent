@@ -54,12 +54,30 @@ class ReverbService implements MarketplaceInterface
             ];
         }
 
-        $publicUrl = URL::to(Storage::disk('public')->url($path));
+        $publicUrl = $this->publicUrlForStoragePath($path);
         if (! str_starts_with($publicUrl, 'https://') && ! str_starts_with($publicUrl, 'http://')) {
             return [
                 'success' => false,
                 'data' => ['path' => $path],
-                'message' => 'Could not build a public URL for the image. Check APP_URL and storage symlink.',
+                'message' => 'Could not build a public URL for the image. Check APP_URL, php artisan storage:link, and optional REVERB_SKU_IMAGE_PUBLIC_BASE_URL.',
+            ];
+        }
+
+        $host = strtolower((string) (parse_url($publicUrl, PHP_URL_HOST) ?? ''));
+        $isNonRoutableHost = $host === 'localhost'
+            || $host === '127.0.0.1'
+            || str_ends_with($host, '.local')
+            || str_starts_with($host, '192.168.')
+            || str_starts_with($host, '10.');
+        if ($isNonRoutableHost) {
+            return [
+                'success' => false,
+                'data' => [
+                    'image_url' => $publicUrl,
+                    'path' => $path,
+                    'hint' => 'In .env set REVERB_SKU_IMAGE_PUBLIC_BASE_URL=https://YOUR-PUBLIC-SITE.com (no trailing slash), same host where /storage/... works from the internet. Or set APP_URL to that HTTPS URL. Then: php artisan config:clear. Title Master only sends text in the API; Reverb must download each image URL.',
+                ],
+                'message' => 'Reverb cannot download images from '.$host.' (not reachable from the internet).',
             ];
         }
 
@@ -78,5 +96,20 @@ class ReverbService implements MarketplaceInterface
             ],
             'message' => (string) ($result['message'] ?? 'Reverb image push finished.'),
         ];
+    }
+
+    /**
+     * Absolute URL for a file on the public disk. Uses REVERB_SKU_IMAGE_PUBLIC_BASE_URL when set
+     * so Reverb can fetch images even when APP_URL is local (title push still uses API-only data).
+     */
+    private function publicUrlForStoragePath(string $path): string
+    {
+        $base = (string) (config('services.reverb.sku_image_public_base_url') ?? '');
+        $base = rtrim($base, '/');
+        if ($base !== '') {
+            return $base.'/storage/'.ltrim(str_replace('\\', '/', $path), '/');
+        }
+
+        return URL::to(Storage::disk('public')->url($path));
     }
 }

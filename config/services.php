@@ -185,6 +185,12 @@ return [
         'scope' => env('REVERB_SCOPE', 'read_listings write_listings read_orders'),
         'auto_push_debug' => env('REVERB_AUTO_PUSH_DEBUG', false),
         'webhook_secret' => env('REVERB_WEBHOOK_SECRET'),
+        /*
+        | Base URL Reverb uses to fetch images (HTTPS, no trailing slash). Defaults to APP_URL via Storage URL.
+        | Title push does not need this; image push does. If APP_URL is http://localhost, set this to your
+        | public site (e.g. https://inventory.example.com) where /storage/... is reachable from the internet.
+        */
+        'sku_image_public_base_url' => env('REVERB_SKU_IMAGE_PUBLIC_BASE_URL'),
     ],
 
     'topdawg' => [

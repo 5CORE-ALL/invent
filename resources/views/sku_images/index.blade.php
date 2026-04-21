@@ -74,6 +74,10 @@
         #im-upload-progress {
             display: none;
         }
+
+        #im-alert.im-alert-multiline {
+            white-space: pre-wrap;
+        }
     </style>
 @endsection
 
@@ -147,6 +151,10 @@
             <div class="card-body">
                 <p class="text-muted small" id="im-hint">Choose a product on the left, then upload or select images
                     below.</p>
+                <p class="text-muted small border-start border-3 border-info ps-2 mb-2">
+                    <strong>Reverb photos vs Title Master:</strong> title push sends text in the API only. Image push sends a <em>URL</em>; Reverb’s servers must fetch that file over the public internet.
+                    Use HTTPS <code class="small">APP_URL</code> (not <code class="small">localhost</code>) or set <code class="small">REVERB_SKU_IMAGE_PUBLIC_BASE_URL</code> in <code class="small">.env</code> to the site where <code class="small">/storage/…</code> works, then <code class="small">php artisan config:clear</code>.
+                </p>
 
                 <div class="mb-3 d-flex flex-wrap align-items-end gap-2">
                     <div>
@@ -206,9 +214,10 @@
             const $selAllWrap = document.getElementById('im-select-all-wrap');
             const $selAllCb = document.getElementById('im-select-all-cb');
 
-            function alertMsg(type, text) {
+            function alertMsg(type, text, opts) {
                 if (!$alert) return;
-                $alert.className = 'alert alert-' + (type || 'info') + ' small py-2';
+                const pre = opts && opts.pre;
+                $alert.className = 'alert alert-' + (type || 'info') + ' small py-2' + (pre ? ' im-alert-multiline' : '');
                 $alert.textContent = text;
                 $alert.classList.remove('d-none');
             }
@@ -488,8 +497,19 @@
                             if (!ok) {
                                 alertMsg('danger', d.message || ('Push failed: ' + status));
                             } else {
-                                alertMsg('success', 'Queued ' + (d.dispatched || 0) +
-                                    ' job(s). Keep queue:work running. Open SKU Image Push Status (sidebar) for Sent/Failed and API details. Reverb needs a listing for the SKU and a public HTTPS image URL (APP_URL).');
+                                const n = d.dispatched || 0;
+                                const fails = (d.results || []).filter(r => r.status === 'failed');
+                                let msg = 'Processed ' + n + ' push(es) immediately (no queue).\n\nOpen SKU Image Push Status for full API JSON.\n\nCLI retry: php artisan sku-images:push-reverb YOUR-SKU --status=all';
+                                if (fails.length) {
+                                    const resp = fails[0].response || {};
+                                    const firstLine = resp.message || resp.error || '';
+                                    const hint = resp.data && resp.data.hint ? String(resp.data.hint) : '';
+                                    msg = fails.length + ' of ' + n + ' failed.\n\n' + firstLine +
+                                        (hint ? '\n\n' + hint : '') + '\n\n—\n\n' + msg;
+                                    alertMsg('warning', msg.trim(), { pre: true });
+                                } else {
+                                    alertMsg('success', msg, { pre: true });
+                                }
                             }
                         })
                         .catch(() => alertMsg('danger', 'Network error on push'))

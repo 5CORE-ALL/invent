@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\PushImageJob;
 use App\Models\ImageMarketplaceMap;
 use App\Models\Marketplace;
 use App\Models\MarketplacePercentage;
@@ -16,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use App\Services\SkuImageMarketplacePushProcessor;
 
 class SkuImageController extends Controller
 {
@@ -278,8 +278,8 @@ class SkuImageController extends Controller
             }
         }
 
-        $dispatched = 0;
-        DB::transaction(function () use ($imageIds, $data, &$dispatched) {
+        $mapIds = [];
+        DB::transaction(function () use ($imageIds, $data, &$mapIds) {
             foreach ($imageIds as $imageId) {
                 foreach ($data['marketplace_ids'] as $marketplaceId) {
                     $map = ImageMarketplaceMap::query()->updateOrCreate(
@@ -293,13 +293,28 @@ class SkuImageController extends Controller
                             'sent_at' => null,
                         ]
                     );
-                    PushImageJob::dispatch($map->id);
-                    $dispatched++;
+                    $mapIds[] = (int) $map->id;
                 }
             }
         });
 
-        return response()->json(['ok' => true, 'dispatched' => $dispatched]);
+        $processor = app(SkuImageMarketplacePushProcessor::class);
+        $results = [];
+        foreach ($mapIds as $mapId) {
+            $processor->processMapById($mapId);
+            $row = ImageMarketplaceMap::query()->find($mapId);
+            $results[] = [
+                'map_id' => $mapId,
+                'status' => $row?->status,
+                'response' => $row?->response,
+            ];
+        }
+
+        return response()->json([
+            'ok' => true,
+            'dispatched' => count($mapIds),
+            'results' => $results,
+        ]);
     }
 
     /**
