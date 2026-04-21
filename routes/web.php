@@ -15,12 +15,10 @@ use App\Http\Controllers\ArrivedContainerController;
 use App\Http\Controllers\ChannelTabulatorColumnController;
 use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\AmazonAdsController;
-use App\Http\Controllers\AmazonUtilizedKwSheetController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
 use App\Http\Controllers\Campaigns\AmazonCampaignReportsController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
 use App\Http\Controllers\Campaigns\AmazonFbaAcosController;
-use App\Http\Controllers\Campaigns\AmazonFbaAdsController;
 use App\Http\Controllers\Campaigns\AmazonMissingAdsController;
 use App\Http\Controllers\Campaigns\AmazonPinkDilAdController;
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
@@ -101,7 +99,6 @@ use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Http\Controllers\MarketPlace\ACOSControl\EbayACOSController;
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\AmazonFbaInvController;
-use App\Http\Controllers\MarketPlace\AmazonFbmTargetingCheckController;
 use App\Http\Controllers\MarketPlace\AmazonLowVisibilityController;
 use App\Http\Controllers\MarketPlace\AmazonZeroController;
 use App\Http\Controllers\MarketPlace\Business5coreController;
@@ -2362,6 +2359,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/amazon-ads/all', [AmazonAdsController::class, 'index'])->name('amazon.ads.all');
     Route::match(['get', 'post'], '/amazon-ads/raw-data/{source}', [AmazonAdsController::class, 'rawData'])->name('amazon.ads.raw-data');
+    Route::post('/amazon-ads/push-sp-sbids', [AmazonAdsController::class, 'pushSpSbids'])->name('amazon.ads.push-sp-sbids');
 
     // ajax routes
     Route::get('/amazon/all-data', [OverallAmazonController::class, 'getAllData'])->name('amazon.allData');
@@ -2712,28 +2710,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('channel.master');
     Route::get('/channel-wise/{firstChannelWise?}/{secondChannelWise?}', [ChannelWiseController::class, 'channel_wise_index'])
         ->name('channel.wise');
-
-    // Marketplace index view routes/
-    Route::get('/ad-cvr-amazon', action: [OverallAmazonController::class, 'adcvrAmazon'])->name('adcvr.amazon');
-    Route::get('/ad-cvr-amazon-data', action: [OverallAmazonController::class, 'adcvrAmazonData'])->name('adcvr.amazon.data');
-    Route::post('/update-amz-price', [OverallAmazonController::class, 'updateAmzPrice'])->name('update.amz.price');
-
-    Route::get('/ad-cvr-pt-amazon', action: [OverallAmazonController::class, 'adcvrPtAmazon'])->name('adcvrPt.amazon');
-    Route::get('/ad-cvr-pt-amazon-data', action: [OverallAmazonController::class, 'adcvrPtAmazonData'])->name('adcvrPt.amazon.data');
-
-    Route::get('/review-ratings-amazon', action: [OverallAmazonController::class, 'reviewRatingsAmazon'])->name('review-ratings.amazon');
-    Route::get('/review-ratings-amazon-data', action: [OverallAmazonController::class, 'reviewRatingsAmazonData'])->name('review-ratings.amazon.data');
-
-    Route::get('/targeting-amazon', action: [OverallAmazonController::class, 'targetingAmazon'])->name('targeting.amazon');
-    Route::get('/targeting-amazon-data', action: [OverallAmazonController::class, 'targetingAmazonData'])->name('targeting.amazon.data');
-
-    // Amz FBM Targeting Check - TARGET KW / TARGET PT
-    Route::get('/amazon-fbm-targeting-check-kw', action: [AmazonFbmTargetingCheckController::class, 'targetKw'])->name('amazon.fbm.targeting.check.kw');
-    Route::get('/amazon-fbm-targeting-check-pt', action: [AmazonFbmTargetingCheckController::class, 'targetPt'])->name('amazon.fbm.targeting.check.pt');
-    Route::get('/amazon-fbm-targeting-check-kw-data', action: [AmazonFbmTargetingCheckController::class, 'targetKwData'])->name('amazon.fbm.targeting.check.kw.data');
-    Route::get('/amazon-fbm-targeting-check-pt-data', action: [AmazonFbmTargetingCheckController::class, 'targetPtData'])->name('amazon.fbm.targeting.check.pt.data');
-    Route::get('/amazon-fbm-targeting-check-history', action: [AmazonFbmTargetingCheckController::class, 'getHistory'])->name('amazon.fbm.targeting.check.history');
-    Route::post('/amazon-fbm-targeting-check-save', action: [AmazonFbmTargetingCheckController::class, 'save'])->name('amazon.fbm.targeting.check.save');
 
     Route::get('/overall-amazon', action: [OverallAmazonController::class, 'overallAmazon'])->name('overall.amazon');
     Route::get('/adv-amazon/total-sales/save-data', action: [OverallAmazonController::class, 'getAmazonTotalSalesSaveData'])->name('adv-amazon.total-sales.save-data');
@@ -4139,10 +4115,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::put('/update-keywords-bid-price', 'updateCampaignKeywordsBid');
 
         // Consolidated Amazon Utilized pages (KW, PT, HL)
-        Route::get('/amazon/utilized/kw', 'amazonUtilizedView')->name('amazon.utilized.kw');
         Route::get('/amazon/utilized/kw/ads/data', 'getAmazonUtilizedKwAdsData');
         Route::get('/amazon/utilized/kw/parent-datsheet-info', 'getAmazonUtilizedParentDatsheetInfo');
-        Route::get('/amazon/utilized/pt', 'amazonUtilizedPtView')->name('amazon.utilized.pt');
         Route::get('/amazon/utilized/pt/ads/data', 'getAmazonUtilizedPtAdsData');
         Route::get('/amazon/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::get('/amazon/get-utilization-chart-data', 'getAmazonUtilizationChartData');
@@ -4162,16 +4136,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/approve-amazon-sbid', 'approveAmazonSbid');
     });
 
-    Route::get('/amazon/utilized/kw/sheet', [AmazonUtilizedKwSheetController::class, 'index'])->name('amazon.utilized.kw.sheet');
-
     Route::controller(AmazonSbBudgetController::class)->group(function () {
         Route::get('/amazon-sb/amz-utilized-bgt-hl', 'amzUtilizedBgtHl')->name('amazon-sb.amz-utilized-bgt-hl');
         Route::get('/amazon-sb/get-amz-utilized-bgt-hl', 'getAmzUtilizedBgtHl');
         Route::post('/update-amazon-sb-bid-price', 'updateAmazonSbBidPrice');
         Route::put('/amazon-sb/update-keywords-bid-price', 'updateCampaignKeywordsBid');
 
-        // Consolidated Amazon HL Utilized page
-        Route::get('/amazon/utilized/hl', 'amazonUtilizedHlView')->name('amazon.utilized.hl');
+        // Consolidated Amazon HL Utilized (JSON API for legacy consumers)
         Route::get('/amazon/utilized/hl/ads/data', 'getAmazonUtilizedHlAdsData');
 
         Route::get('/amazon-sb/amz-under-utilized-bgt-hl', 'amzUnderUtilizedBgtHl')->name('amazon-sb.amz-under-utilized-bgt-hl');
@@ -4401,31 +4372,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/campaign/reports/data', 'getAmazonCampaignsData');
     });
 
-    Route::controller(AmazonFbaAdsController::class)->group(function () {
-        // Consolidated FBA KW Utilized page
-        Route::get('/amazon/fba/utilized/kw', 'amazonFbaUtilizedKwView')->name('amazon.fba.utilized.kw');
-        Route::get('/amazon/fba/utilized/kw/ads/data', 'getAmazonFbaUtilizedKwAdsData');
-
-        // Consolidated FBA PT Utilized page
-        Route::get('/amazon/fba/utilized/pt', 'amazonFbaUtilizedPtView')->name('amazon.fba.utilized.pt');
-        Route::get('/amazon/fba/utilized/pt/ads/data', 'getAmazonFbaUtilizedPtAdsData');
-
-        Route::get('/amazon/fba/get-utilization-counts', 'getAmazonFbaUtilizationCounts');
-        Route::get('/amazon/fba/get-utilization-chart-data', 'getAmazonFbaUtilizationChartData');
-
-        // Old routes (kept for backward compatibility)
-        Route::get('/amazon/fba/over/kw/ads', 'amzFbaUtilizedBgtKw')->name('amazon.fba.over.kw.ads');
-        Route::get('/amazon/fba/over/pt/ads', 'amzFbaUtilizedBgtPt')->name('amazon.fba.over.pt.ads');
-        Route::get('/amazon/fba/under/kw/ads', 'amzFbaUnderUtilizedBgtKw')->name('amazon.fba.under.kw.ads');
-        Route::get('/amazon/fba/under/pt/ads', 'amzFbaUnderUtilizedBgtPt')->name('amazon.fba.under.pt.ads');
-        Route::get('/amazon/fba/correct/kw/ads', 'amzFbaCorrectlyUtilizedBgtKw')->name('amazon.fba.correct.kw.ads');
-        Route::get('/amazon/fba/correct/pt/ads', 'amzFbaCorrectlyUtilizedBgtPt')->name('amazon.fba.correct.pt.ads');
-
-        Route::get('/amazon/fba/kw/ads/data', 'getAmazonFbaKwAdsData');
-        Route::get('/amazon/fba/pt/ads/data', 'getAmazonFbaPtAdsData');
-        Route::post('/update-amazon-nr-nrl-fba-data', 'updateNrNRLFbaData');
-    });
-
     // Amazon FBA bid automation health endpoint (last command run info; public for monitoring).
     Route::get('/amazon/fba/bid-auto-update/health', function () {
         $health = cache()->get('amazon_fba_bid_update_health');
@@ -4447,10 +4393,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/missing/ads', 'index')->name('amazon.missing.ads');
         Route::get('/amazon/missing/ads/data', 'getAmazonMissingAdsData');
         Route::get('adv-amazon/missing/save-data', 'getAmzonAdvSaveMissingData')->name('adv-amazon.missing.save-data');
-
-        // FBA
-        Route::get('/amazon/fba/missing/ads', 'fbaMissingAdsView')->name('amazon.fba.missing.ads');
-        Route::get('/amazon/fba/missing/ads/data', 'getAmazonFbaMissingAdsData');
     });
     // ebay ads section
     Route::controller(EbayOverUtilizedBgtController::class)->group(function () {

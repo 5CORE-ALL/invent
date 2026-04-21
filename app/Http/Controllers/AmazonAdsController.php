@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
+use App\Services\Amazon\AmazonBidUtilizationService;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
@@ -29,7 +32,8 @@ class AmazonAdsController extends Controller
     ];
 
     /**
-     * Column order: id first (newest-first default), then key + bid columns (yes_sbid, last_sbid, sbid_m), then the rest.
+     * Column order: id first (newest-first default), then key + bid columns (yes_sbid, last_sbid, sbid_m), costPerClick before sbid, then the rest.
+     * Display order further adjusts: last_sbid + sbid after U1%; yes_sbid / sbid_m stay in priority positions unless moved elsewhere.
      */
     private static function orderedColumnsForTable(string $table): array
     {
@@ -49,6 +53,7 @@ class AmazonAdsController extends Controller
             'yes_sbid',
             'last_sbid',
             'sbid_m',
+            'costPerClick',
             'sbid',
         ];
 
@@ -68,7 +73,8 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Columns sent to the Amazon Ads All DataTables, including computed utilization % after `ad_type`.
+     * Columns sent to the Amazon Ads All DataTables, including computed utilization % after `campaignName`
+     * (so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -80,9 +86,350 @@ class AmazonAdsController extends Controller
         if ($idx === false) {
             return $ordered;
         }
-        array_splice($ordered, $idx + 1, 0, ['U7%', 'U2%', 'U1%']);
+        $idxCnUb = array_search('campaignName', $ordered, true);
+        if ($idxCnUb !== false) {
+            array_splice($ordered, $idxCnUb + 1, 0, ['U7%', 'U2%', 'U1%']);
+        } else {
+            $idxCidUb = array_search('campaign_id', $ordered, true);
+            if ($idxCidUb !== false) {
+                array_splice($ordered, $idxCidUb + 1, 0, ['U7%', 'U2%', 'U1%']);
+            } else {
+                array_splice($ordered, $idx + 1, 0, ['U7%', 'U2%', 'U1%']);
+            }
+        }
+
+        $hadLastSbid = in_array('last_sbid', $ordered, true);
+        $hadSbidCol = in_array('sbid', $ordered, true);
+        if ($hadLastSbid || $hadSbidCol) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'last_sbid' && $c !== 'sbid'));
+            $idxU1Bid = array_search('U1%', $ordered, true);
+            if ($idxU1Bid !== false) {
+                $insertBid = [];
+                if ($hadLastSbid) {
+                    $insertBid[] = 'last_sbid';
+                }
+                if ($hadSbidCol) {
+                    $insertBid[] = 'sbid';
+                }
+                if ($insertBid !== []) {
+                    array_splice($ordered, $idxU1Bid + 1, 0, $insertBid);
+                }
+            }
+        }
+
+        // Display "bgt" after campaign name (same value as campaignBudgetAmount; hide duplicate DB column).
+        $idxCn = array_search('campaignName', $ordered, true);
+        if ($idxCn !== false && in_array('campaignBudgetAmount', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'campaignBudgetAmount'));
+            $idxCn = array_search('campaignName', $ordered, true);
+            if ($idxCn !== false) {
+                array_splice($ordered, $idxCn + 1, 0, ['bgt']);
+            }
+        }
+
+        $idxBgt = array_search('bgt', $ordered, true);
+        if ($idxBgt !== false && in_array('clicks', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'clicks'));
+            $idxBgt = array_search('bgt', $ordered, true);
+            if ($idxBgt !== false) {
+                array_splice($ordered, $idxBgt + 1, 0, ['clicks']);
+            }
+        }
+
+        $idxClicks = array_search('clicks', $ordered, true);
+        if ($idxClicks !== false && in_array('cost', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'cost'));
+            $idxClicks = array_search('clicks', $ordered, true);
+            if ($idxClicks !== false) {
+                array_splice($ordered, $idxClicks + 1, 0, ['cost']);
+            }
+        }
+
+        $baseDb = self::orderedColumnsForTable($table);
+        $supportLSpend = in_array('report_date_range', $baseDb, true)
+            && in_array('campaign_id', $baseDb, true)
+            && (in_array('spend', $baseDb, true) || in_array('cost', $baseDb, true));
+        if ($supportLSpend) {
+            $idxCostIns = array_search('cost', $ordered, true);
+            if ($idxCostIns !== false) {
+                array_splice($ordered, $idxCostIns + 1, 0, ['L7spend', 'L2spend', 'L1spend']);
+            } else {
+                $idxClkIns = array_search('clicks', $ordered, true);
+                if ($idxClkIns !== false) {
+                    array_splice($ordered, $idxClkIns + 1, 0, ['L7spend', 'L2spend', 'L1spend']);
+                }
+            }
+        }
+
+        // CPC 3 / 2 / 1 after L1 spend (same gates as before: needs costPerClick + campaign_id + report_date_range).
+        $canCpcBlock = in_array('costPerClick', $ordered, true)
+            && in_array('campaign_id', $ordered, true)
+            && in_array('report_date_range', $ordered, true);
+        if ($canCpcBlock) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'costPerClick'));
+            $idxL1 = array_search('L1spend', $ordered, true);
+            if ($idxL1 !== false) {
+                array_splice($ordered, $idxL1 + 1, 0, ['CPC3', 'CPC2', 'costPerClick']);
+            } else {
+                $idxU1Fallback = array_search('U1%', $ordered, true);
+                if ($idxU1Fallback !== false) {
+                    array_splice($ordered, $idxU1Fallback + 1, 0, ['CPC3', 'CPC2', 'costPerClick']);
+                } else {
+                    $ordered[] = 'CPC3';
+                    $ordered[] = 'CPC2';
+                    $ordered[] = 'costPerClick';
+                }
+            }
+        }
+
+        if (in_array('sales30d', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sales30d'));
+            $idxCpc1 = array_search('costPerClick', $ordered, true);
+            if ($idxCpc1 !== false) {
+                array_splice($ordered, $idxCpc1 + 1, 0, ['sales30d']);
+            } else {
+                $ordered[] = 'sales30d';
+            }
+        }
 
         return $ordered;
+    }
+
+    /**
+     * Spend column for L-range rows: prefer `spend`, else `cost`.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function spendColumnForLRange(array $dbColumns): ?string
+    {
+        if (in_array('spend', $dbColumns, true)) {
+            return 'spend';
+        }
+        if (in_array('cost', $dbColumns, true)) {
+            return 'cost';
+        }
+
+        return null;
+    }
+
+    /**
+     * Latest calendar day stored in `report_date_range` (YYYY-MM-DD prefix only).
+     */
+    private static function latestDailyReportYmdInTable(string $table): ?string
+    {
+        if (! Schema::hasTable($table)) {
+            return null;
+        }
+        $max = DB::table($table)
+            ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->max(DB::raw('LEFT(TRIM(report_date_range), 10)'));
+
+        if ($max === null || $max === '') {
+            return null;
+        }
+
+        return (string) $max;
+    }
+
+    /**
+     * Calendar day for L2 spend: one day before the newest daily row in the table (same anchor as AutoUpdateAmazonKwBids L2).
+     * If there are no daily rows, uses app "today" minus two days like that command's fallback.
+     */
+    private static function l2SpendDailyReportYmd(string $table): string
+    {
+        $latest = self::latestDailyReportYmdInTable($table);
+        if ($latest !== null && $latest !== '') {
+            try {
+                return Carbon::parse($latest, config('app.timezone'))->subDay()->format('Y-m-d');
+            } catch (\Throwable) {
+                // fall through
+            }
+        }
+
+        return Carbon::now(config('app.timezone'))->subDays(2)->format('Y-m-d');
+    }
+
+    /**
+     * For each campaign (+ ad_type): L7/L1 from summary rows (report_date_range L7 / L1); L2 from the daily row
+     * whose ISO date is the calendar day before the table's latest daily report_date_range (aligned with L1 window in bid jobs).
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  iterable<int, object>  $pageRows
+     * @return array<string, array{L7: float|null, L2: float|null, L1: float|null}>
+     */
+    private static function fetchL7L2L1SpendMap(string $table, array $dbColumns, iterable $pageRows): array
+    {
+        $spendCol = self::spendColumnForLRange($dbColumns);
+        if ($spendCol === null || ! in_array('report_date_range', $dbColumns, true) || ! in_array('campaign_id', $dbColumns, true)) {
+            return [];
+        }
+        $cids = [];
+        foreach ($pageRows as $row) {
+            $r = (array) $row;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid !== '') {
+                $cids[$cid] = true;
+            }
+        }
+        $cidList = array_keys($cids);
+        if ($cidList === []) {
+            return [];
+        }
+
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $select = ['id', 'campaign_id', 'report_date_range', $spendCol];
+        if ($hasAdType) {
+            $select[] = 'ad_type';
+        }
+
+        $map = [];
+
+        $summaryRows = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->whereRaw('UPPER(TRIM(report_date_range)) IN (?, ?)', ['L7', 'L1'])
+            ->orderBy('id', 'desc')
+            ->get();
+
+        foreach ($summaryRows as $fr) {
+            $frArr = (array) $fr;
+            $tag = strtoupper(trim((string) ($frArr['report_date_range'] ?? '')));
+            if ($tag !== 'L7' && $tag !== 'L1') {
+                continue;
+            }
+            $cid = isset($frArr['campaign_id']) ? trim((string) $frArr['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
+            $key = $cid."\0".$ad;
+            if (! isset($map[$key])) {
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null];
+            }
+            if ($map[$key][$tag] !== null) {
+                continue;
+            }
+            $raw = $frArr[$spendCol] ?? null;
+            if ($raw === null || $raw === '') {
+                $map[$key][$tag] = null;
+            } else {
+                $n = (float) $raw;
+                $map[$key][$tag] = is_finite($n) ? round($n, 2) : null;
+            }
+        }
+
+        $l2Day = self::l2SpendDailyReportYmd($table);
+        $dailyL2 = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+            ->whereRaw("LEFT(TRIM(report_date_range), 10) = ?", [$l2Day])
+            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->orderBy('id', 'desc')
+            ->get();
+
+        foreach ($dailyL2 as $fr) {
+            $frArr = (array) $fr;
+            $cid = isset($frArr['campaign_id']) ? trim((string) $frArr['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
+            $key = $cid."\0".$ad;
+            if (! isset($map[$key])) {
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null];
+            }
+            if ($map[$key]['L2'] !== null) {
+                continue;
+            }
+            $raw = $frArr[$spendCol] ?? null;
+            if ($raw === null || $raw === '') {
+                $map[$key]['L2'] = null;
+            } else {
+                $n = (float) $raw;
+                $map[$key]['L2'] = is_finite($n) ? round($n, 2) : null;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Calendar day N days before the "CPC 1" anchor for this row (daily `report_date_range`, summary `L1`, or `date`).
+     * N=1 → CPC 2; N=2 → CPC 3 (two days before CPC 1's day).
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function calendarDayOffsetFromCpc1Anchor(array $rowArr, array $dbColumns, int $daysBefore): ?string
+    {
+        if ($daysBefore < 1) {
+            return null;
+        }
+        $rdr = isset($rowArr['report_date_range']) ? trim((string) $rowArr['report_date_range']) : '';
+        if ($rdr !== '' && preg_match('/^(\d{4}-\d{2}-\d{2})/', $rdr, $m)) {
+            try {
+                return Carbon::parse($m[1], config('app.timezone'))->subDays($daysBefore)->format('Y-m-d');
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+        if (strtoupper($rdr) === 'L1') {
+            // CPC 1 ≈ yesterday; CPC 2 = yesterday−1; CPC 3 = yesterday−2.
+            return Carbon::now(config('app.timezone'))->subDays($daysBefore + 1)->format('Y-m-d');
+        }
+        if (in_array('date', $dbColumns, true) && ! empty($rowArr['date'])) {
+            try {
+                return Carbon::parse($rowArr['date'], config('app.timezone'))->subDays($daysBefore)->format('Y-m-d');
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function fetchCostPerClickOnReportDay(
+        string $table,
+        array $dbColumns,
+        string $campaignId,
+        ?string $adType,
+        string $reportDayYmd,
+        array &$cache
+    ): ?float {
+        $adKey = ($adType !== null && $adType !== '') ? (string) $adType : '-';
+        $key = $campaignId."\0".$adKey."\0".$reportDayYmd;
+        if (array_key_exists($key, $cache)) {
+            return $cache[$key];
+        }
+
+        if (! in_array('costPerClick', $dbColumns, true)) {
+            $cache[$key] = null;
+
+            return null;
+        }
+
+        $q = DB::table($table)->where('campaign_id', $campaignId)
+            ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+            ->whereRaw("LEFT(TRIM(report_date_range), 10) = ?", [$reportDayYmd])
+            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+        if ($adType !== null && $adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $q->where('ad_type', $adType);
+        }
+        $orderCol = in_array('id', $dbColumns, true) ? 'id' : 'campaign_id';
+        $q->orderBy($orderCol, 'desc');
+        $found = $q->first(['costPerClick']);
+        $cpc = null;
+        if ($found && isset($found->costPerClick)) {
+            $n = (float) $found->costPerClick;
+            $cpc = is_finite($n) && $n > 0 ? round($n, 4) : null;
+        }
+        $cache[$key] = $cpc;
+
+        return $cpc;
     }
 
     private static function rowSpendForUtilization(array $row): ?float
@@ -151,70 +498,61 @@ class AmazonAdsController extends Controller
         return (int) round($pct);
     }
 
-    private static function rowLastSbidNumeric(array $row): ?float
+    /**
+     * @param  array<int, string>  $keys
+     */
+    private static function rowPositiveFloatFromKeys(array $row, array $keys): float
     {
-        if (! array_key_exists('last_sbid', $row)) {
-            return null;
-        }
-        $v = $row['last_sbid'];
-        if ($v === null || $v === '') {
-            return null;
-        }
-        $n = (float) $v;
-        if (! is_finite($n) || $n <= 0) {
-            return null;
+        foreach ($keys as $k) {
+            if (! array_key_exists($k, $row)) {
+                continue;
+            }
+            $v = $row[$k];
+            if ($v === null || $v === '') {
+                continue;
+            }
+            $n = (float) $v;
+            if (is_finite($n) && $n > 0) {
+                return $n;
+            }
         }
 
-        return $n;
-    }
-
-    /** Parse last_sbid as float when present (includes 0 for low-util rule). */
-    private static function rowLastSbidFloatOrNull(array $row): ?float
-    {
-        if (! array_key_exists('last_sbid', $row)) {
-            return null;
-        }
-        $v = $row['last_sbid'];
-        if ($v === null || $v === '') {
-            return null;
-        }
-        $n = (float) $v;
-
-        return is_finite($n) ? $n : null;
+        return 0.0;
     }
 
     /**
-     * Override sbid from utilization vs last_sbid:
-     * - Both U2% and U1% (raw) > 99%: sbid = last_sbid × 0.90 (requires last_sbid > 0).
-     * - Both U2% and U1% (raw) < 66%: sbid = last_sbid × 1.10, or 0.75 when last_sbid is null or 0.
+     * Grid SBID from U2%/U1% + L1/L2/L7 CPC (or costPerClick fallback), aligned with auto-update commands.
+     * Outside red+red / pink+pink bands, sbid is forced to null so the UI shows "--".
      */
-    private static function maybeApplyComputedSbidFromUtilization(array &$arr, array $u, array $rowArr, array $dbColumns): void
+    private static function applyGridSbidFromUb2Ub1AndCpc(array &$arr, array $u, array $rowArr, array $dbColumns): void
     {
-        if (! in_array('sbid', $dbColumns, true) || ! in_array('last_sbid', $dbColumns, true)) {
+        if (! in_array('sbid', $dbColumns, true)) {
             return;
         }
         $u2 = $u['U2'];
         $u1 = $u['U1'];
         if ($u2 === null || $u1 === null) {
-            return;
-        }
-        if ($u2 > 99 && $u1 > 99) {
-            $last = self::rowLastSbidNumeric($rowArr);
-            if ($last === null) {
-                return;
-            }
-            $arr['sbid'] = round($last * 0.90, 2);
+            $arr['sbid'] = null;
 
             return;
         }
-        if ($u2 < 66 && $u1 < 66) {
-            $last = self::rowLastSbidFloatOrNull($rowArr);
-            if ($last === null || $last <= 0) {
-                $arr['sbid'] = 0.75;
-            } else {
-                $arr['sbid'] = round($last * 1.10, 2);
-            }
-        }
+
+        $l1 = self::rowPositiveFloatFromKeys($rowArr, ['l1_cpc', 'L1_cpc', 'l1Cpc']);
+        $l2 = self::rowPositiveFloatFromKeys($rowArr, ['l2_cpc', 'L2_cpc', 'l2Cpc']);
+        $l7 = self::rowPositiveFloatFromKeys($rowArr, ['l7_cpc', 'L7_cpc', 'l7Cpc']);
+        $cpcFb = self::rowPositiveFloatFromKeys($rowArr, ['costPerClick']);
+        $fallback = $cpcFb > 0 ? $cpcFb : null;
+
+        $out = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
+            (float) $u2,
+            (float) $u1,
+            $l1,
+            $l2,
+            $l7,
+            $fallback
+        );
+
+        $arr['sbid'] = $out['sbid'];
     }
 
     private static function normalizeDateInput(?string $value): ?string
@@ -255,12 +593,21 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Exclude aggregate summary labels (L7, L30, L1, …) stored in report_date_range.
-     * Used when filtering by calendar dates so only daily-keyed rows remain.
+     * Restrict to rows whose `report_date_range` is a calendar day (YYYY-MM-DD prefix), not L7/L30/L1 labels.
      */
-    private static function excludeAggregateReportDateRangeLabels(Builder $query): void
+    private static function whereReportDateRangeDailyYmdInRange(Builder $query, ?string $from, ?string $to): void
     {
-        $query->whereRaw("(TRIM(UPPER(COALESCE(report_date_range, ''))) NOT REGEXP '^L[0-9]+$')");
+        if ($from === null && $to === null) {
+            return;
+        }
+        $query->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+        if ($from !== null) {
+            $query->whereRaw('LEFT(TRIM(report_date_range), 10) >= ?', [$from]);
+        }
+        if ($to !== null) {
+            $query->whereRaw('LEFT(TRIM(report_date_range), 10) <= ?', [$to]);
+        }
     }
 
     /**
@@ -318,9 +665,9 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Campaign report tables: daily rows store the calendar day in `report_date_range` (YYYY-MM-DD).
-     * Summary rows use labels like L30, L7. L1 is treated as "yesterday" (calendar), intersected with Date from/to when set.
-     * Other tables: `created_at` / `date` when no report_date_range.
+     * Campaign report tables: calendar filters (— below —) match only `report_date_range` values whose prefix is YYYY-MM-DD
+     * (excludes L7, L30, L1, …). Explicit Report range L7/L30 still uses `WHERE report_date_range = …`.
+     * L1 preset uses yesterday on that same ISO-date rule. Tables without `report_date_range`: filter on `date` / `created_at`.
      */
     private static function applyDateFilters(Builder $query, string $table, Request $request): void
     {
@@ -367,8 +714,7 @@ class AmazonAdsController extends Controller
 
                 return;
             }
-            self::applyReportRangeCalendarOverlap($query, $cols, $effFrom, $effTo, false);
-            self::excludeAggregateReportDateRangeLabels($query);
+            self::whereReportDateRangeDailyYmdInRange($query, $effFrom, $effTo);
 
             return;
         }
@@ -384,8 +730,8 @@ class AmazonAdsController extends Controller
         if ($from === null && $to === null) {
             return;
         }
-        self::applyReportRangeCalendarOverlap($query, $cols, $from, $to, false);
-        self::excludeAggregateReportDateRangeLabels($query);
+        // Calendar mode: only rows where `report_date_range` is an ISO date (exclude L7, L30, L1, …).
+        self::whereReportDateRangeDailyYmdInRange($query, $from, $to);
     }
 
     private static function sqlSpendExpressionForUtilFilters(array $cols): ?string
@@ -482,18 +828,79 @@ class AmazonAdsController extends Controller
         $query->where('campaignStatus', $status);
     }
 
+    /**
+     * Latest calendar day for default Date from / Date to (single-day window).
+     * When `report_date_range` exists, uses only ISO date prefixes in that column (never L7/L30/L1 labels).
+     * Other tables: MAX(`date`) or MAX(DATE(created_at)). Capped at today (app timezone).
+     */
+    private static function latestAvailableReportDayYmd(string $table): ?string
+    {
+        if (! Schema::hasTable($table)) {
+            return null;
+        }
+        $cols = Schema::getColumnListing($table);
+        $best = null;
+        try {
+            if (in_array('report_date_range', $cols, true)) {
+                $row = DB::table($table)
+                    ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+                    ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+                    ->selectRaw('MAX(LEFT(TRIM(report_date_range), 10)) AS d')
+                    ->first();
+                $d = $row->d ?? null;
+                if (is_string($d) && $d !== '') {
+                    $s = substr($d, 0, 10);
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $s)) {
+                        $best = $s;
+                    }
+                }
+
+                return self::clampReportDayToTodayOrNull($best);
+            }
+            if (in_array('date', $cols, true)) {
+                $v = DB::table($table)->whereNotNull('date')->selectRaw('MAX(DATE(`date`)) AS d')->value('d');
+                if (is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                    $best = $best === null ? $v : max($best, $v);
+                }
+            }
+            if (in_array('created_at', $cols, true)) {
+                $v = DB::table($table)->whereNotNull('created_at')->selectRaw('MAX(DATE(created_at)) AS d')->value('d');
+                if (is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                    $best = $best === null ? $v : max($best, $v);
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return self::clampReportDayToTodayOrNull($best);
+    }
+
+    private static function clampReportDayToTodayOrNull(?string $day): ?string
+    {
+        if ($day === null || $day === '' || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+            return null;
+        }
+        $today = Carbon::now(config('app.timezone'))->format('Y-m-d');
+
+        return $day > $today ? $today : $day;
+    }
+
     public function index()
     {
         $rawSources = [];
+        $defaultReportRangeDates = [];
         foreach (self::RAW_TABLE_SOURCES as $param => $table) {
             $rawSources[$param] = [
                 'table' => $table,
                 'columns' => self::displayColumnsForTable($table),
             ];
+            $defaultReportRangeDates[$param] = self::latestAvailableReportDayYmd($table);
         }
 
         return view('amazon_ads.all', [
             'rawSources' => $rawSources,
+            'defaultReportRangeDates' => $defaultReportRangeDates,
         ]);
     }
 
@@ -586,8 +993,14 @@ class AmazonAdsController extends Controller
             ->limit($length)
             ->get();
 
+        $hasLSpendCols = in_array('L7spend', $columns, true);
+        $lSpendMap = $hasLSpendCols ? self::fetchL7L2L1SpendMap($table, $dbColumns, $rows) : [];
+
         $hasUtilCols = in_array('U7%', $columns, true);
+        $hasCpc2 = in_array('CPC2', $columns, true);
+        $hasCpc3 = in_array('CPC3', $columns, true);
         $empty = array_fill_keys($columns, null);
+        $cpcDayCache = [];
         $data = [];
         foreach ($rows as $row) {
             $rowArr = (array) $row;
@@ -598,7 +1011,38 @@ class AmazonAdsController extends Controller
                 $arr['U2%'] = self::formatUtilPercent($u['U2']);
                 $arr['U1%'] = self::formatUtilPercent($u['U1']);
             }
-            self::maybeApplyComputedSbidFromUtilization($arr, $u, $rowArr, $dbColumns);
+            $cid = isset($rowArr['campaign_id']) ? trim((string) $rowArr['campaign_id']) : '';
+            $adType = in_array('ad_type', $dbColumns, true) ? ($rowArr['ad_type'] ?? null) : null;
+            $adTypeStr = is_string($adType) ? $adType : null;
+            if ($hasCpc3) {
+                $day3 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, 2);
+                if ($day3 !== null && $cid !== '') {
+                    $arr['CPC3'] = self::fetchCostPerClickOnReportDay($table, $dbColumns, $cid, $adTypeStr, $day3, $cpcDayCache);
+                } else {
+                    $arr['CPC3'] = null;
+                }
+            }
+            if ($hasCpc2) {
+                $day2 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, 1);
+                if ($day2 !== null && $cid !== '') {
+                    $arr['CPC2'] = self::fetchCostPerClickOnReportDay($table, $dbColumns, $cid, $adTypeStr, $day2, $cpcDayCache);
+                } else {
+                    $arr['CPC2'] = null;
+                }
+            }
+            self::applyGridSbidFromUb2Ub1AndCpc($arr, $u, $rowArr, $dbColumns);
+            if (in_array('bgt', $columns, true)) {
+                $arr['bgt'] = null;
+                unset($arr['campaignBudgetAmount']);
+            }
+            if ($hasLSpendCols && $cid !== '') {
+                $adKey = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
+                $lk = $cid."\0".trim((string) $adKey);
+                $slice = $lSpendMap[$lk] ?? ['L7' => null, 'L2' => null, 'L1' => null];
+                $arr['L7spend'] = $slice['L7'];
+                $arr['L2spend'] = $slice['L2'];
+                $arr['L1spend'] = $slice['L1'];
+            }
             $data[] = $arr;
         }
 
@@ -611,6 +1055,131 @@ class AmazonAdsController extends Controller
         if ($distinctCampaignCount !== null) {
             $payload['distinctCampaignCount'] = $distinctCampaignCount;
         }
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Whether an SP campaign name is treated as product targeting (PT) vs keyword (KW),
+     * aligned with filters that use "NOT LIKE '% PT'" for KW sets.
+     */
+    private static function isSpProductTargetingCampaignName(?string $campaignName): bool
+    {
+        if ($campaignName === null) {
+            return false;
+        }
+        $n = str_replace(["\xC2\xA0", "\xe2\x80\x80", "\xe2\x80\x81", "\xe2\x80\x82", "\xe2\x80\x83"], ' ', (string) $campaignName);
+        $n = preg_replace('/\s+/u', ' ', trim($n));
+        if ($n === '') {
+            return false;
+        }
+        $u = strtoupper($n);
+
+        return str_contains($u, ' PT') || preg_match('/PT\.?\s*$/u', $u) === 1;
+    }
+
+    private static function normalizePositiveBid(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $n = (float) $value;
+        if (! is_finite($n) || $n <= 0) {
+            return null;
+        }
+
+        return round($n, 2);
+    }
+
+    /**
+     * Push SBID bids for SP campaigns to Amazon (keywords API for KW, targets API for PT),
+     * using the same logic as AmazonSpBudgetController utilized bid updates.
+     *
+     * Expects JSON: { "rows": [ { "campaign_id", "bid", "campaignName"? }, ... ] } (max 100 unique campaigns).
+     */
+    public function pushSpSbids(Request $request): JsonResponse
+    {
+        $rows = $request->input('rows');
+        if (! is_array($rows) || $rows === []) {
+            return response()->json([
+                'message' => 'Provide a non-empty rows array with campaign_id and bid.',
+                'status' => 400,
+            ], 400);
+        }
+
+        $kwMap = [];
+        $ptMap = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $bid = self::normalizePositiveBid($row['bid'] ?? null);
+            if ($bid === null) {
+                continue;
+            }
+            $name = $row['campaignName'] ?? $row['campaign_name'] ?? null;
+            if (self::isSpProductTargetingCampaignName(is_string($name) ? $name : null)) {
+                $ptMap[$cid] = $bid;
+            } else {
+                $kwMap[$cid] = $bid;
+            }
+        }
+
+        $totalUnique = count($kwMap) + count($ptMap);
+        if ($totalUnique === 0) {
+            return response()->json([
+                'message' => 'No valid campaign_id / positive bid pairs after classification.',
+                'status' => 422,
+            ], 422);
+        }
+        if ($totalUnique > 100) {
+            return response()->json([
+                'message' => 'At most 100 distinct campaigns per request.',
+                'status' => 422,
+            ], 422);
+        }
+
+        /** @var AmazonSpBudgetController $sp */
+        $sp = app(AmazonSpBudgetController::class);
+
+        $payload = [
+            'keywords' => null,
+            'targets' => null,
+            'keyword_http_status' => null,
+            'target_http_status' => null,
+        ];
+
+        if ($kwMap !== []) {
+            $sub = Request::create('/update-keywords-bid-price', 'PUT', [
+                'campaign_ids' => array_keys($kwMap),
+                'bids' => array_values($kwMap),
+            ]);
+            $respKw = $sp->updateCampaignKeywordsBid($sub);
+            $payload['keyword_http_status'] = $respKw->getStatusCode();
+            $payload['keywords'] = json_decode($respKw->getContent(), true);
+        }
+
+        if ($ptMap !== []) {
+            $subPt = Request::create('/update-amazon-sp-targets-bid-price', 'PUT', [
+                'campaign_ids' => array_keys($ptMap),
+                'bids' => array_values($ptMap),
+            ]);
+            $respPt = $sp->updateCampaignTargetsBid($subPt);
+            $payload['target_http_status'] = $respPt->getStatusCode();
+            $payload['targets'] = json_decode($respPt->getContent(), true);
+        }
+
+        $kwOk = $payload['keyword_http_status'] === null || ($payload['keyword_http_status'] >= 200 && $payload['keyword_http_status'] < 300);
+        $ptOk = $payload['target_http_status'] === null || ($payload['target_http_status'] >= 200 && $payload['target_http_status'] < 300);
+        $payload['ok'] = $kwOk && $ptOk;
+        $payload['message'] = $payload['ok']
+            ? 'SBID push finished for Amazon SP (keywords and/or targets).'
+            : 'SBID push finished with one or more non-success responses; see keywords/targets and HTTP status fields.';
 
         return response()->json($payload);
     }

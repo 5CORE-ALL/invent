@@ -29,17 +29,28 @@
             font-size: 0.8rem;
             font-weight: 600;
         }
+        .amazon-ads-all .amazon-sbid-push-panel {
+            border-left: 3px solid #0d6efd;
+            padding-left: 0.75rem;
+        }
     </style>
 @endsection
 
 @section('content')
     @include('layouts.shared/page-title', ['sub_title' => 'Amazon Ads', 'page_title' => 'Amazon Ads All'])
 
+    <div class="row amazon-ads-all mb-2">
+        <div class="col-12 d-flex flex-wrap justify-content-end align-items-center gap-2">
+            <span class="text-muted small d-none d-md-inline" title="Fetches every row matching your filters (500 per request); same sort and search as the grid.">Export all filtered rows (CSV).</span>
+            <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSectionExportBtn" title="Download all rows matching current filters and DataTables search (max 50k)">Export view</button>
+        </div>
+    </div>
+
     <div class="row amazon-ads-all mb-3">
         <div class="col-12">
             <div class="alert alert-secondary mb-0 utilized-kw-note">
                 <strong>Utilized KW</strong>
-                (<code>/amazon/utilized/kw</code>) loads merged rows in
+                (<code>/amazon/utilized/kw/ads/data</code>) loads merged rows in
                 <code>AmazonSpBudgetController::getAmazonUtilizedAdsData</code>, mainly from
                 <code>amazon_sp_campaign_reports</code> and <code>amazon_sb_campaign_reports</code>,
                 plus <code>amazon_acos_action_history</code>, <code>amazon_datsheets</code>, <code>product_master</code>, etc.
@@ -129,10 +140,14 @@
                                 </select>
                             </div>
                         </div>
-                        <p class="text-muted small mb-0 mt-2">
-                            <strong>SP / SB / SD:</strong> Calendar range matches (1) daily keys in <code>report_date_range</code> (first 10 chars <code>YYYY-MM-DD</code>), (2) the <code>date</code> column if set, (3) summary rows (<code>L30</code>, etc.) whose <code>startDate</code>/<code>endDate</code> overlap your range. For exact <code>L30</code> only, use <em>Report range</em>. <strong>U7/U2/U1 filters</strong> apply on campaign tables only (same formula as the columns: <code>COALESCE(spend,cost)</code> when both exist). <strong>Status</strong> filters <code>campaignStatus</code> when present. <strong>Bid caps / FBM:</strong> <code>created_at</code> (status filter no-op if no <code>campaignStatus</code> column). Data loads via POST so filters always reach the server.
-                        </p>
-                        <p class="text-muted small mb-0 mt-1" id="amazonAdsActiveStats" aria-live="polite">After the table loads, <strong>matching rows</strong> and <strong>distinct campaign_id</strong> (SP/SB/SD) appear here.</p>
+
+                        <div class="border-top pt-3 mt-3 amazon-sbid-push-panel">
+                            <p class="small fw-semibold mb-2">SBID — push to Amazon (SP)</p>
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <button type="button" class="btn btn-sm btn-success" id="amazonAdsPushSbidBtn" disabled title="Switch to the SP table tab">Push SBID to Amazon (current page)</button>
+                                <span class="text-muted small" id="amazonAdsSbidPushStatus" aria-live="polite"></span>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="amazonAdsSourcePanels">
@@ -217,7 +232,9 @@
     <script>
         (function () {
             var rawSources = @json($rawSources ?? []);
+            var amazonAdsDefaultReportDates = @json($defaultReportRangeDates ?? (object) []);
             var dataUrlTemplate = @json(url('/amazon-ads/raw-data')) + '/';
+            var pushSpSbidsUrl = @json(route('amazon.ads.push-sp-sbids'));
 
             var scripts = [
                 'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js',
@@ -243,7 +260,285 @@
 
             var initialized = {};
             var amazonAdsDataTables = {};
+            /** Column defs from buildColumns(), keyed by DataTable id (for client CSV like amazon_tabulator_view). */
+            var amazonAdsColumnDefsByTable = {};
             var activeAdsTableId = null;
+            var activeRawSourceKey = 'sp_reports';
+
+            /** Same CSV escaping as amazon_tabulator_view (#section-export-btn). */
+            function amazonAdsCsvEscapeField(val) {
+                if (val === null || val === undefined) {
+                    return '';
+                }
+                var s = String(val);
+                s = s.replace(/"/g, '""');
+                if (/[",\n\r]/.test(s)) {
+                    return '"' + s + '"';
+                }
+                return s;
+            }
+
+            var AMAZON_ADS_EXPORT_CHUNK = 500;
+            var AMAZON_ADS_EXPORT_MAX_ROWS = 50000;
+
+            /** POST body matching server-side DataTables so /amazon-ads/raw-data accepts it. */
+            function amazonAdsBuildRawDataAjaxPayload(draw, start, length, searchVal, orderCol, orderDir, colsMetaFull, p, token) {
+                var o = {
+                    draw: draw,
+                    start: start,
+                    length: length,
+                    date_from: p.date_from || '',
+                    date_to: p.date_to || '',
+                    summary_report_range: p.summary_report_range || '',
+                    filter_u7: p.filter_u7 || '',
+                    filter_u2: p.filter_u2 || '',
+                    filter_u1: p.filter_u1 || '',
+                    filter_campaign_status: p.filter_campaign_status || '',
+                    _token: token
+                };
+                o['search[value]'] = searchVal || '';
+                o['search[regex]'] = 'false';
+                o['order[0][column]'] = orderCol;
+                o['order[0][dir]'] = orderDir || 'desc';
+                for (var i = 0; i < colsMetaFull.length; i++) {
+                    var col = colsMetaFull[i];
+                    var prefix = 'columns[' + i + ']';
+                    o[prefix + '[data]'] = col.data;
+                    o[prefix + '[name]'] = '';
+                    o[prefix + '[searchable]'] = 'true';
+                    o[prefix + '[orderable]'] = col.orderable === false ? 'false' : 'true';
+                    o[prefix + '[search][value]'] = '';
+                    o[prefix + '[search][regex]'] = 'false';
+                }
+                return o;
+            }
+
+            function amazonAdsBuildCsvFromRows(rows, exportCols) {
+                var headerLine = exportCols.map(function (c) {
+                    return amazonAdsCsvEscapeField(c.title != null ? String(c.title) : String(c.data));
+                }).join(',');
+                var bodyLines = rows.map(function (row) {
+                    return exportCols.map(function (c) {
+                        var raw = row[c.data];
+                        var cell;
+                        if (typeof c.render === 'function') {
+                            try {
+                                cell = c.render(raw, 'export', row, {});
+                            } catch (e1) {
+                                cell = raw;
+                            }
+                        } else {
+                            cell = raw;
+                        }
+                        if (cell !== null && cell !== undefined && typeof cell === 'object') {
+                            try {
+                                cell = JSON.stringify(cell);
+                            } catch (e2) {
+                                cell = String(cell);
+                            }
+                        }
+                        return amazonAdsCsvEscapeField(cell);
+                    }).join(',');
+                });
+                return '\uFEFF' + headerLine + '\n' + bodyLines.join('\n') + '\n';
+            }
+
+            function amazonAdsClientExportViewCsv() {
+                var tid = activeAdsTableId;
+                var dt = tid ? amazonAdsDataTables[tid] : null;
+                if (!dt || typeof dt.rows !== 'function') {
+                    window.alert('Table not loaded');
+                    return;
+                }
+                var colsMetaFull = amazonAdsColumnDefsByTable[tid];
+                if (!colsMetaFull || !colsMetaFull.length) {
+                    window.alert('No columns');
+                    return;
+                }
+                var omit = ['id', 'profile_id', 'startDate', 'endDate'];
+                var exportCols = colsMetaFull.filter(function (c) {
+                    return c && c.data && omit.indexOf(c.data) === -1;
+                });
+                var info = dt.page.info();
+                // Server-side: JSON uses recordsFiltered; page.info() exposes that count as recordsDisplay.
+                var rawTotal = info.recordsDisplay != null ? info.recordsDisplay : info.recordsFiltered;
+                var totalFiltered = parseInt(rawTotal, 10);
+                if (!isFinite(totalFiltered) || totalFiltered <= 0) {
+                    window.alert('No data to export');
+                    return;
+                }
+                if (totalFiltered > AMAZON_ADS_EXPORT_MAX_ROWS) {
+                    window.alert('Too many rows (' + totalFiltered + '). Narrow filters (max ' + AMAZON_ADS_EXPORT_MAX_ROWS + ' per export).');
+                    return;
+                }
+                var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                var p = amazonAdsFilterPayload();
+                var searchVal = typeof dt.search === 'function' ? String(dt.search() || '') : '';
+                var ord = dt.order();
+                var orderCol = ord && ord.length ? ord[0][0] : 0;
+                var orderDir = ord && ord.length ? ord[0][1] : 'desc';
+                var exportBtn = document.getElementById('amazonAdsSectionExportBtn');
+                if (exportBtn) {
+                    exportBtn.disabled = true;
+                }
+                var allRows = [];
+                var start = 0;
+                var draw = 1;
+                var url = dataUrlTemplate + encodeURIComponent(activeRawSourceKey);
+
+                function step() {
+                    var len = Math.min(AMAZON_ADS_EXPORT_CHUNK, totalFiltered - start);
+                    if (len <= 0) {
+                        finish();
+                        return;
+                    }
+                    var payload = amazonAdsBuildRawDataAjaxPayload(draw, start, len, searchVal, orderCol, orderDir, colsMetaFull, p, token);
+                    jQuery.ajax({
+                        url: url,
+                        type: 'POST',
+                        headers: { 'X-CSRF-TOKEN': token },
+                        data: payload
+                    }).done(function (json) {
+                        if (json && json.error) {
+                            window.alert(String(json.error));
+                            if (exportBtn) {
+                                exportBtn.disabled = false;
+                            }
+                            return;
+                        }
+                        var chunk = (json && json.data) ? json.data : [];
+                        if (!chunk.length) {
+                            if (allRows.length < totalFiltered) {
+                                window.alert('Export stopped: server returned no rows while ' + totalFiltered + ' were expected.');
+                            }
+                            if (exportBtn) {
+                                exportBtn.disabled = false;
+                            }
+                            return;
+                        }
+                        chunk.forEach(function (r) {
+                            allRows.push(r);
+                        });
+                        start += chunk.length;
+                        draw += 1;
+                        if (allRows.length >= totalFiltered || chunk.length < len) {
+                            finish();
+                            return;
+                        }
+                        step();
+                    }).fail(function (xhr) {
+                        window.alert('Export failed (HTTP ' + (xhr && xhr.status) + ').');
+                        if (exportBtn) {
+                            exportBtn.disabled = false;
+                        }
+                    });
+                }
+
+                function finish() {
+                    if (exportBtn) {
+                        exportBtn.disabled = false;
+                    }
+                    if (!allRows.length) {
+                        window.alert('No rows returned.');
+                        return;
+                    }
+                    var csv = amazonAdsBuildCsvFromRows(allRows, exportCols);
+                    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                    var blobUrl = window.URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = blobUrl;
+                    var tbl = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].table) ? rawSources[activeRawSourceKey].table : 'export';
+                    var day = new Date().toISOString().split('T')[0];
+                    a.download = 'Amazon_' + tbl + '_Export_' + day + '.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(blobUrl);
+                    if (window.toastr && typeof window.toastr.success === 'function') {
+                        window.toastr.success('Exported ' + allRows.length + ' row(s) matching filters.');
+                    }
+                }
+
+                step();
+            }
+
+            function amazonAdsPickBidFromRow(row) {
+                if (!row || typeof row !== 'object') {
+                    return null;
+                }
+                var m = parseFloat(row.sbid_m);
+                if (!isNaN(m) && m > 0) {
+                    return m;
+                }
+                var y = parseFloat(row.yes_sbid);
+                if (!isNaN(y) && y > 0) {
+                    return y;
+                }
+                var s = parseFloat(row.sbid);
+                if (!isNaN(s) && s > 0) {
+                    return s;
+                }
+                return null;
+            }
+
+            function amazonAdsCollectSpSbidPushRows() {
+                var dt = amazonAdsDataTables['amazonAdsSpReportsTable'];
+                if (!dt || typeof dt.rows !== 'function') {
+                    return [];
+                }
+                var data = dt.rows({ page: 'current' }).data();
+                var list = [];
+                if (!data || typeof data.toArray !== 'function') {
+                    return list;
+                }
+                data.toArray().forEach(function (row) {
+                    if (!row) {
+                        return;
+                    }
+                    var cid = row.campaign_id;
+                    if (cid === null || cid === undefined || String(cid).trim() === '') {
+                        return;
+                    }
+                    var bid = amazonAdsPickBidFromRow(row);
+                    if (bid === null) {
+                        return;
+                    }
+                    var name = row.campaignName != null ? String(row.campaignName) : '';
+                    list.push({
+                        campaign_id: String(cid).trim(),
+                        bid: bid,
+                        campaignName: name
+                    });
+                });
+                return list;
+            }
+
+            function amazonAdsUpdateSbidPushButton() {
+                var btn = document.getElementById('amazonAdsPushSbidBtn');
+                if (!btn) {
+                    return;
+                }
+                var isSp = activeRawSourceKey === 'sp_reports';
+                btn.disabled = !isSp;
+                btn.title = isSp ? 'Uses sbid_m, yes_sbid, or sbid for rows on this page' : 'Switch to Table: SP — amazon_sp_campaign_reports';
+            }
+
+            /** Single-day window: latest day available for this source (server-computed). */
+            function amazonAdsSetDateFiltersToLatestForSource(sourceKey) {
+                var d = amazonAdsDefaultReportDates[sourceKey];
+                var fromEl = document.getElementById('amazonAdsFilterDateFrom');
+                var toEl = document.getElementById('amazonAdsFilterDateTo');
+                if (!fromEl || !toEl) {
+                    return;
+                }
+                if (d && typeof d === 'string') {
+                    fromEl.value = d;
+                    toEl.value = d;
+                } else {
+                    fromEl.value = '';
+                    toEl.value = '';
+                }
+            }
 
             function amazonAdsFilterPayload() {
                 var sumEl = document.getElementById('amazonAdsFilterSummaryRange');
@@ -285,11 +580,13 @@
                     return;
                 }
                 activeAdsTableId = table.id;
+                activeRawSourceKey = table.getAttribute('data-raw-source') || 'sp_reports';
+                amazonAdsUpdateSbidPushButton();
                 initTable(table.id, table.getAttribute('data-raw-source'));
             }
 
             /** Short labels for Amazon ad_type values in the grid (display only; sort/filter use raw). */
-            /** U7%/U2%/U1%: rounded %; red below 66, green 66–99, purple above 99. */
+            /** U7%/U2%/U1%: rounded %; red below 66, green 66–99, pink above 99. */
             function renderUtilPercentColumn(data, type) {
                 if (data === null || data === undefined || data === '') {
                     if (type === 'display') {
@@ -319,7 +616,7 @@
                 }
                 var color;
                 if (rounded > 99) {
-                    color = '#9333ea';
+                    color = '#db2777';
                 } else if (rounded >= 66) {
                     color = '#16a34a';
                 } else {
@@ -328,7 +625,47 @@
                 return '<span style="color:' + color + ';font-weight:600;">' + rounded + '%</span>';
             }
 
+            /** SBID from server when U2/U1 both red or both pink; otherwise null → -- */
+            function renderSbidColumn(data, type) {
+                if (type === 'sort' || type === 'type') {
+                    var n = typeof data === 'number' ? data : parseFloat(data, 10);
+                    return isNaN(n) ? -1 : n;
+                }
+                if (type === 'export' || type === 'excel' || type === 'pdf') {
+                    if (data === null || data === undefined || data === '') {
+                        return '';
+                    }
+                    var x = typeof data === 'number' ? data : parseFloat(data, 10);
+                    return isNaN(x) ? '' : String(x);
+                }
+                if (type !== 'display') {
+                    return data;
+                }
+                if (data === null || data === undefined || data === '') {
+                    return '<span class="text-muted">--</span>';
+                }
+                var num = typeof data === 'number' ? data : parseFloat(data, 10);
+                if (isNaN(num)) {
+                    return '<span class="text-muted">--</span>';
+                }
+                return '<span class="fw-semibold">' + num.toFixed(2) + '</span>';
+            }
+
             function formatAdTypeDisplay(data, type) {
+                if (type === 'export' || type === 'excel' || type === 'pdf') {
+                    if (data === null || data === undefined) {
+                        return '';
+                    }
+                    var se = String(data).trim();
+                    var ue = se.toUpperCase();
+                    if (ue === 'SPONSORED_PRODUCTS') {
+                        return 'SP';
+                    }
+                    if (ue === 'SPONSORED_BRANDS') {
+                        return 'SB';
+                    }
+                    return se;
+                }
                 if (type !== 'display') {
                     return data;
                 }
@@ -354,9 +691,179 @@
                             return formatAdTypeDisplay(data, type);
                         };
                     }
+                    if (c === 'impressions') {
+                        col.title = 'Impr';
+                    }
+                    if (c === 'last_sbid') {
+                        col.title = 'Last bid';
+                    }
+                    if (c === 'bgt') {
+                        col.title = 'BGT';
+                        col.orderable = false;
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                return 0;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                return '';
+                            }
+                            if (type !== 'display') {
+                                return '';
+                            }
+                            return '<span class="text-muted">--</span>';
+                        };
+                    }
+                    if (c === 'L7spend' || c === 'L2spend' || c === 'L1spend') {
+                        if (c === 'L7spend') {
+                            col.title = 'L7 spend';
+                        } else if (c === 'L2spend') {
+                            col.title = 'L2 spend';
+                        } else {
+                            col.title = 'L1 spend';
+                        }
+                        col.orderable = false;
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var nl = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(nl) ? -1 : nl;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xl = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(xl) ? '' : xl.toFixed(2);
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var nld = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(nld)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return nld.toFixed(2);
+                        };
+                    }
                     if (c === 'U7%' || c === 'U2%' || c === 'U1%') {
                         col.render = function (data, type) {
                             return renderUtilPercentColumn(data, type);
+                        };
+                    }
+                    if (c === 'CPC3') {
+                        col.title = 'CPC 3';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var n3 = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(n3) ? -1 : n3;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var x3 = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(x3) ? '' : x3.toFixed(2);
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var n3d = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(n3d)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return n3d.toFixed(2);
+                        };
+                    }
+                    if (c === 'CPC2') {
+                        col.title = 'CPC 2';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var n2 = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(n2) ? -1 : n2;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var x2 = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(x2) ? '' : x2.toFixed(2);
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var n2d = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(n2d)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return n2d.toFixed(2);
+                        };
+                    }
+                    if (c === 'costPerClick') {
+                        col.title = 'CPC 1';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var ns = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(ns) ? -1 : ns;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xe = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(xe) ? '' : xe.toFixed(2);
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var nc = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(nc)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return nc.toFixed(2);
+                        };
+                    }
+                    if (c === 'sales30d') {
+                        col.title = 'Sales';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var nsa = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(nsa) ? -1 : nsa;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xsa = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(xsa) ? '' : xsa.toFixed(2);
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var nca = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(nca)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return nca.toFixed(2);
+                        };
+                    }
+                    if (c === 'sbid') {
+                        col.title = 'SBID';
+                        col.render = function (data, type) {
+                            return renderSbidColumn(data, type);
                         };
                     }
                     return col;
@@ -387,9 +894,10 @@
                 }
 
                 var cols = buildColumns(sourceKey);
+                amazonAdsColumnDefsByTable[tableId] = cols;
                 initialized[tableId] = true;
 
-                var hiddenRawColumnKeys = ['id'];
+                var hiddenRawColumnKeys = ['id', 'profile_id', 'startDate', 'endDate'];
                 var hiddenColumnDefs = [];
                 hiddenRawColumnKeys.forEach(function (key) {
                     for (var ci = 0; ci < cols.length; ci++) {
@@ -399,7 +907,7 @@
                         }
                     }
                 });
-                ['U7%', 'U2%', 'U1%'].forEach(function (key) {
+                ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'bgt', 'L7spend', 'L2spend', 'L1spend'].forEach(function (key) {
                     for (var uj = 0; uj < cols.length; uj++) {
                         if (cols[uj].data === key) {
                             hiddenColumnDefs.push({ targets: uj, orderable: false, searchable: false });
@@ -438,18 +946,6 @@
                             d._token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
                         },
                         dataSrc: function (json) {
-                            var el = document.getElementById('amazonAdsActiveStats');
-                            if (el) {
-                                var n = (json && json.recordsFiltered !== undefined) ? String(json.recordsFiltered) : '—';
-                                if (json && (json.distinctCampaignCount !== undefined && json.distinctCampaignCount !== null)) {
-                                    el.innerHTML = 'This table: <strong>Matching rows</strong> ' + n
-                                        + ' · <strong>Distinct campaign_id</strong> ' + String(json.distinctCampaignCount)
-                                        + ' <span class="text-secondary">(compare this second number to Amazon&rsquo;s campaign list for the same scope)</span>.';
-                                } else {
-                                    el.innerHTML = 'This table: <strong>Matching rows</strong> ' + n
-                                        + ' <span class="text-secondary">(no campaign_id on this source)</span>.';
-                                }
-                            }
                             return json && json.data ? json.data : [];
                         },
                         error: function (xhr) {
@@ -469,11 +965,105 @@
                 jQuery(function () {
                     var typeSel = document.getElementById('amazonAdsFilterReportType');
                     var initialSource = (typeSel && typeSel.value) ? typeSel.value : 'sp_reports';
+                    activeRawSourceKey = initialSource;
+                    amazonAdsSetDateFiltersToLatestForSource(initialSource);
+                    amazonAdsUpdateSbidPushButton();
                     amazonAdsShowSource(initialSource);
 
                     if (typeSel) {
                         typeSel.addEventListener('change', function () {
-                            amazonAdsShowSource(this.value);
+                            var sk = this.value;
+                            var pane = document.querySelector('#amazonAdsSourcePanels .amazon-source-pane[data-pane-for="' + sk + '"]');
+                            var tblEl = pane && pane.querySelector('table[data-raw-source]');
+                            var tid = tblEl && tblEl.id;
+                            var alreadyInited = tid && initialized[tid];
+                            activeRawSourceKey = sk;
+                            amazonAdsSetDateFiltersToLatestForSource(sk);
+                            amazonAdsUpdateSbidPushButton();
+                            amazonAdsShowSource(sk);
+                            if (alreadyInited) {
+                                amazonAdsReloadActiveGrid();
+                            }
+                        });
+                    }
+
+                    var pushBtn = document.getElementById('amazonAdsPushSbidBtn');
+                    if (pushBtn) {
+                        pushBtn.addEventListener('click', function () {
+                            var statusEl = document.getElementById('amazonAdsSbidPushStatus');
+                            if (activeRawSourceKey !== 'sp_reports') {
+                                if (statusEl) {
+                                    statusEl.textContent = 'Switch to the SP table first.';
+                                }
+                                return;
+                            }
+                            var rows = amazonAdsCollectSpSbidPushRows();
+                            if (!rows.length) {
+                                if (statusEl) {
+                                    statusEl.textContent = 'No rows on this page with campaign_id and a positive sbid_m / yes_sbid / sbid.';
+                                }
+                                return;
+                            }
+                            var uniq = {};
+                            rows.forEach(function (r) {
+                                uniq[r.campaign_id] = r;
+                            });
+                            var deduped = Object.keys(uniq).map(function (k) {
+                                return uniq[k];
+                            });
+                            if (deduped.length > 100) {
+                                if (statusEl) {
+                                    statusEl.textContent = 'Too many distinct campaigns on this page (' + deduped.length + '). Narrow filters or page size (max 100).';
+                                }
+
+                                return;
+                            }
+                            if (!window.confirm('Push SBID to Amazon for ' + deduped.length + ' SP campaign(s) on this page?')) {
+                                return;
+                            }
+                            pushBtn.disabled = true;
+                            if (statusEl) {
+                                statusEl.textContent = 'Pushing…';
+                            }
+                            var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                            fetch(pushSpSbidsUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': token,
+                                    'X-Requested-With': 'XMLHttpRequest'
+                                },
+                                body: JSON.stringify({ rows: deduped })
+                            })
+                                .then(function (res) {
+                                    return res.json().then(function (body) {
+                                        return { ok: res.ok, status: res.status, body: body };
+                                    });
+                                })
+                                .then(function (out) {
+                                    var b = out.body || {};
+                                    var parts = [];
+                                    if (b.keyword_http_status != null) {
+                                        parts.push('keywords HTTP ' + b.keyword_http_status);
+                                    }
+                                    if (b.target_http_status != null) {
+                                        parts.push('targets HTTP ' + b.target_http_status);
+                                    }
+                                    var msg = (b.message || (out.ok ? 'Done.' : 'Request failed.')) + (parts.length ? ' (' + parts.join(', ') + ')' : '');
+                                    if (statusEl) {
+                                        statusEl.textContent = msg;
+                                    }
+                                })
+                                .catch(function (err) {
+                                    console.error(err);
+                                    if (statusEl) {
+                                        statusEl.textContent = 'Network or server error.';
+                                    }
+                                })
+                                .finally(function () {
+                                    amazonAdsUpdateSbidPushButton();
+                                });
                         });
                     }
 
@@ -498,6 +1088,13 @@
                             amazonAdsReloadActiveGrid();
                         });
                     }
+                    var exportViewBtn = document.getElementById('amazonAdsSectionExportBtn');
+                    if (exportViewBtn) {
+                        exportViewBtn.addEventListener('click', function () {
+                            amazonAdsClientExportViewCsv();
+                        });
+                    }
+
                     var clearBtn = document.getElementById('amazonAdsFilterClear');
                     if (clearBtn) {
                         clearBtn.addEventListener('click', function () {

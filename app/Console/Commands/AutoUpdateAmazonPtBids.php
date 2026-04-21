@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\Amazon\AmazonBidUtilizationService;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
 
@@ -70,14 +71,18 @@ class AutoUpdateAmazonPtBids extends Command
                         $l1_spend = floatval($campaign->l1_spend ?? 0);
                         $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                         $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
-                        $pinkPink = ($ub7 > 99 && $ub1 > 99);
+                        $ub2 = floatval($campaign->ub2 ?? 0);
+                        $pinkPink = ($ub2 > 99 && $ub1 > 99);
+                        $redRed = ($ub2 < 66 && $ub1 < 66);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
                             'bid' => $sbid,
                             'ub7' => round($ub7, 2),
+                            'ub2' => round($ub2, 2),
                             'ub1' => round($ub1, 2),
                             'pink_pink' => $pinkPink,
+                            'red_red' => $redRed,
                             'inv' => (int)($campaign->INV ?? 0)
                         ];
                     } else {
@@ -115,8 +120,9 @@ class AutoUpdateAmazonPtBids extends Command
                 $this->info("Campaign Name: {$details['name']}");
                 $this->info("  - Campaign ID: {$campaignId}");
                 $this->info("  - Bid: {$details['bid']}");
-                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
-                $this->info("  - Pink+Pink (Over): " . (!empty($details['pink_pink']) ? 'Yes' : 'No'));
+                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 2UB: " . ($details['ub2'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
+                $this->info("  - Pink+Pink (Over U2/U1): " . (!empty($details['pink_pink']) ? 'Yes' : 'No'));
+                $this->info("  - Red+Red (Under U2/U1): " . (!empty($details['red_red']) ? 'Yes' : 'No'));
                 $this->info("  - INV: " . ($details['inv'] ?? 0));
                 $this->info("---");
             }
@@ -506,30 +512,28 @@ class AutoUpdateAmazonPtBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
             $l2_spend = floatval($row['l2_spend'] ?? 0);
-            $ub2 = ($budget > 0 && $l2_spend > 0) ? ($l2_spend / $budget) * 100 : 0;
-            $ub2Red = $ub2 < 66;
-            $ub2Pink = $ub2 > 99;
-            $ub1Red = $ub1 < 66;
-            $ub1Pink = $ub1 > 99;
+            $ub2 = AmazonBidUtilizationService::ub2PercentFromL2Spend($budget, $l2_spend);
 
             $l1_cpc = floatval($row['l1_cpc']);
             $l2_cpc = floatval($row['l2_cpc'] ?? 0);
             $l7_cpc = floatval($row['l7_cpc']);
-            $row['sbid'] = 0;
-
-            if ($ub2Red && $ub1Red) {
-                if ($l1_cpc > 0) {
-                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                } elseif ($l2_cpc > 0) {
-                    $row['sbid'] = floor($l2_cpc * 1.10 * 100) / 100;
-                } elseif ($l7_cpc > 0) {
-                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                } else {
-                    $row['sbid'] = 0.60;
-                }
-            } elseif ($ub2Pink && $ub1Pink) {
-                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
+            $fbL1 = $matchedCampaignL1 ? (float) ($matchedCampaignL1->costPerClick ?? 0) : 0.0;
+            $fbL7 = $matchedCampaignL7 ? (float) ($matchedCampaignL7->costPerClick ?? 0) : 0.0;
+            $cpcFallback = ($l1_cpc <= 0 && $l2_cpc <= 0 && $l7_cpc <= 0) ? max($fbL1, $fbL7) : null;
+            if ($cpcFallback === null || $cpcFallback <= 0) {
+                $cpcFallback = null;
             }
+
+            $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
+                $ub2,
+                $ub1,
+                $l1_cpc,
+                $l2_cpc,
+                $l7_cpc,
+                $cpcFallback
+            );
+            $row['sbid'] = $bidOut['sbid'];
+            $row['ub2'] = $ub2;
 
             if ($price < 10 && $row['sbid'] > 0.10) {
                 $row['sbid'] = 0.10;
@@ -540,12 +544,17 @@ class AutoUpdateAmazonPtBids extends Command
             if (empty($row['campaign_id'])) {
                 continue;
             }
-            if (!is_numeric($row['sbid']) || $row['sbid'] <= 0) {
+            if ($row['sbid'] === null || ! is_numeric($row['sbid']) || $row['sbid'] <= 0) {
                 continue;
             }
 
-            // Include only when 2UB pink AND 1UB pink (over-utilized) + ENABLED
-            if ($row['INV'] > 0 && ($ub2Pink && $ub1Pink) && ($row['campaignStatus'] ?? '') === 'ENABLED') {
+            $ub2Pink = $ub2 > 99;
+            $ub1Pink = $ub1 > 99;
+            $ub2Red = $ub2 < 66;
+            $ub1Red = $ub1 < 66;
+
+            // Include when U2/U1 both red or both pink (over- or under-utilized) + ENABLED + inventory
+            if ($row['INV'] > 0 && ($ub2Red && $ub1Red || $ub2Pink && $ub1Pink) && ($row['campaignStatus'] ?? '') === 'ENABLED') {
                 $result[] = (object) $row;
             }
         }

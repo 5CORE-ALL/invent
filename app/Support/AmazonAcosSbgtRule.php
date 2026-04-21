@@ -5,8 +5,7 @@ namespace App\Support;
 /**
  * L30 ACOS (%) → suggested SB daily budget tier (SBGT).
  * Tiers: pink 12, green 8, blue 4, yellow 2, red 1 — same breakpoints as
- * resources/views/campaign/amazon/amazon-utilized-kw-sheet.blade.php (computeSbgtFromAcos)
- * and the SBGT mutator on amazon-utilized-kw.
+ * Tabulator SBGT mutators and the old KW utilized tooling.
  */
 final class AmazonAcosSbgtRule
 {

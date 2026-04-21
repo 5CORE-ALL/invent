@@ -78,14 +78,18 @@ class AutoUpdateAmazonKwBids extends Command
                     if (!isset($campaignBudgetMap[$campaignId])) {
                         $ub7 = floatval($campaign->ub7 ?? 0);
                         $ub1 = floatval($campaign->ub1 ?? 0);
-                        $pinkPink = ($ub7 > 99 && $ub1 > 99);
+                        $ub2 = floatval($campaign->ub2 ?? 0);
+                        $pinkPink = ($ub2 > 99 && $ub1 > 99);
+                        $redRed = ($ub2 < 66 && $ub1 < 66);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
                             'bid' => $sbid,
                             'ub7' => round($ub7, 2),
+                            'ub2' => round($ub2, 2),
                             'ub1' => round($ub1, 2),
                             'pink_pink' => $pinkPink,
+                            'red_red' => $redRed,
                             'inv' => (int)($campaign->INV ?? 0)
                         ];
                     } else {
@@ -123,8 +127,9 @@ class AutoUpdateAmazonKwBids extends Command
                 $this->info("Campaign Name: {$details['name']}");
                 $this->info("  - Campaign ID: {$campaignId}");
                 $this->info("  - Bid: {$details['bid']}");
-                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
-                $this->info("  - Pink+Pink (Over): " . (!empty($details['pink_pink']) ? 'Yes' : 'No'));
+                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 2UB: " . ($details['ub2'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
+                $this->info("  - Pink+Pink (Over U2/U1): " . (!empty($details['pink_pink']) ? 'Yes' : 'No'));
+                $this->info("  - Red+Red (Under U2/U1): " . (!empty($details['red_red']) ? 'Yes' : 'No'));
                 $this->info("  - INV: " . ($details['inv'] ?? 0));
                 $this->info("---");
             }
@@ -630,6 +635,7 @@ class AutoUpdateAmazonKwBids extends Command
             }
 
             $l1_cpc = floatval($row['l1_cpc']);
+            $l2_cpc = floatval($row['l2_cpc'] ?? 0);
             $l7_cpc = floatval($row['l7_cpc']);
 
             $resolved = AmazonBidUtilizationService::resolveUb(
@@ -641,35 +647,49 @@ class AutoUpdateAmazonKwBids extends Command
             $ub1 = $resolved['ub1'];
             $ubSource = $resolved['source'];
 
-            // Over-utilized: decrease bid when 1-day utilization > 70% (uses amazon_utilization_counts when present)
-            $baseBid = ($matchedCampaignL30 ? floatval($matchedCampaignL30->last_sbid ?? 0) : 0);
-            if ($baseBid <= 0) {
-                $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
+            $l2_spend = floatval($row['l2_spend'] ?? 0);
+            $ub2 = AmazonBidUtilizationService::ub2PercentFromL2Spend($budget, $l2_spend);
+
+            $fbL1 = $matchedCampaignL1 ? (float) ($matchedCampaignL1->costPerClick ?? 0) : 0.0;
+            $fbL7 = $matchedCampaignL7 ? (float) ($matchedCampaignL7->costPerClick ?? 0) : 0.0;
+            $cpcFallback = ($l1_cpc <= 0 && $l2_cpc <= 0 && $l7_cpc <= 0) ? max($fbL1, $fbL7) : null;
+            if ($cpcFallback === null || $cpcFallback <= 0) {
+                $cpcFallback = null;
             }
-            $row['sbid'] = 0;
-            if ($baseBid > 0 && $ub1 > 70) {
-                $row['sbid'] = round($baseBid * 0.90, 2);
+
+            $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
+                $ub2,
+                $ub1,
+                $l1_cpc,
+                $l2_cpc,
+                $l7_cpc,
+                $cpcFallback
+            );
+            $row['sbid'] = $bidOut['sbid'];
+            if ($row['sbid'] !== null && $row['sbid'] > 0 && $bidOut['band'] !== 'none') {
                 AmazonBidUtilizationService::logBidDecision(
                     (string) $row['campaign_id'],
-                    'kw_over',
+                    $bidOut['band'] === 'over' ? 'kw_over' : 'kw_under',
                     $ub1,
-                    $baseBid,
+                    $l1_cpc > 0 ? $l1_cpc : ($l2_cpc > 0 ? $l2_cpc : ($l7_cpc > 0 ? $l7_cpc : 0.0)),
                     (float) $row['sbid'],
                     $ubSource
                 );
             }
+            $row['ub2'] = $ub2;
 
             // Validate all required fields before adding
             if (empty($row['campaign_id'])) {
                 continue; // Skip if no campaign ID
             }
             
-            if (!is_numeric($row['sbid']) || $row['sbid'] <= 0) {
+            if ($row['sbid'] === null || ! is_numeric($row['sbid']) || $row['sbid'] <= 0) {
                 continue; // Skip if invalid bid
             }
 
-            // Include all campaigns with valid SBID and ENABLED (over-, under-, and correctly utilized)
-            if (!empty($row['campaign_id']) && is_numeric($row['sbid']) && $row['sbid'] > 0 && ($row['campaignStatus'] ?? '') === 'ENABLED') {
+            // Include campaigns with valid SBID and ENABLED when U2/U1 are both red or both pink
+            if (! empty($row['campaign_id']) && is_numeric($row['sbid']) && $row['sbid'] > 0 && ($row['campaignStatus'] ?? '') === 'ENABLED'
+                && (($ub2 < 66 && $ub1 < 66) || ($ub2 > 99 && $ub1 > 99))) {
                 $row['ub7'] = $ub7;
                 $row['ub1'] = $ub1;
                 $result[] = (object) $row;

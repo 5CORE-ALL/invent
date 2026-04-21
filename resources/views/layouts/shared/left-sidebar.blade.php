@@ -1852,34 +1852,6 @@
                                     <li>
                                         <a data-bs-toggle="collapse" href="#amazonSubmenu" aria-expanded="false"
                                             aria-controls="amazonSubmenu">
-                                            <span>Amz FBM AD CVR</span>
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="amazonSubmenu">
-                                            <ul class="side-nav-fourth-level">
-
-
-                                                <li>
-                                                    <a href="{{ route('adcvr.amazon') }}">Amz FBM Pricing - CVR
-                                                        KW</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('adcvrPt.amazon') }}">Amz FBM Pricing - CVR
-                                                        PT</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('review-ratings.amazon') }}">Amz FBM Review
-                                                        Ratings</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('targeting.amazon') }}">Amz FBM Targeting</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <a data-bs-toggle="collapse" href="#amazonSubmenu" aria-expanded="false"
-                                            aria-controls="amazonSubmenu">
                                             <span>Amz FBM View</span>
                                             <span class="menu-arrow"></span>
                                         </a>
@@ -1929,27 +1901,6 @@
                                         <a href="{{ route('listing.audit.amazon') }}">Listing Audit
                                             Amz FBM</a>
                                     </li>
-
-                                    <li>
-                                        <a data-bs-toggle="collapse" href="#amazonTargetingCheck"
-                                            aria-expanded="false" aria-controls="amazonTargetingCheck">
-                                            <span>TARGETING CHECK</span>
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="amazonTargetingCheck">
-                                            <ul class="side-nav-fourth-level">
-                                                <li>
-                                                    <a href="{{ route('amazon.fbm.targeting.check.kw') }}">TARGET
-                                                        KW</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('amazon.fbm.targeting.check.pt') }}">TARGET
-                                                        PT</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </li>
-
 
 
 
@@ -2026,18 +1977,6 @@
                                         <div class="collapse" id="amazonBudget">
                                             <ul class="side-nav-fourth-level">
                                                 <li>
-                                                    <a href="{{ route('amazon.utilized.kw') }}">Amz KW Ad</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('amazon.utilized.kw.sheet') }}">Amz KW sheet</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('amazon.utilized.pt') }}">Amz PT Ad</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('amazon.utilized.hl') }}">Amz HL Ad</a>
-                                                </li>
-                                                <li>
                                                     <a href="{{ route('amazon.ads.all') }}">Amazon Ads All</a>
                                                 </li>
                                                 {{-- <li>
@@ -2096,47 +2035,6 @@
                                             </ul>
                                         </div>
                                     </li> --}}
-                                    <li>
-                                        <a data-bs-toggle="collapse" href="#amazonFbaBudget" aria-expanded="false"
-                                            aria-controls="amazonFbaBudget">
-                                            <span>Amz FBA Utilized's</span>
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="amazonFbaBudget">
-                                            <ul class="side-nav-fourth-level">
-                                                <li>
-                                                    <a href="{{ route('amazon.fba.utilized.kw') }}">Utilized KW</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('amazon.fba.utilized.pt') }}">Utilized PT</a>
-                                                </li>
-                                                {{-- <li>
-                                                    <a href=" {{ route('amazon.fba.over.kw.ads') }} ">Over Util. BGT
-                                                        KW</a>
-                                                </li>
-                                                <li>
-                                                    <a href=" {{ route('amazon.fba.over.pt.ads') }} ">Over Util. BGT
-                                                        PT</a>
-                                                </li>
-                                                <li>
-                                                    <a href=" {{ route('amazon.fba.under.kw.ads') }} ">Under Util.
-                                                        BGT KW</a>
-                                                </li>
-                                                <li>
-                                                    <a href=" {{ route('amazon.fba.under.pt.ads') }} ">Under Util.
-                                                        BGT PT</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('amazon.fba.correct.kw.ads') }}">Correctly
-                                                        Utilized KW</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('amazon.fba.correct.pt.ads') }}">Correctly
-                                                        Utilized PT</a>
-                                                </li> --}}
-                                            </ul>
-                                        </div>
-                                    </li>
                                     {{-- <li>
                                         <a data-bs-toggle="collapse" href="#amazonFbaACOS" aria-expanded="false"
                                             aria-controls="amazonFbaACOS">
@@ -2158,9 +2056,6 @@
                                     </li> --}}
                                     <li>
                                         <a href="{{ route('amazon.missing.ads') }}">Amz FBM Missing Ads</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('amazon.fba.missing.ads') }}">Amz FBA Missing Ads</a>
                                     </li>
                                     {{-- Add EXtra For Amazon Pricing --}}
                                 </ul>

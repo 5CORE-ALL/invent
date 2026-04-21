@@ -518,11 +518,6 @@ class AmazonSbBudgetController extends Controller
         return view('campaign.amz-utilized-bgt-hl');
     }
 
-    public function amazonUtilizedHlView()
-    {
-        return view('campaign.amazon.amazon-utilized-hl');
-    }
-
     public function getAmazonUtilizedHlAdsData(Request $request)
     {
         $spBudgetController = new \App\Http\Controllers\Campaigns\AmazonSpBudgetController();

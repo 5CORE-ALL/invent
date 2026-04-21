@@ -564,13 +564,14 @@ class AmazonSpBudgetController extends Controller
         }
     }
 
-    public function updateCampaignTargetsBid()
+    public function updateCampaignTargetsBid(?Request $request = null)
     {
         ini_set('max_execution_time', 300);
         ini_set('memory_limit', '512M');
 
-        $campaignIds = request('campaign_ids', []);
-        $newBids = request('bids', []);
+        $req = $request ?? request();
+        $campaignIds = $req->input('campaign_ids', []);
+        $newBids = $req->input('bids', []);
 
         if (empty($campaignIds) || empty($newBids)) {
             return response()->json([
@@ -1935,16 +1936,6 @@ class AmazonSpBudgetController extends Controller
             'success' => true,
             'updated_json' => $jsonData,
         ]);
-    }
-
-    public function amazonUtilizedView()
-    {
-        return view('campaign.amazon.amazon-utilized-kw');
-    }
-
-    public function amazonUtilizedPtView()
-    {
-        return view('campaign.amazon.amazon-utilized-pt');
     }
 
     public function getAmazonUtilizedPtAdsData(Request $request)
