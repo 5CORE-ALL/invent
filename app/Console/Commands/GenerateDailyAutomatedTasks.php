@@ -32,6 +32,7 @@ class GenerateDailyAutomatedTasks extends Command
      * Execute the console command.
      * Daily task is skipped if: schedule_type != 'daily', status in (Done, Archived),
      * or a task for this automate_task_id was already created today (same day in Asia/Kolkata).
+     * MySQL GET_LOCK stops two servers / overlapping runs from inserting twice the same day.
      */
     public function handle(TaskWhatsAppNotificationService $taskWhatsApp)
     {
@@ -60,25 +61,47 @@ class GenerateDailyAutomatedTasks extends Command
                 ->chunk(100, function ($automatedTasks) use ($now, $today, $taskWhatsApp, &$generated, &$skipped) {
                     foreach ($automatedTasks as $autoTask) {
                         try {
-                            // Check for duplicate - prevent creating same task twice today (use Asia/Kolkata day window)
                             $dayStart = Carbon::today('Asia/Kolkata')->startOfDay();
                             $dayEnd = Carbon::today('Asia/Kolkata')->endOfDay();
-                            $alreadyExists = DB::table('tasks')
-                                ->where('automate_task_id', $autoTask->id)
-                                ->whereBetween('start_date', [$dayStart, $dayEnd])
-                                ->whereNull('deleted_at')
-                                ->exists();
+                            $dayStartStr = $dayStart->format('Y-m-d H:i:s');
+                            $dayEndStr = $dayEnd->format('Y-m-d H:i:s');
 
-                            if ($alreadyExists) {
-                                $skipped++;
-                                $this->warn("⊘ Skipped (already created today): {$autoTask->title}");
-                                Log::debug('Automated task skipped: already created today', [
-                                    'automate_task_id' => $autoTask->id,
-                                    'title' => $autoTask->title,
-                                    'today' => $today,
-                                ]);
-                                continue;
+                            $lockKey = $this->dailyGenerationLockName((int) $autoTask->id, $today);
+                            $lockHeld = false;
+                            if (DB::getDriverName() === 'mysql') {
+                                $lockRow = DB::selectOne('SELECT GET_LOCK(?, 30) AS acquired', [$lockKey]);
+                                $acquired = isset($lockRow->acquired) ? (int) $lockRow->acquired : 0;
+                                if ($acquired !== 1) {
+                                    $skipped++;
+                                    $this->warn("⊘ Skipped (lock busy, try next run): {$autoTask->title}");
+
+                                    continue;
+                                }
+                                $lockHeld = true;
                             }
+
+                            try {
+                                // Ek din = ek instance: start_date ya created_at aaj IST window mein ho to dubara mat banao.
+                                $alreadyExists = DB::table('tasks')
+                                    ->where('automate_task_id', $autoTask->id)
+                                    ->whereNull('deleted_at')
+                                    ->where(function ($q) use ($dayStartStr, $dayEndStr) {
+                                        $q->whereBetween('start_date', [$dayStartStr, $dayEndStr])
+                                            ->orWhereBetween('created_at', [$dayStartStr, $dayEndStr]);
+                                    })
+                                    ->exists();
+
+                                if ($alreadyExists) {
+                                    $skipped++;
+                                    $this->warn("⊘ Skipped (already created today): {$autoTask->title}");
+                                    Log::debug('Automated task skipped: already created today', [
+                                        'automate_task_id' => $autoTask->id,
+                                        'title' => $autoTask->title,
+                                        'today' => $today,
+                                    ]);
+
+                                    continue;
+                                }
 
                             // Daily automation uses a single fixed time for consistency across all templates.
                             $scheduleTime = self::FIXED_DAILY_TIME;
@@ -168,6 +191,12 @@ class GenerateDailyAutomatedTasks extends Command
                             $generated++;
                             $this->info("✓ Generated: {$autoTask->title}" . ($assignTo ? " → assigned to {$assignTo}" : " (no assignee)"));
 
+                            } finally {
+                                if ($lockHeld) {
+                                    DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockKey]);
+                                }
+                            }
+
                         } catch (Exception $e) {
                             $this->error("Error processing task ID {$autoTask->id}: {$e->getMessage()}");
                             Log::error("Generate automated task failed", [
@@ -197,5 +226,13 @@ class GenerateDailyAutomatedTasks extends Command
             ]);
             return 1;
         }
+    }
+
+    /** MySQL GET_LOCK naam (max 64 chars): har template + din. */
+    private function dailyGenerationLockName(int $automateTaskId, string $todayYmd): string
+    {
+        $day = str_replace('-', '', $todayYmd);
+
+        return substr('inv_da_' . $automateTaskId . '_' . $day, 0, 64);
     }
 }

@@ -37,225 +37,6 @@
             <li class="side-nav-title">Main</li>
 
 
-            <li class="side-nav-item">
-                <a href="{{ route('any', 'index') }}" class="side-nav-link">
-                    <i class="ri-dashboard-3-line"></i>
-                    <span> Dashboard </span>
-                </a>
-            </li>
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarResourcesMaster" aria-expanded="{{ request()->routeIs('resources-master.*') ? 'true' : 'false' }}" aria-controls="sidebarResourcesMaster"
-                    class="side-nav-link {{ request()->routeIs('resources-master.*') ? 'active' : '' }}">
-                    <i class="ri-folder-shield-2-line"></i>
-                    <span> Resources Master </span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse {{ request()->routeIs('resources-master.*') ? 'show' : '' }}" id="sidebarResourcesMaster">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('resources-master.section', 'rr_files') }}" class="{{ request()->is('resources-master/section/rr_files') ? 'active' : '' }}">R&amp;R Files</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('resources-master.section', 'training_resources') }}" class="{{ request()->is('resources-master/section/training_resources') ? 'active' : '' }}">Training Resources</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('resources-master.section', 'checklist_forms') }}" class="{{ request()->is('resources-master/section/checklist_forms') ? 'active' : '' }}">Checklist Forms</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('resources-master.section', 'media_gallery') }}" class="{{ request()->is('resources-master/section/media_gallery') ? 'active' : '' }}">Media Gallery</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('resources-master.section', 'links_videos') }}" class="{{ request()->is('resources-master/section/links_videos') ? 'active' : '' }}">Links / Videos</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('resources-master.dashboard') }}" class="{{ request()->routeIs('resources-master.dashboard') ? 'active' : '' }}">Overview</a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-                <li class="side-nav-item">
-                 <a href="{{ route('all.marketplace.master') }}" class="side-nav-link">
-                    <i class="ri-file-line"></i>
-                    <span>Active Channels Master</span>
-                </a>
-            </li>
-
-            {{-- Warehouse Management System (WMS) --}}
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarWms" aria-expanded="{{ request()->routeIs('wms.*') ? 'true' : 'false' }}" aria-controls="sidebarWms"
-                    class="side-nav-link {{ request()->routeIs('wms.*') ? 'active' : '' }}">
-                    <i class="ri-building-4-line"></i>
-                    <span>Warehouse (WMS)</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse {{ request()->routeIs('wms.*') ? 'show' : '' }}" id="sidebarWms">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('wms.dashboard') }}" class="{{ request()->routeIs('wms.dashboard') ? 'active' : '' }}">Dashboard</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('wms.structure') }}" class="{{ request()->routeIs('wms.structure') ? 'active' : '' }}">Structure</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('wms.inventory') }}" class="{{ request()->routeIs('wms.inventory') ? 'active' : '' }}">By location</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('wms.scan') }}" class="{{ request()->routeIs('wms.scan') ? 'active' : '' }}">Scan</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('wms.pick') }}" class="{{ request()->routeIs('wms.pick') ? 'active' : '' }}">Pick</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('wms.putaway') }}" class="{{ request()->routeIs('wms.putaway') ? 'active' : '' }}">Putaway</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('wms.locate') }}" class="{{ request()->routeIs('wms.locate') ? 'active' : '' }}">Locate</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('wms.movements') }}" class="{{ request()->routeIs('wms.movements') ? 'active' : '' }}">History</a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            {{-- Listing Master --}}
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarListingMaster" aria-expanded="false" aria-controls="sidebarListingMaster" class="side-nav-link">
-                    <i class="ri-list-check-2"></i>
-                    <span>Listing Master</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarListingMaster">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('listing.master.amz.data') }}">Amz Data</a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            {{-- Review Intelligence --}}
-            <li class="side-nav-item">
-                <a href="{{ route('reviews.index') }}" class="side-nav-link {{ request()->routeIs('reviews.*') ? 'active' : '' }}">
-                    <i class="ri-star-smile-line"></i>
-                    <span>Review Intelligence</span>
-                    @php $openAlertCount = \App\Models\ReviewAlert::where('status','open')->count(); @endphp
-                    @if($openAlertCount > 0)
-                        <span class="badge bg-danger rounded-pill ms-auto">{{ $openAlertCount }}</span>
-                    @endif
-                </a>
-            </li>
-
-            {{-- Marketplace Sync (Reverb, Amazon, eBay, Walmart) --}}
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarMarketplaceSync" aria-expanded="false" aria-controls="sidebarMarketplaceSync" class="side-nav-link">
-                    <i class="ri-store-2-line"></i>
-                    <span>Marketplace Sync</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarMarketplaceSync">
-                    <ul class="side-nav-second-level">
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceReverb" aria-expanded="false" aria-controls="sidebarMarketplaceReverb">
-                                <span>Reverb</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarMarketplaceReverb">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ route('marketplace.products', 'reverb') }}">Products</a></li>
-                                    <li><a href="{{ route('marketplace.orders', 'reverb') }}">Orders</a></li>
-                                    <li><a href="{{ route('marketplace.settings', 'reverb') }}">Settings</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceAmazon" aria-expanded="false" aria-controls="sidebarMarketplaceAmazon">
-                                <span>Amazon</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarMarketplaceAmazon">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ route('marketplace.products', 'amazon') }}">Products</a></li>
-                                    <li><a href="{{ route('marketplace.orders', 'amazon') }}">Orders</a></li>
-                                    <li><a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceEbay" aria-expanded="false" aria-controls="sidebarMarketplaceEbay">
-                                <span>eBay</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarMarketplaceEbay">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ route('marketplace.products', 'ebay') }}">Products</a></li>
-                                    <li><a href="{{ route('marketplace.orders', 'ebay') }}">Orders</a></li>
-                                    <li><a href="{{ route('marketplace.settings', 'ebay') }}">Settings</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceWalmart" aria-expanded="false" aria-controls="sidebarMarketplaceWalmart">
-                                <span>Walmart</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarMarketplaceWalmart">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ route('marketplace.products', 'walmart') }}">Products</a></li>
-                                    <li><a href="{{ route('marketplace.orders', 'walmart') }}">Orders</a></li>
-                                    <li><a href="{{ route('marketplace.settings', 'walmart') }}">Settings</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceTopDawg" aria-expanded="false" aria-controls="sidebarMarketplaceTopDawg">
-                                <span>TopDawg</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarMarketplaceTopDawg">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ route('topdawg.sales.dashboard') }}">Sales Dashboard</a></li>
-                                    <li><a href="{{ route('marketplace.products', 'topdawg') }}">Products</a></li>
-                                    <li><a href="{{ route('marketplace.orders', 'topdawg') }}">Orders</a></li>
-                                    <li><a href="{{ route('marketplace.settings', 'topdawg') }}">Settings</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            {{-- User --}}
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarPages1" aria-expanded="false" aria-controls="sidebarPages1"
-                    class="side-nav-link">
-                    <i class="ri-user-line"></i>
-                    <span>User</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarPages1">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('roles') }}">Roles</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('users.add') }}">Add User</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('permissions') }}" class="text-danger bg-light"><i
-                                    class="ri-error-warning-line text-danger"></i> Reset Permission</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('permissions.view') }}">View Permissions</a>
-                        </li>
-                    </ul>
-                </div>
-
-            </li>
-
             {{-- Action Manager --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#actionManager" aria-expanded="false" aria-controls="actionManager"
@@ -290,643 +71,11 @@
                 </div>
             </li>
 
-            {{-- CRM --}}
             <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#crmNav" aria-expanded="false" aria-controls="crmNav"
-                    class="side-nav-link">
-                    <i class="ri-customer-service-2-line"></i>
-                    <span>CRM</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="crmNav">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('crm.dashboard') }}">
-                                <i class="ri-dashboard-line me-2"></i>Dashboard
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ route('crm.follow-ups.index') }}">
-                                <i class="ri-calendar-check-line me-2"></i>Follow-ups
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ route('crm.shopify.customers.index') }}">
-                                <i class="ri-store-2-line me-2"></i>Shopify customers
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ route('crm.shopify.orders.index') }}">
-                                <i class="ri-shopping-bag-3-line me-2"></i>Shopify orders
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            {{-- Team Management --}}
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#userManagement" aria-expanded="false" aria-controls="userManagement"
-                    class="side-nav-link">
-                    <i class="ri-user-settings-line"></i>
-                    <span>Team Management</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="userManagement">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('users.add') }}">
-                                <i class="ri-user-add-line me-2"></i>Users
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            <li class="side-nav-item">
-                <a href="{{ url('/pricing-master-cvr') }}" class="side-nav-link">
+                <a href="{{ route('all.marketplace.master') }}" class="side-nav-link">
                     <i class="ri-file-line"></i>
-                    <span>Master Analytics</span>
+                    <span>Active Channels Master</span>
                 </a>
-            </li>
-
-                <li class="side-nav-item">
-                <a href="{{ url('/cvr-master') }}" class="side-nav-link">
-                    <i class="ri-file-line"></i>
-                    <span>CVR Master</span>
-                </a>
-            </li>
-
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#suppliers" aria-expanded="false" aria-controls="suppliers"
-                    class="side-nav-link">
-                    <i class="ri-group-line"></i>
-                    <span>Purchase Master</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="suppliers">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('category.list') }}">Categories</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('supplier.list') }}">Suppliers</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('rfq-form.index') }}">RFQ Form</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('claim.reimbursement') }}">Claims & Reimbursements</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('approval.required') }}">Approval Required</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('forecast.analysis') }}">Forecast Analysis</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('to.order.analysis') }}">To Order Analysis</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('list-all-purchase-orders') }}">Purchase Contract</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('purchase.index') }}">Purchase</a>
-                        </li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#ledger" aria-expanded="false" aria-controls="ledger">
-                                <span>Ledger</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="ledger">
-                                <ul class="side-nav-third-level">
-                                    <li>
-                                        <a href="{{ route('ledger.advance.payments') }}">Advance & Payments</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('supplier.ledger') }}">Supplier Ledger</a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('mfrg.in.progress') }}">MIP</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('transit') }}">🚢 Transit</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('china.load') }}">China Load</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('upcoming.container') }}">Upcoming Container</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('transit.container.details') }}">Transit Container INV</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('arrived.container') }}">Arrived Container</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('container.summary') }}">Container Summary</a>
-                        </li>
-                        {{-- <li>
-                            <a href="{{ route('transit.container.changes') }}">Transit Container Changes</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('transit.container.new') }}">Transit Container New</a>
-                        </li> --}}
-                        <li>
-                            <a href="{{ route('container.planning') }}">Container Planning</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('on.sea.transit') }}">On Sea Transit</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('on.road.transit') }}">On Road Transit</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('quality.enhance') }}">Quality Enhance</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('inventory.index') }}">Inventory Warehouse</a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#fbaPricingMaster" aria-expanded="false"
-                    aria-controls="sidebarPages22" class="side-nav-link">
-                    <i class="ri-user-line"></i>
-                    <span>FBA Sales </span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="fbaPricingMaster">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ url('/fba-view-page') }}">FBA pricing</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ url('fba-dispatch-page') }}">FBA Dispatch</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ url('fba-ads-keywords') }}">FBA Ads Keywords</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ url('fba-ads-pt') }}">FBA Ads Performance</a>
-                        </li>
-                    </ul>
-                </div>
-
-            </li>
-
-
-
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarPagess" aria-expanded="false"
-                    aria-controls="sidebarPagess" class="side-nav-link">
-                    <i class="ri-pages-line"></i>
-                    <span>Product Masters</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarPagess">
-                    <ul class="side-nav-second-level">
-
-                        <li>
-                            <a href="{{ route('product.master') }}">CP Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('category.master') }}">Category Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('id.master') }}">ID Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('dim.wt.master') }}">Dimensions & Weight Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('dim.wt.master.ctn') }}">Dim Wt Master (CTN)</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('qc.upgrade') }}">QC Upgrade</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('shipping.master') }}">Shipping Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('general.specific.master') }}">General Specific Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('compliance.master') }}">Compliance Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('packing.instructions.master') }}">Packing Inner Design</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('extra.features.master') }}">Extra Features Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('a.plus.images.master') }}">A+ Images Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('keywords.master') }}">Keywords Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('package.includes.master') }}">Package Includes Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('qa.master') }}">Q&A Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('competitors.master') }}">Competitors Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('target.keywords.master') }}">Target Keywords Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('target.products.master') }}">Target Products Master</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('tag.lines.master') }}">Tag lines Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('group.master') }}">Group Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('seo.keywords.master') }}">SEO Keywords master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('title.master') }}">Title Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('sku-images.index') }}">SKU Image Manager</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('sku-images.push-status') }}">SKU Image Push Status</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('image.master') }}">Image Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('bullet.points') }}">Bullet Points Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('videos.master') }}">Videos</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('product.description') }}">Description Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('product.description2') }}">Description Master 2.0</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('features') }}">Features</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('images') }}">Images</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ url('ads-pricing-master') }}">Advertisment Master</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('costprice.analysis') }}">Cost Price Analysis</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('movement.analysis') }}">Movement Analysis</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('tobedc.list') }}">2BDC</a>
-                        </li>
-
-                        <li>
-                            <a href="/pages/transit-analysis">Transit Analysis</a>                        </li>
-                        <li>
-                            <a href="{{ route('pRoi.analysis') }}">Profit & ROI Analysis</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('return.analysis') }}">Returns Analysis</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('stock.analysis') }}">Stock Verification</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('shortfall.analysis') }}">Shortfall Analysis</a>
-                        </li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarAdvMaster" aria-expanded="false"
-                                aria-controls="sidebarAdvMaster" class="side-nav-link collapsed">
-                                <span class="menu-arrow"></span>
-                                <span>Advertisement Master</span>
-                            </a>
-                            <div class="collapse" id="sidebarAdvMaster">
-                                <ul class="side-nav-second-level">
-                                    <!-- Product Wise Section -->
-                                    <li class="side-nav-item">
-                                        <a data-bs-toggle="collapse" href="#productWise" aria-expanded="false"
-                                            aria-controls="productWise" class="collapsed">
-                                            <span>Product Wise</span>
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="productWise">
-                                            <ul class="side-nav-third-level">
-                                                <!-- PPC Section -->
-                                                <li class="side-nav-item">
-                                                    <a data-bs-toggle="collapse" href="#ppcProduct"
-                                                        aria-expanded="false" aria-controls="ppcProduct"
-                                                        class="collapsed">
-                                                        <span>PPC</span>
-                                                        <span class="menu-arrow"></span>
-                                                    </a>
-                                                    <div class="collapse" id="ppcProduct">
-                                                        <ul class="side-nav-fourth-level">
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcProduct1"
-                                                                    aria-expanded="false" aria-controls="ppcProduct1"
-                                                                    class="collapsed">
-                                                                    <span>KW Advt</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcProduct1">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.kw.amazon') }}">Amazon</a>
-                                                                        </li>
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.kw.eBay') }}">eBay</a>
-                                                                        </li>
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.kw.walmart') }}">Walmart</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcProduct2"
-                                                                    aria-expanded="false" aria-controls="ppcProduct2"
-                                                                    class="collapsed">
-                                                                    <span>Prod Target Advt</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcProduct2">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.prod.target.Amazon') }}">Amazon</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcProduct3"
-                                                                    aria-expanded="false" aria-controls="ppcProduct3"
-                                                                    class="collapsed">
-                                                                    <span>Headline Advt</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcProduct3">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.headline.Amazon') }}">Amazon</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcProduct4"
-                                                                    aria-expanded="false" aria-controls="ppcProduct4"
-                                                                    class="collapsed">
-                                                                    <span>Promoted Advt</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcProduct4">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.promoted.eBay') }}">eBay</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcProduct5"
-                                                                    aria-expanded="false" aria-controls="ppcProduct5"
-                                                                    class="collapsed">
-                                                                    <span>Shopping Advt</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcProduct5">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.shopping.google') }}">Google
-                                                                                Shopping</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcProduct6"
-                                                                    aria-expanded="false" aria-controls="ppcProduct6"
-                                                                    class="collapsed">
-                                                                    <span>Demand Gen Parents</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcProduct6">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.gen.googleNetworks') }}">Google
-                                                                                Networks</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                </li>
-
-                                                <!-- Budget Control Section -->
-                                                <li class="side-nav-item">
-                                                    <a data-bs-toggle="collapse" href="#budgetControlProduct"
-                                                        aria-expanded="false" aria-controls="budgetControlProduct"
-                                                        class="collapsed">
-                                                        <span>Budget Control</span>
-                                                        <span class="menu-arrow"></span>
-                                                    </a>
-                                                    <div class="collapse" id="budgetControlProduct">
-                                                        <ul class="side-nav-fourth-level">
-                                                            <li>
-                                                                <a data-bs-toggle="collapse"
-                                                                    href="#budgetControlProduct1"
-                                                                    aria-expanded="false"
-                                                                    aria-controls="budgetControlProduct1"
-                                                                    class="collapsed">
-                                                                    <span>Meta Parent Advt Images</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="budgetControlProduct1">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.productWise.metaParent.img.facebook') }}">FB</a>
-                                                                        </li>
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.productWise.metaParent.img.instagram') }}">Insta</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-
-
-                                                            <li>
-                                                                <a data-bs-toggle="collapse"
-                                                                    href="#budgetControlProduct2"
-                                                                    aria-expanded="false"
-                                                                    aria-controls="budgetControlProduct2"
-                                                                    class="collapsed">
-                                                                    <span>Meta Parent Advt Video</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="budgetControlProduct2">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.productWise.metaParent.video.facebook') }}">FB</a>
-                                                                        </li>
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.productWise.metaParent.video.instagram') }}">Insta</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </li>
-
-                                    <!-- Group Wise Section -->
-                                    <li class="side-nav-item">
-                                        <a data-bs-toggle="collapse" href="#groupWise" aria-expanded="false"
-                                            aria-controls="groupWise" class="collapsed">
-                                            <span>Group Wise</span>
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="groupWise">
-                                            <ul class="side-nav-third-level">
-                                                <!-- PPC Section -->
-                                                <li class="side-nav-item">
-                                                    <a data-bs-toggle="collapse" href="#ppcGroup"
-                                                        aria-expanded="false" aria-controls="ppcGroup"
-                                                        class="collapsed">
-                                                        <span>PPC</span>
-                                                        <span class="menu-arrow"></span>
-                                                    </a>
-                                                    <div class="collapse" id="ppcGroup">
-                                                        <ul class="side-nav-fourth-level">
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcGroup1"
-                                                                    aria-expanded="false" aria-controls="ppcGroup1"
-                                                                    class="collapsed">
-                                                                    <span>Serp Advt</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcGroup1">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">Google SERP</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcGroup2"
-                                                                    aria-expanded="false" aria-controls="ppcGroup2"
-                                                                    class="collapsed">
-                                                                    <span>Youtube Advt Groups</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcGroup2">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">Youtube</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcGroup3"
-                                                                    aria-expanded="false" aria-controls="ppcGroup3"
-                                                                    class="collapsed">
-                                                                    <span>Demand Gen Groups</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcGroup3">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">Google Networks</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                </li>
-
-                                                <!-- Budget Control Section -->
-                                                <li class="side-nav-item">
-                                                    <a data-bs-toggle="collapse" href="#budgetControlGroup"
-                                                        aria-expanded="false" aria-controls="budgetControlGroup"
-                                                        class="collapsed">
-                                                        <span>Budget Control</span>
-                                                        <span class="menu-arrow"></span>
-                                                    </a>
-                                                    <div class="collapse" id="budgetControlGroup">
-                                                        <ul class="side-nav-fourth-level">
-                                                            <li>
-                                                                <a data-bs-toggle="collapse"
-                                                                    href="#budgetControlGroup1" aria-expanded="false"
-                                                                    aria-controls="budgetControlGroup1"
-                                                                    class="collapsed">
-                                                                    <span>Meta Parent Advt Images</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="budgetControlGroup1">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">FB</a></li>
-                                                                        <li><a href="#">Insta</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse"
-                                                                    href="#budgetControlGroup2" aria-expanded="false"
-                                                                    aria-controls="budgetControlGroup2"
-                                                                    class="collapsed">
-                                                                    <span>Meta Parent Advt Video</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="budgetControlGroup2">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">FB</a></li>
-                                                                        <li><a href="#">Insta</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-                    </ul>
-
-                </div>
             </li>
 
 
@@ -1063,72 +212,321 @@
                 </div>
             </li>
 
+            {{-- CRM --}}
             <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#salesDashboard" aria-expanded="false"
-                    aria-controls="salesDashboard" class="side-nav-link">
-                    <i class="ri-bar-chart-line"></i>
-                    <span>Sales Dashboard</span>
+                <a data-bs-toggle="collapse" href="#crmNav" aria-expanded="false" aria-controls="crmNav"
+                    class="side-nav-link">
+                    <i class="ri-customer-service-2-line"></i>
+                    <span>CRM</span>
                     <span class="menu-arrow"></span>
                 </a>
-                <div class="collapse" id="salesDashboard">
+                <div class="collapse" id="crmNav">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ route('ebay.daily.sales') }}">eBay Sales Data</a>
+                            <a href="{{ route('crm.dashboard') }}">
+                                <i class="ri-dashboard-line me-2"></i>Dashboard
+                            </a>
                         </li>
                         <li>
-                            <a href="{{ route('ebay2.daily.sales') }}">eBay 2 Sales Data</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ url('/ebay3/daily-sales') }}">eBay 3 Sales Data</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('topdawg.sales.dashboard') }}">TopDawg Sales Data</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ url('amazon/daily-sales') }}">Amazon Sales Data</a>
+                            <a href="{{ route('crm.follow-ups.index') }}">
+                                <i class="ri-calendar-check-line me-2"></i>Follow-ups
+                            </a>
                         </li>
                         <li>
-                            <a href="{{ url('doba/daily-sales') }}">Doba Sales Data</a>
+                            <a href="{{ route('crm.shopify.customers.index') }}">
+                                <i class="ri-store-2-line me-2"></i>Shopify customers
+                            </a>
                         </li>
-
-                        <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
-
-                        <li><a href="{{ url('temu2-tabulator') }}">Temu 2 Sales Data</a></li>
-
-                        <li><a href="{{ url('shein-tabulator') }}">Shein Sales Data</a></li>
-
-                        <li><a href="{{ url('mercari-with-ship') }}">Mercari With Ship Sales</a></li>
-
-                        <li><a href="{{ url('mercari-without-ship') }}">Mercari Without Ship Sales</a></li>
-
-                        <li><a href="{{ url('aliexpress-tabulator') }}">Aliexpress Sales Data</a></li>
-
-
-                        <li><a href="{{ url('shopify-b2c/daily-sales') }}">Shopify B2C Sales</a></li>
-
-                        <li><a href="{{ url('shopify-b2b/daily-sales') }}">Shopify B2B Sales</a></li>
-
-                        <li><a href="{{ route('bestbuy.daily.sales') }}">Best Buy Sales Data</a></li>
-
-                        <li><a href="{{ route('macys.daily.sales') }}">Macy's Sales Data</a></li>
-
-                        <li><a href="{{ route('tiendamia.daily.sales') }}">Tiendamia Sales Data</a></li>
-
-                        <li><a href="{{ route('tiktok.daily.sales') }}">TikTok Sales Data</a></li>
-
-                        <li><a href="{{ route('faire.tabulator.view') }}">Faire Sales Data</a></li>
-
-                        <li><a href="{{ route('tiktok.two.daily.sales') }}">TikTok 2 Sales Data</a></li>
-
-                        <li><a href="{{ route('depop.sheet') }}">Depop Sheet Data</a></li>
-
-                        <li><a href="{{ route('walmart.daily.sales') }}">Walmart Sales Data</a></li>
-
-                        <li><a href="{{ route('wayfair.daily.sales') }}">Wayfair Sales Data</a></li>
+                        <li>
+                            <a href="{{ route('crm.shopify.orders.index') }}">
+                                <i class="ri-shopping-bag-3-line me-2"></i>Shopify orders
+                            </a>
+                        </li>
                     </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarCustomerCare" aria-expanded="false"
+                    aria-controls="sidebarCustomerCare" class="side-nav-link">
+                    <i class="ri-customer-service-2-line"></i>
+                    <span>Customer Care</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarCustomerCare">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('customer.care') }}">Overview</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.refunds') }}">Refunds</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.dispatch.issues') }}">All Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.dispatch.carrier.and.claim') }}">Carrier and Claim</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.dispatch.carrier.issue') }}">Carrier Issue</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.c.care.issues') }}">C-care Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.other.issues') }}">Other Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.followups') }}">Follow Up CC</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dar.index') }}">DAR</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('incoming.view') }}">Incoming</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('incoming.return.view') }}">Incoming Return</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('outgoing.view') }}">Outgoing</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('claim.reimbursement') }}">Claim & Reimbursement</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ url('/cvr-master') }}" class="side-nav-link">
+                    <i class="ri-file-line"></i>
+                    <span>CVR Master</span>
+                </a>
+            </li>
+
+
+            <li class="side-nav-item">
+                <a href="{{ route('any', 'index') }}" class="side-nav-link">
+                    <i class="ri-dashboard-3-line"></i>
+                    <span> Dashboard </span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#fbaPricingMaster" aria-expanded="false"
+                    aria-controls="sidebarPages22" class="side-nav-link">
+                    <i class="ri-user-line"></i>
+                    <span>FBA Sales </span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="fbaPricingMaster">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ url('/fba-view-page') }}">FBA pricing</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ url('fba-dispatch-page') }}">FBA Dispatch</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ url('fba-ads-keywords') }}">FBA Ads Keywords</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ url('fba-ads-pt') }}">FBA Ads Performance</a>
+                        </li>
+                    </ul>
+                </div>
+
+            </li>
+
+            {{-- Inventory Management --}}
+
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#invsidebarPages" aria-expanded="false"
+                    aria-controls="sidebarPages" class="side-nav-link">
+                    <i class="ri-archive-drawer-line"></i>
+                    <span>Inventory Management</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="invsidebarPages">
+                    <ul class="side-nav-second-level">
+
+                        <li>
+                            <a href="{{ route('view-inventory-data') }}">Inventory Main</a>
+                        </li>
+                        {{-- <li>
+                            <a href="{{ route('inventory.manage.index') }}">
+                                <i class="ri-stack-line me-1"></i>Manage Inventory & Sync
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('inventory.import.index') }}">
+                                <i class="ri-file-upload-line me-1"></i>Shopify CSV Import
+                            </a>
+                        </li> --}}
+                        <li>
+                            <a href="{{ route('verify-adjust') }}">Verifications & Adjustments</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('lost-gain') }}">Lost/Gain</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('incoming.view') }}">Incoming</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('incoming.return.view') }}">Incoming Return</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('view-inventory-incoming-return-trash') }}">View Inventory (Trash Godown)</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('view-inventory-incoming-return-open-box') }}">View Inventory (Open Box Godown)</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('outgoing.view') }}">Outgoing</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('inventory.spares.dashboard') }}">Spare Parts Dashboard</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('stock.adjustment.view') }}">Stock Adjustment</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('stock.transfer.view') }}">Stock Transfer (WH)</a>
+                        </li>
+                        {{-- <li>
+                            <a href="{{ route('stock.balance.view') }}">Stock Balance / TRF</a>
+                        </li> --}}
+
+                        <li>
+                            <a href="{{ url('stock-balance-tabulator') }}">Stock Balance TRF</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('stock.balance.alternate') }}">Stock Alternate</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('combo.trf') }}">Combo TRF</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('incoming.orders.view') }}">Incoming Orders</a>
+                        </li>
+                        {{-- <li>
+                            <a href="#">Trash Entries</a>
+                        </li> --}}
+                        <li>
+                            <a href="#">Pallete Sales</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            {{-- Inventory Warehouse --}}
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#waresidebarPages" aria-expanded="false"
+                    aria-controls="sidebarPages" class="side-nav-link">
+                    <i class="ri-building-4-line"></i>
+                    <span>Inventory Warehouse</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="waresidebarPages">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('list_all_warehouses') }}">List All Warehouses</a>
+                        </li>
+
+
+                        <li>
+                            <a href="#">Inventory Locator</a>
+                        </li>
+                        <li>
+                            <a href="#">Transfers</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('showroom.godown') }}">Main Godown</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('main.godown') }}">Showroom Godown</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('returns.godown') }}">Returns Godown</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('openbox.godown') }}">Open Box Godown</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('useditem.godown') }}">Used Item Godown</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('trash.godown') }} ">Trash Godown</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            {{-- Listing Master --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarListingMaster" aria-expanded="false" aria-controls="sidebarListingMaster" class="side-nav-link">
+                    <i class="ri-list-check-2"></i>
+                    <span>Listing Master</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarListingMaster">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('listing.master.amz.data') }}">Amz Data</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            {{-- Listing Mirror --}}
+            <li class="side-nav-item">
+                <a href="{{ route('listing-mirror.index') }}" class="side-nav-link">
+                    <i class="ri-refresh-line"></i>
+                    <span>Listing Mirror</span>
+                </a>
+            </li>
+
+            {{-- LMP's Master --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#lmpsMaster" aria-expanded="false" aria-controls="lmpsMaster"
+                    class="side-nav-link">
+                    <i class="ri-price-tag-3-line"></i>
+                    <span>LMP's Master</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="lmpsMaster">
+                   <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ url('/repricer/amazon-search') }}"
+                                            class="{{ request()->is('repricer/amazon-search*') ? 'active' : '' }}">
+                                            Amazon Competitors
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/ebay-search') }}"
+                                            class="{{ request()->is('repricer/ebay-search*') ? 'active' : '' }}">
+                                            eBay Competitors
+                                        </a>
+                                    </li>
+                                </ul>
                 </div>
             </li>
 
@@ -1567,265 +965,6 @@
                         </li>
                     </ul>
                 </div>
-            </li>
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarCustomerCare" aria-expanded="false"
-                    aria-controls="sidebarCustomerCare" class="side-nav-link">
-                    <i class="ri-customer-service-2-line"></i>
-                    <span>Customer Care</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarCustomerCare">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('customer.care') }}">Overview</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.refunds') }}">Refunds</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.dispatch.issues') }}">All Issues</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.dispatch.carrier.and.claim') }}">Carrier and Claim</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.dispatch.carrier.issue') }}">Carrier Issue</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.c.care.issues') }}">C-care Issues</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.other.issues') }}">Other Issues</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.followups') }}">Follow Up CC</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('dar.index') }}">DAR</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('incoming.view') }}">Incoming</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('incoming.return.view') }}">Incoming Return</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('outgoing.view') }}">Outgoing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('claim.reimbursement') }}">Claim & Reimbursement</a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            <li class="side-nav-item">
-                <a href="{{ route('customer.care.shipping') }}" class="side-nav-link">
-                    <i class="ri-truck-line"></i>
-                    <span>Shipping</span>
-                </a>
-            </li>
-
-            {{-- Shopify --}}
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarPages" aria-expanded="false" aria-controls="sidebarPages"
-                    class="side-nav-link">
-                    <i class="ri-shopping-bag-line"></i>
-                    <span>Shopify</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarPages">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('shopify', ['products', 'shopify-Products']) }}">Products</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('products.inventory') }}">Inventory</a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            {{-- Inventory Management --}}
-
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#invsidebarPages" aria-expanded="false"
-                    aria-controls="sidebarPages" class="side-nav-link">
-                    <i class="ri-archive-drawer-line"></i>
-                    <span>Inventory Management</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="invsidebarPages">
-                    <ul class="side-nav-second-level">
-
-                        <li>
-                            <a href="{{ route('view-inventory-data') }}">Inventory Main</a>
-                        </li>
-                        {{-- <li>
-                            <a href="{{ route('inventory.manage.index') }}">
-                                <i class="ri-stack-line me-1"></i>Manage Inventory & Sync
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ route('inventory.import.index') }}">
-                                <i class="ri-file-upload-line me-1"></i>Shopify CSV Import
-                            </a>
-                        </li> --}}
-                        <li>
-                            <a href="{{ route('verify-adjust') }}">Verifications & Adjustments</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('lost-gain') }}">Lost/Gain</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('incoming.view') }}">Incoming</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('incoming.return.view') }}">Incoming Return</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('view-inventory-incoming-return-trash') }}">View Inventory (Trash Godown)</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('view-inventory-incoming-return-open-box') }}">View Inventory (Open Box Godown)</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('outgoing.view') }}">Outgoing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('inventory.spares.dashboard') }}">Spare Parts Dashboard</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('stock.adjustment.view') }}">Stock Adjustment</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('stock.transfer.view') }}">Stock Transfer (WH)</a>
-                        </li>
-                        {{-- <li>
-                            <a href="{{ route('stock.balance.view') }}">Stock Balance / TRF</a>
-                        </li> --}}
-
-                        <li>
-                            <a href="{{ url('stock-balance-tabulator') }}">Stock Balance TRF</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('stock.balance.alternate') }}">Stock Alternate</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('combo.trf') }}">Combo TRF</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('incoming.orders.view') }}">Incoming Orders</a>
-                        </li>
-                        {{-- <li>
-                            <a href="#">Trash Entries</a>
-                        </li> --}}
-                        <li>
-                            <a href="#">Pallete Sales</a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            {{-- Inventory Warehouse --}}
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#waresidebarPages" aria-expanded="false"
-                    aria-controls="sidebarPages" class="side-nav-link">
-                    <i class="ri-building-4-line"></i>
-                    <span>Inventory Warehouse</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="waresidebarPages">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('list_all_warehouses') }}">List All Warehouses</a>
-                        </li>
-
-
-                        <li>
-                            <a href="#">Inventory Locator</a>
-                        </li>
-                        <li>
-                            <a href="#">Transfers</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('showroom.godown') }}">Main Godown</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('main.godown') }}">Showroom Godown</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('returns.godown') }}">Returns Godown</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('openbox.godown') }}">Open Box Godown</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('useditem.godown') }}">Used Item Godown</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('trash.godown') }} ">Trash Godown</a>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-
-            {{-- Listing Mirror --}}
-            <li class="side-nav-item">
-                <a href="{{ route('listing-mirror.index') }}" class="side-nav-link">
-                    <i class="ri-refresh-line"></i>
-                    <span>Listing Mirror</span>
-                </a>
-            </li>
-
-            {{-- LMP's Master --}}
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#lmpsMaster" aria-expanded="false" aria-controls="lmpsMaster"
-                    class="side-nav-link">
-                    <i class="ri-price-tag-3-line"></i>
-                    <span>LMP's Master</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="lmpsMaster">
-                   <ul class="side-nav-third-level">
-                                    <li>
-                                        <a href="{{ url('/repricer/amazon-search') }}"
-                                            class="{{ request()->is('repricer/amazon-search*') ? 'active' : '' }}">
-                                            Amazon Competitors
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ url('/repricer/ebay-search') }}"
-                                            class="{{ request()->is('repricer/ebay-search*') ? 'active' : '' }}">
-                                            eBay Competitors
-                                        </a>
-                                    </li>
-                                </ul>
-                </div>
-            </li>
-
-            <li class="side-nav-item">
-                <a href="{{ url('ai-title-manager') }}" class="side-nav-link">
-                    <i class="ri-magic-line"></i>
-                    <span>Marketplace AI Title </span>
-                </a>
             </li>
 
             <li class="side-nav-item">
@@ -3005,6 +2144,868 @@
         </ul>
     </div>
     </li>
+
+            <li class="side-nav-item">
+                <a href="{{ url('ai-title-manager') }}" class="side-nav-link">
+                    <i class="ri-magic-line"></i>
+                    <span>Marketplace AI Title </span>
+                </a>
+            </li>
+
+            {{-- Marketplace Sync (Reverb, Amazon, eBay, Walmart) --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarMarketplaceSync" aria-expanded="false" aria-controls="sidebarMarketplaceSync" class="side-nav-link">
+                    <i class="ri-store-2-line"></i>
+                    <span>Marketplace Sync</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarMarketplaceSync">
+                    <ul class="side-nav-second-level">
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceReverb" aria-expanded="false" aria-controls="sidebarMarketplaceReverb">
+                                <span>Reverb</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceReverb">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.products', 'reverb') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'reverb') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'reverb') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceAmazon" aria-expanded="false" aria-controls="sidebarMarketplaceAmazon">
+                                <span>Amazon</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceAmazon">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.products', 'amazon') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'amazon') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceEbay" aria-expanded="false" aria-controls="sidebarMarketplaceEbay">
+                                <span>eBay</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceEbay">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.products', 'ebay') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'ebay') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'ebay') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceWalmart" aria-expanded="false" aria-controls="sidebarMarketplaceWalmart">
+                                <span>Walmart</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceWalmart">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.products', 'walmart') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'walmart') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'walmart') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceTopDawg" aria-expanded="false" aria-controls="sidebarMarketplaceTopDawg">
+                                <span>TopDawg</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceTopDawg">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('topdawg.sales.dashboard') }}">Sales Dashboard</a></li>
+                                    <li><a href="{{ route('marketplace.products', 'topdawg') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'topdawg') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'topdawg') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ url('/pricing-master-cvr') }}" class="side-nav-link">
+                    <i class="ri-file-line"></i>
+                    <span>Master Analytics</span>
+                </a>
+            </li>
+
+
+
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarPagess" aria-expanded="false"
+                    aria-controls="sidebarPagess" class="side-nav-link">
+                    <i class="ri-pages-line"></i>
+                    <span>Product Masters</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarPagess">
+                    <ul class="side-nav-second-level">
+
+                        <li>
+                            <a href="{{ route('product.master') }}">CP Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('category.master') }}">Category Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('id.master') }}">ID Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dim.wt.master') }}">Dimensions & Weight Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dim.wt.master.ctn') }}">Dim Wt Master (CTN)</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('qc.upgrade') }}">QC Upgrade</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shipping.master') }}">Shipping Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('general.specific.master') }}">General Specific Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('compliance.master') }}">Compliance Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('packing.instructions.master') }}">Packing Inner Design</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('extra.features.master') }}">Extra Features Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('a.plus.images.master') }}">A+ Images Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('keywords.master') }}">Keywords Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('package.includes.master') }}">Package Includes Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('qa.master') }}">Q&A Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('competitors.master') }}">Competitors Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('target.keywords.master') }}">Target Keywords Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('target.products.master') }}">Target Products Master</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ route('tag.lines.master') }}">Tag lines Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('group.master') }}">Group Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('seo.keywords.master') }}">SEO Keywords master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('title.master') }}">Title Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('sku-images.index') }}">SKU Image Manager</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('sku-images.push-status') }}">SKU Image Push Status</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('image.master') }}">Image Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('bullet.points') }}">Bullet Points Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('videos.master') }}">Videos</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('product.description') }}">Description Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('product.description2') }}">Description Master 2.0</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('features') }}">Features</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('images') }}">Images</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ url('ads-pricing-master') }}">Advertisment Master</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ route('costprice.analysis') }}">Cost Price Analysis</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ route('movement.analysis') }}">Movement Analysis</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('tobedc.list') }}">2BDC</a>
+                        </li>
+
+                        <li>
+                            <a href="/pages/transit-analysis">Transit Analysis</a>                        </li>
+                        <li>
+                            <a href="{{ route('pRoi.analysis') }}">Profit & ROI Analysis</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('return.analysis') }}">Returns Analysis</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('stock.analysis') }}">Stock Verification</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shortfall.analysis') }}">Shortfall Analysis</a>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarAdvMaster" aria-expanded="false"
+                                aria-controls="sidebarAdvMaster" class="side-nav-link collapsed">
+                                <span class="menu-arrow"></span>
+                                <span>Advertisement Master</span>
+                            </a>
+                            <div class="collapse" id="sidebarAdvMaster">
+                                <ul class="side-nav-second-level">
+                                    <!-- Product Wise Section -->
+                                    <li class="side-nav-item">
+                                        <a data-bs-toggle="collapse" href="#productWise" aria-expanded="false"
+                                            aria-controls="productWise" class="collapsed">
+                                            <span>Product Wise</span>
+                                            <span class="menu-arrow"></span>
+                                        </a>
+                                        <div class="collapse" id="productWise">
+                                            <ul class="side-nav-third-level">
+                                                <!-- PPC Section -->
+                                                <li class="side-nav-item">
+                                                    <a data-bs-toggle="collapse" href="#ppcProduct"
+                                                        aria-expanded="false" aria-controls="ppcProduct"
+                                                        class="collapsed">
+                                                        <span>PPC</span>
+                                                        <span class="menu-arrow"></span>
+                                                    </a>
+                                                    <div class="collapse" id="ppcProduct">
+                                                        <ul class="side-nav-fourth-level">
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcProduct1"
+                                                                    aria-expanded="false" aria-controls="ppcProduct1"
+                                                                    class="collapsed">
+                                                                    <span>KW Advt</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcProduct1">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.kw.amazon') }}">Amazon</a>
+                                                                        </li>
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.kw.eBay') }}">eBay</a>
+                                                                        </li>
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.kw.walmart') }}">Walmart</a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcProduct2"
+                                                                    aria-expanded="false" aria-controls="ppcProduct2"
+                                                                    class="collapsed">
+                                                                    <span>Prod Target Advt</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcProduct2">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.prod.target.Amazon') }}">Amazon</a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcProduct3"
+                                                                    aria-expanded="false" aria-controls="ppcProduct3"
+                                                                    class="collapsed">
+                                                                    <span>Headline Advt</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcProduct3">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.headline.Amazon') }}">Amazon</a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcProduct4"
+                                                                    aria-expanded="false" aria-controls="ppcProduct4"
+                                                                    class="collapsed">
+                                                                    <span>Promoted Advt</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcProduct4">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.promoted.eBay') }}">eBay</a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcProduct5"
+                                                                    aria-expanded="false" aria-controls="ppcProduct5"
+                                                                    class="collapsed">
+                                                                    <span>Shopping Advt</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcProduct5">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.shopping.google') }}">Google
+                                                                                Shopping</a></li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcProduct6"
+                                                                    aria-expanded="false" aria-controls="ppcProduct6"
+                                                                    class="collapsed">
+                                                                    <span>Demand Gen Parents</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcProduct6">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.demand.gen.googleNetworks') }}">Google
+                                                                                Networks</a></li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </li>
+
+                                                <!-- Budget Control Section -->
+                                                <li class="side-nav-item">
+                                                    <a data-bs-toggle="collapse" href="#budgetControlProduct"
+                                                        aria-expanded="false" aria-controls="budgetControlProduct"
+                                                        class="collapsed">
+                                                        <span>Budget Control</span>
+                                                        <span class="menu-arrow"></span>
+                                                    </a>
+                                                    <div class="collapse" id="budgetControlProduct">
+                                                        <ul class="side-nav-fourth-level">
+                                                            <li>
+                                                                <a data-bs-toggle="collapse"
+                                                                    href="#budgetControlProduct1"
+                                                                    aria-expanded="false"
+                                                                    aria-controls="budgetControlProduct1"
+                                                                    class="collapsed">
+                                                                    <span>Meta Parent Advt Images</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="budgetControlProduct1">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.demand.productWise.metaParent.img.facebook') }}">FB</a>
+                                                                        </li>
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.demand.productWise.metaParent.img.instagram') }}">Insta</a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+
+
+                                                            <li>
+                                                                <a data-bs-toggle="collapse"
+                                                                    href="#budgetControlProduct2"
+                                                                    aria-expanded="false"
+                                                                    aria-controls="budgetControlProduct2"
+                                                                    class="collapsed">
+                                                                    <span>Meta Parent Advt Video</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="budgetControlProduct2">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.demand.productWise.metaParent.video.facebook') }}">FB</a>
+                                                                        </li>
+                                                                        <li><a
+                                                                                href="{{ route('advertisment.demand.productWise.metaParent.video.instagram') }}">Insta</a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </li>
+
+                                    <!-- Group Wise Section -->
+                                    <li class="side-nav-item">
+                                        <a data-bs-toggle="collapse" href="#groupWise" aria-expanded="false"
+                                            aria-controls="groupWise" class="collapsed">
+                                            <span>Group Wise</span>
+                                            <span class="menu-arrow"></span>
+                                        </a>
+                                        <div class="collapse" id="groupWise">
+                                            <ul class="side-nav-third-level">
+                                                <!-- PPC Section -->
+                                                <li class="side-nav-item">
+                                                    <a data-bs-toggle="collapse" href="#ppcGroup"
+                                                        aria-expanded="false" aria-controls="ppcGroup"
+                                                        class="collapsed">
+                                                        <span>PPC</span>
+                                                        <span class="menu-arrow"></span>
+                                                    </a>
+                                                    <div class="collapse" id="ppcGroup">
+                                                        <ul class="side-nav-fourth-level">
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcGroup1"
+                                                                    aria-expanded="false" aria-controls="ppcGroup1"
+                                                                    class="collapsed">
+                                                                    <span>Serp Advt</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcGroup1">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a href="#">Google SERP</a></li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcGroup2"
+                                                                    aria-expanded="false" aria-controls="ppcGroup2"
+                                                                    class="collapsed">
+                                                                    <span>Youtube Advt Groups</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcGroup2">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a href="#">Youtube</a></li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                            <li>
+                                                                <a data-bs-toggle="collapse" href="#ppcGroup3"
+                                                                    aria-expanded="false" aria-controls="ppcGroup3"
+                                                                    class="collapsed">
+                                                                    <span>Demand Gen Groups</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="ppcGroup3">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a href="#">Google Networks</a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </li>
+
+                                                <!-- Budget Control Section -->
+                                                <li class="side-nav-item">
+                                                    <a data-bs-toggle="collapse" href="#budgetControlGroup"
+                                                        aria-expanded="false" aria-controls="budgetControlGroup"
+                                                        class="collapsed">
+                                                        <span>Budget Control</span>
+                                                        <span class="menu-arrow"></span>
+                                                    </a>
+                                                    <div class="collapse" id="budgetControlGroup">
+                                                        <ul class="side-nav-fourth-level">
+                                                            <li>
+                                                                <a data-bs-toggle="collapse"
+                                                                    href="#budgetControlGroup1" aria-expanded="false"
+                                                                    aria-controls="budgetControlGroup1"
+                                                                    class="collapsed">
+                                                                    <span>Meta Parent Advt Images</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="budgetControlGroup1">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a href="#">FB</a></li>
+                                                                        <li><a href="#">Insta</a></li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                            <li>
+                                                                <a data-bs-toggle="collapse"
+                                                                    href="#budgetControlGroup2" aria-expanded="false"
+                                                                    aria-controls="budgetControlGroup2"
+                                                                    class="collapsed">
+                                                                    <span>Meta Parent Advt Video</span>
+                                                                    <span class="menu-arrow"></span>
+                                                                </a>
+                                                                <div class="collapse" id="budgetControlGroup2">
+                                                                    <ul class="side-nav-fifth-level">
+                                                                        <li><a href="#">FB</a></li>
+                                                                        <li><a href="#">Insta</a></li>
+                                                                    </ul>
+                                                                </div>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+                    </ul>
+
+                </div>
+            </li>
+
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#suppliers" aria-expanded="false" aria-controls="suppliers"
+                    class="side-nav-link">
+                    <i class="ri-group-line"></i>
+                    <span>Purchase Master</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="suppliers">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('category.list') }}">Categories</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('supplier.list') }}">Suppliers</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('rfq-form.index') }}">RFQ Form</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('claim.reimbursement') }}">Claims & Reimbursements</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('approval.required') }}">Approval Required</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('forecast.analysis') }}">Forecast Analysis</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('to.order.analysis') }}">To Order Analysis</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('list-all-purchase-orders') }}">Purchase Contract</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('purchase.index') }}">Purchase</a>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#ledger" aria-expanded="false" aria-controls="ledger">
+                                <span>Ledger</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="ledger">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('ledger.advance.payments') }}">Advance & Payments</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('supplier.ledger') }}">Supplier Ledger</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+                        <li>
+                            <a href="{{ route('mfrg.in.progress') }}">MIP</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('transit') }}">🚢 Transit</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('china.load') }}">China Load</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('upcoming.container') }}">Upcoming Container</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('transit.container.details') }}">Transit Container INV</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('arrived.container') }}">Arrived Container</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('container.summary') }}">Container Summary</a>
+                        </li>
+                        {{-- <li>
+                            <a href="{{ route('transit.container.changes') }}">Transit Container Changes</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('transit.container.new') }}">Transit Container New</a>
+                        </li> --}}
+                        <li>
+                            <a href="{{ route('container.planning') }}">Container Planning</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('on.sea.transit') }}">On Sea Transit</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('on.road.transit') }}">On Road Transit</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('quality.enhance') }}">Quality Enhance</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('inventory.index') }}">Inventory Warehouse</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarResourcesMaster" aria-expanded="{{ request()->routeIs('resources-master.*') ? 'true' : 'false' }}" aria-controls="sidebarResourcesMaster"
+                    class="side-nav-link {{ request()->routeIs('resources-master.*') ? 'active' : '' }}">
+                    <i class="ri-folder-shield-2-line"></i>
+                    <span> Resources Master </span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse {{ request()->routeIs('resources-master.*') ? 'show' : '' }}" id="sidebarResourcesMaster">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('resources-master.section', 'rr_files') }}" class="{{ request()->is('resources-master/section/rr_files') ? 'active' : '' }}">R&amp;R Files</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.section', 'training_resources') }}" class="{{ request()->is('resources-master/section/training_resources') ? 'active' : '' }}">Training Resources</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.section', 'checklist_forms') }}" class="{{ request()->is('resources-master/section/checklist_forms') ? 'active' : '' }}">Checklist Forms</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.section', 'media_gallery') }}" class="{{ request()->is('resources-master/section/media_gallery') ? 'active' : '' }}">Media Gallery</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.section', 'links_videos') }}" class="{{ request()->is('resources-master/section/links_videos') ? 'active' : '' }}">Links / Videos</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('resources-master.dashboard') }}" class="{{ request()->routeIs('resources-master.dashboard') ? 'active' : '' }}">Overview</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            {{-- Review Intelligence --}}
+            <li class="side-nav-item">
+                <a href="{{ route('reviews.index') }}" class="side-nav-link {{ request()->routeIs('reviews.*') ? 'active' : '' }}">
+                    <i class="ri-star-smile-line"></i>
+                    <span>Review Intelligence</span>
+                    @php $openAlertCount = \App\Models\ReviewAlert::where('status','open')->count(); @endphp
+                    @if($openAlertCount > 0)
+                        <span class="badge bg-danger rounded-pill ms-auto">{{ $openAlertCount }}</span>
+                    @endif
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#salesDashboard" aria-expanded="false"
+                    aria-controls="salesDashboard" class="side-nav-link">
+                    <i class="ri-bar-chart-line"></i>
+                    <span>Sales Dashboard</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="salesDashboard">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('ebay.daily.sales') }}">eBay Sales Data</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('ebay2.daily.sales') }}">eBay 2 Sales Data</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ url('/ebay3/daily-sales') }}">eBay 3 Sales Data</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ route('topdawg.sales.dashboard') }}">TopDawg Sales Data</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ url('amazon/daily-sales') }}">Amazon Sales Data</a>
+                        </li>
+                        <li>
+                            <a href="{{ url('doba/daily-sales') }}">Doba Sales Data</a>
+                        </li>
+
+                        <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
+
+                        <li><a href="{{ url('temu2-tabulator') }}">Temu 2 Sales Data</a></li>
+
+                        <li><a href="{{ url('shein-tabulator') }}">Shein Sales Data</a></li>
+
+                        <li><a href="{{ url('mercari-with-ship') }}">Mercari With Ship Sales</a></li>
+
+                        <li><a href="{{ url('mercari-without-ship') }}">Mercari Without Ship Sales</a></li>
+
+                        <li><a href="{{ url('aliexpress-tabulator') }}">Aliexpress Sales Data</a></li>
+
+
+                        <li><a href="{{ url('shopify-b2c/daily-sales') }}">Shopify B2C Sales</a></li>
+
+                        <li><a href="{{ url('shopify-b2b/daily-sales') }}">Shopify B2B Sales</a></li>
+
+                        <li><a href="{{ route('bestbuy.daily.sales') }}">Best Buy Sales Data</a></li>
+
+                        <li><a href="{{ route('macys.daily.sales') }}">Macy's Sales Data</a></li>
+
+                        <li><a href="{{ route('tiendamia.daily.sales') }}">Tiendamia Sales Data</a></li>
+
+                        <li><a href="{{ route('tiktok.daily.sales') }}">TikTok Sales Data</a></li>
+
+                        <li><a href="{{ route('faire.tabulator.view') }}">Faire Sales Data</a></li>
+
+                        <li><a href="{{ route('tiktok.two.daily.sales') }}">TikTok 2 Sales Data</a></li>
+
+                        <li><a href="{{ route('depop.sheet') }}">Depop Sheet Data</a></li>
+
+                        <li><a href="{{ route('walmart.daily.sales') }}">Walmart Sales Data</a></li>
+
+                        <li><a href="{{ route('wayfair.daily.sales') }}">Wayfair Sales Data</a></li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ route('customer.care.shipping') }}" class="side-nav-link">
+                    <i class="ri-truck-line"></i>
+                    <span>Shipping</span>
+                </a>
+            </li>
+
+            {{-- Shopify --}}
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarPages" aria-expanded="false" aria-controls="sidebarPages"
+                    class="side-nav-link">
+                    <i class="ri-shopping-bag-line"></i>
+                    <span>Shopify</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarPages">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('shopify', ['products', 'shopify-Products']) }}">Products</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('products.inventory') }}">Inventory</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            {{-- Team Management --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#userManagement" aria-expanded="false" aria-controls="userManagement"
+                    class="side-nav-link">
+                    <i class="ri-user-settings-line"></i>
+                    <span>Team Management</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="userManagement">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('users.add') }}">
+                                <i class="ri-user-add-line me-2"></i>Users
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            {{-- User --}}
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarPages1" aria-expanded="false" aria-controls="sidebarPages1"
+                    class="side-nav-link">
+                    <i class="ri-user-line"></i>
+                    <span>User</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarPages1">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('roles') }}">Roles</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('users.add') }}">Add User</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('permissions') }}" class="text-danger bg-light"><i
+                                    class="ri-error-warning-line text-danger"></i> Reset Permission</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('permissions.view') }}">View Permissions</a>
+                        </li>
+                    </ul>
+                </div>
+
+            </li>
+
+            {{-- Warehouse Management System (WMS) --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarWms" aria-expanded="{{ request()->routeIs('wms.*') ? 'true' : 'false' }}" aria-controls="sidebarWms"
+                    class="side-nav-link {{ request()->routeIs('wms.*') ? 'active' : '' }}">
+                    <i class="ri-building-4-line"></i>
+                    <span>Warehouse (WMS)</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse {{ request()->routeIs('wms.*') ? 'show' : '' }}" id="sidebarWms">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('wms.dashboard') }}" class="{{ request()->routeIs('wms.dashboard') ? 'active' : '' }}">Dashboard</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.structure') }}" class="{{ request()->routeIs('wms.structure') ? 'active' : '' }}">Structure</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.inventory') }}" class="{{ request()->routeIs('wms.inventory') ? 'active' : '' }}">By location</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.scan') }}" class="{{ request()->routeIs('wms.scan') ? 'active' : '' }}">Scan</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.pick') }}" class="{{ request()->routeIs('wms.pick') ? 'active' : '' }}">Pick</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.putaway') }}" class="{{ request()->routeIs('wms.putaway') ? 'active' : '' }}">Putaway</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.locate') }}" class="{{ request()->routeIs('wms.locate') ? 'active' : '' }}">Locate</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.movements') }}" class="{{ request()->routeIs('wms.movements') ? 'active' : '' }}">History</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
     </ul>
     <!--- End Sidemenu -->
 
