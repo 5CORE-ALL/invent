@@ -664,7 +664,7 @@
                                         <div class="row g-3 mb-3">
                                             <div class="col-12 col-md-6">
                                                 <label for="qty" class="form-label fw-bold">Quantity</label>
-                                                <input type="number" class="form-control" id="qty" name="qty" required min="1" step="1" inputmode="numeric">
+                                                <input type="number" class="form-control" id="qty" name="qty" value="1" required min="1" step="1" inputmode="numeric">
                                             </div>
                                             <div class="col-12 col-md-6">
                                                 <label for="warehouse_id_btn" class="form-label fw-bold">Warehouse</label>
