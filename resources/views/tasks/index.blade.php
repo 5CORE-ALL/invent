@@ -1829,8 +1829,11 @@
             <div class="modal-body" id="task-details">
                 <!-- Task details will be loaded here -->
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <div class="modal-footer d-flex flex-wrap gap-2 justify-content-between">
+                <button type="button" class="btn btn-outline-danger" id="view-task-rework-btn" style="display: none;" title="Send back to assignee for rework">
+                    <i class="mdi mdi-undo-variant me-1"></i>Rework
+                </button>
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -2687,6 +2690,13 @@
                                         <i class="mdi mdi-check"></i> Done
                                     </button>
                                 ` : ''}
+                                ${(() => {
+                                    var st = task.status || '';
+                                    var aid = task.assignor_id != null ? parseInt(task.assignor_id, 10) : NaN;
+                                    var canRework = isAdmin || canDeleteAnyTask || (!isNaN(aid) && aid === currentUserId);
+                                    if (!canRework || st === 'Rework' || st === 'Archived') return '';
+                                    return '<button type="button" class="btn btn-sm btn-outline-danger" onclick="openReworkFromMobile(' + task.id + ')"><i class="mdi mdi-undo-variant"></i> Rework</button>';
+                                })()}
                                 <button class="btn btn-sm btn-outline-secondary" onclick="editTask(${task.id})">
                                     <i class="mdi mdi-pencil"></i>
                                 </button>
@@ -2734,6 +2744,10 @@
                     // Trigger existing view modal
                     $(`button[data-task-id="${id}"]`).first().click();
                 }
+            };
+
+            window.openReworkFromMobile = function (id) {
+                openReworkModalForTask(id);
             };
             
             window.markAsDone = function(id) {
@@ -3308,17 +3322,19 @@
                     cols.push({
                         title: "ACTION", 
                         field: "id", 
-                        width: 140,
+                        width: 176,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var id = rowData.id;
                             var assignorId = rowData.assignor_id;
+                            var st = rowData.status || '';
                             
                             // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
                             var canEdit = isAdmin || canDeleteAnyTask || assignorId === currentUserId;
                             var canDelete = canDeleteAnyTask || assignorId === currentUserId;
                             var canView = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
+                            var canReworkQuick = (isAdmin || canDeleteAnyTask || assignorId === currentUserId) && st !== 'Rework' && st !== 'Archived';
                             
                             var buttons = '';
                             
@@ -3326,6 +3342,14 @@
                                 buttons += `
                                     <button class="action-btn-icon action-btn-view view-task" data-id="${id}" title="View">
                                         <i class="mdi mdi-eye"></i>
+                                    </button>
+                                `;
+                            }
+
+                            if (canReworkQuick) {
+                                buttons += `
+                                    <button type="button" class="action-btn-icon open-rework-from-actions" data-id="${id}" title="Send for rework" style="background:#f5576c;color:#fff;border:none;padding:8px 10px;border-radius:6px;cursor:pointer;margin:0 2px;">
+                                        <i class="mdi mdi-undo-variant"></i>
                                     </button>
                                 `;
                             }
@@ -4833,6 +4857,35 @@
                 });
             }
 
+            function syncViewTaskReworkButton(taskId, data) {
+                var status = (data && data.status) ? String(data.status) : '';
+                var aid = data && data.assignor_id != null ? parseInt(data.assignor_id, 10) : NaN;
+                var canRework = isAdmin || canDeleteAnyTask || (!isNaN(aid) && aid === currentUserId);
+                var disallowed = status === 'Rework' || status === 'Archived';
+                var $btn = $('#view-task-rework-btn');
+                $btn.data('task-id', taskId);
+                if (canRework && !disallowed) {
+                    $btn.show();
+                } else {
+                    $btn.hide();
+                }
+            }
+
+            $('#viewTaskModal').on('hidden.bs.modal', function () {
+                $('#view-task-rework-btn').hide().removeData('task-id');
+            });
+
+            $(document).on('click', '#view-task-rework-btn', function () {
+                var tid = $(this).data('task-id');
+                if (tid) {
+                    openReworkModalForTask(tid);
+                }
+            });
+
+            $('#statusChangeModal').on('hidden.bs.modal', function () {
+                $('#status-change-reason').attr('placeholder', 'Why are you changing the status?');
+            });
+
             // Expand Task Info (show full title and description)
             $(document).on('click', '.expand-task-info', function(e) {
                 e.preventDefault();
@@ -4917,6 +4970,7 @@
                         '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                         (data.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + escapeHtml(data.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : '') +
                         '</table></div>';
+                    syncViewTaskReworkButton(taskId, data);
                     $('#task-details').html(html);
                     $('#viewTaskModal').modal('show');
                 } else {
@@ -4968,6 +5022,7 @@
                                 '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                                 (response.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + escapeHtml(response.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : '') +
                                 '</table></div>';
+                            syncViewTaskReworkButton(taskId, response);
                             $('#task-details').html(html);
                             $('#viewTaskModal').modal('show');
                         }
@@ -5023,6 +5078,27 @@
             var currentTaskId = null;
             var previousStatus = null;
             var newStatusValue = null;
+
+            function openReworkModalForTask(taskId) {
+                var row = table.getRow(taskId);
+                var rowData = row ? row.getData() : null;
+                currentTaskId = taskId;
+                newStatusValue = 'Rework';
+                previousStatus = rowData && rowData.status ? rowData.status : 'Todo';
+                $('#new-status-label').text('Rework');
+                $('#status-change-reason').attr('placeholder', 'What should the assignee change or redo?');
+                $('#viewTaskModal').modal('hide');
+                $('#statusChangeModal').modal('show');
+            }
+
+            $(document).on('click', '.open-rework-from-actions', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var tid = $(this).data('id');
+                if (tid) {
+                    openReworkModalForTask(tid);
+                }
+            });
             
             var statusLabels = {
                 'Todo': 'Todo',

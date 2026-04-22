@@ -794,6 +794,9 @@ class TaskController extends Controller
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $taskData['assignor_name'] = $assignorUser ? $assignorUser->name : $task->assignor;
+                $taskData['assignor_id'] = $assignorUser ? $assignorUser->id : null;
+            } else {
+                $taskData['assignor_id'] = null;
             }
             
             if ($task->assign_to) {
