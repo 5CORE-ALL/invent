@@ -90,9 +90,6 @@
                             <li>
                                 <a href="{{ route('purchase.index') }}">Purchase</a>
                             </li>
-                            <li>
-                                <a href="{{ route('sourcing.index') }}">Sourcing</a>
-                            </li>
                             <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#ledger" aria-expanded="false"
                                     aria-controls="ledger">

@@ -10,8 +10,9 @@ use Illuminate\Support\Facades\Log;
 
 class SourcingController extends Controller
 {
-    public function index(){
-        return view('purchase-master.sourcing.index');
+    public function index()
+    {
+        return redirect()->route('home');
     }
 
     public function getSourcingData()
