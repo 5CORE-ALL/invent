@@ -2289,7 +2289,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Sourcingƒvies
     Route::controller(SourcingController::class)->group(function () {
-        Route::get('/sourcing/list', 'index')->name('sourcing.index');
         Route::get('/sourcing-data/list', 'getSourcingData')->name('sourcing.list');
         Route::post('/sourcing/save', 'storeSourcing')->name('sourcing.save');
         Route::post('/sourcing/update/{id}', 'updateSourcing')->name('sourcing.update');

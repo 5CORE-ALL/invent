@@ -10,11 +10,6 @@ use Illuminate\Support\Facades\Log;
 
 class SourcingController extends Controller
 {
-    public function index()
-    {
-        return redirect()->route('home');
-    }
-
     public function getSourcingData()
     {
         $sourcings = Sourcing::all();
