@@ -71,10 +71,8 @@ class SupplierController extends Controller
      */
     public function getSuppliersJson(Request $request)
     {
-        $suppliers = Supplier::where('type', 'Supplier')
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn($s) => ['id' => $s->id, 'name' => $s->name]);
+        $suppliers = Supplier::distinctNameRowsForDropdownJson()
+            ->map(fn ($s) => ['id' => $s->id, 'name' => $s->name]);
         return response()->json(['suppliers' => $suppliers]);
     }
 

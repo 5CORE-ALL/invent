@@ -263,6 +263,731 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Read a display color from product_master.Values (merged keys in Product Master UI).
+     */
+    private function resolveColorLabelFromProductMaster(?ProductMaster $pm): string
+    {
+        if (! $pm) {
+            return 'Unknown';
+        }
+        $raw = $pm->Values ?? null;
+        $values = is_array($raw) ? $raw : (is_string($raw) ? json_decode($raw, true) : []);
+        if (! is_array($values)) {
+            $values = [];
+        }
+        foreach (['Color', 'color', 'COLOUR', 'Colour', 'colour', 'CLR', 'clr'] as $k) {
+            if (! array_key_exists($k, $values)) {
+                continue;
+            }
+            $s = trim((string) ($values[$k] ?? ''));
+            if ($s !== '') {
+                return strlen($s) > 80 ? substr($s, 0, 80) . '…' : $s;
+            }
+        }
+
+        return 'Unknown';
+    }
+
+    /**
+     * Sum of shopify_skus.inv grouped by color (from product_master.Values), same SKU join as Inv@LP.
+     * Includes SKUs with zero or negative inv so colors with no stock still appear (0 units, 0%).
+     * Positive quantities: top 14 colors + "All other" for the rest. Zero-total colors: listed separately (capped).
+     *
+     * @return list<array{color: string, inv: float, percent: float}>
+     */
+    private function getShopifyInventoryByColor(): array
+    {
+        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv']);
+        $skus = $shopifySkus->pluck('sku')->unique()->filter()->values()->toArray();
+        if ($skus === []) {
+            return [];
+        }
+        $productMasters = ProductMaster::whereNull('deleted_at')->whereIn('sku', $skus)->get();
+        $pmBySku = $productMasters->keyBy(function ($item) {
+            return strtoupper(trim((string) $item->sku));
+        });
+
+        $byColor = [];
+        foreach ($shopifySkus as $row) {
+            $sku = trim((string) $row->sku);
+            if ($sku === '') {
+                continue;
+            }
+            $inv = is_numeric($row->inv) ? (float) $row->inv : 0.0;
+            $pm = $pmBySku->get(strtoupper($sku));
+            $color = $this->resolveColorLabelFromProductMaster($pm);
+            $byColor[$color] = ($byColor[$color] ?? 0.0) + $inv;
+        }
+
+        if ($byColor === []) {
+            return [];
+        }
+
+        $totalUnits = array_sum($byColor);
+        $pct = function (float $inv) use ($totalUnits): float {
+            return $totalUnits > 0 ? round(($inv / $totalUnits) * 100, 1) : 0.0;
+        };
+
+        $withStock = [];
+        $noStock = [];
+        foreach ($byColor as $color => $inv) {
+            if ($inv > 0) {
+                $withStock[$color] = $inv;
+            } elseif ($inv < 0) {
+                $withStock[$color] = $inv;
+            } else {
+                $noStock[$color] = 0.0;
+            }
+        }
+
+        arsort($withStock, SORT_NUMERIC);
+        $maxSlices = 14;
+        $mergedPositive = [];
+        $tail = 0.0;
+        $i = 0;
+        foreach ($withStock as $color => $inv) {
+            if ($i < $maxSlices) {
+                $mergedPositive[$color] = $inv;
+            } else {
+                $tail += $inv;
+            }
+            $i++;
+        }
+        $otherLabel = 'All other';
+        if ($tail != 0.0) {
+            $mergedPositive[$otherLabel] = ($mergedPositive[$otherLabel] ?? 0.0) + $tail;
+        }
+
+        $out = [];
+        foreach ($mergedPositive as $color => $inv) {
+            $inv = (float) $inv;
+            $out[] = [
+                'color' => (string) $color,
+                'inv' => round($inv, 2),
+                'percent' => $pct($inv),
+            ];
+        }
+
+        ksort($noStock, SORT_NATURAL | SORT_FLAG_CASE);
+        $zeroCap = 50;
+        $z = 0;
+        foreach ($noStock as $color => $_) {
+            if ($z >= $zeroCap) {
+                $overflow = count($noStock) - $zeroCap;
+                if ($overflow > 0) {
+                    $out[] = [
+                        'color' => 'Other colors (no stock, +' . $overflow . ')',
+                        'inv' => 0.0,
+                        'percent' => 0.0,
+                    ];
+                }
+                break;
+            }
+            $out[] = [
+                'color' => (string) $color,
+                'inv' => 0.0,
+                'percent' => $pct(0.0),
+            ];
+            $z++;
+        }
+
+        $rankInv = function (float $x): int {
+            if ($x > 0) {
+                return 0;
+            }
+            if ($x == 0.0) {
+                return 1;
+            }
+
+            return 2;
+        };
+        usort($out, function ($a, $b) use ($rankInv) {
+            $ai = (float) ($a['inv'] ?? 0);
+            $bi = (float) ($b['inv'] ?? 0);
+            $ra = $rankInv($ai);
+            $rb = $rankInv($bi);
+            if ($ra !== $rb) {
+                return $ra <=> $rb;
+            }
+            if ($ra === 0) {
+                return $bi <=> $ai;
+            }
+            if ($ra === 1) {
+                return strcasecmp((string) ($a['color'] ?? ''), (string) ($b['color'] ?? ''));
+            }
+
+            return $ai <=> $bi;
+        });
+
+        return $out;
+    }
+
+    /**
+     * L30 Amazon Seller + Amazon FBA campaign rows (latest id per campaignName) with spend for color attribution.
+     * Mirrors {@see fetchAdMetricsFromTables()} amazon / amazonfba spend sources.
+     *
+     * @return \Illuminate\Support\Collection<int, array{campaignName: string, spend: float}>
+     */
+    private function collectAmazonFamilyL30CampaignNameSpendPairs()
+    {
+        $pairs = [];
+
+        $appendSp = function ($ids) use (&$pairs) {
+            if ($ids->isEmpty()) {
+                return;
+            }
+            foreach (DB::table('amazon_sp_campaign_reports')->whereIn('id', $ids)->get(['campaignName', 'spend']) as $r) {
+                $pairs[] = [
+                    'campaignName' => (string) ($r->campaignName ?? ''),
+                    'spend' => (float) ($r->spend ?? 0),
+                ];
+            }
+        };
+
+        // Amazon Seller — KW
+        $kwSellerIds = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_date_range', 'L30')
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->groupBy('campaignName')
+            ->pluck('id');
+        $appendSp($kwSellerIds);
+
+        // Amazon Seller — PT
+        $ptSellerIds = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) {
+                $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'");
+            })
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->groupBy('campaignName')
+            ->pluck('id');
+        $appendSp($ptSellerIds);
+
+        // Amazon Seller — SB (HL): cost column
+        $hlLatestIds = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_date_range', 'L30')
+            ->groupBy('campaignName')
+            ->pluck('id');
+        if ($hlLatestIds->isNotEmpty()) {
+            foreach (DB::table('amazon_sb_campaign_reports')->whereIn('id', $hlLatestIds)->get(['campaignName', 'cost']) as $r) {
+                $pairs[] = [
+                    'campaignName' => (string) ($r->campaignName ?? ''),
+                    'spend' => (float) ($r->cost ?? 0),
+                ];
+            }
+        }
+
+        // Amazon FBA — KW
+        $kwFbaIds = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_date_range', 'L30')
+            ->whereRaw("campaignName LIKE '%FBA'")
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->groupBy('campaignName')
+            ->pluck('id');
+        $appendSp($kwFbaIds);
+
+        // Amazon FBA — PT
+        $ptFbaIds = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) {
+                $q->whereRaw("campaignName LIKE '%FBA PT'")->orWhereRaw("campaignName LIKE '%FBA PT.'");
+            })
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->groupBy('campaignName')
+            ->pluck('id');
+        $appendSp($ptFbaIds);
+
+        return collect($pairs);
+    }
+
+    /**
+     * SKU → product_master map for matching campaign / listing text to a color (shared across channels).
+     *
+     * @return array{pmByUpper: \Illuminate\Support\Collection, skuSorted: \Illuminate\Support\Collection}|null
+     */
+    private function buildColorAttributionLookupForAdCharts(): ?array
+    {
+        $skuPool = collect()
+            ->merge(ShopifySku::query()->whereNotNull('sku')->pluck('sku'))
+            ->merge(DB::table('amazon_datsheets')->whereNotNull('sku')->pluck('sku'))
+            ->map(function ($s) {
+                return trim((string) $s);
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $pms = collect();
+        foreach (array_chunk($skuPool, 2500) as $chunk) {
+            $pms = $pms->merge(
+                ProductMaster::whereNull('deleted_at')
+                    ->whereIn('sku', $chunk)
+                    ->get(['sku', 'Values'])
+            );
+        }
+        $pms = $pms->unique('sku')->values()->filter(function ($pm) {
+            $sku = trim((string) ($pm->sku ?? ''));
+
+            return $sku !== '' && stripos($sku, 'PARENT') === false;
+        });
+
+        $pmByUpper = $pms->keyBy(function ($p) {
+            return strtoupper(trim((string) $p->sku));
+        });
+
+        $skuSorted = $pms->pluck('sku')->map(function ($s) {
+            return trim((string) $s);
+        })->unique()->filter(function ($s) {
+            return strlen($s) >= 4;
+        })->sortByDesc(function ($s) {
+            return strlen($s);
+        })->values();
+
+        if ($skuSorted->isEmpty()) {
+            return null;
+        }
+
+        return ['pmByUpper' => $pmByUpper, 'skuSorted' => $skuSorted];
+    }
+
+    /**
+     * @param  iterable<int, array<string, mixed>|\stdClass>  $campaigns  rows with campaignName + spend
+     * @return list<array{color: string, spend: float, percent: float}>
+     */
+    private function aggregateAdSpendByColorFromCampaignPairs(iterable $campaigns, $pmByUpper, $skuSorted): array
+    {
+        $byColor = [];
+        foreach ($campaigns as $c) {
+            $row = is_array($c) ? $c : (array) $c;
+            $name = (string) ($row['campaignName'] ?? $row['campaign_name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $spend = (float) ($row['spend'] ?? 0);
+            if ($spend <= 0) {
+                continue;
+            }
+            $matchedPm = null;
+            foreach ($skuSorted as $sku) {
+                if (stripos($name, $sku) !== false) {
+                    $matchedPm = $pmByUpper->get(strtoupper(trim($sku)));
+                    break;
+                }
+            }
+            $color = $matchedPm ? $this->resolveColorLabelFromProductMaster($matchedPm) : 'Unmatched';
+            $byColor[$color] = ($byColor[$color] ?? 0.0) + $spend;
+        }
+
+        if ($byColor === []) {
+            return [];
+        }
+
+        arsort($byColor, SORT_NUMERIC);
+        $maxSlices = 14;
+        $merged = [];
+        $tail = 0.0;
+        $i = 0;
+        foreach ($byColor as $color => $sp) {
+            if ($i < $maxSlices) {
+                $merged[$color] = $sp;
+            } else {
+                $tail += $sp;
+            }
+            $i++;
+        }
+        $otherLabel = 'All other';
+        if ($tail > 0) {
+            $merged[$otherLabel] = ($merged[$otherLabel] ?? 0.0) + $tail;
+        }
+
+        $total = array_sum($merged);
+        $out = [];
+        foreach ($merged as $color => $sp) {
+            $sp = (float) $sp;
+            $out[] = [
+                'color' => (string) $color,
+                'spend' => round($sp, 2),
+                'percent' => $total > 0 ? round(($sp / $total) * 100, 1) : 0.0,
+            ];
+        }
+        usort($out, function ($a, $b) {
+            return $b['spend'] <=> $a['spend'];
+        });
+
+        return $out;
+    }
+
+    private function parseEbayFeeStringToFloat(?string $raw): float
+    {
+        return (float) preg_replace('/[^\d.]/', '', (string) ($raw ?? '0'));
+    }
+
+    /**
+     * PMT (general listing) spend rolled up to SKU for the same substring color matcher as KW campaign names.
+     * Joins listing_id → metrics.item_id (same idea as EbayPMPAds / Ebay2PMTAd controllers).
+     *
+     * @return list<array{campaignName: string, spend: float}>
+     */
+    private function collectEbayL30PmtSpendPairsMappedToSku(string $channelKey): array
+    {
+        $channelKey = strtolower(trim($channelKey));
+        [$genTable, $metricsTable] = match ($channelKey) {
+            'ebay' => ['ebay_general_reports', 'ebay_metrics'],
+            'ebaytwo' => ['ebay_2_general_reports', 'ebay_2_metrics'],
+            'ebaythree' => ['ebay_3_general_reports', 'ebay_3_metrics'],
+            default => [null, null],
+        };
+        if ($genTable === null || $metricsTable === null
+            || ! Schema::hasTable($genTable) || ! Schema::hasTable($metricsTable)
+            || ! Schema::hasColumn($genTable, 'listing_id') || ! Schema::hasColumn($genTable, 'ad_fees')
+            || ! Schema::hasColumn($metricsTable, 'item_id') || ! Schema::hasColumn($metricsTable, 'sku')) {
+            return [];
+        }
+
+        $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+        $endDate = Carbon::now()->format('Y-m-d');
+        $feeSum = 'COALESCE(SUM(REPLACE(REPLACE(g.ad_fees, "USD ", ""), ",", "")), 0)';
+
+        $out = [];
+        try {
+            $rows = DB::table($genTable.' as g')
+                ->join($metricsTable.' as m', function ($join) {
+                    $join->whereRaw('TRIM(CAST(g.listing_id AS CHAR)) = TRIM(CAST(m.item_id AS CHAR))');
+                })
+                ->where('g.report_range', '>=', $startDate)
+                ->where('g.report_range', '<=', $endDate)
+                ->where('g.report_range', 'NOT LIKE', 'L%')
+                ->whereNotNull('g.listing_id')
+                ->where('g.listing_id', '!=', '')
+                ->whereNotNull('m.sku')
+                ->where('m.sku', '!=', '')
+                ->selectRaw('TRIM(m.sku) as campaign_key, '.$feeSum.' as spend')
+                ->groupBy(DB::raw('TRIM(m.sku)'))
+                ->havingRaw($feeSum.' > 0')
+                ->get();
+
+            foreach ($rows as $r) {
+                $sku = trim((string) ($r->campaign_key ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $spend = (float) ($r->spend ?? 0);
+                if ($spend <= 0) {
+                    continue;
+                }
+                $out[] = [
+                    'campaignName' => $sku,
+                    'spend' => $spend,
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('collectEbayL30PmtSpendPairsMappedToSku: '.$e->getMessage(), ['gen' => $genTable, 'exception' => $e]);
+        }
+
+        return $out;
+    }
+
+    /**
+     * eBay KW (priority) + PMT (general) spend for color attribution.
+     * KW: last 31 days of daily priority rows (report_range NOT LIKE 'L%'), same window as dashboard eBay ads.
+     * PMT: same window on general reports, rolled up to SKU via listing_id → metrics.item_id (fills eBay 1/2 when KW is sparse).
+     * KW L30 snapshot fallback only when daily KW is empty and campaign_name exists.
+     *
+     * @return \Illuminate\Support\Collection<int, array{campaignName: string, spend: float}>
+     */
+    private function collectEbayL30CampaignNameSpendPairs(string $channelKey): \Illuminate\Support\Collection
+    {
+        $channelKey = strtolower(trim($channelKey));
+        $table = match ($channelKey) {
+            'ebay' => 'ebay_priority_reports',
+            'ebaytwo' => 'ebay_2_priority_reports',
+            'ebaythree' => 'ebay_3_priority_reports',
+            default => null,
+        };
+
+        $pairs = [];
+        $hasCampaignName = false;
+
+        if ($table !== null && Schema::hasTable($table) && Schema::hasColumn($table, 'cpc_ad_fees_payout_currency')) {
+            $hasCampaignName = Schema::hasColumn($table, 'campaign_name');
+            $hasCampaignId = Schema::hasColumn($table, 'campaign_id');
+            $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+            $endDate = Carbon::now()->format('Y-m-d');
+            $feeSum = 'COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0)';
+            if ($hasCampaignName && $hasCampaignId) {
+                $groupSql = 'NULLIF(TRIM(COALESCE(NULLIF(TRIM(campaign_name), ""), TRIM(campaign_id))), "")';
+            } elseif ($hasCampaignName) {
+                $groupSql = 'NULLIF(TRIM(campaign_name), "")';
+            } elseif ($hasCampaignId) {
+                $groupSql = 'NULLIF(TRIM(campaign_id), "")';
+            } else {
+                $groupSql = null;
+            }
+
+            try {
+                $kwDaily = $groupSql !== null
+                    ? DB::table($table)
+                        ->where('report_range', '>=', $startDate)
+                        ->where('report_range', '<=', $endDate)
+                        ->where('report_range', 'NOT LIKE', 'L%')
+                        ->where(function ($q) use ($hasCampaignName, $hasCampaignId) {
+                            if ($hasCampaignId && $hasCampaignName) {
+                                $q->where(function ($w) {
+                                    $w->whereNotNull('campaign_id')->where('campaign_id', '!=', '');
+                                })->orWhere(function ($w) {
+                                    $w->whereNotNull('campaign_name')->where('campaign_name', '!=', '');
+                                });
+                            } elseif ($hasCampaignId) {
+                                $q->whereNotNull('campaign_id')->where('campaign_id', '!=', '');
+                            } elseif ($hasCampaignName) {
+                                $q->whereNotNull('campaign_name')->where('campaign_name', '!=', '');
+                            }
+                        })
+                        ->selectRaw($groupSql.' as campaign_key, '.$feeSum.' as spend')
+                        ->groupBy(DB::raw($groupSql))
+                        ->havingRaw($feeSum.' > 0')
+                        ->get()
+                    : collect();
+
+                foreach ($kwDaily as $r) {
+                    $name = trim((string) ($r->campaign_key ?? ''));
+                    if ($name === '') {
+                        continue;
+                    }
+                    $spend = (float) ($r->spend ?? 0);
+                    if ($spend <= 0) {
+                        continue;
+                    }
+                    $pairs[] = [
+                        'campaignName' => $name,
+                        'spend' => $spend,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('collectEbayL30CampaignNameSpendPairs daily KW: '.$e->getMessage(), ['table' => $table, 'exception' => $e]);
+            }
+
+            if ($pairs === [] && $hasCampaignName) {
+                try {
+                    $ids = DB::table($table)
+                        ->selectRaw('MAX(id) as id')
+                        ->where('report_range', 'L30')
+                        ->whereNotNull('campaign_name')
+                        ->where('campaign_name', '!=', '')
+                        ->groupBy('campaign_name')
+                        ->pluck('id');
+                    if ($ids->isNotEmpty()) {
+                        foreach (DB::table($table)->whereIn('id', $ids)->get(['campaign_name', 'cpc_ad_fees_payout_currency']) as $r) {
+                            $pairs[] = [
+                                'campaignName' => (string) ($r->campaign_name ?? ''),
+                                'spend' => $this->parseEbayFeeStringToFloat($r->cpc_ad_fees_payout_currency ?? null),
+                            ];
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('collectEbayL30CampaignNameSpendPairs L30 KW: '.$e->getMessage(), ['table' => $table, 'exception' => $e]);
+                }
+            }
+        }
+
+        $pairs = array_merge($pairs, $this->collectEbayL30PmtSpendPairsMappedToSku($channelKey));
+
+        return collect($pairs);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array{campaignName: string, spend: float}>
+     */
+    private function collectWalmartL30CampaignNameSpendPairs(): \Illuminate\Support\Collection
+    {
+        if (! Schema::hasTable('walmart_campaign_reports')) {
+            return collect();
+        }
+
+        $ids = DB::table('walmart_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_range', 'L30')
+            ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
+            ->whereNotNull('campaignName')
+            ->where('campaignName', '!=', '')
+            ->groupBy('campaignName')
+            ->pluck('id');
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        $pairs = [];
+        foreach (DB::table('walmart_campaign_reports')->whereIn('id', $ids)->get(['campaignName', 'spend']) as $r) {
+            $pairs[] = [
+                'campaignName' => (string) ($r->campaignName ?? ''),
+                'spend' => (float) ($r->spend ?? 0),
+            ];
+        }
+
+        return collect($pairs);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array{campaignName: string, spend: float}>
+     */
+    private function collectTemuL30GoodsNameSpendPairs(): \Illuminate\Support\Collection
+    {
+        if (! Schema::hasTable('temu_campaign_reports')) {
+            return collect();
+        }
+
+        $ids = DB::table('temu_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_range', 'L30')
+            ->whereNotNull('goods_id')
+            ->where('goods_id', '!=', '')
+            ->groupBy('goods_id')
+            ->pluck('id');
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        $pairs = [];
+        foreach (DB::table('temu_campaign_reports')->whereIn('id', $ids)->get(['goods_name', 'spend']) as $r) {
+            $pairs[] = [
+                'campaignName' => (string) ($r->goods_name ?? ''),
+                'spend' => (float) ($r->spend ?? 0),
+            ];
+        }
+
+        return collect($pairs);
+    }
+
+    /**
+     * Amazon + FBA L30 ad spend grouped by product_master color (SKU substring match in campaign name, longest SKU wins).
+     *
+     * @return list<array{color: string, spend: float, percent: float}>
+     */
+    private function getAdSpendByProductColorAmazonFamilyL30(): array
+    {
+        try {
+            $lookup = $this->buildColorAttributionLookupForAdCharts();
+            if ($lookup === null) {
+                return [];
+            }
+            $campaigns = $this->collectAmazonFamilyL30CampaignNameSpendPairs();
+            if ($campaigns->isEmpty()) {
+                return [];
+            }
+
+            return $this->aggregateAdSpendByColorFromCampaignPairs(
+                $campaigns,
+                $lookup['pmByUpper'],
+                $lookup['skuSorted']
+            );
+        } catch (\Throwable $e) {
+            Log::warning('getAdSpendByProductColorAmazonFamilyL30: ' . $e->getMessage(), ['exception' => $e]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Per-channel L30 ad spend by color + combined (same attribution rules as Amazon pie).
+     *
+     * @return array{combined: list<array{color: string, spend: float, percent: float>>, channels: list<array{channel: string, slices: list<array{color: string, spend: float, percent: float}>>}}
+     */
+    private function getAdSpendByColorByChannelL30(): array
+    {
+        try {
+            $lookup = $this->buildColorAttributionLookupForAdCharts();
+            if ($lookup === null) {
+                return ['combined' => [], 'channels' => []];
+            }
+            $pm = $lookup['pmByUpper'];
+            $skus = $lookup['skuSorted'];
+
+            $defs = [
+                ['channel' => 'Amazon + FBA', 'pairs' => $this->collectAmazonFamilyL30CampaignNameSpendPairs()],
+                ['channel' => 'eBay 1', 'pairs' => $this->collectEbayL30CampaignNameSpendPairs('ebay')],
+                ['channel' => 'eBay 2', 'pairs' => $this->collectEbayL30CampaignNameSpendPairs('ebaytwo')],
+                ['channel' => 'eBay 3', 'pairs' => $this->collectEbayL30CampaignNameSpendPairs('ebaythree')],
+                ['channel' => 'Walmart', 'pairs' => $this->collectWalmartL30CampaignNameSpendPairs()],
+                ['channel' => 'Temu', 'pairs' => $this->collectTemuL30GoodsNameSpendPairs()],
+            ];
+
+            $channels = [];
+            $mergedPairs = collect();
+            foreach ($defs as $def) {
+                $pairs = $def['pairs'] instanceof \Illuminate\Support\Collection ? $def['pairs'] : collect($def['pairs']);
+                if ($pairs->isEmpty()) {
+                    continue;
+                }
+                $slices = $this->aggregateAdSpendByColorFromCampaignPairs($pairs, $pm, $skus);
+                if ($slices !== []) {
+                    $channels[] = [
+                        'channel' => $def['channel'],
+                        'slices' => $slices,
+                    ];
+                }
+                $mergedPairs = $mergedPairs->merge($pairs);
+            }
+
+            $combined = $mergedPairs->isEmpty()
+                ? []
+                : $this->aggregateAdSpendByColorFromCampaignPairs($mergedPairs, $pm, $skus);
+
+            return ['combined' => $combined, 'channels' => $channels];
+        } catch (\Throwable $e) {
+            Log::warning('getAdSpendByColorByChannelL30: ' . $e->getMessage(), ['exception' => $e]);
+
+            return ['combined' => [], 'channels' => []];
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $finalData
+     * @return list<array{channel: string, spend: float, percent: float}>
+     */
+    private function buildAdSpendByChannelFromRows(array $finalData): array
+    {
+        $byChannel = [];
+        foreach ($finalData as $row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? 'Unknown'));
+            if ($name === '') {
+                $name = 'Unknown';
+            }
+            $raw = $row['Total Ad Spend'] ?? 0;
+            $spend = is_numeric($raw) ? (float) $raw : (float) str_replace(['$', ',', '%'], '', (string) $raw);
+            if ($spend <= 0) {
+                continue;
+            }
+            $byChannel[$name] = ($byChannel[$name] ?? 0.0) + $spend;
+        }
+        if ($byChannel === []) {
+            return [];
+        }
+        arsort($byChannel, SORT_NUMERIC);
+        $total = array_sum($byChannel);
+        $out = [];
+        foreach ($byChannel as $channel => $spend) {
+            $spend = (float) $spend;
+            $out[] = [
+                'channel' => (string) $channel,
+                'spend' => round($spend, 2),
+                'percent' => $total > 0 ? round(($spend / $total) * 100, 1) : 0.0,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Sum of (Shopify inventory * LP) across all SKUs for the Inv@LP badge.
      * Uses shopify_skus.inv and product_master LP (from Values->lp or lp column).
      */
@@ -1489,6 +2214,10 @@ class ChannelMasterController extends Controller
         // Sum of (Shopify inventory * LP) for Inv@LP badge and chart + Inv / LP breakdown
         $shopifyInvLp = $this->getShopifyInvLpMetrics();
         $invAtLp = $shopifyInvLp['inv_at_lp'];
+        $inventoryByColor = $this->getShopifyInventoryByColor();
+        $adSpendByChannel = $this->buildAdSpendByChannelFromRows($finalData);
+        $adSpendByColorAmazon = $this->getAdSpendByProductColorAmazonFamilyL30();
+        $adSpendByColorByChannel = $this->getAdSpendByColorByChannelL30();
 
         return response()->json([
             'status'  => 200,
@@ -1498,6 +2227,10 @@ class ChannelMasterController extends Controller
             'inv_at_lp' => round($invAtLp, 2),
             'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
             'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
+            'inventory_by_color' => $inventoryByColor,
+            'ad_spend_by_channel' => $adSpendByChannel,
+            'ad_spend_by_color_amazon' => $adSpendByColorAmazon,
+            'ad_spend_by_color_by_channel' => $adSpendByColorByChannel,
         ]);
     }
 

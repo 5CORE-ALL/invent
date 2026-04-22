@@ -101,15 +101,15 @@ class ToOrderAnalysisController extends Controller
             $showNR = $request->get('showNR', '0') === '1';
             $showLATER = $request->get('showLATER', '0') === '1';
 
-            // Fetch base data
-            $toOrderRecords = DB::table('to_order_analysis')->get()->keyBy('sku');
+            // Do not keyBy sku — duplicate SKUs must each appear and update row-wise by id
+            $toOrderRecords = ToOrderAnalysis::query()->orderBy('id')->get();
             $productData = DB::table('product_master')->get()->keyBy(fn($item) => strtoupper(trim($item->sku)));
             $forecastData = DB::table('forecast_analysis')->get()->keyBy(fn($row) => strtoupper(trim($row->sku)));
 
             // ✅ Shopify image support
             $shopifySkus = ShopifySku::all()->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
-            $skusForReviews = $toOrderRecords->keys()->map(fn($s) => strtoupper(trim($s)))->unique()->filter()->values()->all();
+            $skusForReviews = $toOrderRecords->pluck('sku')->map(fn($s) => strtoupper(trim((string) $s)))->unique()->filter()->values()->all();
             $ratingReviewsMap = $this->getRatingReviewsBySku($skusForReviews);
 
             // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
@@ -117,9 +117,11 @@ class ToOrderAnalysisController extends Controller
 
             $processedData = [];
 
-            foreach ($toOrderRecords as $sku => $toOrder) {
-                $sheetSku = strtoupper(trim($sku));
-                if (empty($sheetSku)) continue;
+            foreach ($toOrderRecords as $toOrder) {
+                $sheetSku = strtoupper(trim((string) ($toOrder->sku ?? '')));
+                if (empty($sheetSku)) {
+                    continue;
+                }
 
                 $product = $productData->get($sheetSku);
                 $forecast = $forecastData->get($sheetSku);
@@ -171,6 +173,7 @@ class ToOrderAnalysisController extends Controller
 
                 $rr = $ratingReviewsMap[$sheetSku] ?? ['rating' => null, 'reviews' => null];
                 $processedData[] = (object)[
+                    'id'              => $toOrder->id,
                     'Parent'          => $parent,
                     'SKU'             => $sheetSku,
                     'Approved QTY'    => $approvedQty,
@@ -254,14 +257,14 @@ class ToOrderAnalysisController extends Controller
             });
 
             $groupedDataBySupplier = $filtered->groupBy('Supplier')->map(function ($group) {
-                return $group->keyBy('SKU');
+                return $group->keyBy(fn ($item) => (string) ($item['id'] ?? ''));
             });
 
             $groupedSupplierJson = $groupedDataBySupplier->toJson();
 
             $totalCBM = $filteredChildren->sum('total_cbm');
-            // Single canonical supplier source: Supplier model (same as MIP / Ready-to-Ship)
-            $suppliers = Supplier::where('type', 'Supplier')->orderBy('name')->pluck('name');
+            // Same name catalog as /supplier.list (no type filter) and /supplier.list.json
+            $suppliers = Supplier::distinctNamesForListPage();
 
             $viewData = [
                 'data' => $paginator,
@@ -282,7 +285,7 @@ class ToOrderAnalysisController extends Controller
     }
 
     public function toOrderAnalysisNew(){
-        $allSuppliers = Supplier::where('type', 'Supplier')->orderBy('name')->pluck('name')->unique()->values()->toArray();
+        $allSuppliers = Supplier::distinctNamesForListPage()->all();
         return view('purchase-master.to-order-analysis', compact('allSuppliers'));
     }
 
@@ -681,6 +684,7 @@ class ToOrderAnalysisController extends Controller
         $sku = trim(strtoupper((string) $request->input('sku', '')));
         $column = $request->input('column');
         $value = $request->input('value');
+        $rowId = (int) $request->input('row_id', 0);
 
         if (empty($sku)) {
             return response()->json(['success' => false, 'message' => 'SKU is required']);
@@ -756,22 +760,40 @@ class ToOrderAnalysisController extends Controller
         };
 
         try {
-            // For Supplier, use DB::table so empty string is stored exactly (not converted to null by Eloquent)
-            if ($column === 'Supplier') {
-                $updated = DB::table('to_order_analysis')
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
-                    ->update(['supplier_name' => $value, 'updated_at' => now()]);
-            } else {
-                // Update ALL rows with this SKU (handles duplicate SKU rows so refresh shows correct value)
-                $updated = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) = ?', [$sku])->update([$updateColumn => $value]);
+            $toOrderQuery = ToOrderAnalysis::query()->whereRaw('TRIM(UPPER(sku)) = ?', [$sku]);
+            if ($rowId > 0) {
+                $toOrderQuery->where('id', $rowId);
             }
 
-            if ($updated === 0 && $column !== 'Supplier') {
-                // No row exists for this SKU, create one (avoid creating if any duplicate already exists)
-                ToOrderAnalysis::create([
-                    'sku' => $sku,
-                    $updateColumn => $value
-                ]);
+            // Supplier: allow empty string; scope by row_id when sent so duplicate SKUs update the correct row only
+            if ($column === 'Supplier') {
+                $updated = $toOrderQuery->update(['supplier_name' => $value]);
+                if ($updated === 0 && $rowId > 0) {
+                    return response()->json(['success' => false, 'message' => 'Row not found for this SKU'], 422);
+                }
+                // Yellow-cohort / Tabulator rows often have no to_order_analysis row yet; parent-derived supplier
+                // was shown. Without a create here, /update-link succeeds but refresh reverts to parent lookup.
+                if ($updated === 0 && $rowId === 0) {
+                    $parent = trim((string) $request->input('parent', ''));
+                    ToOrderAnalysis::create([
+                        'sku' => $sku,
+                        'parent' => $parent !== '' ? $parent : null,
+                        'supplier_name' => $value,
+                    ]);
+                }
+            } else {
+                $updated = $toOrderQuery->update([$updateColumn => $value]);
+
+                if ($updated === 0) {
+                    if ($rowId > 0) {
+                        return response()->json(['success' => false, 'message' => 'Row not found for this SKU'], 422);
+                    }
+                    // No row exists for this SKU, create one (avoid creating if any duplicate already exists)
+                    ToOrderAnalysis::create([
+                        'sku' => $sku,
+                        $updateColumn => $value,
+                    ]);
+                }
             }
 
             // When MOQ (approved_qty) is updated on to-order page, sync to forecast_analysis so forecast page shows same value
@@ -813,14 +835,32 @@ class ToOrderAnalysisController extends Controller
         }
 
         try {
-            $placeholders = implode(',', array_fill(0, count($skus), '?'));
-            $updated = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) IN (' . $placeholders . ')', $skus)
-                ->update(['supplier_name' => $supplierName]);
+            $updatedRows = 0;
+            $createdRows = 0;
+            foreach ($skus as $skuOne) {
+                $n = (int) ToOrderAnalysis::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuOne])
+                    ->update(['supplier_name' => $supplierName]);
+                $updatedRows += $n;
+                if ($n === 0) {
+                    ToOrderAnalysis::create([
+                        'sku' => $skuOne,
+                        'supplier_name' => $supplierName,
+                    ]);
+                    $createdRows++;
+                }
+            }
+
+            $msg = $updatedRows . ' row(s) updated';
+            if ($createdRows > 0) {
+                $msg .= ', ' . $createdRows . ' row(s) created';
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => $updated . ' record(s) updated successfully',
-                'updated' => $updated,
+                'message' => $msg . '.',
+                'updated' => $updatedRows,
+                'created' => $createdRows,
             ]);
         } catch (\Throwable $e) {
             Log::error('ToOrderAnalysis bulkUpdateSupplier failed', ['skus' => $skus, 'error' => $e->getMessage()]);

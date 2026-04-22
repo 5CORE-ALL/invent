@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 class Supplier extends Model
 {
@@ -28,6 +29,37 @@ class Supplier extends Model
     public function latestRemark()
     {
         return $this->hasOne(SupplierRemarkHistory::class)->latestOfMany();
+    }
+
+    /**
+     * Distinct non-empty supplier names, ordered by name — same catalog as /supplier.list with no type/category filters.
+     */
+    public static function distinctNamesForListPage(): Collection
+    {
+        return static::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->pluck('name')
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * One row per distinct name (lowest id first) for JSON dropdowns — aligned with {@see distinctNamesForListPage()}.
+     *
+     * @return Collection<int, self>
+     */
+    public static function distinctNameRowsForDropdownJson(): Collection
+    {
+        return static::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->orderBy('id')
+            ->get(['id', 'name'])
+            ->unique('name')
+            ->values();
     }
 
 }

@@ -1076,6 +1076,33 @@
             width: 100%;
             max-width: 100%;
         }
+
+        .dashboard-world-clocks .dashboard-clock-time {
+            font-size: 1.35rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.02em;
+            color: #111827;
+            line-height: 1.2;
+        }
+        .dashboard-world-clocks .dashboard-clock-sub {
+            font-size: 0.78rem;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+        .dashboard-world-clocks .dashboard-clock-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+        @media (min-width: 768px) {
+            .dashboard-world-clocks .clock-col:not(:last-child) {
+                border-right: 1px solid #e5e7eb;
+            }
+        }
 </style>
 @endsection
 
@@ -1092,6 +1119,28 @@
             'done' => 0,
         ];
     @endphp
+
+    <div class="dashboard-world-clocks card border-0 shadow-sm mb-3" role="region" aria-label="World clocks">
+        <div class="card-body py-3 px-3 px-md-4">
+            <div class="row g-3 align-items-center text-center text-md-start">
+                <div class="col-12 col-md-4 clock-col">
+                    <div class="dashboard-clock-label">California</div>
+                    <div class="dashboard-clock-time" id="dashboard-clock-lax-time">—</div>
+                    <div class="dashboard-clock-sub" id="dashboard-clock-lax-sub"></div>
+                </div>
+                <div class="col-12 col-md-4 clock-col">
+                    <div class="dashboard-clock-label">India</div>
+                    <div class="dashboard-clock-time" id="dashboard-clock-ist-time">—</div>
+                    <div class="dashboard-clock-sub" id="dashboard-clock-ist-sub"></div>
+                </div>
+                <div class="col-12 col-md-4 clock-col">
+                    <div class="dashboard-clock-label">Ohio (Eastern)</div>
+                    <div class="dashboard-clock-time" id="dashboard-clock-ohio-time">—</div>
+                    <div class="dashboard-clock-sub" id="dashboard-clock-ohio-sub"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div id="dashboard-summary-stats" class="mt-2 mb-3 p-3 bg-light rounded">
         <h6 class="mb-1">Summary Statistics</h6>
@@ -1258,6 +1307,79 @@
                     <div class="pt-1">
                         <div dir="ltr" class="dashboard-chart-canvas-wrap daily-sales-bar-chart-wrap">
                             <canvas id="dailySalesBarChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-2 dashboard-charts-row align-items-stretch mb-2">
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
+            <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
+                <div class="card-body">
+                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
+                        <div class="min-w-0 flex-grow-1">
+                            <h5 class="header-title mb-0">Ad spend by channel</h5>
+                            <p class="dashboard-chart-sub mb-0">Total (L30 / channel rules): <span id="dashboard-chart-ad-channel-total" class="dashboard-chart-total-amount">—</span></p>
+                        </div>
+                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-ad-channel-refresh-btn" title="Refresh ad charts" aria-label="Refresh">
+                                <i class="ri-refresh-line" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pt-1">
+                        <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-chart-wrap">
+                            <canvas id="channelAdSpendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
+            <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
+                <div class="card-body">
+                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
+                        <div class="min-w-0 flex-grow-1">
+                            <h5 class="header-title mb-0">Ad spend by color</h5>
+                            <p class="dashboard-chart-sub mb-0 text-muted small">L30 — color from SKU match in campaign / listing text (per channel)</p>
+                            <label for="dashboard-ad-color-channel-select" class="visually-hidden">Channel for ad color chart</label>
+                            <select id="dashboard-ad-color-channel-select" class="form-select form-select-sm mt-1 mb-1" style="max-width: 100%; font-size: 0.72rem;" title="Pick marketplace"></select>
+                            <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-ad-color-total" class="dashboard-chart-total-amount">—</span></p>
+                        </div>
+                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-ad-color-refresh-btn" title="Refresh ad charts" aria-label="Refresh">
+                                <i class="ri-refresh-line" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pt-1">
+                        <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-chart-wrap">
+                            <canvas id="adSpendByColorAmazonChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
+            <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
+                <div class="card-body">
+                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
+                        <div class="min-w-0 flex-grow-1">
+                            <h5 class="header-title mb-0">Inventory by color</h5>
+                            <p class="dashboard-chart-sub mb-0 text-muted small">Includes colors at 0 Shopify units (0% slice / legend).</p>
+                            <p class="dashboard-chart-sub mb-0">Shopify units — Total: <span id="dashboard-chart-color-inv-total" class="dashboard-chart-total-amount">—</span></p>
+                        </div>
+                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-color-inv-refresh-btn" title="Refresh inventory chart" aria-label="Refresh">
+                                <i class="ri-refresh-line" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pt-1">
+                        <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-chart-wrap">
+                            <canvas id="inventoryByColorChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1481,6 +1603,9 @@
         let l30SalesBarChartInstance = null;
         let ySalesPieChartInstance = null;
         let ySalesBarChartInstance = null;
+        let colorInventoryPieChartInstance = null;
+        let channelAdSpendPieInstance = null;
+        let colorAdSpendAmazonPieInstance = null;
 
         function pieSliceColors(count) {
             const colors = [];
@@ -1689,6 +1814,349 @@
             const total = dataValues.reduce(function (a, b) { return a + b; }, 0);
             const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
             return ' $' + value.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' (' + pct + '%)';
+        }
+
+        function colorInvPieTooltipLabel(context, dataValues) {
+            const value = context.parsed;
+            const total = dataValues.reduce(function (a, b) { return a + b; }, 0);
+            const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+            return ' ' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' units (' + pct + '%)';
+        }
+
+        /**
+         * @param {Array<{color?: string, inv?: number, percent?: number}>|undefined} rows
+         */
+        function renderInventoryByColorChart(rows) {
+            const totalEl = document.getElementById('dashboard-chart-color-inv-total');
+            const canvas = document.getElementById('inventoryByColorChart');
+            if (!canvas) {
+                return;
+            }
+            if (colorInventoryPieChartInstance) {
+                colorInventoryPieChartInstance.destroy();
+                colorInventoryPieChartInstance = null;
+            }
+            const list = Array.isArray(rows) ? rows.filter(function (r) {
+                if (!r || r.color === undefined || r.color === null) {
+                    return false;
+                }
+                return String(r.color).trim() !== '';
+            }) : [];
+            if (list.length === 0) {
+                if (totalEl) {
+                    totalEl.textContent = '—';
+                }
+                return;
+            }
+            const labels = list.map(function (r) {
+                return String(r.color || 'Unknown');
+            });
+            const values = list.map(function (r) {
+                const v = parseFloat(r.inv);
+                return Number.isFinite(v) ? v : 0;
+            });
+            const sum = values.reduce(function (a, b) { return a + b; }, 0);
+            if (totalEl) {
+                totalEl.textContent = Math.round(sum).toLocaleString('en-US') + ' units';
+            }
+            const n = labels.length;
+            colorInventoryPieChartInstance = new Chart(canvas, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Units',
+                        data: values,
+                        backgroundColor: pieSliceColors(n),
+                        borderColor: pieSliceBorderColors(n),
+                        borderWidth: 1,
+                        hoverOffset: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: { top: 4, bottom: 4, left: 2, right: 2 }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 10,
+                                padding: 4,
+                                font: { size: 7 },
+                                generateLabels: function (chart) {
+                                    const ds = chart.data.datasets[0];
+                                    const data = ds.data;
+                                    const lab = chart.data.labels;
+                                    const total = data.reduce(function (a, b) { return a + b; }, 0);
+                                    return lab.map(function (label, i) {
+                                        const v = parseFloat(data[i]) || 0;
+                                        const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
+                                        const s = String(label);
+                                        const short = s.length > 20 ? s.slice(0, 18) + '…' : s;
+                                        return {
+                                            text: short + ' ' + pct + '%',
+                                            fillStyle: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor,
+                                            strokeStyle: Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor,
+                                            lineWidth: 1,
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                            padding: 6,
+                            titleFont: { size: 9, weight: 'bold' },
+                            bodyFont: { size: 8 },
+                            callbacks: {
+                                label: function (context) {
+                                    return colorInvPieTooltipLabel(context, values);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        /**
+         * @param {Array<{channel?: string, spend?: number}>|undefined} rows
+         */
+        function renderChannelAdSpendPie(rows) {
+            const canvas = document.getElementById('channelAdSpendChart');
+            const totalEl = document.getElementById('dashboard-chart-ad-channel-total');
+            if (channelAdSpendPieInstance) {
+                channelAdSpendPieInstance.destroy();
+                channelAdSpendPieInstance = null;
+            }
+            if (!canvas) {
+                return;
+            }
+            const list = Array.isArray(rows) ? rows.filter(function (r) {
+                return r && (parseFloat(r.spend) || 0) > 0;
+            }) : [];
+            if (list.length === 0) {
+                if (totalEl) {
+                    totalEl.textContent = '—';
+                }
+                return;
+            }
+            const labels = list.map(function (r) {
+                return String(r.channel || 'Unknown');
+            });
+            const values = list.map(function (r) {
+                return parseFloat(r.spend) || 0;
+            });
+            setDashboardChartTotals(['dashboard-chart-ad-channel-total'], values);
+            const n = labels.length;
+            channelAdSpendPieInstance = new Chart(canvas, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Ad spend ($)',
+                        data: values,
+                        backgroundColor: pieSliceColors(n),
+                        borderColor: pieSliceBorderColors(n),
+                        borderWidth: 1,
+                        hoverOffset: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 4, bottom: 4, left: 2, right: 2 } },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 10,
+                                padding: 4,
+                                font: { size: 7 },
+                                generateLabels: function (chart) {
+                                    const ds = chart.data.datasets[0];
+                                    const data = ds.data;
+                                    const lab = chart.data.labels;
+                                    const total = data.reduce(function (a, b) { return a + b; }, 0);
+                                    return lab.map(function (label, i) {
+                                        const v = parseFloat(data[i]) || 0;
+                                        const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
+                                        const s = String(label);
+                                        const short = s.length > 18 ? s.slice(0, 16) + '…' : s;
+                                        return {
+                                            text: short + ' ' + pct + '%',
+                                            fillStyle: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor,
+                                            strokeStyle: Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor,
+                                            lineWidth: 1,
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                            padding: 6,
+                            titleFont: { size: 9, weight: 'bold' },
+                            bodyFont: { size: 8 },
+                            callbacks: {
+                                label: function (context) {
+                                    return channelPieTooltipLabel(context, values);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Ad color chart data: combined + channels (JSON from channels-master-data).
+        window.__dashboardAdColorByChannel = null;
+
+        function setupAdSpendColorChannelSelect() {
+            const sel = document.getElementById('dashboard-ad-color-channel-select');
+            if (!sel) return;
+            const pack = window.__dashboardAdColorByChannel;
+            sel.innerHTML = '';
+            if (!pack || (!pack.channels || pack.channels.length === 0) && (!pack.combined || pack.combined.length === 0)) {
+                sel.disabled = true;
+                const o = document.createElement('option');
+                o.value = '';
+                o.textContent = 'No data';
+                sel.appendChild(o);
+                return;
+            }
+            sel.disabled = false;
+            if (pack.combined && pack.combined.length > 0) {
+                const o = document.createElement('option');
+                o.value = '__all__';
+                o.textContent = 'All channels (combined)';
+                sel.appendChild(o);
+            }
+            (pack.channels || []).forEach(function (ch) {
+                if (!ch || !ch.channel) return;
+                const o = document.createElement('option');
+                o.value = ch.channel;
+                o.textContent = ch.channel;
+                sel.appendChild(o);
+            });
+        }
+
+        function applyAdSpendColorSelection() {
+            const sel = document.getElementById('dashboard-ad-color-channel-select');
+            const pack = window.__dashboardAdColorByChannel;
+            let rows = [];
+            if (pack && sel && sel.value) {
+                if (sel.value === '__all__' && pack.combined) {
+                    rows = pack.combined;
+                } else {
+                    const hit = (pack.channels || []).find(function (c) { return c.channel === sel.value; });
+                    rows = hit && hit.slices ? hit.slices : [];
+                }
+            }
+            renderAdSpendByColorAmazonPie(rows);
+        }
+
+        /**
+         * Amazon + FBA L30 spend by product color (from API).
+         * @param {Array<{color?: string, spend?: number}>|undefined} rows
+         */
+        function renderAdSpendByColorAmazonPie(rows) {
+            const canvas = document.getElementById('adSpendByColorAmazonChart');
+            const totalEl = document.getElementById('dashboard-chart-ad-color-total');
+            if (colorAdSpendAmazonPieInstance) {
+                colorAdSpendAmazonPieInstance.destroy();
+                colorAdSpendAmazonPieInstance = null;
+            }
+            if (!canvas) {
+                return;
+            }
+            const list = Array.isArray(rows) ? rows.filter(function (r) {
+                return r && (parseFloat(r.spend) || 0) > 0;
+            }) : [];
+            if (list.length === 0) {
+                if (totalEl) {
+                    totalEl.textContent = '—';
+                }
+                return;
+            }
+            const labels = list.map(function (r) {
+                return String(r.color || 'Unknown');
+            });
+            const values = list.map(function (r) {
+                return parseFloat(r.spend) || 0;
+            });
+            setDashboardChartTotals(['dashboard-chart-ad-color-total'], values);
+            const n = labels.length;
+            colorAdSpendAmazonPieInstance = new Chart(canvas, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Ad spend ($)',
+                        data: values,
+                        backgroundColor: pieSliceColors(n),
+                        borderColor: pieSliceBorderColors(n),
+                        borderWidth: 1,
+                        hoverOffset: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 4, bottom: 4, left: 2, right: 2 } },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 10,
+                                padding: 4,
+                                font: { size: 7 },
+                                generateLabels: function (chart) {
+                                    const ds = chart.data.datasets[0];
+                                    const data = ds.data;
+                                    const lab = chart.data.labels;
+                                    const total = data.reduce(function (a, b) { return a + b; }, 0);
+                                    return lab.map(function (label, i) {
+                                        const v = parseFloat(data[i]) || 0;
+                                        const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
+                                        const s = String(label);
+                                        const short = s.length > 20 ? s.slice(0, 18) + '…' : s;
+                                        return {
+                                            text: short + ' ' + pct + '%',
+                                            fillStyle: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor,
+                                            strokeStyle: Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor,
+                                            lineWidth: 1,
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                            padding: 6,
+                            titleFont: { size: 9, weight: 'bold' },
+                            bodyFont: { size: 8 },
+                            callbacks: {
+                                label: function (context) {
+                                    return channelPieTooltipLabel(context, values);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         function formatPieLegendUsd(n) {
@@ -2029,6 +2497,23 @@
                 const tat = totalSales > 0 ? invVal / totalSales : 0;
                 tatEl.textContent = tat > 0 ? tat.toFixed(2) : '0';
             }
+            renderInventoryByColorChart(response.inventory_by_color);
+            renderChannelAdSpendPie(response.ad_spend_by_channel);
+            const byCh = response.ad_spend_by_color_by_channel;
+            if (byCh && ((byCh.channels && byCh.channels.length) || (byCh.combined && byCh.combined.length))) {
+                window.__dashboardAdColorByChannel = byCh;
+            } else {
+                window.__dashboardAdColorByChannel = {
+                    combined: response.ad_spend_by_color_amazon || [],
+                    channels: [{ channel: 'Amazon + FBA', slices: response.ad_spend_by_color_amazon || [] }]
+                };
+            }
+            setupAdSpendColorChannelSelect();
+            const sel = document.getElementById('dashboard-ad-color-channel-select');
+            if (sel && sel.options.length > 0) {
+                sel.selectedIndex = 0;
+            }
+            applyAdSpendColorSelection();
         }
 
         function loadDashboardFromChannels() {
@@ -2058,8 +2543,17 @@
         }
 
         function showErrorState() {
-            var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total', 'dashboard-chart-y-total', 'dashboard-chart-y-bar-total'];
+            var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total', 'dashboard-chart-y-total', 'dashboard-chart-y-bar-total', 'dashboard-chart-color-inv-total', 'dashboard-chart-ad-channel-total', 'dashboard-chart-ad-color-total'];
             ids.forEach(function (id) { setDashText(id, '—'); });
+            renderInventoryByColorChart([]);
+            renderChannelAdSpendPie([]);
+            window.__dashboardAdColorByChannel = null;
+            const selAdc = document.getElementById('dashboard-ad-color-channel-select');
+            if (selAdc) {
+                selAdc.innerHTML = '';
+                selAdc.disabled = true;
+            }
+            renderAdSpendByColorAmazonPie([]);
         }
 
         window.reloadDashboardMetrics = function () {
@@ -2699,12 +3193,80 @@
             showSummaryMetricChart('All', metricKey, badgeValue);
         });
 
+        var dashboardWorldClockTimer = null;
+
+        function updateDashboardWorldClocks() {
+            var zones = [
+                { timeId: 'dashboard-clock-lax-time', subId: 'dashboard-clock-lax-sub', tz: 'America/Los_Angeles' },
+                { timeId: 'dashboard-clock-ist-time', subId: 'dashboard-clock-ist-sub', tz: 'Asia/Kolkata' },
+                { timeId: 'dashboard-clock-ohio-time', subId: 'dashboard-clock-ohio-sub', tz: 'America/New_York' }
+            ];
+            var now = new Date();
+            zones.forEach(function (z) {
+                var timeEl = document.getElementById(z.timeId);
+                var subEl = document.getElementById(z.subId);
+                if (!timeEl) {
+                    return;
+                }
+                try {
+                    timeEl.textContent = new Intl.DateTimeFormat('en-US', {
+                        timeZone: z.tz,
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true
+                    }).format(now);
+                    if (subEl) {
+                        var datePart = new Intl.DateTimeFormat('en-US', {
+                            timeZone: z.tz,
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                        }).format(now);
+                        var tzPart = '';
+                        try {
+                            var parts = new Intl.DateTimeFormat('en-US', {
+                                timeZone: z.tz,
+                                timeZoneName: 'short'
+                            }).formatToParts(now);
+                            for (var i = 0; i < parts.length; i++) {
+                                if (parts[i].type === 'timeZoneName') {
+                                    tzPart = parts[i].value;
+                                    break;
+                                }
+                            }
+                        } catch (e2) { /* ignore */ }
+                        subEl.textContent = datePart + (tzPart ? ' · ' + tzPart : '');
+                    }
+                } catch (e) {
+                    timeEl.textContent = '—';
+                    if (subEl) {
+                        subEl.textContent = '';
+                    }
+                }
+            });
+        }
+
+        function initDashboardWorldClocks() {
+            if (!document.getElementById('dashboard-clock-lax-time')) {
+                return;
+            }
+            if (dashboardWorldClockTimer) {
+                clearInterval(dashboardWorldClockTimer);
+                dashboardWorldClockTimer = null;
+            }
+            updateDashboardWorldClocks();
+            dashboardWorldClockTimer = setInterval(updateDashboardWorldClocks, 1000);
+        }
+
         function initDashboardPage() {
             document.querySelectorAll('.dashboard-grid .subcard-item').forEach(function (el) {
                 el.addEventListener('click', function (e) {
                     e.stopPropagation();
                 });
             });
+            initDashboardWorldClocks();
             if (document.getElementById('dashboard-summary-stats')) {
                 loadDashboardFromChannels();
             }
@@ -2742,6 +3304,30 @@
             if (yBarRef) {
                 yBarRef.addEventListener('click', function () {
                     createYSalesBarChart();
+                });
+            }
+            var colorInvRef = document.getElementById('dashboard-color-inv-refresh-btn');
+            if (colorInvRef) {
+                colorInvRef.addEventListener('click', function () {
+                    loadDashboardFromChannels();
+                });
+            }
+            var adChRef = document.getElementById('dashboard-ad-channel-refresh-btn');
+            if (adChRef) {
+                adChRef.addEventListener('click', function () {
+                    loadDashboardFromChannels();
+                });
+            }
+            var adColRef = document.getElementById('dashboard-ad-color-refresh-btn');
+            if (adColRef) {
+                adColRef.addEventListener('click', function () {
+                    loadDashboardFromChannels();
+                });
+            }
+            var adColSel = document.getElementById('dashboard-ad-color-channel-select');
+            if (adColSel) {
+                adColSel.addEventListener('change', function () {
+                    applyAdSpendColorSelection();
                 });
             }
         }

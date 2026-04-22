@@ -728,7 +728,9 @@
                         field: "Supplier",
                         formatter: function(cell){
                             let value = cell.getValue() || "";
-                            let sku = (cell.getRow().getData().SKU || "").replace(/"/g, "&quot;");
+                            const rowData = cell.getRow().getData();
+                            let sku = escapeHtmlAttr(rowData.SKU || "");
+                            let parentAttr = escapeHtmlAttr(rowData.Parent || "");
                             let list = [...new Set([...(allSuppliers || []), value].filter(Boolean))].sort();
                             let options = list.map(supplier => {
                                 let selected = (supplier === value) ? "selected" : "";
@@ -736,7 +738,7 @@
                             }).join("");
                             let selectSelected = (!value || value.trim() === "") ? " selected" : "";
                             return `
-                                <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-column="Supplier" style="width: 140px; max-width: 100%;">
+                                <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-parent="${parentAttr}" data-column="Supplier" style="width: 140px; max-width: 100%;">
                                     <option value=""${selectSelected}>-- Select --</option>
                                     ${options}
                                 </select>`;
@@ -1236,7 +1238,7 @@
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating...';
 
-                    fetch('{{ url('/to-order-analysis/bulk-update-supplier') }}', {
+                    fetch('{{ route('to.order.analysis.bulk.supplier') }}', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1589,6 +1591,18 @@
                     });
                 } else {
                     // Handle other columns (Supplier, RFQ links, Adv date, etc.) using /update-link endpoint
+                    const payload = { sku, column, value };
+                    if (column === 'Supplier') {
+                        let pSave = $el.data('parent') != null ? String($el.data('parent')).trim() : '';
+                        if (!pSave) {
+                            const tblP = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                            const rP = tblP ? tblP.searchRows("SKU", "=", sku)[0] : null;
+                            if (rP) {
+                                pSave = (rP.getData().Parent || '').trim();
+                            }
+                        }
+                        payload.parent = pSave;
+                    }
                     fetch('/update-link', {
                         method: 'POST',
                         headers: {
@@ -1596,11 +1610,7 @@
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                             'Accept': 'application/json'
                         },
-                        body: JSON.stringify({ 
-                            sku,
-                            column, 
-                            value 
-                        })
+                        body: JSON.stringify(payload)
                     })
                     .then(res => {
                         if (!res.ok) {

@@ -427,6 +427,7 @@
 
                 const groupedSupplierData = {!! $groupedSupplierJson !!};
                 const supplierKeys = Object.keys(groupedSupplierData);
+                const suppliersList = @json($suppliers->values()->all());
 
                 let currentSupplierIndex = 0;
                 let supplierPlaying = false;
@@ -436,6 +437,22 @@
 
                 const tableBody = document.querySelector('#suppliers-table tbody');
                 const originalTableHtml = tableBody.innerHTML;
+
+                function rowUpdatePayload(sku, column, value, rowEl) {
+                    const body = {
+                        sku,
+                        column,
+                        value
+                    };
+                    const rid = rowEl && rowEl.dataset ? rowEl.dataset.rowId : '';
+                    if (rid !== undefined && rid !== null && String(rid).trim() !== '') {
+                        const n = parseInt(String(rid).trim(), 10);
+                        if (!Number.isNaN(n) && n > 0) {
+                            body.row_id = n;
+                        }
+                    }
+                    return body;
+                }
 
                 // --- Search ---
                 let searchTimer;
@@ -464,9 +481,22 @@
 
                     if (!rows.length) return;
 
-                    const supplierOptionsHtml = `{!! collect($suppliers)->map(function ($supplier) {
-                            return '<option value="' . e($supplier) . '">' . e($supplier) . '</option>';
-                        })->implode('') !!}`;
+                    function supplierSelectOptionsHtml(selectedSupplier) {
+                        const cur = String(selectedSupplier ?? '').trim();
+                        const parts = suppliersList.map((supOpt) => {
+                            const v = String(supOpt ?? '');
+                            const escAttr = v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                            const escText = v.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                            const sel = cur === v.trim() ? ' selected' : '';
+                            return `<option value="${escAttr}"${sel}>${escText}</option>`;
+                        });
+                        if (cur && !suppliersList.some((s) => String(s ?? '').trim() === cur)) {
+                            const escAttr = cur.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                            const escText = cur.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                            parts.unshift(`<option value="${escAttr}" selected>${escText}</option>`);
+                        }
+                        return parts.join('');
+                    }
 
                     let html = '';
                     rows.forEach(item => {
@@ -487,7 +517,7 @@
                             }
                         }
                         html += `
-                        <tr style="${item.is_parent ? 'background-color:#e0f7ff;' : ''}" data-is-parent=" ${item.is_parent ? '1' : '0'}">
+                        <tr style="${item.is_parent ? 'background-color:#e0f7ff;' : ''}" data-row-id="${item.id != null ? item.id : ''}" data-is-parent="${item.is_parent ? '1' : '0'}">
                             <td>${item['Image'] ? `<img src="${item['Image']}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #eee;">` : `<span class="text-muted">No Image</span>`}</td>
                             <td class="fw-semibold">${item.Parent ?? '-'}</td>
                             <td><span class="fw-semibold text-dark">${item.SKU ?? '-'}</span></td>
@@ -506,7 +536,7 @@
                             </td>
                             <td>
                                 <select class="form-select stage-select" data-sku="${item.SKU}" data-column="Supplier">
-                                    ${supplierOptionsHtml.replace(`value="${item.Supplier}"`, `value="${item.Supplier}" selected`)}
+                                    ${supplierSelectOptionsHtml(item.Supplier)}
                                 </select>
                             </td>
                             <td class="text-center" style="min-width:80px;">
@@ -599,6 +629,7 @@
                                 column = this.dataset.column,
                                 value = this.innerText.trim();
                             if (!value) return;
+                            const rowEl = this.closest('tr');
 
                             fetch('/update-link', {
                                     method: 'POST',
@@ -606,11 +637,7 @@
                                         'Content-Type': 'application/json',
                                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                                     },
-                                    body: JSON.stringify({
-                                        sku,
-                                        column,
-                                        value
-                                    })
+                                    body: JSON.stringify(rowUpdatePayload(sku, column, value, rowEl))
                                 })
                                 .then(res => res.json())
                                 .then(res => {
@@ -632,17 +659,14 @@
                             const sku = this.dataset.sku,
                                 column = this.dataset.column,
                                 value = this.value;
+                            const rowEl = this.closest('tr');
                             fetch('/update-link', {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json',
                                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                                     },
-                                    body: JSON.stringify({
-                                        sku,
-                                        column,
-                                        value
-                                    })
+                                    body: JSON.stringify(rowUpdatePayload(sku, column, value, rowEl))
                                 })
                                 .then(res => res.json())
                                 .then(res => {
@@ -672,17 +696,29 @@
                                         'Content-Type': 'application/json',
                                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                                     },
-                                    body: JSON.stringify({
-                                        sku,
-                                        column,
-                                        value
-                                    })
+                                    body: JSON.stringify(rowUpdatePayload(sku, column, value, row))
                                 })
                                 .then(res => res.json())
                                 .then(res => {
                                     if (res.success) {
                                         this.style.border = '2px solid #28a745';
                                         setTimeout(() => this.style.border = '', 1000);
+
+                                        if (column === 'Supplier') {
+                                            const reviewBtn = row.querySelector('.open-review-modal');
+                                            if (reviewBtn) {
+                                                reviewBtn.setAttribute('data-supplier', value);
+                                            }
+                                            const rowId = row.dataset.rowId;
+                                            Object.keys(groupedSupplierData).forEach((gKey) => {
+                                                const g = groupedSupplierData[gKey];
+                                                if (g && rowId && g[rowId]) {
+                                                    g[rowId].Supplier = value;
+                                                } else if (g && sku && g[sku]) {
+                                                    g[sku].Supplier = value;
+                                                }
+                                            });
+                                        }
 
                                         if (column === 'Stage' && value.toLowerCase() ===
                                             'mfrg progress') {
@@ -692,11 +728,11 @@
                                                 ?.innerText?.trim() || '';
                                             const order_qty = row.querySelector(
                                                     'input[data-column="order_qty"]')?.value
-                                            ?.trim() || '';
-                                            const supplier = row.querySelector('td:nth-child(6)')
-                                                ?.innerText?.trim() || '';
-                                            const advDate = row.querySelector('input[type="date"]')
-                                                ?.value || '';
+                                                ?.trim() || '';
+                                            const supplier = row.querySelector(
+                                                    'select[data-column="Supplier"]')?.value?.trim() || '';
+                                            const advDate = row.querySelector(
+                                                    'input[data-column="Adv date"]')?.value || '';
 
                                             fetch('/mfrg-progresses/insert', {
                                                     method: 'POST',

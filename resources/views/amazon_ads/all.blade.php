@@ -25,6 +25,11 @@
         .amazon-ads-all .amazon-raw-table-wrap .dataTables_wrapper {
             width: 100%;
         }
+        .amazon-ads-all .amazon-raw-table-wrap table.dataTable thead th,
+        .amazon-ads-all .amazon-raw-table-wrap table.dataTable tbody td {
+            text-align: center;
+            vertical-align: middle;
+        }
         .amazon-ads-all .amazon-ads-filters .form-label {
             font-size: 0.8rem;
             font-weight: 600;
@@ -683,6 +688,51 @@
                 return s;
             }
 
+            /**
+             * ACOS % tier colors (same breakpoints as SBGT / AmazonAcosSbgtRule).
+             * pink = best (≤10%), green, blue, yellow, red = worst (≥40%).
+             */
+            function amazonAdsAcosTierColor(acos) {
+                var a = typeof acos === 'number' ? acos : parseFloat(acos, 10);
+                if (isNaN(a)) {
+                    return '#6b7280';
+                }
+                if (a >= 40) {
+                    return '#dc2626';
+                }
+                if (a > 30) {
+                    return '#ca8a04';
+                }
+                if (a > 20) {
+                    return '#2563eb';
+                }
+                if (a > 10) {
+                    return '#16a34a';
+                }
+                return '#db2777';
+            }
+
+            /** SBGT tier 1 / 2 / 4 / 8 / 12 → red … pink (same scale as ACOS tiers). */
+            function amazonAdsSbgtTierColor(sbgt) {
+                var s = parseInt(sbgt, 10);
+                if (s === 1) {
+                    return '#dc2626';
+                }
+                if (s === 2) {
+                    return '#ca8a04';
+                }
+                if (s === 4) {
+                    return '#2563eb';
+                }
+                if (s === 8) {
+                    return '#16a34a';
+                }
+                if (s === 12) {
+                    return '#db2777';
+                }
+                return '#6b7280';
+            }
+
             function buildColumns(sourceKey) {
                 return rawSources[sourceKey].columns.map(function (c) {
                     var col = { data: c, title: c, defaultContent: '' };
@@ -694,45 +744,218 @@
                     if (c === 'impressions') {
                         col.title = 'Impr';
                     }
+                    if (c === 'unitsSoldSameSku30d') {
+                        col.title = 'Units same-SKU 30d';
+                    }
+                    if (c === 'campaignStatus') {
+                        col.title = 'Status';
+                        col.render = function (data, type) {
+                            var raw = data === null || data === undefined ? '' : String(data).trim();
+                            var enabled = raw.toUpperCase() === 'ENABLED';
+                            if (type === 'sort' || type === 'type') {
+                                return enabled ? 1 : 0;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                return raw;
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            var color = enabled ? '#16a34a' : '#dc2626';
+                            var titleEsc = raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            var label = raw === '' ? 'Unknown' : raw;
+                            var labelEsc = label.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            return '<span class="d-inline-block align-middle rounded-circle" style="width:10px;height:10px;background-color:' + color + ';" title="' + titleEsc + '" role="img" aria-label="' + labelEsc + '"></span>';
+                        };
+                    }
                     if (c === 'last_sbid') {
                         col.title = 'Last bid';
                     }
                     if (c === 'bgt') {
                         col.title = 'BGT';
-                        col.orderable = false;
                         col.render = function (data, type) {
                             if (type === 'sort' || type === 'type') {
-                                return 0;
+                                var nb = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(nb) ? -1 : Math.round(nb);
                             }
                             if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                return '';
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xe = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(xe) ? '' : String(Math.round(xe));
                             }
                             if (type !== 'display') {
-                                return '';
+                                return data;
                             }
-                            return '<span class="text-muted">--</span>';
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var num = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(num)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return '<span class="fw-semibold">' + String(Math.round(num)) + '</span>';
+                        };
+                    }
+                    if (c === 'sbgt') {
+                        col.title = 'SBGT';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var ns = parseInt(data, 10);
+                                return isNaN(ns) ? -1 : ns;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xs = parseInt(data, 10);
+                                return isNaN(xs) ? '' : String(xs);
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var ti = parseInt(data, 10);
+                            if (isNaN(ti)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var cs = amazonAdsSbgtTierColor(ti);
+                            return '<span class="fw-semibold" style="color:' + cs + ';">' + String(ti) + '</span>';
+                        };
+                    }
+                    if (c === 'Prchase') {
+                        col.title = 'Sold';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var np = typeof data === 'number' ? data : parseInt(data, 10);
+                                return isNaN(np) ? -1 : np;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xp = parseInt(data, 10);
+                                return isNaN(xp) ? '' : String(xp);
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var ip = parseInt(data, 10);
+                            if (isNaN(ip)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return '<span class="fw-semibold">' + String(ip) + '</span>';
+                        };
+                    }
+                    if (c === 'ACOS') {
+                        col.title = 'ACOS';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var na = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(na) ? -1 : Math.round(na);
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xa = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(xa) ? '' : String(Math.round(xa));
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var pa = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(pa)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var rpa = Math.round(pa);
+                            var ca = amazonAdsAcosTierColor(rpa);
+                            return '<span class="fw-semibold" style="color:' + ca + ';">' + String(rpa) + '%</span>';
+                        };
+                    }
+                    if (c === 'sales') {
+                        col.title = 'Sales';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var nsl = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(nsl) ? -1 : Math.round(nsl);
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xsl = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(xsl) ? '' : String(Math.round(xsl));
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var fsl = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(fsl)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return '<span class="fw-semibold">' + String(Math.round(fsl)) + '</span>';
+                        };
+                    }
+                    if (c === 'cost') {
+                        col.title = 'SP L30';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var ncst = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(ncst) ? -1 : Math.round(ncst);
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xcst = typeof data === 'number' ? data : parseFloat(data, 10);
+                                return isNaN(xcst) ? '' : String(Math.round(xcst));
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var fcst = typeof data === 'number' ? data : parseFloat(data, 10);
+                            if (isNaN(fcst)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return '<span class="fw-semibold">' + String(Math.round(fcst)) + '</span>';
                         };
                     }
                     if (c === 'L7spend' || c === 'L2spend' || c === 'L1spend') {
                         if (c === 'L7spend') {
-                            col.title = 'L7 spend';
+                            col.title = 'L7 SP';
                         } else if (c === 'L2spend') {
-                            col.title = 'L2 spend';
+                            col.title = 'L2 SP';
                         } else {
-                            col.title = 'L1 spend';
+                            col.title = 'L1 SP';
                         }
                         col.orderable = false;
                         col.render = function (data, type) {
                             if (type === 'sort' || type === 'type') {
                                 var nl = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(nl) ? -1 : nl;
+                                return isNaN(nl) ? -1 : Math.round(nl);
                             }
                             if (type === 'export' || type === 'excel' || type === 'pdf') {
                                 if (data === null || data === undefined || data === '') {
                                     return '';
                                 }
                                 var xl = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(xl) ? '' : xl.toFixed(2);
+                                return isNaN(xl) ? '' : String(Math.round(xl));
                             }
                             if (type !== 'display') {
                                 return data;
@@ -744,7 +967,7 @@
                             if (isNaN(nld)) {
                                 return '<span class="text-muted">--</span>';
                             }
-                            return nld.toFixed(2);
+                            return '<span class="fw-semibold">' + String(Math.round(nld)) + '</span>';
                         };
                     }
                     if (c === 'U7%' || c === 'U2%' || c === 'U1%') {
@@ -834,18 +1057,18 @@
                         };
                     }
                     if (c === 'sales30d') {
-                        col.title = 'Sales';
+                        col.title = 'Sales 30d';
                         col.render = function (data, type) {
                             if (type === 'sort' || type === 'type') {
                                 var nsa = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(nsa) ? -1 : nsa;
+                                return isNaN(nsa) ? -1 : Math.round(nsa);
                             }
                             if (type === 'export' || type === 'excel' || type === 'pdf') {
                                 if (data === null || data === undefined || data === '') {
                                     return '';
                                 }
                                 var xsa = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(xsa) ? '' : xsa.toFixed(2);
+                                return isNaN(xsa) ? '' : String(Math.round(xsa));
                             }
                             if (type !== 'display') {
                                 return data;
@@ -857,7 +1080,7 @@
                             if (isNaN(nca)) {
                                 return '<span class="text-muted">--</span>';
                             }
-                            return nca.toFixed(2);
+                            return '<span class="fw-semibold">' + String(Math.round(nca)) + '</span>';
                         };
                     }
                     if (c === 'sbid') {
@@ -897,7 +1120,7 @@
                 amazonAdsColumnDefsByTable[tableId] = cols;
                 initialized[tableId] = true;
 
-                var hiddenRawColumnKeys = ['id', 'profile_id', 'startDate', 'endDate'];
+                var hiddenRawColumnKeys = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'yes_sbid', 'ad_type', 'date', 'startDate', 'endDate'];
                 var hiddenColumnDefs = [];
                 hiddenRawColumnKeys.forEach(function (key) {
                     for (var ci = 0; ci < cols.length; ci++) {
@@ -907,7 +1130,7 @@
                         }
                     }
                 });
-                ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'bgt', 'L7spend', 'L2spend', 'L1spend'].forEach(function (key) {
+                ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend'].forEach(function (key) {
                     for (var uj = 0; uj < cols.length; uj++) {
                         if (cols[uj].data === key) {
                             hiddenColumnDefs.push({ targets: uj, orderable: false, searchable: false });

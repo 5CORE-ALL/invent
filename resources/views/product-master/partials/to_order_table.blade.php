@@ -15,6 +15,7 @@
         @continue($nrl === 'NR')
 
         <tr style="{{ $isParent ? 'background-color: #e0f7ff;' : '' }}"
+            data-row-id="{{ $row->id ?? '' }}"
             data-is-parent="{{ $row->is_parent ? '1' : '0' }}">
             <td style="position: relative;">
                 @if (!empty($row->Image))

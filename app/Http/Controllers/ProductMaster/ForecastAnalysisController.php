@@ -304,7 +304,7 @@ class ForecastAnalysisController extends Controller
             ->whereNull('deleted_at')
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
-            ->get(['id', 'sku', 'parent', 'approved_qty', 'updated_at',
+            ->get(['id', 'sku', 'parent', 'approved_qty', 'updated_at', 'supplier_name',
                    'rfq_form_link', 'rfq_report_link', 'sheet_link']);
         $toOrderApprovedBySkuParent = collect($toOrderRows)
             ->groupBy(function ($r) use ($normalizeSku) {
@@ -330,10 +330,15 @@ class ForecastAnalysisController extends Controller
                     }
                     return '';
                 };
+                // Latest row (rows are newest-first): same rule as To Order / to_order_analysis index
+                $latest = $rows->first();
+                $supplierName = $latest->supplier_name ?? null;
+
                 return (object)[
                     'rfq_form_link'  => $pick('rfq_form_link'),
                     'rfq_report_link'=> $pick('rfq_report_link'),
                     'sheet_link'     => $pick('sheet_link'),
+                    'supplier_name'  => $supplierName,
                 ];
             });
         $mfrg = DB::table('mfrg_progress')->whereNull('deleted_at')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
@@ -567,7 +572,13 @@ class ForecastAnalysisController extends Controller
                 )
             );
             $item->is_parent = stripos($sheetSku, 'PARENT') !== false;
-            $item->{'Supplier Tag'} = isset($supplierMapByParent[$item->Parent]) ? implode(', ', array_unique($supplierMapByParent[$item->Parent])) : '';
+            $parentSupplierTag = isset($supplierMapByParent[$item->Parent])
+                ? implode(', ', array_unique($supplierMapByParent[$item->Parent]))
+                : '';
+            // One SKU-level source: to_order_analysis.supplier_name when set (incl. empty string); else parent-linked suppliers
+            $item->{'Supplier Tag'} = ($toOrderMeta !== null && $toOrderMeta->supplier_name !== null)
+                ? (string) $toOrderMeta->supplier_name
+                : $parentSupplierTag;
 
             $valuesRaw = $prodData->Values ?? '{}';
             $values = json_decode($valuesRaw, true);
@@ -792,7 +803,10 @@ class ForecastAnalysisController extends Controller
             $item->order_given = $order_given;
             $item->mip_rate = $mipRate; // Store rate for MIP Value calculation
             $item->mfrg_ready_to_ship = $mfrgReadyToShip; // Store ready_to_ship status from mfrg_progress table
-            $item->mfrg_supplier = $mfrgSupplier; // Supplier from mfrg_progress (same as MIP blade)
+            // Prefer to_order_analysis.supplier_name (To Order / update-link) so Approval Required & Forecast match that page
+            $item->mfrg_supplier = ($toOrderMeta !== null && $toOrderMeta->supplier_name !== null)
+                ? (string) $toOrderMeta->supplier_name
+                : $mfrgSupplier;
             $item->mfrg_qty = $mfrgQtyRaw;
             $item->pkg_inst = $mfrgPkgInst;
             $item->u_manual = $mfrgUManual;

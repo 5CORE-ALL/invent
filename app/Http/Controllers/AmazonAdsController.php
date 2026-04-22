@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Support\AmazonAcosSbgtRule;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,53 @@ class AmazonAdsController extends Controller
         'bid_caps' => 'amazon_bid_caps',
         'sd_reports' => 'amazon_sd_campaign_reports',
         'fbm_targeting' => 'amazon_fbm_targeting_checks',
+    ];
+
+    /**
+     * SP campaign raw table: hide noisy Amazon metric / audit columns on Amazon Ads All (keep bids, ids, cost, CPC block, L-spends, BGT/SBGT, ACOS, Prchase).
+     *
+     * @var array<int, string>
+     */
+    private const AMAZON_SP_CAMPAIGN_REPORTS_HIDDEN_DISPLAY_COLUMNS = [
+        'note',
+        'impressions',
+        'clicks',
+        'spend',
+        'sales1d',
+        'sales7d',
+        'sales14d',
+        'unitsSoldClicks1d',
+        'unitsSoldClicks7d',
+        'unitsSoldClicks14d',
+        'unitsSoldClicks30d',
+        'attributedSalesSameSku1d',
+        'attributedSalesSameSku7d',
+        'attributedSalesSameSku14d',
+        'attributedSalesSameSku30d',
+        'unitsSoldSameSku1d',
+        'unitsSoldSameSku7d',
+        'unitsSoldSameSku14d',
+        'clickThroughRate',
+        'qualifiedBorrows',
+        'purchases1d',
+        'purchases7d',
+        'purchases14d',
+        'purchases30d',
+        'addToList',
+        'royaltyQualifiedBorrows',
+        'purchasesSameSku1d',
+        'purchasesSameSku7d',
+        'purchasesSameSku14d',
+        'purchasesSameSku30d',
+        'kindleEditionNormalizedPagesRead14d',
+        'kindleEditionNormalizedPagesRoyalties14d',
+        'campaignBiddingStrategy',
+        'currentSpBidPrice',
+        'apprSbid',
+        'currentUnderSpBidPrice',
+        'apprUnderSbid',
+        'created_at',
+        'updated_at',
     ];
 
     /**
@@ -75,6 +123,7 @@ class AmazonAdsController extends Controller
     /**
      * Columns sent to the Amazon Ads All DataTables, including computed utilization % after `campaignName`
      * (so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
+     * `bgt` follows `campaignName`; `sbgt` follows `sbid` when present (else after `last_sbid`, else after `bgt`).
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -124,6 +173,25 @@ class AmazonAdsController extends Controller
             $idxCn = array_search('campaignName', $ordered, true);
             if ($idxCn !== false) {
                 array_splice($ordered, $idxCn + 1, 0, ['bgt']);
+            }
+        }
+
+        // SBGT after `sbid` (same scope as BGT: table has campaign budget). Fallback if no sbid column.
+        if (in_array('campaignBudgetAmount', self::orderedColumnsForTable($table), true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sbgt'));
+            $idxSbidForSbgt = array_search('sbid', $ordered, true);
+            if ($idxSbidForSbgt !== false) {
+                array_splice($ordered, $idxSbidForSbgt + 1, 0, ['sbgt']);
+            } else {
+                $idxLastForSbgt = array_search('last_sbid', $ordered, true);
+                if ($idxLastForSbgt !== false) {
+                    array_splice($ordered, $idxLastForSbgt + 1, 0, ['sbgt']);
+                } else {
+                    $idxBgtForSbgt = array_search('bgt', $ordered, true);
+                    if ($idxBgtForSbgt !== false) {
+                        array_splice($ordered, $idxBgtForSbgt + 1, 0, ['sbgt']);
+                    }
+                }
             }
         }
 
@@ -192,7 +260,372 @@ class AmazonAdsController extends Controller
             }
         }
 
+        // ACOS (%) = cost / sales * 100 — display after primary sales column when cost + sales exist on the table.
+        $baseCols = self::orderedColumnsForTable($table);
+        $canAcos = in_array('cost', $baseCols, true)
+            && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
+        if ($canAcos) {
+            $idxSales30 = array_search('sales30d', $ordered, true);
+            if ($idxSales30 !== false) {
+                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS']);
+            } else {
+                $idxSales = array_search('sales', $ordered, true);
+                if ($idxSales !== false) {
+                    array_splice($ordered, $idxSales + 1, 0, ['ACOS']);
+                }
+            }
+        }
+
+        // Prchase: `purchases30d` shown under renamed header, placed after L1 CPC (`costPerClick`).
+        if (in_array('purchases30d', $baseCols, true) && in_array('costPerClick', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'purchases30d'));
+            $idxL1Cpc = array_search('costPerClick', $ordered, true);
+            if ($idxL1Cpc !== false) {
+                array_splice($ordered, $idxL1Cpc + 1, 0, ['Prchase']);
+            }
+        }
+
+        if ($table === 'amazon_sp_campaign_reports') {
+            $ordered = array_values(array_filter(
+                $ordered,
+                static fn (string $c): bool => ! in_array($c, self::AMAZON_SP_CAMPAIGN_REPORTS_HIDDEN_DISPLAY_COLUMNS, true)
+            ));
+        }
+
+        // Not shown on Amazon Ads All (still in DB / global search).
+        $ordered = array_values(array_filter(
+            $ordered,
+            static fn (string $c): bool => ! in_array($c, ['pink_dil_paused_at', 'campaignBudgetCurrencyCode'], true)
+        ));
+
         return $ordered;
+    }
+
+    /**
+     * Suggested daily budget tier (1–12) from row ACOS, same breakpoints as {@see AmazonAcosSbgtRule}.
+     * Uses `sales30d` when present, else `sales`. Spend prefers `spend`, else `cost`.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function computedSbgtFromReportRow(array $rowArr, array $dbColumns): ?int
+    {
+        $salesKey = null;
+        if (in_array('sales30d', $dbColumns, true)) {
+            $salesKey = 'sales30d';
+        } elseif (in_array('sales', $dbColumns, true)) {
+            $salesKey = 'sales';
+        }
+        if ($salesKey === null) {
+            return null;
+        }
+        $sales = (float) ($rowArr[$salesKey] ?? 0);
+
+        $spend = 0.0;
+        if (in_array('spend', $dbColumns, true) && array_key_exists('spend', $rowArr) && $rowArr['spend'] !== null && $rowArr['spend'] !== '') {
+            $spend = (float) $rowArr['spend'];
+        }
+        if ($spend <= 0 && in_array('cost', $dbColumns, true) && array_key_exists('cost', $rowArr) && $rowArr['cost'] !== null && $rowArr['cost'] !== '') {
+            $spend = (float) $rowArr['cost'];
+        }
+
+        $acos = 0.0;
+        if ($spend > 0 && $sales > 0) {
+            $acos = ($spend / $sales) * 100;
+        } elseif ($spend > 0 && $sales <= 0) {
+            $acos = 100.0;
+        }
+
+        return AmazonAcosSbgtRule::sbgtFromAcosL30($acos);
+    }
+
+    /**
+     * ACOS (%) from the same row: (cost / sales) × 100. Sales prefers `sales30d`, else `sales`.
+     * When cost > 0 and sales = 0, ACOS is defined as 100% (same convention as budget tooling).
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function computedAcosPercentFromReportRow(array $rowArr, array $dbColumns): ?float
+    {
+        if (! in_array('cost', $dbColumns, true)) {
+            return null;
+        }
+        $salesKey = null;
+        if (in_array('sales30d', $dbColumns, true)) {
+            $salesKey = 'sales30d';
+        } elseif (in_array('sales', $dbColumns, true)) {
+            $salesKey = 'sales';
+        }
+        if ($salesKey === null) {
+            return null;
+        }
+        $sales = (float) ($rowArr[$salesKey] ?? 0);
+        $cost = $rowArr['cost'] ?? null;
+        if ($cost === null || $cost === '') {
+            return null;
+        }
+        $c = (float) $cost;
+        if (! is_finite($c) || ! is_finite($sales)) {
+            return null;
+        }
+        if ($sales > 0) {
+            $v = ($c / $sales) * 100;
+
+            return is_finite($v) ? (float) round($v, 0) : null;
+        }
+        if ($c > 0) {
+            return 100.0;
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * SQL scalar for ORDER BY ACOS (cost / sales × 100), matching {@see computedAcosPercentFromReportRow}.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function sqlExpressionForAcosSort(array $dbColumns): ?string
+    {
+        if (! in_array('cost', $dbColumns, true)) {
+            return null;
+        }
+        if (in_array('sales30d', $dbColumns, true) && in_array('sales', $dbColumns, true)) {
+            return 'CASE WHEN COALESCE(sales30d, 0) > 0 THEN COALESCE(cost, 0) / sales30d * 100 WHEN COALESCE(sales, 0) > 0 THEN COALESCE(cost, 0) / sales * 100 WHEN COALESCE(cost, 0) > 0 THEN 100 ELSE 0 END';
+        }
+        if (in_array('sales30d', $dbColumns, true)) {
+            return 'CASE WHEN COALESCE(sales30d, 0) > 0 THEN COALESCE(cost, 0) / sales30d * 100 WHEN COALESCE(cost, 0) > 0 THEN 100 ELSE 0 END';
+        }
+        if (in_array('sales', $dbColumns, true)) {
+            return 'CASE WHEN COALESCE(sales, 0) > 0 THEN COALESCE(cost, 0) / sales * 100 WHEN COALESCE(cost, 0) > 0 THEN 100 ELSE 0 END';
+        }
+
+        return null;
+    }
+
+    /**
+     * SQL scalar for ORDER BY SBGT tier input (spend-based ACOS %), aligned with {@see computedSbgtFromReportRow}.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function sqlExpressionForSbgtSort(array $dbColumns): ?string
+    {
+        if (in_array('spend', $dbColumns, true) && in_array('cost', $dbColumns, true)) {
+            $spendExpr = 'COALESCE(spend, cost, 0)';
+        } elseif (in_array('spend', $dbColumns, true)) {
+            $spendExpr = 'COALESCE(spend, 0)';
+        } elseif (in_array('cost', $dbColumns, true)) {
+            $spendExpr = 'COALESCE(cost, 0)';
+        } else {
+            return null;
+        }
+        if (in_array('sales30d', $dbColumns, true) && in_array('sales', $dbColumns, true)) {
+            return 'CASE WHEN '.$spendExpr.' > 0 AND COALESCE(sales30d, 0) > 0 THEN '.$spendExpr.' / sales30d * 100 WHEN '.$spendExpr.' > 0 AND COALESCE(sales, 0) > 0 THEN '.$spendExpr.' / sales * 100 WHEN '.$spendExpr.' > 0 THEN 100 ELSE 0 END';
+        }
+        if (in_array('sales30d', $dbColumns, true)) {
+            return 'CASE WHEN '.$spendExpr.' > 0 AND COALESCE(sales30d, 0) > 0 THEN '.$spendExpr.' / sales30d * 100 WHEN '.$spendExpr.' > 0 THEN 100 ELSE 0 END';
+        }
+        if (in_array('sales', $dbColumns, true)) {
+            return 'CASE WHEN '.$spendExpr.' > 0 AND COALESCE(sales, 0) > 0 THEN '.$spendExpr.' / sales * 100 WHEN '.$spendExpr.' > 0 THEN 100 ELSE 0 END';
+        }
+
+        return null;
+    }
+
+    /**
+     * Round displayed money / percent fields to whole numbers for JSON (cost, sales, L-spends, BGT, ACOS).
+     *
+     * @param  array<string, mixed>  $arr
+     * @param  array<int, string>  $displayColumns
+     */
+    private static function roundAmazonAdsDisplayNumericFields(array &$arr, array $displayColumns): void
+    {
+        foreach (['cost', 'sales30d', 'sales', 'L7spend', 'L2spend', 'L1spend', 'bgt', 'ACOS'] as $key) {
+            if (! in_array($key, $displayColumns, true) || ! array_key_exists($key, $arr)) {
+                continue;
+            }
+            $v = $arr[$key];
+            if ($v === null || $v === '') {
+                continue;
+            }
+            if (! is_numeric($v)) {
+                continue;
+            }
+            $n = (float) $v;
+            if (! is_finite($n)) {
+                continue;
+            }
+            $arr[$key] = (float) round($n, 0);
+        }
+    }
+
+    /**
+     * SQL fragment: per-row spend for one table row (alias), preferring `spend` then `cost`.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function spendCoalesceExprForTableAlias(string $alias, array $dbColumns): ?string
+    {
+        if (in_array('spend', $dbColumns, true) && in_array('cost', $dbColumns, true)) {
+            return 'COALESCE('.$alias.'.spend, '.$alias.'.cost, 0)';
+        }
+        if (in_array('spend', $dbColumns, true)) {
+            return 'COALESCE('.$alias.'.spend, 0)';
+        }
+        if (in_array('cost', $dbColumns, true)) {
+            return 'COALESCE('.$alias.'.cost, 0)';
+        }
+
+        return null;
+    }
+
+    /**
+     * Correlated scalar subquery: sum of daily spend for the outer row's campaign (+ ad_type) over 30 calendar days
+     * ending at {@see latestDailyReportYmdInTable} (ISO `report_date_range` prefix rows only).
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function correlatedL30DailySpendSumSubquerySql(string $table, array $dbColumns): ?string
+    {
+        if (! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true)) {
+            return null;
+        }
+        $rowExpr = self::spendCoalesceExprForTableAlias('s30', $dbColumns);
+        if ($rowExpr === null) {
+            return null;
+        }
+        $anchor = self::latestDailyReportYmdInTable($table);
+        if ($anchor === null || $anchor === '') {
+            return null;
+        }
+        try {
+            $from = Carbon::parse($anchor, config('app.timezone'))->subDays(29)->format('Y-m-d');
+        } catch (\Throwable) {
+            return null;
+        }
+        $t = str_replace('`', '``', $table);
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $adClause = $hasAdType ? ' AND s30.ad_type <=> `'.$t.'`.ad_type ' : '';
+
+        return 'SELECT SUM('.$rowExpr.') FROM `'.$t.'` AS s30 WHERE s30.campaign_id = `'.$t.'`.campaign_id'.$adClause
+            .' AND CHAR_LENGTH(TRIM(s30.report_date_range)) >= 10 '
+            ."AND LEFT(TRIM(s30.report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' "
+            .'AND LEFT(TRIM(s30.report_date_range), 10) BETWEEN \''.$from.'\' AND \''.$anchor.'\'';
+    }
+
+    /**
+     * Per campaign (+ ad_type): sum of daily spend over 30 calendar days ending at latest daily `report_date_range` in the table.
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  iterable<int, object>  $pageRows
+     * @return array<string, float|null>
+     */
+    private static function fetchL30DailySpendSumMap(string $table, array $dbColumns, iterable $pageRows): array
+    {
+        $rowExpr = self::spendCoalesceExprForTableAlias('s30', $dbColumns);
+        if ($rowExpr === null || ! in_array('report_date_range', $dbColumns, true) || ! in_array('campaign_id', $dbColumns, true)) {
+            return [];
+        }
+        $anchor = self::latestDailyReportYmdInTable($table);
+        if ($anchor === null || $anchor === '') {
+            return [];
+        }
+        try {
+            $from = Carbon::parse($anchor, config('app.timezone'))->subDays(29)->format('Y-m-d');
+        } catch (\Throwable) {
+            return [];
+        }
+        $cids = [];
+        foreach ($pageRows as $row) {
+            $r = (array) $row;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid !== '') {
+                $cids[$cid] = true;
+            }
+        }
+        $cidList = array_keys($cids);
+        if ($cidList === []) {
+            return [];
+        }
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $q = DB::table($table.' as s30')
+            ->whereIn('s30.campaign_id', $cidList)
+            ->whereRaw('CHAR_LENGTH(TRIM(s30.report_date_range)) >= 10')
+            ->whereRaw("LEFT(TRIM(s30.report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->whereRaw('LEFT(TRIM(s30.report_date_range), 10) BETWEEN ? AND ?', [$from, $anchor]);
+        if ($hasAdType) {
+            $q->selectRaw('s30.campaign_id AS cid, s30.ad_type AS ad, SUM('.$rowExpr.') AS spend_l30')
+                ->groupBy('s30.campaign_id', 's30.ad_type');
+        } else {
+            $q->selectRaw('s30.campaign_id AS cid, SUM('.$rowExpr.') AS spend_l30')
+                ->groupBy('s30.campaign_id');
+        }
+        $map = [];
+        foreach ($q->get() as $fr) {
+            $cid = isset($fr->cid) ? trim((string) $fr->cid) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($fr->ad ?? '')) : '';
+            $key = $cid."\0".$ad;
+            $raw = $fr->spend_l30 ?? null;
+            if ($raw === null || $raw === '') {
+                $map[$key] = null;
+            } else {
+                $n = (float) $raw;
+                $map[$key] = is_finite($n) ? $n : null;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Server-side ORDER BY: display column keys may differ from DB (computed / renamed columns).
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  array<int, string>  $displayColumns
+     */
+    private static function applyRawDataOrder(Builder $query, string $table, array $dbColumns, array $displayColumns, int $orderColumnIndex, string $orderDir): void
+    {
+        $dir = strtolower($orderDir) === 'asc' ? 'ASC' : 'DESC';
+        if ($orderColumnIndex < 0 || $orderColumnIndex >= count($displayColumns)) {
+            $orderColumnIndex = 0;
+        }
+        $requested = $displayColumns[$orderColumnIndex];
+
+        if ($requested === 'bgt' && in_array('campaignBudgetAmount', $dbColumns, true)) {
+            $query->orderBy('campaignBudgetAmount', $dir === 'ASC' ? 'asc' : 'desc');
+        } elseif ($requested === 'Prchase' && in_array('purchases30d', $dbColumns, true)) {
+            $query->orderBy('purchases30d', $dir === 'ASC' ? 'asc' : 'desc');
+        } elseif ($requested === 'ACOS') {
+            $expr = self::sqlExpressionForAcosSort($dbColumns);
+            if ($expr !== null) {
+                $query->orderByRaw('('.$expr.') '.$dir);
+            } elseif (in_array('id', $dbColumns, true)) {
+                $query->orderBy('id', 'desc');
+            }
+        } elseif ($requested === 'sbgt') {
+            $expr = self::sqlExpressionForSbgtSort($dbColumns);
+            if ($expr !== null) {
+                $query->orderByRaw('('.$expr.') '.$dir);
+            } elseif (in_array('id', $dbColumns, true)) {
+                $query->orderBy('id', 'desc');
+            }
+        } elseif ($requested === 'sbid' && in_array('last_sbid', $dbColumns, true) && in_array('sbid', $dbColumns, true)) {
+            $query->orderByRaw('COALESCE(last_sbid, sbid, 0) '.$dir);
+        } elseif ($requested === 'cost' && ($l30Sub = self::correlatedL30DailySpendSumSubquerySql($table, $dbColumns)) !== null) {
+            $query->orderByRaw('(('.$l30Sub.')) '.$dir);
+        } elseif (in_array($requested, $dbColumns, true)) {
+            $query->orderBy($requested, $dir === 'ASC' ? 'asc' : 'desc');
+        } elseif (in_array('id', $dbColumns, true)) {
+            $query->orderBy('id', 'desc');
+        } elseif ($dbColumns !== []) {
+            $query->orderBy($dbColumns[0], 'desc');
+        }
+
+        if ($requested !== 'id' && in_array('id', $dbColumns, true)) {
+            $query->orderBy('id', 'desc');
+        }
     }
 
     /**
@@ -949,13 +1382,6 @@ class AmazonAdsController extends Controller
         $orderColumnIndex = (int) $request->input('order.0.column', 0);
         // Newest → oldest by default (id desc when id exists and first column).
         $orderDir = strtolower((string) $request->input('order.0.dir', 'desc')) === 'asc' ? 'asc' : 'desc';
-        if ($orderColumnIndex < 0 || $orderColumnIndex >= count($columns)) {
-            $orderColumnIndex = 0;
-        }
-        $orderColumnRequested = $columns[$orderColumnIndex];
-        $orderColumn = in_array($orderColumnRequested, $dbColumns, true)
-            ? $orderColumnRequested
-            : (in_array('id', $dbColumns, true) ? 'id' : $dbColumns[0]);
 
         $recordsTotal = (int) DB::table($table)->count();
 
@@ -984,10 +1410,7 @@ class AmazonAdsController extends Controller
                 ->value('c');
         }
 
-        $query->orderBy($orderColumn, $orderDir);
-        if ($orderColumn !== 'id' && in_array('id', $dbColumns, true)) {
-            $query->orderBy('id', 'desc');
-        }
+        self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
 
         $rows = $query->offset($start)
             ->limit($length)
@@ -995,6 +1418,9 @@ class AmazonAdsController extends Controller
 
         $hasLSpendCols = in_array('L7spend', $columns, true);
         $lSpendMap = $hasLSpendCols ? self::fetchL7L2L1SpendMap($table, $dbColumns, $rows) : [];
+        $l30SpendMap = in_array('cost', $columns, true)
+            ? self::fetchL30DailySpendSumMap($table, $dbColumns, $rows)
+            : [];
 
         $hasUtilCols = in_array('U7%', $columns, true);
         $hasCpc2 = in_array('CPC2', $columns, true);
@@ -1032,8 +1458,30 @@ class AmazonAdsController extends Controller
             }
             self::applyGridSbidFromUb2Ub1AndCpc($arr, $u, $rowArr, $dbColumns);
             if (in_array('bgt', $columns, true)) {
-                $arr['bgt'] = null;
+                $bgtVal = $rowArr['campaignBudgetAmount'] ?? null;
+                if ($bgtVal === null || $bgtVal === '') {
+                    $arr['bgt'] = null;
+                } else {
+                    $bn = (float) $bgtVal;
+                    $arr['bgt'] = is_finite($bn) ? $bn : null;
+                }
                 unset($arr['campaignBudgetAmount']);
+            }
+            if (in_array('sbgt', $columns, true)) {
+                $arr['sbgt'] = self::computedSbgtFromReportRow($rowArr, $dbColumns);
+            }
+            if (in_array('ACOS', $columns, true)) {
+                $arr['ACOS'] = self::computedAcosPercentFromReportRow($rowArr, $dbColumns);
+            }
+            if (in_array('Prchase', $columns, true) && in_array('purchases30d', $dbColumns, true)) {
+                $pv = $rowArr['purchases30d'] ?? null;
+                if ($pv === null || $pv === '') {
+                    $arr['Prchase'] = null;
+                } else {
+                    $pn = (float) $pv;
+                    $arr['Prchase'] = is_finite($pn) ? (int) $pn : null;
+                }
+                unset($arr['purchases30d']);
             }
             if ($hasLSpendCols && $cid !== '') {
                 $adKey = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
@@ -1043,6 +1491,18 @@ class AmazonAdsController extends Controller
                 $arr['L2spend'] = $slice['L2'];
                 $arr['L1spend'] = $slice['L1'];
             }
+            if (in_array('cost', $columns, true) && $cid !== '' && $l30SpendMap !== []) {
+                $adKeyL30 = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
+                $lkL30 = $cid."\0".trim((string) $adKeyL30);
+                if (array_key_exists($lkL30, $l30SpendMap)) {
+                    $l30v = $l30SpendMap[$lkL30];
+                    if ($l30v !== null && is_finite($l30v)) {
+                        $arr['cost'] = $l30v;
+                    }
+                }
+            }
+            self::roundAmazonAdsDisplayNumericFields($arr, $columns);
+            unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);
             $data[] = $arr;
         }
 
