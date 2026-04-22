@@ -2358,7 +2358,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/amazon-ads/all', [AmazonAdsController::class, 'index'])->name('amazon.ads.all');
     Route::match(['get', 'post'], '/amazon-ads/raw-data/{source}', [AmazonAdsController::class, 'rawData'])->name('amazon.ads.raw-data');
+    Route::post('/amazon-ads/u7-distribution/{source}', [AmazonAdsController::class, 'u7Distribution'])->name('amazon.ads.u7-distribution');
+    Route::post('/amazon-ads/u7-distribution-history/{source}', [AmazonAdsController::class, 'u7DistributionHistory'])->name('amazon.ads.u7-distribution-history');
     Route::post('/amazon-ads/push-sp-sbids', [AmazonAdsController::class, 'pushSpSbids'])->name('amazon.ads.push-sp-sbids');
+    Route::post('/amazon-ads/push-sp-sbgts', [AmazonAdsController::class, 'pushSpSbgts'])->name('amazon.ads.push-sp-sbgts');
+    Route::get('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'getBgtRule'])->name('amazon.ads.bgt-rule');
+    Route::post('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'saveBgtRule'])->name('amazon.ads.bgt-rule.save');
+    Route::get('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'getSbidRule'])->name('amazon.ads.sbid-rule');
+    Route::post('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'saveSbidRule'])->name('amazon.ads.sbid-rule.save');
 
     // ajax routes
     Route::get('/amazon/all-data', [OverallAmazonController::class, 'getAllData'])->name('amazon.allData');

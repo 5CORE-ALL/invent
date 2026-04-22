@@ -53,6 +53,15 @@ class AmazonACOSController extends Controller
         }
     }
 
+    /**
+     * SP Campaigns v3 update: `campaignId` must be a JSON string; `budget.budget` must be a JSON number (float).
+     * A numeric campaign id caused: NUMBER_VALUE can not be converted to a String.
+     */
+    private static function spCampaignDailyBudgetAmount(float $amount): float
+    {
+        return round($amount, 2);
+    }
+
     public function updateAutoAmazonCampaignBgt(array $campaignIds, array $newBgts)
     {
         ini_set('max_execution_time', 300);
@@ -75,11 +84,11 @@ class AmazonACOSController extends Controller
             $newBgt = floatval($newBgts[$index] ?? 0);
 
             $allCampaigns[] = [
-                'campaignId' => $campaignId,
+                'campaignId' => (string) $campaignId,
                 'budget' => [
-                    'budget' => $newBgt,
-                    'budgetType' => 'DAILY'
-                ]
+                    'budget' => self::spCampaignDailyBudgetAmount($newBgt),
+                    'budgetType' => 'DAILY',
+                ],
             ];
         }
 
@@ -159,11 +168,11 @@ class AmazonACOSController extends Controller
             $newBgt = floatval($newBgts[$index] ?? 0);
 
             $allCampaigns[] = [
-                'campaignId' => $campaignId,
+                'campaignId' => (string) $campaignId,
                 'budget' => [
-                    'budget' => $newBgt,
-                    'budgetType' => 'DAILY'
-                ]
+                    'budget' => self::spCampaignDailyBudgetAmount($newBgt),
+                    'budgetType' => 'DAILY',
+                ],
             ];
         }
 

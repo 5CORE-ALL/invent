@@ -3,6 +3,7 @@
 namespace App\Services\Amazon;
 
 use App\Models\AmazonUtilizationCount;
+use App\Support\AmazonAdsSbidRule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -105,10 +106,10 @@ class AmazonBidUtilizationService
     }
 
     /**
-     * Suggested SBID from U2%/U1% bands (same thresholds as the grid: red below 66%, pink above 99%).
+     * Suggested SBID from U2%/U1% bands using {@see AmazonAdsSbidRule::resolvedRule()} (thresholds and multipliers).
      *
-     * - Both red: L1cpc×1.1, else L2cpc×1.1, else L7cpc×1.1, else 0.75 when all CPCs zero.
-     * - Both pink: L1cpc×0.90 (uses L1 CPC or a positive costPerClick fallback applied to all tiers).
+     * - Both below util_low: L1×m1, else L2×m2, else L7×m7, else both_low_fallback when all CPCs zero.
+     * - Both above util_high: L1×both_high_mult_l1 (or null when L1 CPC missing, same as legacy).
      * - Otherwise: sbid null (display "--" in Amazon Ads All).
      *
      * @return array{sbid: float|null, band: 'under'|'over'|'none'}
@@ -121,6 +122,15 @@ class AmazonBidUtilizationService
         float $l7Cpc,
         ?float $costPerClickFallback = null
     ): array {
+        $r = AmazonAdsSbidRule::resolvedRule();
+        $low = (float) $r['util_low'];
+        $high = (float) $r['util_high'];
+        $m1 = (float) $r['both_low_mult_l1'];
+        $m2 = (float) $r['both_low_mult_l2'];
+        $m7 = (float) $r['both_low_mult_l7'];
+        $fallback = (float) $r['both_low_fallback'];
+        $highM1 = (float) $r['both_high_mult_l1'];
+
         $fb = ($costPerClickFallback !== null && $costPerClickFallback > 0) ? $costPerClickFallback : null;
 
         $l1 = $l1Cpc > 0 ? $l1Cpc : 0.0;
@@ -131,23 +141,23 @@ class AmazonBidUtilizationService
             $l1 = $l2 = $l7 = $fb;
         }
 
-        if ($ub2 < 66.0 && $ub1 < 66.0) {
+        if ($ub2 < $low && $ub1 < $low) {
             if ($l1 > 0.0) {
-                return ['sbid' => round($l1 * 1.1, 2), 'band' => 'under'];
+                return ['sbid' => round($l1 * $m1, 2), 'band' => 'under'];
             }
             if ($l2 > 0.0) {
-                return ['sbid' => round($l2 * 1.1, 2), 'band' => 'under'];
+                return ['sbid' => round($l2 * $m2, 2), 'band' => 'under'];
             }
             if ($l7 > 0.0) {
-                return ['sbid' => round($l7 * 1.1, 2), 'band' => 'under'];
+                return ['sbid' => round($l7 * $m7, 2), 'band' => 'under'];
             }
 
-            return ['sbid' => 0.75, 'band' => 'under'];
+            return ['sbid' => round($fallback, 2), 'band' => 'under'];
         }
 
-        if ($ub2 > 99.0 && $ub1 > 99.0) {
+        if ($ub2 > $high && $ub1 > $high) {
             if ($l1 > 0.0) {
-                return ['sbid' => round($l1 * 0.9, 2), 'band' => 'over'];
+                return ['sbid' => round($l1 * $highM1, 2), 'band' => 'over'];
             }
 
             return ['sbid' => null, 'band' => 'none'];
