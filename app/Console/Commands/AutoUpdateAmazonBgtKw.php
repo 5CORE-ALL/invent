@@ -315,18 +315,13 @@ class AutoUpdateAmazonBgtKw extends Command
                     continue;
                 }
 
-                $sales = $matchedCampaignL30->sales30d ?? 0;
-                $spend = $matchedCampaignL30->spend ?? 0;
+                $sales = AmazonAcosSbgtRule::l30SalesForAcos($matchedCampaignL30) ?? 0.0;
+                $spend = AmazonAcosSbgtRule::l30DisplaySpendForAcos($matchedCampaignL30) ?? 0.0;
                 $row['spend'] = $spend;
                 $row['units_ordered_l30'] = $amazonSheet->units_ordered_l30 ?? 0;
 
-                if ($spend > 0 && $sales > 0) {
-                    $row['acos_L30'] = round(($spend / $sales) * 100, 2);
-                } elseif ($spend > 0 && $sales == 0) {
-                    $row['acos_L30'] = 100;
-                } else {
-                    $row['acos_L30'] = 0;
-                }
+                $acosPct = AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($matchedCampaignL30);
+                $row['acos_L30'] = $acosPct ?? 0.0;
                 
                 $tpft = 0;
                 if (isset($nrValues[$pm->sku])) {
@@ -347,12 +342,11 @@ class AutoUpdateAmazonBgtKw extends Command
             // Calculate total ACOS from valid campaigns only (matching frontend logic)
             $totalACOS = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
 
-            // Now calculate sbgt for each valid campaign using the calculated total ACOS
+            // Now calculate sbgt for each valid campaign (ACOS already matches Amazon Ads All)
             foreach ($validCampaignsForTotal as $row) {
-                $acos = (float) ($row['acos_L30'] ?? 0);
                 $price = (float) ($row['price'] ?? 0);
 
-                $row['sbgt'] = AmazonAcosSbgtRule::sbgtFromAcosL30($acos);
+                $row['sbgt'] = AmazonAcosSbgtRule::sbgtFromAcosL30((float) ($row['acos_L30'] ?? 0));
 
                 $result[] = (object) $row;
             }

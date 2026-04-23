@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\AmazonAcosSbgtRuleSetting;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
@@ -122,6 +123,116 @@ final class AmazonAcosSbgtRule
             $row->update(['rule' => $rule]);
         }
         self::forgetResolvedCache();
+    }
+
+    /**
+     * @param  object|array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private static function reportRowArray(object|array $row): array
+    {
+        if (is_array($row)) {
+            return $row;
+        }
+        if ($row instanceof Model) {
+            return $row->toArray();
+        }
+
+        return (array) $row;
+    }
+
+    /**
+     * L30 spend for ACOS: prefer `cost`, else `spend` (same order as
+     * {@see \App\Http\Controllers\AmazonAdsController} / `l30DisplaySpendFromRowArray`).
+     *
+     * @param  object|array<string, mixed>  $row
+     */
+    public static function l30DisplaySpendForAcos(object|array $row): ?float
+    {
+        $r = self::reportRowArray($row);
+        foreach (['cost', 'spend'] as $k) {
+            if (! array_key_exists($k, $r)) {
+                continue;
+            }
+            $v = $r[$k] ?? null;
+            if ($v === null || $v === '') {
+                continue;
+            }
+            $n = (float) $v;
+            if (is_finite($n)) {
+                return $n;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * L30 sales for ACOS: prefer `sales30d`, else `sales` (Amazon Ads All / SP & SB L30 rows).
+     *
+     * @param  object|array<string, mixed>  $row
+     */
+    public static function l30SalesForAcos(object|array $row): ?float
+    {
+        $r = self::reportRowArray($row);
+        foreach (['sales30d', 'sales'] as $k) {
+            if (! array_key_exists($k, $r)) {
+                continue;
+            }
+            $v = $r[$k] ?? null;
+            if ($v === null || $v === '') {
+                continue;
+            }
+            $n = (float) $v;
+            if (is_finite($n)) {
+                return $n;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * ACOS % from one L30 summary report row, aligned with {@see \App\Http\Controllers\AmazonAdsController::computedAcosPercentFromReportRow}
+     * (whole-number percent like the All page ACOS column; spend prefers `cost` then `spend`).
+     *
+     * @param  object|array<string, mixed>  $row
+     */
+    public static function acosPercentForSbgtFromReportRow(object|array $row): ?float
+    {
+        $c = self::l30DisplaySpendForAcos($row);
+        if ($c === null) {
+            return null;
+        }
+        $sales = self::l30SalesForAcos($row);
+        if ($sales === null) {
+            return null;
+        }
+        if ($sales > 0) {
+            $v = ($c / $sales) * 100;
+
+            return is_finite($v) ? (float) round($v, 0) : null;
+        }
+        if ($c > 0) {
+            return 100.0;
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Suggested SBGT tier ($) from one L30 report row (same inputs as Amazon Ads All SBGT column).
+     *
+     * @param  object|array<string, mixed>  $row
+     */
+    public static function sbgtFromL30ReportRow(object|array $row): ?int
+    {
+        $acos = self::acosPercentForSbgtFromReportRow($row);
+        if ($acos === null) {
+            return null;
+        }
+
+        return self::sbgtFromAcosL30($acos);
     }
 
     public static function sbgtFromAcosL30(float $acos): int

@@ -252,48 +252,7 @@ class AutoUpdateAmazonBgtPt extends Command
             }
 
             $result = [];
-            $totalSpend = 0;
-            $totalSales = 0;
 
-            // First pass: collect all data and calculate totals
-            foreach ($productMasters as $pm) {
-                $sku = strtoupper($pm->sku ?? '');
-
-                $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-                $shopify = $shopifyData[$pm->sku] ?? null;
-
-                $matchedCampaignL30 = $this->matchCampaign($sku, $amazonSpCampaignReportsL30);
-
-                if (!$matchedCampaignL30) {
-                    continue;
-                }
-
-                // INV: for PARENT rows use sum of children's INV; for child rows use shopify inv
-                $inv = (stripos($sku, 'PARENT') !== false)
-                    ? (int) ($childInvSumByParent[$pm->parent ?? $pm->sku ?? ''] ?? 0)
-                    : (($shopify && isset($shopify->inv)) ? (int) $shopify->inv : 0);
-
-                // Skip if INV = 0
-                if ($inv == 0) {
-                    continue;
-                }
-
-                // Skip if campaign_id is empty
-                if (empty($matchedCampaignL30->campaign_id)) {
-                    continue;
-                }
-
-                $sales = $matchedCampaignL30->sales30d ?? 0;
-                $spend = $matchedCampaignL30->spend ?? 0;
-
-                $totalSpend += $spend;
-                $totalSales += $sales;
-            }
-
-            // Calculate total ACOS
-            $totalACOS = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
-
-            // Second pass: calculate sbgt with new rule
             foreach ($productMasters as $pm) {
                 $sku = strtoupper($pm->sku ?? '');
 
@@ -334,19 +293,10 @@ class AutoUpdateAmazonBgtPt extends Command
                 $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? '';
                 $row['campaignName'] = $matchedCampaignL30->campaignName ?? '';
 
-                $sales = $matchedCampaignL30->sales30d ?? 0;
-                $spend = $matchedCampaignL30->spend ?? 0;
                 $row['units_ordered_l30'] = $amazonSheet->units_ordered_l30 ?? 0;
 
-                if ($spend > 0 && $sales > 0) {
-                    $row['acos_L30'] = round(($spend / $sales) * 100, 2);
-                } elseif ($spend > 0 && $sales == 0) {
-                    $row['acos_L30'] = 100;
-                } else {
-                    $row['acos_L30'] = 0;
-                }
-
-                $acos = (float) ($row['acos_L30'] ?? 0);
+                $acosPct = AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($matchedCampaignL30);
+                $row['acos_L30'] = $acosPct ?? 0.0;
 
                 $tpft = 0;
                 if (isset($nrValues[$pm->sku])) {
@@ -358,11 +308,7 @@ class AutoUpdateAmazonBgtPt extends Command
                 }
                 $row['TPFT'] = $tpft;
 
-                $acos = (float) ($row['acos_L30'] ?? 0);
-
-                $price = (float) ($row['price'] ?? 0);
-
-                $row['sbgt'] = AmazonAcosSbgtRule::sbgtFromAcosL30($acos);
+                $row['sbgt'] = AmazonAcosSbgtRule::sbgtFromL30ReportRow($matchedCampaignL30) ?? 0;
 
                 $result[] = (object) $row;
             }

@@ -158,19 +158,16 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
                 continue;
             }
 
-            // Calculate ACOS from L30 data
-            $sales = floatval($matchedCampaign->sales30d ?? 0);
-            $spend = floatval($matchedCampaign->spend ?? 0);
-
-            $acos = 0;
-            if ($sales > 0) {
-                $acos = round(($spend / $sales) * 100, 2);
-            } elseif ($spend > 0) {
-                $acos = 100;
+            // L30 ACOS → SBGT (same row math as Amazon Ads All / BGT PT command)
+            $acosPct = AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($matchedCampaign);
+            if ($acosPct === null) {
+                $this->line("Skipping PT campaign (SKU: {$sellerSku}) — no L30 cost/spend or sales for ACOS.");
+                continue;
             }
+            $sales = AmazonAcosSbgtRule::l30SalesForAcos($matchedCampaign) ?? 0.0;
+            $spend = AmazonAcosSbgtRule::l30DisplaySpendForAcos($matchedCampaign) ?? 0.0;
 
-            // Same ACOS → SBGT tiers as FBM ACOS control / utilized KW (pink 12 … red 1)
-            $newBudget = AmazonAcosSbgtRule::sbgtFromAcosL30((float) $acos);
+            $newBudget = AmazonAcosSbgtRule::sbgtFromAcosL30($acosPct);
 
             $allowedSbgt = AmazonAcosSbgtRule::allowedSbgtTierValues();
             if (! in_array($newBudget, $allowedSbgt, true)) {
@@ -188,13 +185,13 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
                     'campaign_name' => $matchedCampaign->campaignName ?? '',
                     'old_budget' => $currentBudget,
                     'new_budget' => $newBudget,
-                    'acos' => $acos,
+                    'acos' => $acosPct,
                     'sales' => $sales,
                     'spend' => $spend
                 ];
                 
                 // Log the budget calculation details
-                $this->line("SKU: {$sellerSku} | Inventory: {$quantityAvailable} | Campaign: {$matchedCampaign->campaignName} | ACOS: {$acos}% | Current Budget: \${$currentBudget} | New Budget: \${$newBudget}");
+                $this->line("SKU: {$sellerSku} | Inventory: {$quantityAvailable} | Campaign: {$matchedCampaign->campaignName} | ACOS: {$acosPct}% | Current Budget: \${$currentBudget} | New Budget: \${$newBudget}");
             } else {
                 $this->warn("Skipping duplicate campaign ID: {$campaignId} for SKU: {$sellerSku}");
             }

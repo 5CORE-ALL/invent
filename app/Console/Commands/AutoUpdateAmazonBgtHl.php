@@ -293,18 +293,11 @@ class AutoUpdateAmazonBgtHl extends Command
                     continue;
                 }
 
-                $sales = (float) ($matchedCampaignL30->sales ?? 0);
-                $spend = (float) ($matchedCampaignL30->cost ?? 0);
-                $row['spend'] = $spend;
+                $row['spend'] = AmazonAcosSbgtRule::l30DisplaySpendForAcos($matchedCampaignL30) ?? 0.0;
                 $row['units_ordered_l30'] = $amazonSheet->units_ordered_l30 ?? 0;
 
-                if ($spend > 0 && $sales > 0) {
-                    $row['acos_L30'] = round(($spend / $sales) * 100, 2);
-                } elseif ($spend > 0 && $sales == 0) {
-                    $row['acos_L30'] = 100;
-                } else {
-                    $row['acos_L30'] = 0;
-                }
+                $acosPct = AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($matchedCampaignL30);
+                $row['acos_L30'] = $acosPct ?? 0.0;
 
                 $tpft = 0;
                 if (isset($nrValues[$pm->sku])) {
