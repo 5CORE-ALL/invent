@@ -186,6 +186,28 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * eBay 1/2/3: sum of listing "eBay L30" units from the latest tabulator snapshot (amazon_channel_summary_data).
+     * Same snapshot as Total Views (tabulator save), so CVR = L30 Orders / Total Views matches ebay-tabulator-view
+     * (units ÷ views). Falls back to marketplace_daily_metrics when the key is absent (older snapshots).
+     *
+     * @param string $amazonSummaryChannel Channel key stored on AmazonChannelSummary: ebay, ebay2, ebay3
+     */
+    private function getEbayTabulatorL30UnitsForCvr(string $amazonSummaryChannel): ?float
+    {
+        $row = AmazonChannelSummary::where('channel', strtolower($amazonSummaryChannel))
+            ->latest('snapshot_date')
+            ->first();
+        if (!$row || empty($row->summary_data) || !is_array($row->summary_data)) {
+            return null;
+        }
+        if (!array_key_exists('total_ebay_l30', $row->summary_data)) {
+            return null;
+        }
+
+        return (float) $row->summary_data['total_ebay_l30'];
+    }
+
+    /**
      * Stub values for Shipping Health, CC Health, Returns %, A2Z Claims, Ratings & Reviews columns.
      * Override in channel-specific data when sources (e.g. AccountHealthMaster, ChannelsReviewsData) are wired.
      */
@@ -3891,6 +3913,11 @@ class ChannelMasterController extends Controller
         $nPft = $metrics->n_pft ?? 0;
         $nRoi = $metrics->n_roi ?? 0;
 
+        $tabL30Units = $this->getEbayTabulatorL30UnitsForCvr('ebay');
+        if ($tabL30Units !== null) {
+            $l30Orders = $tabL30Units;
+        }
+
         // KW/PMT Spend: fetch directly from tables (same logic as Ebay KW Ads & PMT Ads pages)
         $ebayBreakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebay');
         $kwSpent = $ebayBreakdown['kw'];
@@ -4035,6 +4062,11 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
         $nRoi = $metrics->n_roi ?? 0;
+
+        $tabL30Units2 = $this->getEbayTabulatorL30UnitsForCvr('ebay2');
+        if ($tabL30Units2 !== null) {
+            $l30Orders = $tabL30Units2;
+        }
 
         // KW/PMT Spend: fetch directly from tables (same logic as Ebay 2 KW Ads & PMT Ads pages)
         $ebay2Breakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebaytwo');
@@ -4203,6 +4235,11 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
         $nRoi = $metrics->n_roi ?? 0;
+
+        $tabL30Units3 = $this->getEbayTabulatorL30UnitsForCvr('ebay3');
+        if ($tabL30Units3 !== null) {
+            $l30Orders = $tabL30Units3;
+        }
 
         // KW/PMT Spend: fetch directly from tables (same logic as Ebay 3 KW Ads & PMT Ads pages)
         $ebay3Breakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebaythree');
