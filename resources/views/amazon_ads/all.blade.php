@@ -185,6 +185,10 @@
                                 <div class="amazon-u7-pie-caption text-muted me-1" title="Row counts by U7% band (U7 filter ignored). Click a slice for last 30 days.">U7% mix</div>
                                 <div id="amazonAdsU7Pie" class="amazon-u7-pie-chart" role="img" aria-label="U7 percent distribution pie chart"></div>
                             </div>
+                            <div class="d-flex align-items-center flex-shrink-0 border-start border-light ps-2 ms-1 ms-sm-2" id="amazonAdsSpl30BadgeWrap" hidden title="Total SPL30: sum of L30 spend per distinct campaign (+ ad type) for current filters (same logic as the grid; all matching rows, not only this page).">
+                                <span class="badge bg-dark">SPl30</span>
+                                <span class="ms-1 small fw-semibold tabular-nums" id="amazonAdsSpl30BadgeValue"></span>
+                            </div>
                             <div class="d-flex flex-wrap align-items-end gap-2 ms-auto">
                                 <div class="flex-shrink-0">
                                     <label class="form-label" for="amazonAdsFilterU2" title="L2 spend ÷ (budget×2)">U2%</label>
@@ -1074,12 +1078,13 @@
                 }
                 activeAdsTableId = table.id;
                 activeRawSourceKey = table.getAttribute('data-raw-source') || 'sp_reports';
+                amazonAdsUpdateSpl30BadgeFromJson({}, sourceKey);
                 amazonAdsUpdateSbidPushButton();
                 initTable(table.id, table.getAttribute('data-raw-source'));
             }
 
             /** Short labels for Amazon ad_type values in the grid (display only; sort/filter use raw). */
-            /** U7%/U2%/U1%: L7 SP÷(BGT×7), L2 SP÷(BGT×2), L1 SP÷(BGT×1), rounded %; red below 66, green 66–99, pink above 99. */
+            /** U7%/U2%/U1%: L7 SP÷(BGT×7), L2 SP÷(BGT×2), L1 SP÷(BGT×1); red below 66, green 66–99, pink above 99 (bands use rounded %). */
             function renderUtilPercentColumn(data, type) {
                 if (data === null || data === undefined || data === '') {
                     if (type === 'display') {
@@ -1133,6 +1138,25 @@
                     return '';
                 }
                 return String(n);
+            }
+
+            /** SPL30 total from raw-data JSON when the grid exposes `cost` (SPL30). */
+            function amazonAdsUpdateSpl30BadgeFromJson(json, responseSourceKey) {
+                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
+                    return;
+                }
+                var wrap = document.getElementById('amazonAdsSpl30BadgeWrap');
+                var valEl = document.getElementById('amazonAdsSpl30BadgeValue');
+                if (!wrap || !valEl) {
+                    return;
+                }
+                if (json && typeof json.spl30Total === 'number' && isFinite(json.spl30Total)) {
+                    wrap.hidden = false;
+                    valEl.textContent = Number(json.spl30Total).toFixed(2);
+                } else {
+                    wrap.hidden = true;
+                    valEl.textContent = '';
+                }
             }
 
             /** SBID from server when U2/U1 both red or both pink; otherwise null → -- */
@@ -1346,6 +1370,33 @@
                             return '<span class="fw-semibold" style="color:' + cs + ';">' + String(ti) + '</span>';
                         };
                     }
+                    if (c === 'INV') {
+                        col.title = 'INV';
+                        col.render = function (data, type) {
+                            if (type === 'sort' || type === 'type') {
+                                var ni = typeof data === 'number' ? data : parseInt(data, 10);
+                                return isNaN(ni) ? -1 : ni;
+                            }
+                            if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (data === null || data === undefined || data === '') {
+                                    return '';
+                                }
+                                var xi = parseInt(data, 10);
+                                return isNaN(xi) ? '' : String(xi);
+                            }
+                            if (type !== 'display') {
+                                return data;
+                            }
+                            if (data === null || data === undefined || data === '') {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            var vi = parseInt(data, 10);
+                            if (isNaN(vi)) {
+                                return '<span class="text-muted">--</span>';
+                            }
+                            return '<span class="fw-semibold">' + String(vi) + '</span>';
+                        };
+                    }
                     if (c === 'Prchase') {
                         col.title = 'Sold';
                         col.render = function (data, type) {
@@ -1376,8 +1427,8 @@
                     if (c === 'ACOS') {
                         col.title = 'ACOS';
                         col.render = function (data, type) {
+                            var na = typeof data === 'number' ? data : parseFloat(data, 10);
                             if (type === 'sort' || type === 'type') {
-                                var na = typeof data === 'number' ? data : parseFloat(data, 10);
                                 return isNaN(na) ? -1 : Math.round(na);
                             }
                             if (type === 'export' || type === 'excel' || type === 'pdf') {
@@ -1428,8 +1479,8 @@
                     if (c === 'cost') {
                         col.title = 'SPL30';
                         col.render = function (data, type) {
+                            var ncst = amazonAdsParseFiniteNumber(data);
                             if (type === 'sort' || type === 'type') {
-                                var ncst = amazonAdsParseFiniteNumber(data);
                                 return isNaN(ncst) ? -1 : Math.round(ncst);
                             }
                             if (type === 'export' || type === 'excel' || type === 'pdf') {
@@ -1452,21 +1503,56 @@
                             return '<span class="fw-semibold">' + String(Math.round(fcst)) + '</span>';
                         };
                     }
-                    if (c === 'L7spend' || c === 'L2spend' || c === 'L1spend') {
+                    if (c === 'L7spend' || c === 'L2spend' || c === 'L1spend' || c === 'L1cost' || c === 'L1clicks') {
                         if (c === 'L7spend') {
                             col.title = 'L7SP';
                         } else if (c === 'L2spend') {
                             col.title = 'L2SP';
-                        } else {
+                        } else if (c === 'L1spend') {
                             col.title = 'L1SP';
+                        } else if (c === 'L1cost') {
+                            col.title = 'L1Cost';
+                        } else {
+                            col.title = 'L1Clk';
                         }
                         col.orderable = false;
                         col.render = function (data, type) {
+                            if (c === 'L1clicks') {
+                                if (type === 'sort' || type === 'type') {
+                                    var nclk = typeof data === 'number' ? data : parseInt(data, 10);
+                                    return isNaN(nclk) ? -1 : nclk;
+                                }
+                                if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                    if (data === null || data === undefined || data === '') {
+                                        return '';
+                                    }
+                                    var xclk = parseInt(data, 10);
+                                    return isNaN(xclk) ? '' : String(xclk);
+                                }
+                                if (type !== 'display') {
+                                    return data;
+                                }
+                                if (data === null || data === undefined || data === '') {
+                                    return '<span class="text-muted">--</span>';
+                                }
+                                var iclk = parseInt(data, 10);
+                                if (isNaN(iclk)) {
+                                    return '<span class="text-muted">--</span>';
+                                }
+                                return '<span class="fw-semibold">' + String(iclk) + '</span>';
+                            }
                             if (type === 'sort' || type === 'type') {
                                 var nl = amazonAdsParseFiniteNumber(data);
                                 return isNaN(nl) ? -1 : nl;
                             }
                             if (type === 'export' || type === 'excel' || type === 'pdf') {
+                                if (c === 'L1cost') {
+                                    if (data === null || data === undefined || data === '') {
+                                        return '';
+                                    }
+                                    var xlc = amazonAdsParseFiniteNumber(data);
+                                    return isNaN(xlc) ? '' : String(Math.round(xlc));
+                                }
                                 return amazonAdsRawNumberText(data);
                             }
                             if (type !== 'display') {
@@ -1478,6 +1564,9 @@
                             var nld = amazonAdsParseFiniteNumber(data);
                             if (isNaN(nld)) {
                                 return '<span class="text-muted">--</span>';
+                            }
+                            if (c === 'L1cost') {
+                                return '<span class="fw-semibold">' + String(Math.round(nld)) + '</span>';
                             }
                             return '<span class="fw-semibold">' + amazonAdsRawNumberText(data) + '</span>';
                         };
@@ -1499,7 +1588,10 @@
                                     return '';
                                 }
                                 var x3 = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(x3) ? '' : x3.toFixed(2);
+                                if (isNaN(x3)) {
+                                    return '';
+                                }
+                                return x3.toFixed(2);
                             }
                             if (type !== 'display') {
                                 return data;
@@ -1526,7 +1618,10 @@
                                     return '';
                                 }
                                 var x2 = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(x2) ? '' : x2.toFixed(2);
+                                if (isNaN(x2)) {
+                                    return '';
+                                }
+                                return x2.toFixed(2);
                             }
                             if (type !== 'display') {
                                 return data;
@@ -1553,7 +1648,10 @@
                                     return '';
                                 }
                                 var xe = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(xe) ? '' : xe.toFixed(2);
+                                if (isNaN(xe)) {
+                                    return '';
+                                }
+                                return xe.toFixed(2);
                             }
                             if (type !== 'display') {
                                 return data;
@@ -1569,10 +1667,10 @@
                         };
                     }
                     if (c === 'sales30d') {
-                        col.title = 'SL30';
+                        col.title = 'SL 30';
                         col.render = function (data, type) {
+                            var nsa = amazonAdsParseFiniteNumber(data);
                             if (type === 'sort' || type === 'type') {
-                                var nsa = amazonAdsParseFiniteNumber(data);
                                 return isNaN(nsa) ? -1 : Math.round(nsa);
                             }
                             if (type === 'export' || type === 'excel' || type === 'pdf') {
@@ -1642,7 +1740,7 @@
                         }
                     }
                 });
-                ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend'].forEach(function (key) {
+                ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'INV'].forEach(function (key) {
                     for (var uj = 0; uj < cols.length; uj++) {
                         if (cols[uj].data === key) {
                             hiddenColumnDefs.push({ targets: uj, orderable: false, searchable: false });
@@ -1681,6 +1779,7 @@
                             d._token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
                         },
                         dataSrc: function (json) {
+                            amazonAdsUpdateSpl30BadgeFromJson(json, sourceKey);
                             return json && json.data ? json.data : [];
                         },
                         error: function (xhr) {

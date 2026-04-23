@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
+use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Support\AmazonAdsSbidRule;
 use App\Support\AmazonAcosSbgtRule;
@@ -11,6 +13,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
@@ -35,7 +38,8 @@ class AmazonAdsController extends Controller
     ];
 
     /**
-     * SP campaign raw table: hide noisy Amazon metric / audit columns on Amazon Ads All (keep ids, cost, CPC block, L-spends, BGT/SBGT, ACOS, Prchase).
+     * SP and SB campaign raw tables: hide noisy Amazon metric / audit columns on Amazon Ads All (keep ids, cost, CPC block, L-spends, Sold/Prchase, BGT/SBGT, ACOS, SL 30).
+     * SB uses the same list; SB display is then restricted to the same column set and order as SP.
      *
      * @var array<int, string>
      */
@@ -65,6 +69,7 @@ class AmazonAdsController extends Controller
         'purchases7d',
         'purchases14d',
         'purchases30d',
+        'purchases',
         'addToList',
         'royaltyQualifiedBorrows',
         'purchasesSameSku1d',
@@ -225,10 +230,15 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // CPC 3 / 2 / 1 after L1 spend (same gates as before: needs costPerClick + campaign_id + report_date_range).
-        $canCpcBlock = in_array('costPerClick', $ordered, true)
-            && in_array('campaign_id', $ordered, true)
-            && in_array('report_date_range', $ordered, true);
+        // CPC 3 / 2 / 1 after L1 spend: SP uses `costPerClick`; SB CPC1 uses L1 summary cost ÷ clicks; CPC2/CPC3 use daily row lookups.
+        $canCpcBlock = in_array('campaign_id', $ordered, true)
+            && in_array('report_date_range', $ordered, true)
+            && (
+                in_array('costPerClick', $ordered, true)
+                || ($table === 'amazon_sb_campaign_reports'
+                    && in_array('clicks', $ordered, true)
+                    && (in_array('cost', $ordered, true) || in_array('spend', $ordered, true)))
+            );
         if ($canCpcBlock) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'costPerClick'));
             $idxL1 = array_search('L1spend', $ordered, true);
@@ -246,6 +256,7 @@ class AmazonAdsController extends Controller
             }
         }
 
+        $baseCols = self::orderedColumnsForTable($table);
         if (in_array('sales30d', $ordered, true)) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sales30d'));
             $idxCpc1 = array_search('costPerClick', $ordered, true);
@@ -254,10 +265,17 @@ class AmazonAdsController extends Controller
             } else {
                 $ordered[] = 'sales30d';
             }
+        } elseif ($table === 'amazon_sb_campaign_reports' && in_array('sales', $baseCols, true)) {
+            // SB: no `sales30d` column — show L30 summary `sales` under the same grid key / SL 30 header as SP.
+            $idxCpc1Sb = array_search('costPerClick', $ordered, true);
+            if ($idxCpc1Sb !== false) {
+                array_splice($ordered, $idxCpc1Sb + 1, 0, ['sales30d']);
+            } else {
+                $ordered[] = 'sales30d';
+            }
         }
 
         // ACOS (%) = cost / sales * 100 — display after primary sales column when cost + sales exist on the table.
-        $baseCols = self::orderedColumnsForTable($table);
         $canAcos = in_array('cost', $baseCols, true)
             && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
         if ($canAcos) {
@@ -272,16 +290,25 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // Prchase: `purchases30d` shown under renamed header, placed after L1 CPC (`costPerClick`).
-        if (in_array('purchases30d', $baseCols, true) && in_array('costPerClick', $ordered, true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'purchases30d'));
-            $idxL1Cpc = array_search('costPerClick', $ordered, true);
-            if ($idxL1Cpc !== false) {
-                array_splice($ordered, $idxL1Cpc + 1, 0, ['Prchase']);
+        // Prchase (Sold): L30 purchases (`purchases30d` or SB `purchases`) — after L1 SP; hide raw purchase columns from the list.
+        $purchDbForSold = in_array('purchases30d', $baseCols, true) ? 'purchases30d' : null;
+        if ($purchDbForSold === null && $table === 'amazon_sb_campaign_reports' && in_array('purchases', $baseCols, true)) {
+            $purchDbForSold = 'purchases';
+        }
+        if ($purchDbForSold !== null) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'purchases30d' && $c !== 'purchases'));
+            $idxL1spForSold = array_search('L1spend', $ordered, true);
+            if ($idxL1spForSold !== false) {
+                array_splice($ordered, $idxL1spForSold + 1, 0, ['Prchase']);
+            } elseif (in_array('costPerClick', $ordered, true)) {
+                $idxL1CpcFallback = array_search('costPerClick', $ordered, true);
+                if ($idxL1CpcFallback !== false) {
+                    array_splice($ordered, $idxL1CpcFallback + 1, 0, ['Prchase']);
+                }
             }
         }
 
-        if ($table === 'amazon_sp_campaign_reports') {
+        if ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports') {
             $ordered = array_values(array_filter(
                 $ordered,
                 static fn (string $c): bool => ! in_array($c, self::AMAZON_SP_CAMPAIGN_REPORTS_HIDDEN_DISPLAY_COLUMNS, true)
@@ -293,6 +320,31 @@ class AmazonAdsController extends Controller
             $ordered,
             static fn (string $c): bool => ! in_array($c, ['pink_dil_paused_at', 'campaignBudgetCurrencyCode', 'yes_sbid', 'sbid_m', 'unitsSoldSameSku30d'], true)
         ));
+
+        // SB All: only columns that SP All shows, in the same order (no SB-only extra schema columns).
+        if ($table === 'amazon_sb_campaign_reports') {
+            $spOrder = self::displayColumnsForTable('amazon_sp_campaign_reports');
+            $have = array_flip($ordered);
+            $filtered = [];
+            foreach ($spOrder as $c) {
+                if (isset($have[$c])) {
+                    $filtered[] = $c;
+                }
+            }
+            // SB-only: inventory from product_master → shopify_skus.inv, keyed by campaign name (HL-style SKU match).
+            $idxCnSb = array_search('campaignName', $filtered, true);
+            if ($idxCnSb !== false) {
+                array_splice($filtered, $idxCnSb + 1, 0, ['INV']);
+            } else {
+                $filtered[] = 'INV';
+            }
+            $idxL1Sb = array_search('L1spend', $filtered, true);
+            if ($idxL1Sb !== false) {
+                array_splice($filtered, $idxL1Sb + 1, 0, ['L1cost', 'L1clicks']);
+            }
+
+            return $filtered;
+        }
 
         return $ordered;
     }
@@ -380,7 +432,13 @@ class AmazonAdsController extends Controller
             return 'CASE WHEN COALESCE('.$salesEff.', 0) > 0 THEN '.$costEff.' / NULLIF('.$salesEff.', 0) * 100 WHEN '.$costEff.' > 0 THEN 100 ELSE 0 END';
         }
         if (in_array('sales', $dbColumns, true)) {
-            return 'CASE WHEN COALESCE(sales, 0) > 0 THEN '.$costEff.' / NULLIF(sales, 0) * 100 WHEN '.$costEff.' > 0 THEN 100 ELSE 0 END';
+            $salesEff = 'sales';
+            $sumSales = self::correlatedL30SummarySales30dScalarSubquerySql($table, $dbColumns);
+            if ($sumSales !== null) {
+                $salesEff = 'COALESCE(('.$sumSales.'), sales)';
+            }
+
+            return 'CASE WHEN COALESCE('.$salesEff.', 0) > 0 THEN '.$costEff.' / NULLIF('.$salesEff.', 0) * 100 WHEN '.$costEff.' > 0 THEN 100 ELSE 0 END';
         }
 
         return null;
@@ -411,6 +469,161 @@ class AmazonAdsController extends Controller
     private static function roundAmazonAdsDisplayNumericFields(array &$arr, array $displayColumns): void
     {
         // Intentionally empty: money/totals are sent at full numeric precision; the grid formats them.
+    }
+
+    /**
+     * CP master / ADVMasters-style: SUM(shopify_skus.inv) for rows where sku is not PARENT and parent matches key.
+     *
+     * @param  Collection<int, ProductMaster>  $productMasterRows
+     * @return array<string, float>
+     */
+    private static function buildInventorySumByParentKeyFromProductMasterRows(Collection $productMasterRows): array
+    {
+        $childSkus = [];
+        foreach ($productMasterRows as $pm) {
+            $s = trim((string) ($pm->sku ?? ''));
+            if ($s === '' || str_starts_with(strtoupper($s), 'PARENT')) {
+                continue;
+            }
+            $childSkus[] = $s;
+        }
+        $shopifyByPmSku = ShopifySku::mapByProductSkus(array_values(array_unique($childSkus)));
+        $totals = [];
+        foreach ($productMasterRows as $pm) {
+            $s = trim((string) ($pm->sku ?? ''));
+            if ($s === '' || str_starts_with(strtoupper($s), 'PARENT')) {
+                continue;
+            }
+            $pKey = strtoupper(trim((string) ($pm->parent ?? '')));
+            if ($pKey === '') {
+                continue;
+            }
+            $rec = $shopifyByPmSku->get($s);
+            $totals[$pKey] = ($totals[$pKey] ?? 0) + (float) ($rec?->inv ?? 0);
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Memoized resolver: SB `campaignName` → INV aligned with CP master.
+     * Campaign ↔ SKU match: HL-style exact / HEAD / longest substring.
+     * `PARENT …` SKUs use sum of children’s Shopify inv by `product_master.parent` (not the synthetic parent’s shopify row).
+     *
+     * @return \Closure(?string): ?int
+     */
+    private static function buildSbInvByCampaignNameResolver(): \Closure
+    {
+        $allPm = ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'parent']);
+        $pmSkus = $allPm->pluck('sku')->map(static fn ($s) => (string) $s)->unique()->values()->all();
+        $shopifyByPmSku = ShopifySku::mapByProductSkus($pmSkus);
+        $inventoryByParent = self::buildInventorySumByParentKeyFromProductMasterRows($allPm);
+        $parentSkuToFamilyKey = [];
+        foreach ($allPm as $pm) {
+            $s = trim((string) ($pm->sku ?? ''));
+            if ($s === '' || ! str_starts_with(strtoupper($s), 'PARENT')) {
+                continue;
+            }
+            $normSku = preg_replace('/\s+/', ' ', strtoupper($s));
+            $parentCol = trim((string) ($pm->parent ?? ''));
+            if ($parentCol !== '') {
+                $parentSkuToFamilyKey[$normSku] = preg_replace('/\s+/', ' ', strtoupper($parentCol));
+            } else {
+                $rest = trim(preg_replace('/^PARENT\s+/i', '', $s) ?? '');
+                $parentSkuToFamilyKey[$normSku] = $rest === ''
+                    ? $normSku
+                    : preg_replace('/\s+/', ' ', strtoupper($rest));
+            }
+        }
+        usort($pmSkus, static fn (string $a, string $b): int => strlen((string) $b) <=> strlen((string) $a));
+        $memo = [];
+
+        return static function (?string $campaignName) use ($pmSkus, $shopifyByPmSku, $inventoryByParent, $parentSkuToFamilyKey, &$memo): ?int {
+            if ($campaignName === null || trim($campaignName) === '') {
+                return null;
+            }
+            $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($campaignName)));
+            if ($cleanName === '') {
+                return null;
+            }
+            if (array_key_exists($cleanName, $memo)) {
+                return $memo[$cleanName];
+            }
+            $matchedSkus = [];
+            foreach ($pmSkus as $sku) {
+                $cleanSku = preg_replace('/\s+/', ' ', strtoupper((string) $sku));
+                if ($cleanSku === '') {
+                    continue;
+                }
+                $expected1 = $cleanSku;
+                $expected2 = $cleanSku.' HEAD';
+                if ($cleanName === $expected1 || $cleanName === $expected2) {
+                    $matchedSkus[] = (string) $sku;
+                }
+            }
+            $skusToSum = [];
+            if ($matchedSkus !== []) {
+                $skusToSum = array_values(array_unique($matchedSkus));
+            } else {
+                $bestLen = 0;
+                $bestSkus = [];
+                foreach ($pmSkus as $sku) {
+                    $cleanSku = preg_replace('/\s+/', ' ', strtoupper((string) $sku));
+                    if ($cleanSku === '' || ! str_contains($cleanName, $cleanSku)) {
+                        continue;
+                    }
+                    $len = strlen($cleanSku);
+                    if ($len > $bestLen) {
+                        $bestLen = $len;
+                        $bestSkus = [(string) $sku];
+                    } elseif ($len === $bestLen && $len > 0) {
+                        $bestSkus[] = (string) $sku;
+                    }
+                }
+                $skusToSum = array_values(array_unique($bestSkus));
+            }
+            if ($skusToSum === []) {
+                $memo[$cleanName] = null;
+
+                return null;
+            }
+            $sum = 0;
+            $any = false;
+            foreach ($skusToSum as $sku) {
+                $trimSku = trim($sku);
+                if ($trimSku === '') {
+                    continue;
+                }
+                if (str_starts_with(strtoupper($trimSku), 'PARENT')) {
+                    $normParentSku = preg_replace('/\s+/', ' ', strtoupper($trimSku));
+                    $fam = $parentSkuToFamilyKey[$normParentSku] ?? null;
+                    if ($fam !== null) {
+                        $sum += (int) round($inventoryByParent[$fam] ?? 0);
+                        $any = true;
+
+                        continue;
+                    }
+                }
+                $row = $shopifyByPmSku->get($sku);
+                if ($row === null) {
+                    continue;
+                }
+                $inv = $row->inv;
+                if ($inv === null || $inv === '') {
+                    continue;
+                }
+                $n = (int) $inv;
+                $sum += $n;
+                $any = true;
+            }
+            $out = $any ? $sum : null;
+            $memo[$cleanName] = $out;
+
+            return $out;
+        };
     }
 
     /**
@@ -479,38 +692,74 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * `purchases30d` from the latest L30 summary row (same row selection as spend overlay).
+     * L30 summary purchases column: `purchases30d` on SP, `purchases` on SB.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function l30SummaryPurchasesDbColumn(array $dbColumns): ?string
+    {
+        if (in_array('purchases30d', $dbColumns, true)) {
+            return 'purchases30d';
+        }
+        if (in_array('purchases', $dbColumns, true)) {
+            return 'purchases';
+        }
+
+        return null;
+    }
+
+    /**
+     * Latest L30 summary purchases (Sold / Prchase overlay).
      *
      * @param  array<int, string>  $dbColumns
      */
     private static function correlatedL30SummaryPurchases30dScalarSubquerySql(string $table, array $dbColumns): ?string
     {
-        if (! in_array('purchases30d', $dbColumns, true) || ! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true) || ! in_array('id', $dbColumns, true)) {
+        $purchCol = self::l30SummaryPurchasesDbColumn($dbColumns);
+        if ($purchCol === null || ! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true) || ! in_array('id', $dbColumns, true)) {
             return null;
         }
         $t = str_replace('`', '``', $table);
         $hasAdType = in_array('ad_type', $dbColumns, true);
         $adClause = $hasAdType ? ' AND l30.ad_type <=> `'.$t.'`.ad_type ' : '';
 
-        return 'SELECT l30.purchases30d FROM `'.$t.'` AS l30 WHERE l30.campaign_id = `'.$t.'`.campaign_id'.$adClause
+        return 'SELECT l30.`'.$purchCol.'` FROM `'.$t.'` AS l30 WHERE l30.campaign_id = `'.$t.'`.campaign_id'.$adClause
             ." AND UPPER(TRIM(l30.report_date_range)) = 'L30' ORDER BY l30.id DESC LIMIT 1";
     }
 
     /**
-     * `sales30d` from the latest L30 summary row (grid header SL30).
+     * Latest L30 summary sales column: `sales30d` on SP/SD, `sales` on SB (`amazon_sb_campaign_reports`).
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function l30SummarySalesDbColumn(array $dbColumns): ?string
+    {
+        if (in_array('sales30d', $dbColumns, true)) {
+            return 'sales30d';
+        }
+        if (in_array('sales', $dbColumns, true)) {
+            return 'sales';
+        }
+
+        return null;
+    }
+
+    /**
+     * Scalar subquery: sales metric on the latest `report_date_range = L30` row (same as grid SL 30 / `sales30d` overlay).
      *
      * @param  array<int, string>  $dbColumns
      */
     private static function correlatedL30SummarySales30dScalarSubquerySql(string $table, array $dbColumns): ?string
     {
-        if (! in_array('sales30d', $dbColumns, true) || ! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true) || ! in_array('id', $dbColumns, true)) {
+        $salesCol = self::l30SummarySalesDbColumn($dbColumns);
+        if ($salesCol === null || ! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true) || ! in_array('id', $dbColumns, true)) {
             return null;
         }
         $t = str_replace('`', '``', $table);
         $hasAdType = in_array('ad_type', $dbColumns, true);
         $adClause = $hasAdType ? ' AND l30.ad_type <=> `'.$t.'`.ad_type ' : '';
 
-        return 'SELECT l30.sales30d FROM `'.$t.'` AS l30 WHERE l30.campaign_id = `'.$t.'`.campaign_id'.$adClause
+        return 'SELECT l30.`'.$salesCol.'` FROM `'.$t.'` AS l30 WHERE l30.campaign_id = `'.$t.'`.campaign_id'.$adClause
             ." AND UPPER(TRIM(l30.report_date_range)) = 'L30' ORDER BY l30.id DESC LIMIT 1";
     }
 
@@ -787,16 +1036,17 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * `purchases30d` on one L30 summary row (Sold / Prchase overlay).
+     * L30 summary purchases on one row: `purchases30d` when present, else `purchases` (SB).
      *
      * @param  array<int, string>  $dbColumns
      */
     private static function l30Purchases30dFromRowArray(array $r, array $dbColumns): ?int
     {
-        if (! in_array('purchases30d', $dbColumns, true)) {
+        $key = self::l30SummaryPurchasesDbColumn($dbColumns);
+        if ($key === null) {
             return null;
         }
-        $pv = $r['purchases30d'] ?? null;
+        $pv = $r[$key] ?? null;
         if ($pv === null || $pv === '') {
             return null;
         }
@@ -809,16 +1059,17 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * `sales30d` on one L30 summary row.
+     * L30 summary sales on one row: `sales30d` when present, else `sales` (SB).
      *
      * @param  array<int, string>  $dbColumns
      */
     private static function l30Sales30dFromRowArray(array $r, array $dbColumns): ?float
     {
-        if (! in_array('sales30d', $dbColumns, true)) {
+        $key = self::l30SummarySalesDbColumn($dbColumns);
+        if ($key === null) {
             return null;
         }
-        $sv = $r['sales30d'] ?? null;
+        $sv = $r[$key] ?? null;
         if ($sv === null || $sv === '') {
             return null;
         }
@@ -831,7 +1082,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Per campaign (+ ad_type): latest `report_date_range = L30` row — spend (cost then spend), Sold (`purchases30d`), `sales30d`.
+     * Per campaign (+ ad_type): latest `report_date_range = L30` row — spend (cost then spend), Sold (`purchases30d` or `purchases`), L30 sales (`sales30d` or `sales`).
      *
      * @param  array<int, string>  $dbColumns
      * @param  iterable<int, object>  $pageRows
@@ -900,6 +1151,105 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Sum of SPL30 (`cost` after L30 overlays) for distinct (campaign_id [, ad_type]) in the filtered set,
+     * matching per-row logic in {@see rawData} (avoids double-counting duplicate report rows per campaign).
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  array<int, string>  $columns   Display column keys
+     */
+    private static function sumSpl30DistinctForFilteredAmazonAdsRows(Builder $filteredBaseQuery, string $table, array $dbColumns, array $columns): ?float
+    {
+        if (! in_array('cost', $columns, true) || ! in_array('campaign_id', $dbColumns, true)) {
+            return null;
+        }
+        $subQ = $filteredBaseQuery->clone()->reorder();
+        $hasAd = in_array('ad_type', $dbColumns, true);
+        $pairsQ = DB::query()->fromSub($subQ, 'r');
+        if ($hasAd) {
+            $pairs = $pairsQ->select('r.campaign_id', 'r.ad_type')->distinct()->get();
+        } else {
+            $pairs = $pairsQ->select('r.campaign_id')->distinct()->get();
+        }
+        if ($pairs->isEmpty()) {
+            return 0.0;
+        }
+        $stubRows = [];
+        foreach ($pairs as $p) {
+            $o = new \stdClass;
+            $o->campaign_id = $p->campaign_id;
+            if ($hasAd) {
+                $o->ad_type = $p->ad_type ?? null;
+            }
+            $stubRows[] = $o;
+        }
+        $needL30ForAcosSbgt = in_array('cost', $columns, true)
+            || in_array('ACOS', $columns, true)
+            || in_array('sbgt', $columns, true);
+        $needL30Slice = ($needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true)))
+            || (in_array('Prchase', $columns, true) && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true)))
+            || (in_array('sales30d', $columns, true) && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true)))
+            || (($needL30ForAcosSbgt) && in_array('sales30d', $dbColumns, true));
+        $l30SliceMap = $needL30Slice ? self::fetchL30SummarySliceMap($table, $dbColumns, $stubRows) : [];
+        $l30SpendMap = $needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))
+            ? self::fetchL30DailySpendSumMap($table, $dbColumns, $stubRows)
+            : [];
+        $rawByKey = [];
+        $coalesce = self::costPreferCoalesceExprForTableAlias('r', $dbColumns);
+        if ($coalesce !== null) {
+            $gq = DB::query()->fromSub($filteredBaseQuery->clone()->reorder(), 'r');
+            if ($hasAd) {
+                $gq->selectRaw('TRIM(r.campaign_id) AS lk_cid, TRIM(IFNULL(r.ad_type, \'\')) AS lk_ad, MAX('.$coalesce.') AS mx_spend')
+                    ->groupBy('lk_cid', 'lk_ad');
+            } else {
+                $gq->selectRaw('TRIM(r.campaign_id) AS lk_cid, MAX('.$coalesce.') AS mx_spend')
+                    ->groupBy('lk_cid');
+            }
+            foreach ($gq->get() as $rw) {
+                $kc = trim((string) ($rw->lk_cid ?? ''));
+                if ($kc === '') {
+                    continue;
+                }
+                $ka = $hasAd ? trim((string) ($rw->lk_ad ?? '')) : '';
+                $key = $kc."\0".$ka;
+                $mx = $rw->mx_spend ?? null;
+                if ($mx === null || $mx === '') {
+                    $rawByKey[$key] = null;
+                } else {
+                    $n = (float) $mx;
+                    $rawByKey[$key] = is_finite($n) ? $n : null;
+                }
+            }
+        }
+        $total = 0.0;
+        foreach ($pairs as $p) {
+            $cid = isset($p->campaign_id) ? trim((string) $p->campaign_id) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $adTypeStr = $hasAd ? trim((string) ($p->ad_type ?? '')) : '';
+            $adKeyL30 = $hasAd ? $adTypeStr : '';
+            $lkL30 = $cid."\0".trim((string) $adKeyL30);
+            $val = null;
+            if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap) && $l30SliceMap[$lkL30]['spend'] !== null) {
+                $sv = (float) $l30SliceMap[$lkL30]['spend'];
+                $val = is_finite($sv) ? $sv : null;
+            } elseif ($l30SpendMap !== [] && array_key_exists($lkL30, $l30SpendMap)) {
+                $l30v = $l30SpendMap[$lkL30];
+                if ($l30v !== null && is_finite((float) $l30v)) {
+                    $val = (float) $l30v;
+                }
+            } elseif (array_key_exists($lkL30, $rawByKey) && $rawByKey[$lkL30] !== null && is_finite((float) $rawByKey[$lkL30])) {
+                $val = (float) $rawByKey[$lkL30];
+            }
+            if ($val !== null) {
+                $total += $val;
+            }
+        }
+
+        return round($total, 2);
+    }
+
+    /**
      * Server-side ORDER BY: display column keys may differ from DB (computed / renamed columns).
      *
      * @param  array<int, string>  $dbColumns
@@ -915,19 +1265,31 @@ class AmazonAdsController extends Controller
 
         if ($requested === 'bgt' && in_array('campaignBudgetAmount', $dbColumns, true)) {
             $query->orderBy('campaignBudgetAmount', $dir === 'ASC' ? 'asc' : 'desc');
-        } elseif ($requested === 'Prchase' && in_array('purchases30d', $dbColumns, true)) {
+        } elseif ($requested === 'Prchase' && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true))) {
             $purchSub = self::correlatedL30SummaryPurchases30dScalarSubquerySql($table, $dbColumns);
             if ($purchSub !== null) {
-                $query->orderByRaw('COALESCE(('.$purchSub.'), purchases30d) '.$dir);
-            } else {
+                if (in_array('purchases30d', $dbColumns, true)) {
+                    $query->orderByRaw('COALESCE(('.$purchSub.'), purchases30d) '.$dir);
+                } else {
+                    $query->orderByRaw('COALESCE(('.$purchSub.'), purchases) '.$dir);
+                }
+            } elseif (in_array('purchases30d', $dbColumns, true)) {
                 $query->orderBy('purchases30d', $dir === 'ASC' ? 'asc' : 'desc');
+            } else {
+                $query->orderBy('purchases', $dir === 'ASC' ? 'asc' : 'desc');
             }
-        } elseif ($requested === 'sales30d' && in_array('sales30d', $dbColumns, true)) {
+        } elseif ($requested === 'sales30d' && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true))) {
             $salesSub = self::correlatedL30SummarySales30dScalarSubquerySql($table, $dbColumns);
             if ($salesSub !== null) {
-                $query->orderByRaw('COALESCE(('.$salesSub.'), sales30d) '.$dir);
-            } else {
+                if (in_array('sales30d', $dbColumns, true)) {
+                    $query->orderByRaw('COALESCE(('.$salesSub.'), sales30d) '.$dir);
+                } else {
+                    $query->orderByRaw('COALESCE(('.$salesSub.'), sales) '.$dir);
+                }
+            } elseif (in_array('sales30d', $dbColumns, true)) {
                 $query->orderBy('sales30d', $dir === 'ASC' ? 'asc' : 'desc');
+            } else {
+                $query->orderBy('sales', $dir === 'ASC' ? 'asc' : 'desc');
             }
         } elseif ($requested === 'ACOS') {
             $expr = self::sqlExpressionForAcosSort($table, $dbColumns);
@@ -945,6 +1307,15 @@ class AmazonAdsController extends Controller
             }
         } elseif ($requested === 'sbid' && in_array('last_sbid', $dbColumns, true) && in_array('sbid', $dbColumns, true)) {
             $query->orderByRaw('COALESCE(last_sbid, sbid, 0) '.$dir);
+        } elseif ($requested === 'costPerClick'
+            && $table === 'amazon_sb_campaign_reports'
+            && ! in_array('costPerClick', $dbColumns, true)
+            && in_array('clicks', $dbColumns, true)
+            && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
+            $spendExpr = in_array('spend', $dbColumns, true)
+                ? 'COALESCE(cost, spend, 0)'
+                : 'COALESCE(cost, 0)';
+            $query->orderByRaw('CASE WHEN COALESCE(clicks, 0) > 0 THEN '.$spendExpr.' / NULLIF(clicks, 0) ELSE NULL END '.$dir);
         } elseif ($requested === 'cost') {
             $dailySub = self::correlatedL30DailySpendSumSubquerySql($table, $dbColumns);
             $summarySub = self::correlatedL30SummarySpendScalarSubquerySql($table, $dbColumns);
@@ -1133,12 +1504,121 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Latest summary row per campaign with `report_date_range = L1`: cost/spend + clicks (SB CPC1 and L1 cost/click columns).
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  iterable<int, object>  $pageRows
+     * @return array<string, array{cost: float|null, clicks: float|null}>
+     */
+    private static function fetchL1SummaryClicksCostMap(string $table, array $dbColumns, iterable $pageRows): array
+    {
+        if (! in_array('report_date_range', $dbColumns, true)
+            || ! in_array('campaign_id', $dbColumns, true)
+            || ! in_array('clicks', $dbColumns, true)) {
+            return [];
+        }
+        $hasCost = in_array('cost', $dbColumns, true);
+        $hasSpend = in_array('spend', $dbColumns, true);
+        if (! $hasCost && ! $hasSpend) {
+            return [];
+        }
+        $cids = [];
+        foreach ($pageRows as $row) {
+            $r = (array) $row;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid !== '') {
+                $cids[$cid] = true;
+            }
+        }
+        $cidList = array_keys($cids);
+        if ($cidList === []) {
+            return [];
+        }
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $select = ['id', 'campaign_id', 'report_date_range', 'clicks'];
+        if ($hasCost) {
+            $select[] = 'cost';
+        }
+        if ($hasSpend) {
+            $select[] = 'spend';
+        }
+        if ($hasAdType) {
+            $select[] = 'ad_type';
+        }
+        $map = [];
+        $summaryRows = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->whereRaw("UPPER(TRIM(report_date_range)) = ?", ['L1'])
+            ->orderBy('id', 'desc')
+            ->get();
+        foreach ($summaryRows as $fr) {
+            $frArr = (array) $fr;
+            $cid = isset($frArr['campaign_id']) ? trim((string) $frArr['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
+            $key = $cid."\0".$ad;
+            if (isset($map[$key])) {
+                continue;
+            }
+            $spendCols = [];
+            if ($hasCost) {
+                $spendCols[] = 'cost';
+            }
+            if ($hasSpend) {
+                $spendCols[] = 'spend';
+            }
+            $costVal = null;
+            foreach ($spendCols as $col) {
+                $v = $frArr[$col] ?? null;
+                if ($v === null || $v === '') {
+                    continue;
+                }
+                $n = (float) $v;
+                if (is_finite($n) && $n > 0) {
+                    $costVal = $n;
+                    break;
+                }
+            }
+            if ($costVal === null) {
+                foreach ($spendCols as $col) {
+                    $v = $frArr[$col] ?? null;
+                    if ($v === null || $v === '') {
+                        continue;
+                    }
+                    $n = (float) $v;
+                    if (is_finite($n)) {
+                        $costVal = $n;
+                        break;
+                    }
+                }
+            }
+            $clk = $frArr['clicks'] ?? null;
+            $clicksVal = null;
+            if ($clk !== null && $clk !== '') {
+                $cn = (float) $clk;
+                $clicksVal = is_finite($cn) ? $cn : null;
+            }
+            $map[$key] = [
+                'cost' => $costVal,
+                'clicks' => $clicksVal,
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
      * Calendar day N days before the "CPC 1" anchor for this row (daily `report_date_range`, summary `L1`, or `date`).
      * N=1 → CPC 2; N=2 → CPC 3 (two days before CPC 1's day).
+     * For `report_date_range = L1`, the anchor is the newest ISO daily key in that table ({@see latestDailyReportYmdInTable}), not app "today"
+     * (e.g. latest 2026-04-22 → N=1 → 2026-04-21). If there are no daily rows, falls back to yesterday.
      *
      * @param  array<int, string>  $dbColumns
      */
-    private static function calendarDayOffsetFromCpc1Anchor(array $rowArr, array $dbColumns, int $daysBefore): ?string
+    private static function calendarDayOffsetFromCpc1Anchor(array $rowArr, array $dbColumns, string $table, int $daysBefore): ?string
     {
         if ($daysBefore < 1) {
             return null;
@@ -1152,8 +1632,21 @@ class AmazonAdsController extends Controller
             }
         }
         if (strtoupper($rdr) === 'L1') {
-            // CPC 1 ≈ yesterday; CPC 2 = yesterday−1; CPC 3 = yesterday−2.
-            return Carbon::now(config('app.timezone'))->subDays($daysBefore + 1)->format('Y-m-d');
+            $latest = self::latestDailyReportYmdInTable($table);
+            if ($latest === null || $latest === '') {
+                try {
+                    $anchor = Carbon::now(config('app.timezone'))->subDay()->format('Y-m-d');
+                } catch (\Throwable) {
+                    return null;
+                }
+            } else {
+                $anchor = $latest;
+            }
+            try {
+                return Carbon::parse($anchor, config('app.timezone'))->subDays($daysBefore)->format('Y-m-d');
+            } catch (\Throwable) {
+                return null;
+            }
         }
         if (in_array('date', $dbColumns, true) && ! empty($rowArr['date'])) {
             try {
@@ -1167,6 +1660,46 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * HL-style CPC from a report row: (cost or spend) ÷ clicks, same convention as HL bid tooling.
+     *
+     * @param  array<string, mixed>  $r
+     */
+    private static function hlStyleCpcFromReportRowArray(array $r): ?float
+    {
+        $clicks = $r['clicks'] ?? null;
+        if ($clicks === null || $clicks === '') {
+            return null;
+        }
+        $c = (float) $clicks;
+        if (! is_finite($c) || $c <= 0) {
+            return null;
+        }
+        $cost = null;
+        foreach (['cost', 'spend'] as $k) {
+            if (! array_key_exists($k, $r)) {
+                continue;
+            }
+            $v = $r[$k];
+            if ($v === null || $v === '') {
+                continue;
+            }
+            $n = (float) $v;
+            if (is_finite($n)) {
+                $cost = $n;
+                break;
+            }
+        }
+        if ($cost === null || ! is_finite($cost) || $cost <= 0) {
+            return null;
+        }
+        $cpc = $cost / $c;
+
+        return is_finite($cpc) && $cpc > 0 ? round($cpc, 4) : null;
+    }
+
+    /**
+     * CPC for one calendar `report_date_range` day: `costPerClick` on SP/SD; SB uses {@see hlStyleCpcFromReportRowArray}.
+     *
      * @param  array<int, string>  $dbColumns
      */
     private static function fetchCostPerClickOnReportDay(
@@ -1183,12 +1716,6 @@ class AmazonAdsController extends Controller
             return $cache[$key];
         }
 
-        if (! in_array('costPerClick', $dbColumns, true)) {
-            $cache[$key] = null;
-
-            return null;
-        }
-
         $q = DB::table($table)->where('campaign_id', $campaignId)
             ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
             ->whereRaw("LEFT(TRIM(report_date_range), 10) = ?", [$reportDayYmd])
@@ -1198,15 +1725,36 @@ class AmazonAdsController extends Controller
         }
         $orderCol = in_array('id', $dbColumns, true) ? 'id' : 'campaign_id';
         $q->orderBy($orderCol, 'desc');
-        $found = $q->first(['costPerClick']);
-        $cpc = null;
-        if ($found && isset($found->costPerClick)) {
-            $n = (float) $found->costPerClick;
-            $cpc = is_finite($n) && $n > 0 ? round($n, 4) : null;
-        }
-        $cache[$key] = $cpc;
 
-        return $cpc;
+        if (in_array('costPerClick', $dbColumns, true)) {
+            $found = $q->first(['costPerClick']);
+            $cpc = null;
+            if ($found && isset($found->costPerClick)) {
+                $n = (float) $found->costPerClick;
+                $cpc = is_finite($n) && $n > 0 ? round($n, 4) : null;
+            }
+            $cache[$key] = $cpc;
+
+            return $cpc;
+        }
+
+        if ($table === 'amazon_sb_campaign_reports'
+            && in_array('cost', $dbColumns, true)
+            && in_array('clicks', $dbColumns, true)) {
+            $select = ['cost', 'clicks'];
+            if (in_array('spend', $dbColumns, true)) {
+                $select[] = 'spend';
+            }
+            $found = $q->first($select);
+            $cpc = ($found !== null) ? self::hlStyleCpcFromReportRowArray((array) $found) : null;
+            $cache[$key] = $cpc;
+
+            return $cpc;
+        }
+
+        $cache[$key] = null;
+
+        return null;
     }
 
     private static function rowSpendForUtilization(array $row): ?float
@@ -1319,10 +1867,10 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Grid SBID from U2%/U1% + L1/L2/L7 CPC (or costPerClick fallback), aligned with auto-update commands.
+     * Grid SBID from U2%/U1% + L1/L2/L7 CPC (or CPC1 / `costPerClick` fallback), aligned with auto-update commands.
      * Outside red+red / pink+pink bands, sbid is forced to null so the UI shows "--".
      */
-    private static function applyGridSbidFromUb2Ub1AndCpc(array &$arr, array $u, array $rowArr, array $dbColumns): void
+    private static function applyGridSbidFromUb2Ub1AndCpc(array &$arr, array $u, array $rowArr, array $dbColumns, string $table): void
     {
         if (! in_array('sbid', $dbColumns, true)) {
             return;
@@ -1339,6 +1887,14 @@ class AmazonAdsController extends Controller
         $l2 = self::rowPositiveFloatFromKeys($rowArr, ['l2_cpc', 'L2_cpc', 'l2Cpc']);
         $l7 = self::rowPositiveFloatFromKeys($rowArr, ['l7_cpc', 'L7_cpc', 'l7Cpc']);
         $cpcFb = self::rowPositiveFloatFromKeys($rowArr, ['costPerClick']);
+        if ($cpcFb <= 0 && isset($arr['costPerClick']) && $arr['costPerClick'] !== null && $arr['costPerClick'] !== '') {
+            $cpcFb = self::rowPositiveFloatFromKeys($arr, ['costPerClick']);
+        }
+        if ($cpcFb <= 0 && $table === 'amazon_sb_campaign_reports' && in_array('clicks', $dbColumns, true)
+            && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
+            $hl = self::hlStyleCpcFromReportRowArray($rowArr);
+            $cpcFb = ($hl !== null && $hl > 0) ? $hl : 0.0;
+        }
         $fallback = $cpcFb > 0 ? $cpcFb : null;
 
         $out = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
@@ -2059,12 +2615,19 @@ class AmazonAdsController extends Controller
 
         $recordsFiltered = (int) $query->clone()->count();
 
+        $queryForAggregates = $query->clone();
+
         $distinctCampaignCount = null;
         if (in_array('campaign_id', $dbColumns, true)) {
             $distinctCampaignCount = (int) DB::query()
-                ->fromSub($query->clone(), 'r')
+                ->fromSub($queryForAggregates->clone(), 'r')
                 ->selectRaw('COUNT(DISTINCT r.campaign_id) AS c')
                 ->value('c');
+        }
+
+        $spl30Total = null;
+        if (in_array('cost', $columns, true)) {
+            $spl30Total = self::sumSpl30DistinctForFilteredAmazonAdsRows($queryForAggregates, $table, $dbColumns, $columns);
         }
 
         self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
@@ -2084,13 +2647,25 @@ class AmazonAdsController extends Controller
             ? self::fetchL30DailySpendSumMap($table, $dbColumns, $rows)
             : [];
         $needL30Slice = ($needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true)))
-            || (in_array('Prchase', $columns, true) && in_array('purchases30d', $dbColumns, true))
-            || (in_array('sales30d', $columns, true) && in_array('sales30d', $dbColumns, true))
+            || (in_array('Prchase', $columns, true) && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true)))
+            || (in_array('sales30d', $columns, true) && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true)))
             || (($needL30ForAcosSbgt) && in_array('sales30d', $dbColumns, true));
         $l30SliceMap = $needL30Slice ? self::fetchL30SummarySliceMap($table, $dbColumns, $rows) : [];
 
         $hasCpc2 = in_array('CPC2', $columns, true);
         $hasCpc3 = in_array('CPC3', $columns, true);
+        $needSbInv = $table === 'amazon_sb_campaign_reports' && in_array('INV', $columns, true);
+        $sbInvByName = $needSbInv ? self::buildSbInvByCampaignNameResolver() : null;
+        $sbHasSpendOrCost = in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true);
+        $needSbL1Cpc = $table === 'amazon_sb_campaign_reports'
+            && in_array('clicks', $dbColumns, true)
+            && $sbHasSpendOrCost
+            && (
+                in_array('L1cost', $columns, true)
+                || in_array('L1clicks', $columns, true)
+                || (in_array('costPerClick', $columns, true) && ! in_array('costPerClick', $dbColumns, true))
+            );
+        $l1ClicksCostMap = $needSbL1Cpc ? self::fetchL1SummaryClicksCostMap($table, $dbColumns, $rows) : [];
         $empty = array_fill_keys($columns, null);
         $cpcDayCache = [];
         $data = [];
@@ -2100,6 +2675,41 @@ class AmazonAdsController extends Controller
             $cid = isset($rowArr['campaign_id']) ? trim((string) $rowArr['campaign_id']) : '';
             $adType = in_array('ad_type', $dbColumns, true) ? ($rowArr['ad_type'] ?? null) : null;
             $adTypeStr = is_string($adType) ? $adType : null;
+            $lkSalesRow = '';
+            if ($cid !== '') {
+                $adKeySales0 = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
+                $lkSalesRow = $cid."\0".trim((string) $adKeySales0);
+            }
+            if ($needSbL1Cpc && $cid !== '') {
+                $adKeyL1 = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
+                $lkL1 = $cid."\0".trim((string) $adKeyL1);
+                $l1m = $l1ClicksCostMap[$lkL1] ?? null;
+                if (in_array('L1cost', $columns, true)) {
+                    $arr['L1cost'] = ($l1m !== null && $l1m['cost'] !== null && is_finite((float) $l1m['cost']))
+                        ? round((float) $l1m['cost'], 2)
+                        : null;
+                }
+                if (in_array('L1clicks', $columns, true)) {
+                    $arr['L1clicks'] = ($l1m !== null && $l1m['clicks'] !== null && is_finite((float) $l1m['clicks']))
+                        ? (int) round((float) $l1m['clicks'])
+                        : null;
+                }
+                if (in_array('costPerClick', $columns, true) && ! in_array('costPerClick', $dbColumns, true)) {
+                    if ($l1m !== null) {
+                        $pseudo = ['clicks' => $l1m['clicks']];
+                        if ($l1m['cost'] !== null && is_finite((float) $l1m['cost'])) {
+                            $pseudo['cost'] = (float) $l1m['cost'];
+                        }
+                        $arr['costPerClick'] = self::hlStyleCpcFromReportRowArray($pseudo);
+                    } else {
+                        $arr['costPerClick'] = null;
+                    }
+                }
+            }
+            $l30SalesFromMap = null;
+            if ($l30SliceMap !== [] && $lkSalesRow !== '' && array_key_exists($lkSalesRow, $l30SliceMap)) {
+                $l30SalesFromMap = $l30SliceMap[$lkSalesRow]['sales30d'];
+            }
             $lSlice = ['L7' => null, 'L2' => null, 'L1' => null];
             if ($lSpendMap !== [] && $cid !== '') {
                 $adKeyUtil = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
@@ -2113,7 +2723,7 @@ class AmazonAdsController extends Controller
                 $arr['U1%'] = self::formatUtilPercent($u['U1']);
             }
             if ($hasCpc3) {
-                $day3 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, 2);
+                $day3 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, $table, 2);
                 if ($day3 !== null && $cid !== '') {
                     $arr['CPC3'] = self::fetchCostPerClickOnReportDay($table, $dbColumns, $cid, $adTypeStr, $day3, $cpcDayCache);
                 } else {
@@ -2121,14 +2731,14 @@ class AmazonAdsController extends Controller
                 }
             }
             if ($hasCpc2) {
-                $day2 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, 1);
+                $day2 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, $table, 1);
                 if ($day2 !== null && $cid !== '') {
                     $arr['CPC2'] = self::fetchCostPerClickOnReportDay($table, $dbColumns, $cid, $adTypeStr, $day2, $cpcDayCache);
                 } else {
                     $arr['CPC2'] = null;
                 }
             }
-            self::applyGridSbidFromUb2Ub1AndCpc($arr, $u, $rowArr, $dbColumns);
+            self::applyGridSbidFromUb2Ub1AndCpc($arr, $u, $rowArr, $dbColumns, $table);
             if (in_array('bgt', $columns, true)) {
                 $bgtVal = $rowArr['campaignBudgetAmount'] ?? null;
                 if ($bgtVal === null || $bgtVal === '') {
@@ -2139,14 +2749,19 @@ class AmazonAdsController extends Controller
                 }
                 unset($arr['campaignBudgetAmount']);
             }
-            if (in_array('Prchase', $columns, true) && in_array('purchases30d', $dbColumns, true)) {
+            if ($sbInvByName !== null) {
+                $cnInv = $rowArr['campaignName'] ?? null;
+                $arr['INV'] = $sbInvByName(is_string($cnInv) ? $cnInv : null);
+            }
+            if (in_array('Prchase', $columns, true)
+                && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true))) {
                 $lkPr = $cid !== '' && in_array('ad_type', $dbColumns, true)
                     ? $cid."\0".trim((string) ($adTypeStr ?? ''))
                     : ($cid !== '' ? $cid."\0" : '');
                 if ($l30SliceMap !== [] && $lkPr !== '' && array_key_exists($lkPr, $l30SliceMap)) {
                     $arr['Prchase'] = $l30SliceMap[$lkPr]['purchases30d'];
                 } else {
-                    $pv = $rowArr['purchases30d'] ?? null;
+                    $pv = $rowArr['purchases30d'] ?? $rowArr['purchases'] ?? null;
                     if ($pv === null || $pv === '') {
                         $arr['Prchase'] = null;
                     } else {
@@ -2154,14 +2769,13 @@ class AmazonAdsController extends Controller
                         $arr['Prchase'] = is_finite($pn) ? (int) $pn : null;
                     }
                 }
-                unset($arr['purchases30d']);
+                unset($arr['purchases30d'], $arr['purchases']);
             }
             if ((in_array('sales30d', $columns, true) || in_array('ACOS', $columns, true) || in_array('sbgt', $columns, true))
-                && in_array('sales30d', $dbColumns, true) && $cid !== '') {
-                $adKeySales = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
-                $lkSales = $cid."\0".trim((string) $adKeySales);
-                if ($l30SliceMap !== [] && array_key_exists($lkSales, $l30SliceMap)) {
-                    $arr['sales30d'] = $l30SliceMap[$lkSales]['sales30d'];
+                && $cid !== ''
+                && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true))) {
+                if (in_array('sales30d', $columns, true) && $l30SliceMap !== [] && $lkSalesRow !== '' && array_key_exists($lkSalesRow, $l30SliceMap)) {
+                    $arr['sales30d'] = $l30SliceMap[$lkSalesRow]['sales30d'];
                 }
             }
             if ($hasLSpendCols && $cid !== '') {
@@ -2189,11 +2803,16 @@ class AmazonAdsController extends Controller
                 if (in_array('cost', $dbColumns, true) && array_key_exists('cost', $arr)) {
                     $acosRow['cost'] = $arr['cost'];
                 }
-                if (in_array('sales30d', $dbColumns, true) && array_key_exists('sales30d', $arr)) {
-                    $acosRow['sales30d'] = $arr['sales30d'];
-                }
-                if (in_array('sales', $dbColumns, true) && array_key_exists('sales', $arr)) {
-                    $acosRow['sales'] = $arr['sales'];
+                if (in_array('sales30d', $dbColumns, true)) {
+                    if (array_key_exists('sales30d', $arr)) {
+                        $acosRow['sales30d'] = $arr['sales30d'];
+                    }
+                } elseif (in_array('sales', $dbColumns, true)) {
+                    if ($l30SalesFromMap !== null) {
+                        $acosRow['sales'] = $l30SalesFromMap;
+                    } elseif (array_key_exists('sales', $arr)) {
+                        $acosRow['sales'] = $arr['sales'];
+                    }
                 }
                 $arr['ACOS'] = self::computedAcosPercentFromReportRow($acosRow, $dbColumns);
             }
@@ -2202,11 +2821,16 @@ class AmazonAdsController extends Controller
                 if (in_array('cost', $dbColumns, true) && array_key_exists('cost', $arr)) {
                     $sbgtRow['cost'] = $arr['cost'];
                 }
-                if (in_array('sales30d', $dbColumns, true) && array_key_exists('sales30d', $arr)) {
-                    $sbgtRow['sales30d'] = $arr['sales30d'];
-                }
-                if (in_array('sales', $dbColumns, true) && array_key_exists('sales', $arr)) {
-                    $sbgtRow['sales'] = $arr['sales'];
+                if (in_array('sales30d', $dbColumns, true)) {
+                    if (array_key_exists('sales30d', $arr)) {
+                        $sbgtRow['sales30d'] = $arr['sales30d'];
+                    }
+                } elseif (in_array('sales', $dbColumns, true)) {
+                    if ($l30SalesFromMap !== null) {
+                        $sbgtRow['sales'] = $l30SalesFromMap;
+                    } elseif (array_key_exists('sales', $arr)) {
+                        $sbgtRow['sales'] = $arr['sales'];
+                    }
                 }
                 $arr['sbgt'] = self::computedSbgtFromReportRow($sbgtRow, $dbColumns);
             }
@@ -2223,6 +2847,9 @@ class AmazonAdsController extends Controller
         ];
         if ($distinctCampaignCount !== null) {
             $payload['distinctCampaignCount'] = $distinctCampaignCount;
+        }
+        if ($spl30Total !== null) {
+            $payload['spl30Total'] = $spl30Total;
         }
 
         return response()->json($payload);
