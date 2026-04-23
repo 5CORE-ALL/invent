@@ -34,12 +34,12 @@
             margin-bottom: 0.35rem;
         }
         .amazon-ads-all .amazon-ads-filters {
-            padding: 0.5rem 0.6rem !important;
+            padding: 0.45rem 0.55rem !important;
         }
         .amazon-ads-all .amazon-ads-filters .form-label {
-            font-size: 0.68rem;
+            font-size: 0.65rem;
             font-weight: 600;
-            margin-bottom: 0.1rem;
+            margin-bottom: 0.08rem;
             line-height: 1.1;
             white-space: nowrap;
         }
@@ -47,32 +47,60 @@
         .amazon-ads-all .amazon-ads-filters .form-control-sm {
             padding-top: 0.2rem;
             padding-bottom: 0.2rem;
-            font-size: 0.78rem;
+            font-size: 0.76rem;
         }
-        /* U7 pie: mid-row, caption left of chart (no stacked title — saves height) */
-        .amazon-ads-all .amazon-u7-pie-box {
+        /* Single-line toolbar: scroll horizontally on narrow viewports */
+        .amazon-ads-all .amazon-ads-filters-toolbar {
+            display: flex;
+            align-items: flex-end;
+            flex-wrap: nowrap;
+            gap: 0.35rem 0.5rem;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        .amazon-ads-all .amazon-ads-filter-field {
+            flex: 0 0 auto;
             min-width: 0;
-            max-width: none;
         }
-        .amazon-ads-all .amazon-u7-pie-box .amazon-u7-pie-caption {
-            font-size: 0.62rem;
-            line-height: 1.15;
-            margin-bottom: 0 !important;
-            max-width: 2.5rem;
-            text-align: right;
-            flex-shrink: 0;
+        .amazon-ads-all .amazon-ads-filter-field--table {
+            width: 7.25rem;
+            min-width: 6.5rem;
         }
-        .amazon-ads-all .amazon-u7-pie-box .amazon-u7-pie-chart {
-            width: 92px;
-            height: 100px;
-            margin: 0;
+        .amazon-ads-all .amazon-ads-filter-field--range {
+            width: 5.75rem;
+            min-width: 5.25rem;
+        }
+        .amazon-ads-all .amazon-ads-filter-field--date {
+            width: 8.75rem;
+            min-width: 8.25rem;
+        }
+        .amazon-ads-all .amazon-ads-filter-field--util {
+            width: 5.25rem;
+            min-width: 4.75rem;
+        }
+        /* U7 pie opens in a modal; toolbar shows a single launch button */
+        .amazon-ads-all .amazon-u7-pie-launch.amazon-ads-toolbar-pie {
             flex-shrink: 0;
+            margin-right: 0.1rem;
+            padding-right: 0.35rem;
+            border-right: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        .amazon-ads-all #amazonAdsU7PieModal .amazon-u7-pie-modal-chart {
+            min-height: 400px;
+            width: 100%;
+        }
+        .amazon-ads-all .amazon-ads-toolbar-badge {
+            flex-shrink: 0;
+            padding-left: 0.35rem;
+            margin-left: 0.15rem;
+            border-left: 1px solid rgba(0, 0, 0, 0.08);
         }
         .amazon-ads-all .amazon-sbid-push-panel {
             border-left: 2px solid #0d6efd;
             padding-left: 0.45rem;
-            margin-top: 0.35rem !important;
-            padding-top: 0.35rem !important;
+            margin-top: 0.25rem !important;
+            padding-top: 0.3rem !important;
         }
         .amazon-ads-all .amazon-source-pane > p.text-muted {
             margin-bottom: 0.25rem !important;
@@ -125,7 +153,7 @@
                 plus <code>amazon_acos_action_history</code>, <code>amazon_datsheets</code>, <code>product_master</code>, etc.
                 The grid counts <strong>report table rows</strong> (one campaign can have many: daily, L7, L30, …). Amazon&rsquo;s <strong>campaign</strong> total in Campaign Manager is unique campaigns &mdash; compare to <strong>Distinct campaign_id</strong> below the table for the same filters, not the row <em>of N entries</em> alone.
                 Choose the dataset from <strong>Table</strong> below: <strong>SP</strong>, <strong>SB</strong>, and <strong>SD</strong> load <strong>every column</strong> from
-                <code>amazon_sp_campaign_reports</code>, <code>amazon_sb_campaign_reports</code>, and <code>amazon_sd_campaign_reports</code> (server-side paging; use length menu up to 500 rows per request to walk the full table). Bid columns include <code>last_sbid</code> and computed <strong>SBID</strong> when shown (<code>yes_sbid</code> and <code>sbid_m</code> are not listed on All for SP but remain in row JSON for push). Also available: <code>amazon_bid_caps</code>, <code>amazon_fbm_targeting_checks</code>.
+                <code>amazon_sp_campaign_reports</code>, <code>amazon_sb_campaign_reports</code>, and <code>amazon_sd_campaign_reports</code> (server-side paging; use length menu up to 500 rows per request to walk the full table). Bid columns include <code>last_sbid</code> and computed <strong>SBID</strong> when shown (<code>yes_sbid</code> and <code>sbid_m</code> are not listed on All for SP/SB but remain in row JSON for SBID push). Also available: <code>amazon_bid_caps</code>, <code>amazon_fbm_targeting_checks</code>.
             </div>
         </div>
     </div>
@@ -135,8 +163,11 @@
             <div class="card">
                 <div class="card-body py-2 px-2">
                     <div class="amazon-ads-filters border rounded bg-light mb-2">
-                        <div class="row g-1 g-sm-2 align-items-end">
-                            <div class="col-6 col-sm-4 col-md-2 col-xl-auto flex-grow-1" style="min-width: 7rem; max-width: 14rem;">
+                        <div class="amazon-ads-filters-toolbar" role="toolbar" aria-label="Amazon Ads filters and summary">
+                            <div class="amazon-u7-pie-launch amazon-ads-toolbar-pie d-flex align-items-center">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="amazonAdsU7PieOpenBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsU7PieModal" title="Row counts by U7% band (U7 filter ignored). Opens chart; click a slice for last 30 days.">U7% mix</button>
+                            </div>
+                            <div class="amazon-ads-filter-field amazon-ads-filter-field--table">
                                 <label class="form-label" for="amazonAdsFilterReportType" title="Dataset">Table</label>
                                 <select id="amazonAdsFilterReportType" class="form-select form-select-sm" title="amazon_sp_campaign_reports, etc.">
                                     <option value="sp_reports">SP reports</option>
@@ -146,7 +177,7 @@
                                     <option value="fbm_targeting">FBM targeting</option>
                                 </select>
                             </div>
-                            <div class="col-6 col-sm-4 col-md-2 col-xl-auto flex-grow-1" style="min-width: 6.5rem; max-width: 12rem;">
+                            <div class="amazon-ads-filter-field amazon-ads-filter-field--range">
                                 <label class="form-label" for="amazonAdsFilterSummaryRange" title="Summary label L7/L30 or calendar dates">Range</label>
                                 <select id="amazonAdsFilterSummaryRange" class="form-select form-select-sm">
                                     <option value="">Calendar</option>
@@ -158,73 +189,69 @@
                                     <option value="L60">L60</option>
                                 </select>
                             </div>
-                            <div class="col-6 col-sm-4 col-md-2 col-xl-auto">
+                            <div class="amazon-ads-filter-field amazon-ads-filter-field--date">
                                 <label class="form-label" for="amazonAdsFilterDateFrom">From</label>
                                 <input type="date" id="amazonAdsFilterDateFrom" class="form-control form-control-sm">
                             </div>
-                            <div class="col-6 col-sm-4 col-md-2 col-xl-auto">
+                            <div class="amazon-ads-filter-field amazon-ads-filter-field--date">
                                 <label class="form-label" for="amazonAdsFilterDateTo">To</label>
                                 <input type="date" id="amazonAdsFilterDateTo" class="form-control form-control-sm">
                             </div>
-                            <div class="col-12 col-sm-auto d-flex flex-wrap gap-1 align-items-end ms-sm-auto pt-1 pt-sm-0">
-                                <button type="button" class="btn btn-sm btn-primary py-0" id="amazonAdsFilterApply">Apply</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="amazonAdsFilterClear">Clear</button>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-wrap align-items-end justify-content-start column-gap-2 row-gap-1 mt-1">
-                            <div class="flex-shrink-0">
+                            <div class="amazon-ads-filter-field amazon-ads-filter-field--util">
                                 <label class="form-label" for="amazonAdsFilterU7" title="L7 spend ÷ (budget×7)">U7%</label>
-                                <select id="amazonAdsFilterU7" class="form-select form-select-sm" style="min-width: 5.5rem;" title="L7 SP ÷ (budget × 7)">
+                                <select id="amazonAdsFilterU7" class="form-select form-select-sm" title="L7 SP ÷ (budget × 7)">
                                     <option value="">All</option>
                                     <option value="lt66">&lt; 66%</option>
                                     <option value="66_99">66–99%</option>
                                     <option value="gt99">&gt; 99%</option>
                                 </select>
                             </div>
-                            <div class="amazon-u7-pie-box d-flex align-items-center flex-shrink-0 border-start border-light ps-2 ms-1 ms-sm-2">
-                                <div class="amazon-u7-pie-caption text-muted me-1" title="Row counts by U7% band (U7 filter ignored). Click a slice for last 30 days.">U7% mix</div>
-                                <div id="amazonAdsU7Pie" class="amazon-u7-pie-chart" role="img" aria-label="U7 percent distribution pie chart"></div>
+                            <div class="amazon-ads-filter-field amazon-ads-filter-field--util">
+                                <label class="form-label" for="amazonAdsFilterU2" title="L2 spend ÷ (budget×2)">U2%</label>
+                                <select id="amazonAdsFilterU2" class="form-select form-select-sm" title="L2 SP ÷ (budget × 2)">
+                                    <option value="">All</option>
+                                    <option value="lt66">&lt; 66%</option>
+                                    <option value="66_99">66–99%</option>
+                                    <option value="gt99">&gt; 99%</option>
+                                </select>
                             </div>
-                            <div class="d-flex align-items-center flex-shrink-0 border-start border-light ps-2 ms-1 ms-sm-2" id="amazonAdsSpl30BadgeWrap" hidden title="Total SPL30: sum of L30 spend per distinct campaign (+ ad type) for current filters (same logic as the grid; all matching rows, not only this page).">
+                            <div class="amazon-ads-filter-field amazon-ads-filter-field--util">
+                                <label class="form-label" for="amazonAdsFilterU1" title="L1 spend ÷ budget">U1%</label>
+                                <select id="amazonAdsFilterU1" class="form-select form-select-sm" title="L1 SP ÷ (budget × 1)">
+                                    <option value="">All</option>
+                                    <option value="lt66">&lt; 66%</option>
+                                    <option value="66_99">66–99%</option>
+                                    <option value="gt99">&gt; 99%</option>
+                                </select>
+                            </div>
+                            <div class="amazon-ads-filter-field amazon-ads-filter-field--util">
+                                <label class="form-label" for="amazonAdsFilterCampaignStatus">Stat</label>
+                                <select id="amazonAdsFilterCampaignStatus" class="form-select form-select-sm" title="campaignStatus">
+                                    <option value="">All</option>
+                                    <option value="ENABLED">ON</option>
+                                    <option value="PAUSED">Paused</option>
+                                    <option value="ARCHIVED">Arch</option>
+                                </select>
+                            </div>
+                            <div class="d-flex align-items-center amazon-ads-toolbar-badge" id="amazonAdsSpl30BadgeWrap" hidden title="Total SPL30: sum of L30 spend per distinct campaign (+ ad type) for current filters (same logic as the grid; all matching rows, not only this page).">
                                 <span class="badge bg-dark">SPl30</span>
                                 <span class="ms-1 small fw-semibold tabular-nums" id="amazonAdsSpl30BadgeValue"></span>
                             </div>
-                            <div class="d-flex flex-wrap align-items-end gap-2 ms-auto">
-                                <div class="flex-shrink-0">
-                                    <label class="form-label" for="amazonAdsFilterU2" title="L2 spend ÷ (budget×2)">U2%</label>
-                                    <select id="amazonAdsFilterU2" class="form-select form-select-sm" style="min-width: 5.5rem;" title="L2 SP ÷ (budget × 2)">
-                                        <option value="">All</option>
-                                        <option value="lt66">&lt; 66%</option>
-                                        <option value="66_99">66–99%</option>
-                                        <option value="gt99">&gt; 99%</option>
-                                    </select>
-                                </div>
-                                <div class="flex-shrink-0">
-                                    <label class="form-label" for="amazonAdsFilterU1" title="L1 spend ÷ budget">U1%</label>
-                                    <select id="amazonAdsFilterU1" class="form-select form-select-sm" style="min-width: 5.5rem;" title="L1 SP ÷ (budget × 1)">
-                                        <option value="">All</option>
-                                        <option value="lt66">&lt; 66%</option>
-                                        <option value="66_99">66–99%</option>
-                                        <option value="gt99">&gt; 99%</option>
-                                    </select>
-                                </div>
-                                <div class="flex-shrink-0">
-                                    <label class="form-label" for="amazonAdsFilterCampaignStatus">Stat</label>
-                                    <select id="amazonAdsFilterCampaignStatus" class="form-select form-select-sm" style="min-width: 5.5rem;" title="campaignStatus">
-                                        <option value="">All</option>
-                                        <option value="ENABLED">ON</option>
-                                        <option value="PAUSED">Paused</option>
-                                        <option value="ARCHIVED">Arch</option>
-                                    </select>
-                                </div>
+                            <div class="d-flex align-items-center amazon-ads-toolbar-badge" id="amazonAdsOverallAcosBadgeWrap" hidden title="Overall ACOS: (sum of L30 SPL30 spend ÷ sum of L30 sales) × 100 for distinct campaign (+ ad type) in current filters — same L30 overlays as the grid (SP/SB only).">
+                                <span class="badge bg-secondary">ACOS</span>
+                                <span class="ms-1 small fw-semibold tabular-nums" id="amazonAdsOverallAcosBadgeValue"></span>
+                            </div>
+                            <div class="d-flex gap-1 flex-shrink-0 align-items-end pb-0 ms-auto">
+                                <button type="button" class="btn btn-sm btn-primary py-0" id="amazonAdsFilterApply">Apply</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="amazonAdsFilterClear">Clear</button>
                             </div>
                         </div>
 
                         <div class="border-top amazon-sbid-push-panel d-flex flex-wrap align-items-center gap-1 gap-sm-2">
-                            <span class="small text-muted flex-shrink-0" title="SP table, current page, max 100 per call">Push SP</span>
+                            <span class="small text-muted flex-shrink-0" title="SP or SB reports table, current page, max 100 campaigns per call">Push SP / SB</span>
                             <button type="button" class="btn btn-sm btn-success py-0" id="amazonAdsPushSbidBtn" disabled title="Push SBID to Amazon (current page, max 100)">SBID</button>
                             <span class="text-muted small flex-grow-1" style="min-width:4rem;font-size:0.7rem;" id="amazonAdsSbidPushStatus" aria-live="polite"></span>
-                            <button type="button" class="btn btn-sm btn-outline-success py-0" id="amazonAdsPushSbgtBtn" disabled title="Push SBGT (current page)">
+                            <button type="button" class="btn btn-sm btn-outline-success py-0" id="amazonAdsPushSbgtBtn" disabled title="Push SBGT as daily budget (SP or SB, current page)">
                                 <i class="mdi mdi-cloud-upload" aria-hidden="true"></i><span class="d-none d-sm-inline ms-1">SBGT</span>
                             </button>
                             <span class="text-muted small" style="font-size:0.7rem;" id="amazonAdsSbgtPushStatus" aria-live="polite"></span>
@@ -430,6 +457,24 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amazonAdsU7PieModal" tabindex="-1" aria-labelledby="amazonAdsU7PieModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsU7PieModalLabel">U7% mix</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <p class="small text-muted mb-2">Row counts by U7% band (U7 grid filter ignored). Click a slice for the last 30 days.</p>
+                    <div id="amazonAdsU7Pie" class="amazon-u7-pie-modal-chart" role="img" aria-label="U7 percent distribution pie chart"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="amazonAdsU7HistoryModal" tabindex="-1" aria-labelledby="amazonAdsU7HistoryModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
@@ -472,7 +517,9 @@
             var amazonAdsDefaultReportDates = @json($defaultReportRangeDates ?? (object) []);
             var dataUrlTemplate = @json(url('/amazon-ads/raw-data')) + '/';
             var pushSpSbidsUrl = @json(route('amazon.ads.push-sp-sbids'));
+            var pushSbSbidsUrl = @json(route('amazon.ads.push-sb-sbids'));
             var pushSpSbgtsUrl = @json(route('amazon.ads.push-sp-sbgts'));
+            var pushSbSbgtsUrl = @json(route('amazon.ads.push-sb-sbgts'));
             var bgtRuleGetUrl = @json(route('amazon.ads.bgt-rule'));
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
@@ -483,6 +530,13 @@
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             var amazonAdsU7PieChart = null;
             var u7PieRefreshTimer = null;
+            /** Pie chart height inside the U7 mix modal (width follows modal). */
+            var U7_PIE_MODAL_CHART_H = 400;
+
+            function amazonAdsU7PieModalIsOpen() {
+                var m = document.getElementById('amazonAdsU7PieModal');
+                return !!(m && m.classList.contains('show'));
+            }
 
             function amazonAdsOpenU7HistoryModal(bucketKey, sliceLabel) {
                 var modalEl = document.getElementById('amazonAdsU7HistoryModal');
@@ -569,13 +623,24 @@
                     clearTimeout(u7PieRefreshTimer);
                 }
                 u7PieRefreshTimer = setTimeout(function () {
-                    amazonAdsRefreshU7PieChart();
+                    if (amazonAdsU7PieModalIsOpen()) {
+                        amazonAdsRefreshU7PieChart();
+                    }
                 }, 280);
+            }
+
+            function amazonAdsU7PieDataLabelFormatter() {
+                var rp = Math.round(this.percentage);
+                var fs = rp < 4 ? '34px' : '46px';
+                return '<span style="color:#fff;text-shadow:0 0 5px rgba(0,0,0,0.9);font-size:' + fs + ';font-weight:800">' + rp + '%</span>';
             }
 
             function amazonAdsRefreshU7PieChart() {
                 var box = document.getElementById('amazonAdsU7Pie');
                 if (!box) {
+                    return;
+                }
+                if (!amazonAdsU7PieModalIsOpen()) {
                     return;
                 }
                 if (typeof Highcharts === 'undefined') {
@@ -603,6 +668,9 @@
                                 amazonAdsU7PieChart.destroy();
                             } catch (e0) {}
                             amazonAdsU7PieChart = null;
+                        }
+                        if (!amazonAdsU7PieModalIsOpen()) {
+                            return;
                         }
                         if (!res || !res.ok) {
                             box.innerHTML = '<p class="small text-muted mb-0 px-1">No chart</p>';
@@ -632,19 +700,37 @@
                             box.innerHTML = '<p class="small text-muted mb-0">No rows</p>';
                             return;
                         }
+                        if (!amazonAdsU7PieModalIsOpen()) {
+                            return;
+                        }
                         amazonAdsU7PieChart = Highcharts.chart('amazonAdsU7Pie', {
-                            chart: { type: 'pie', backgroundColor: 'transparent', height: 100, spacing: [0, 0, 0, 0] },
+                            chart: { type: 'pie', backgroundColor: 'transparent', height: U7_PIE_MODAL_CHART_H, spacing: [12, 12, 12, 12] },
                             credits: { enabled: false },
                             exporting: { enabled: false },
                             title: { text: null },
                             tooltip: {
-                                pointFormat: '<span style="color:{point.color}">\u25cf</span> {point.name}: <b>{point.y}</b> ({point.percentage:.1f}%)<br/>Click for 30-day history.'
+                                useHTML: true,
+                                outside: false,
+                                formatter: function () {
+                                    var rn = Math.round(this.point.y);
+                                    var rp = Math.round(this.percentage);
+                                    return '<span style="color:' + this.point.color + '">\u25cf</span> <b>' + this.point.name + '</b><br/>'
+                                        + 'Rows: <b>' + rn + '</b> (' + rp + '%)<br/><span style="font-size:11px;color:#6b7280">Click for 30-day history</span>';
+                                }
                             },
                             plotOptions: {
                                 pie: {
                                     allowPointSelect: true,
                                     cursor: 'pointer',
                                     size: '100%',
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(255,255,255,0.85)',
+                                    states: {
+                                        hover: {
+                                            brightness: 0.08,
+                                            halo: { size: 0 }
+                                        }
+                                    },
                                     point: {
                                         events: {
                                             click: function () {
@@ -657,16 +743,28 @@
                                     },
                                     dataLabels: {
                                         enabled: true,
-                                        distance: 4,
-                                        style: { fontSize: '7px', fontWeight: '600', textOutline: 'none' },
-                                        formatter: function () {
-                                            return this.percentage > 8 ? this.point.name : '';
-                                        }
+                                        useHTML: true,
+                                        distance: -120,
+                                        connectorWidth: 0,
+                                        allowOverlap: true,
+                                        crop: false,
+                                        overflow: 'allow',
+                                        style: {
+                                            fontSize: '38px',
+                                            fontWeight: '700',
+                                            textOutline: 'none'
+                                        },
+                                        formatter: amazonAdsU7PieDataLabelFormatter
                                     }
                                 }
                             },
                             series: [{ type: 'pie', name: 'Rows', data: seriesData }]
                         });
+                        setTimeout(function () {
+                            if (amazonAdsU7PieChart && typeof amazonAdsU7PieChart.reflow === 'function') {
+                                amazonAdsU7PieChart.reflow();
+                            }
+                        }, 50);
                     },
                     error: function () {
                         if (amazonAdsU7PieChart) {
@@ -675,7 +773,9 @@
                             } catch (e1) {}
                             amazonAdsU7PieChart = null;
                         }
-                        box.innerHTML = '<p class="small text-danger mb-0">Error</p>';
+                        if (amazonAdsU7PieModalIsOpen() && box) {
+                            box.innerHTML = '<p class="small text-danger mb-0">Error</p>';
+                        }
                     }
                 });
             }
@@ -957,6 +1057,68 @@
                 return list;
             }
 
+            function amazonAdsCollectSbSbidPushRows() {
+                var dt = amazonAdsDataTables['amazonAdsSbReportsTable'];
+                if (!dt || typeof dt.rows !== 'function') {
+                    return [];
+                }
+                var data = dt.rows({ page: 'current' }).data();
+                var list = [];
+                if (!data || typeof data.toArray !== 'function') {
+                    return list;
+                }
+                data.toArray().forEach(function (row) {
+                    if (!row) {
+                        return;
+                    }
+                    var cid = row.campaign_id;
+                    if (cid === null || cid === undefined || String(cid).trim() === '') {
+                        return;
+                    }
+                    var bid = amazonAdsPickBidFromRow(row);
+                    if (bid === null) {
+                        return;
+                    }
+                    var name = row.campaignName != null ? String(row.campaignName) : '';
+                    list.push({
+                        campaign_id: String(cid).trim(),
+                        bid: bid,
+                        campaignName: name
+                    });
+                });
+                return list;
+            }
+
+            function amazonAdsCollectSbSbgtPushRows() {
+                var dt = amazonAdsDataTables['amazonAdsSbReportsTable'];
+                if (!dt || typeof dt.rows !== 'function') {
+                    return [];
+                }
+                var data = dt.rows({ page: 'current' }).data();
+                var list = [];
+                if (!data || typeof data.toArray !== 'function') {
+                    return list;
+                }
+                data.toArray().forEach(function (row) {
+                    if (!row) {
+                        return;
+                    }
+                    var cid = row.campaign_id;
+                    if (cid === null || cid === undefined || String(cid).trim() === '') {
+                        return;
+                    }
+                    var tier = amazonAdsPickSbgtTierFromRow(row);
+                    if (tier === null) {
+                        return;
+                    }
+                    list.push({
+                        campaign_id: String(cid).trim(),
+                        sbgt: tier
+                    });
+                });
+                return list;
+            }
+
             /** SBGT tier from row if it matches one of the configured rule tier values. */
             function amazonAdsPickSbgtTierFromRow(row) {
                 if (!row || typeof row !== 'object') {
@@ -1007,16 +1169,21 @@
                 var btn = document.getElementById('amazonAdsPushSbidBtn');
                 var sbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
                 var isSp = activeRawSourceKey === 'sp_reports';
+                var isSb = activeRawSourceKey === 'sb_reports';
+                var sbidOk = isSp || isSb;
                 if (btn) {
-                    btn.disabled = !isSp;
-                    btn.title = isSp ? 'Uses sbid_m, yes_sbid, or sbid for rows on this page' : 'Switch to Table: SP — amazon_sp_campaign_reports';
+                    btn.disabled = !sbidOk;
+                    btn.title = sbidOk
+                        ? 'Uses sbid_m, yes_sbid, or sbid for rows on this page (' + (isSp ? 'SP keywords/targets' : 'SB keywords') + ' API)'
+                        : 'Switch to SP or SB reports to push SBID';
                 }
                 if (sbgtBtn) {
-                    sbgtBtn.disabled = !isSp;
                     var tiers = amazonAdsAllowedSbgtTiersFromRule();
-                    sbgtBtn.title = isSp
-                        ? 'Sets SP daily budget on Amazon to each row SBGT tier as dollars ($' + tiers.join(', $') + ')'
-                        : 'Switch to Table: SP — amazon_sp_campaign_reports';
+                    var sbgtOk = isSp || isSb;
+                    sbgtBtn.disabled = !sbgtOk;
+                    sbgtBtn.title = sbgtOk
+                        ? 'Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amazon to each row SBGT tier as dollars ($' + tiers.join(', $') + ')'
+                        : 'Switch to SP or SB reports to push SBGT';
                 }
             }
 
@@ -1079,6 +1246,7 @@
                 activeAdsTableId = table.id;
                 activeRawSourceKey = table.getAttribute('data-raw-source') || 'sp_reports';
                 amazonAdsUpdateSpl30BadgeFromJson({}, sourceKey);
+                amazonAdsUpdateOverallAcosBadgeFromJson({}, sourceKey);
                 amazonAdsUpdateSbidPushButton();
                 initTable(table.id, table.getAttribute('data-raw-source'));
             }
@@ -1156,6 +1324,32 @@
                 } else {
                     wrap.hidden = true;
                     valEl.textContent = '';
+                }
+            }
+
+            /** Portfolio ACOS from raw-data (SP/SB): sum L30 cost ÷ sum L30 sales, same convention as per-row ACOS. */
+            function amazonAdsUpdateOverallAcosBadgeFromJson(json, responseSourceKey) {
+                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
+                    return;
+                }
+                var wrap = document.getElementById('amazonAdsOverallAcosBadgeWrap');
+                var valEl = document.getElementById('amazonAdsOverallAcosBadgeValue');
+                if (!wrap || !valEl) {
+                    return;
+                }
+                if (json && typeof json.overallAcosPercent === 'number' && isFinite(json.overallAcosPercent)) {
+                    wrap.hidden = false;
+                    var p = Number(json.overallAcosPercent);
+                    valEl.textContent = p.toFixed(0) + '%';
+                    if (typeof amazonAdsAcosTierColor === 'function') {
+                        valEl.style.color = amazonAdsAcosTierColor(p);
+                    } else {
+                        valEl.style.color = '';
+                    }
+                } else {
+                    wrap.hidden = true;
+                    valEl.textContent = '';
+                    valEl.style.color = '';
                 }
             }
 
@@ -1780,6 +1974,7 @@
                         },
                         dataSrc: function (json) {
                             amazonAdsUpdateSpl30BadgeFromJson(json, sourceKey);
+                            amazonAdsUpdateOverallAcosBadgeFromJson(json, sourceKey);
                             return json && json.data ? json.data : [];
                         },
                         error: function (xhr) {
@@ -1806,7 +2001,25 @@
                     amazonAdsSetDateFiltersToLatestForSource(initialSource);
                     amazonAdsUpdateSbidPushButton();
                     amazonAdsShowSource(initialSource);
-                    amazonAdsRefreshU7PieChartDebounced();
+
+                    var u7PieModalEl = document.getElementById('amazonAdsU7PieModal');
+                    if (u7PieModalEl) {
+                        u7PieModalEl.addEventListener('shown.bs.modal', function () {
+                            amazonAdsRefreshU7PieChart();
+                        });
+                        u7PieModalEl.addEventListener('hidden.bs.modal', function () {
+                            if (amazonAdsU7PieChart) {
+                                try {
+                                    amazonAdsU7PieChart.destroy();
+                                } catch (ePieHide) {}
+                                amazonAdsU7PieChart = null;
+                            }
+                            var pieBox = document.getElementById('amazonAdsU7Pie');
+                            if (pieBox) {
+                                pieBox.innerHTML = '';
+                            }
+                        });
+                    }
 
                     if (typeSel) {
                         typeSel.addEventListener('change', function () {
@@ -1829,13 +2042,15 @@
                     if (pushBtn) {
                         pushBtn.addEventListener('click', function () {
                             var statusEl = document.getElementById('amazonAdsSbidPushStatus');
-                            if (activeRawSourceKey !== 'sp_reports') {
+                            var isSp = activeRawSourceKey === 'sp_reports';
+                            var isSb = activeRawSourceKey === 'sb_reports';
+                            if (!isSp && !isSb) {
                                 if (statusEl) {
-                                    statusEl.textContent = 'Switch to the SP table first.';
+                                    statusEl.textContent = 'Switch to SP or SB reports first.';
                                 }
                                 return;
                             }
-                            var rows = amazonAdsCollectSpSbidPushRows();
+                            var rows = isSp ? amazonAdsCollectSpSbidPushRows() : amazonAdsCollectSbSbidPushRows();
                             if (!rows.length) {
                                 if (statusEl) {
                                     statusEl.textContent = 'No rows on this page with campaign_id and a positive sbid_m / yes_sbid / sbid.';
@@ -1856,7 +2071,8 @@
 
                                 return;
                             }
-                            if (!window.confirm('Push SBID to Amazon for ' + deduped.length + ' SP campaign(s) on this page?')) {
+                            var productLabel = isSp ? 'SP' : 'SB';
+                            if (!window.confirm('Push SBID to Amazon for ' + deduped.length + ' ' + productLabel + ' campaign(s) on this page?')) {
                                 return;
                             }
                             pushBtn.disabled = true;
@@ -1864,7 +2080,8 @@
                                 statusEl.textContent = 'Pushing…';
                             }
                             var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                            fetch(pushSpSbidsUrl, {
+                            var pushUrl = isSp ? pushSpSbidsUrl : pushSbSbidsUrl;
+                            fetch(pushUrl, {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -1909,13 +2126,15 @@
                     if (pushSbgtBtn) {
                         pushSbgtBtn.addEventListener('click', function () {
                             var statusEl = document.getElementById('amazonAdsSbgtPushStatus');
-                            if (activeRawSourceKey !== 'sp_reports') {
+                            var isSp = activeRawSourceKey === 'sp_reports';
+                            var isSb = activeRawSourceKey === 'sb_reports';
+                            if (!isSp && !isSb) {
                                 if (statusEl) {
-                                    statusEl.textContent = 'Switch to the SP table first.';
+                                    statusEl.textContent = 'Switch to SP or SB reports first.';
                                 }
                                 return;
                             }
-                            var rows = amazonAdsCollectSpSbgtPushRows();
+                            var rows = isSp ? amazonAdsCollectSpSbgtPushRows() : amazonAdsCollectSbSbgtPushRows();
                             if (!rows.length) {
                                 if (statusEl) {
                                     statusEl.textContent = 'No rows on this page with campaign_id and a valid SBGT tier (' + amazonAdsAllowedSbgtTiersFromRule().join(', ') + ').';
@@ -1935,7 +2154,8 @@
                                 }
                                 return;
                             }
-                            if (!window.confirm('Push SBGT to Amazon as daily budget ($' + amazonAdsAllowedSbgtTiersFromRule().join(', $') + ') for ' + deduped.length + ' SP campaign(s) on this page?')) {
+                            var productLabel = isSp ? 'SP' : 'SB';
+                            if (!window.confirm('Push SBGT to Amazon as daily budget ($' + amazonAdsAllowedSbgtTiersFromRule().join(', $') + ') for ' + deduped.length + ' ' + productLabel + ' campaign(s) on this page?')) {
                                 return;
                             }
                             pushSbgtBtn.disabled = true;
@@ -1943,7 +2163,8 @@
                                 statusEl.textContent = 'Pushing…';
                             }
                             var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                            fetch(pushSpSbgtsUrl, {
+                            var sbgtsUrl = isSp ? pushSpSbgtsUrl : pushSbSbgtsUrl;
+                            fetch(sbgtsUrl, {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',

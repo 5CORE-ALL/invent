@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Models\ProductMaster;
@@ -1151,15 +1152,19 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Sum of SPL30 (`cost` after L30 overlays) for distinct (campaign_id [, ad_type]) in the filtered set,
-     * matching per-row logic in {@see rawData} (avoids double-counting duplicate report rows per campaign).
+     * Per distinct (campaign_id [, ad_type]): L30 SPL30 spend and L30 sales sums for the filtered grid,
+     * matching {@see rawData} overlays (no double-count across duplicate report rows).
      *
      * @param  array<int, string>  $dbColumns
      * @param  array<int, string>  $columns   Display column keys
+     * @return array{cost_sum: float, sales_sum: float}|null
      */
-    private static function sumSpl30DistinctForFilteredAmazonAdsRows(Builder $filteredBaseQuery, string $table, array $dbColumns, array $columns): ?float
+    private static function aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows(Builder $filteredBaseQuery, string $table, array $dbColumns, array $columns): ?array
     {
-        if (! in_array('cost', $columns, true) || ! in_array('campaign_id', $dbColumns, true)) {
+        if ($table !== 'amazon_sp_campaign_reports' && $table !== 'amazon_sb_campaign_reports') {
+            return null;
+        }
+        if (! in_array('campaign_id', $dbColumns, true) || ! in_array('cost', $dbColumns, true)) {
             return null;
         }
         $subQ = $filteredBaseQuery->clone()->reorder();
@@ -1171,7 +1176,7 @@ class AmazonAdsController extends Controller
             $pairs = $pairsQ->select('r.campaign_id')->distinct()->get();
         }
         if ($pairs->isEmpty()) {
-            return 0.0;
+            return ['cost_sum' => 0.0, 'sales_sum' => 0.0];
         }
         $stubRows = [];
         foreach ($pairs as $p) {
@@ -1194,15 +1199,29 @@ class AmazonAdsController extends Controller
             ? self::fetchL30DailySpendSumMap($table, $dbColumns, $stubRows)
             : [];
         $rawByKey = [];
+        $rawSalesByKey = [];
         $coalesce = self::costPreferCoalesceExprForTableAlias('r', $dbColumns);
+        $salesColRaw = self::l30SummarySalesDbColumn($dbColumns);
+        $gq = DB::query()->fromSub($filteredBaseQuery->clone()->reorder(), 'r');
+        $selectChunks = [];
+        if ($hasAd) {
+            $selectChunks[] = 'TRIM(r.campaign_id) AS lk_cid';
+            $selectChunks[] = 'TRIM(IFNULL(r.ad_type, \'\')) AS lk_ad';
+        } else {
+            $selectChunks[] = 'TRIM(r.campaign_id) AS lk_cid';
+        }
         if ($coalesce !== null) {
-            $gq = DB::query()->fromSub($filteredBaseQuery->clone()->reorder(), 'r');
+            $selectChunks[] = 'MAX('.$coalesce.') AS mx_spend';
+        }
+        if ($salesColRaw !== null) {
+            $selectChunks[] = 'MAX(r.`'.$salesColRaw.'`) AS mx_sales';
+        }
+        if (count($selectChunks) > ($hasAd ? 2 : 1)) {
+            $gq->selectRaw(implode(', ', $selectChunks));
             if ($hasAd) {
-                $gq->selectRaw('TRIM(r.campaign_id) AS lk_cid, TRIM(IFNULL(r.ad_type, \'\')) AS lk_ad, MAX('.$coalesce.') AS mx_spend')
-                    ->groupBy('lk_cid', 'lk_ad');
+                $gq->groupBy('lk_cid', 'lk_ad');
             } else {
-                $gq->selectRaw('TRIM(r.campaign_id) AS lk_cid, MAX('.$coalesce.') AS mx_spend')
-                    ->groupBy('lk_cid');
+                $gq->groupBy('lk_cid');
             }
             foreach ($gq->get() as $rw) {
                 $kc = trim((string) ($rw->lk_cid ?? ''));
@@ -1211,16 +1230,28 @@ class AmazonAdsController extends Controller
                 }
                 $ka = $hasAd ? trim((string) ($rw->lk_ad ?? '')) : '';
                 $key = $kc."\0".$ka;
-                $mx = $rw->mx_spend ?? null;
-                if ($mx === null || $mx === '') {
-                    $rawByKey[$key] = null;
-                } else {
-                    $n = (float) $mx;
-                    $rawByKey[$key] = is_finite($n) ? $n : null;
+                if ($coalesce !== null) {
+                    $mx = $rw->mx_spend ?? null;
+                    if ($mx === null || $mx === '') {
+                        $rawByKey[$key] = null;
+                    } else {
+                        $n = (float) $mx;
+                        $rawByKey[$key] = is_finite($n) ? $n : null;
+                    }
+                }
+                if ($salesColRaw !== null && property_exists($rw, 'mx_sales')) {
+                    $ms = $rw->mx_sales ?? null;
+                    if ($ms === null || $ms === '') {
+                        $rawSalesByKey[$key] = null;
+                    } else {
+                        $sn = (float) $ms;
+                        $rawSalesByKey[$key] = is_finite($sn) ? $sn : null;
+                    }
                 }
             }
         }
-        $total = 0.0;
+        $costSum = 0.0;
+        $salesSum = 0.0;
         foreach ($pairs as $p) {
             $cid = isset($p->campaign_id) ? trim((string) $p->campaign_id) : '';
             if ($cid === '') {
@@ -1229,24 +1260,74 @@ class AmazonAdsController extends Controller
             $adTypeStr = $hasAd ? trim((string) ($p->ad_type ?? '')) : '';
             $adKeyL30 = $hasAd ? $adTypeStr : '';
             $lkL30 = $cid."\0".trim((string) $adKeyL30);
-            $val = null;
+            $costVal = null;
             if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap) && $l30SliceMap[$lkL30]['spend'] !== null) {
                 $sv = (float) $l30SliceMap[$lkL30]['spend'];
-                $val = is_finite($sv) ? $sv : null;
+                $costVal = is_finite($sv) ? $sv : null;
             } elseif ($l30SpendMap !== [] && array_key_exists($lkL30, $l30SpendMap)) {
                 $l30v = $l30SpendMap[$lkL30];
                 if ($l30v !== null && is_finite((float) $l30v)) {
-                    $val = (float) $l30v;
+                    $costVal = (float) $l30v;
                 }
             } elseif (array_key_exists($lkL30, $rawByKey) && $rawByKey[$lkL30] !== null && is_finite((float) $rawByKey[$lkL30])) {
-                $val = (float) $rawByKey[$lkL30];
+                $costVal = (float) $rawByKey[$lkL30];
             }
-            if ($val !== null) {
-                $total += $val;
+            if ($costVal !== null) {
+                $costSum += $costVal;
+            }
+            $salesVal = null;
+            if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap)) {
+                $s30 = $l30SliceMap[$lkL30]['sales30d'];
+                if ($s30 !== null && is_finite((float) $s30)) {
+                    $salesVal = (float) $s30;
+                }
+            }
+            if ($salesVal === null && array_key_exists($lkL30, $rawSalesByKey) && $rawSalesByKey[$lkL30] !== null && is_finite((float) $rawSalesByKey[$lkL30])) {
+                $salesVal = (float) $rawSalesByKey[$lkL30];
+            }
+            if ($salesVal !== null) {
+                $salesSum += $salesVal;
             }
         }
 
-        return round($total, 2);
+        return ['cost_sum' => $costSum, 'sales_sum' => $salesSum];
+    }
+
+    /**
+     * Portfolio ACOS (%) from summed L30 cost and sales — same edge cases as {@see computedAcosPercentFromReportRow}.
+     */
+    private static function overallAcosPercentFromAggregatedSums(float $costSum, float $salesSum): float
+    {
+        if ($salesSum > 0) {
+            $v = ($costSum / $salesSum) * 100;
+
+            return is_finite($v) ? (float) round($v, 0) : 0.0;
+        }
+        if ($costSum > 0) {
+            return 100.0;
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Sum of SPL30 (`cost` after L30 overlays) for distinct (campaign_id [, ad_type]) in the filtered set,
+     * matching per-row logic in {@see rawData} (avoids double-counting duplicate report rows per campaign).
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  array<int, string>  $columns   Display column keys
+     */
+    private static function sumSpl30DistinctForFilteredAmazonAdsRows(Builder $filteredBaseQuery, string $table, array $dbColumns, array $columns): ?float
+    {
+        if (! in_array('cost', $columns, true)) {
+            return null;
+        }
+        $agg = self::aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows($filteredBaseQuery, $table, $dbColumns, $columns);
+        if ($agg === null) {
+            return null;
+        }
+
+        return round($agg['cost_sum'], 2);
     }
 
     /**
@@ -2625,9 +2706,22 @@ class AmazonAdsController extends Controller
                 ->value('c');
         }
 
+        $l30AggDistinct = null;
+        if (($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')
+            && in_array('campaign_id', $dbColumns, true)
+            && in_array('cost', $dbColumns, true)) {
+            $l30AggDistinct = self::aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows($queryForAggregates, $table, $dbColumns, $columns);
+        }
+
         $spl30Total = null;
-        if (in_array('cost', $columns, true)) {
-            $spl30Total = self::sumSpl30DistinctForFilteredAmazonAdsRows($queryForAggregates, $table, $dbColumns, $columns);
+        if (in_array('cost', $columns, true) && $l30AggDistinct !== null) {
+            $spl30Total = round($l30AggDistinct['cost_sum'], 2);
+        }
+
+        $overallAcosPercent = null;
+        $hasSalesDbForAgg = in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true);
+        if ($l30AggDistinct !== null && $hasSalesDbForAgg) {
+            $overallAcosPercent = self::overallAcosPercentFromAggregatedSums($l30AggDistinct['cost_sum'], $l30AggDistinct['sales_sum']);
         }
 
         self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
@@ -2851,6 +2945,9 @@ class AmazonAdsController extends Controller
         if ($spl30Total !== null) {
             $payload['spl30Total'] = $spl30Total;
         }
+        if ($overallAcosPercent !== null) {
+            $payload['overallAcosPercent'] = $overallAcosPercent;
+        }
 
         return response()->json($payload);
     }
@@ -2981,6 +3078,78 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Push SBID bids for Sponsored Brands campaigns to Amazon (SB keywords API), same shape as SP push rows.
+     *
+     * Expects JSON: { "rows": [ { "campaign_id", "bid", "campaignName"? }, ... ] } (max 100 unique campaigns).
+     */
+    public function pushSbSbids(Request $request): JsonResponse
+    {
+        $rows = $request->input('rows');
+        if (! is_array($rows) || $rows === []) {
+            return response()->json([
+                'message' => 'Provide a non-empty rows array with campaign_id and bid.',
+                'status' => 400,
+            ], 400);
+        }
+
+        /** @var array<string, float> $bidByCampaignId */
+        $bidByCampaignId = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $bid = self::normalizePositiveBid($row['bid'] ?? null);
+            if ($bid === null) {
+                continue;
+            }
+            $bidByCampaignId[$cid] = $bid;
+        }
+
+        if ($bidByCampaignId === []) {
+            return response()->json([
+                'message' => 'No valid campaign_id / positive bid pairs.',
+                'status' => 422,
+            ], 422);
+        }
+        if (count($bidByCampaignId) > 100) {
+            return response()->json([
+                'message' => 'At most 100 distinct campaigns per request.',
+                'status' => 422,
+            ], 422);
+        }
+
+        /** @var AmazonSbBudgetController $sb */
+        $sb = app(AmazonSbBudgetController::class);
+
+        $sub = Request::create('/amazon-ads/push-sb-sbids', 'PUT', [
+            'campaign_ids' => array_keys($bidByCampaignId),
+            'bids' => array_values($bidByCampaignId),
+        ]);
+
+        $resp = $sb->updateCampaignKeywordsBid($sub);
+        $http = $resp->getStatusCode();
+        $decoded = json_decode($resp->getContent(), true);
+        $ok = $http >= 200 && $http < 300;
+        $msg = is_array($decoded) && isset($decoded['message']) && is_string($decoded['message'])
+            ? $decoded['message']
+            : ($ok ? 'SBID push finished for Amazon SB (keywords).' : 'SB keyword bid update returned an error.');
+
+        return response()->json([
+            'ok' => $ok,
+            'message' => $msg,
+            'keyword_http_status' => $http,
+            'keywords' => $decoded,
+            'target_http_status' => null,
+            'targets' => null,
+        ]);
+    }
+
+    /**
      * Push SBGT tier as SP daily budget ($) to Amazon; allowed tier values match the active {@see AmazonAcosSbgtRule}.
      *
      * Expects JSON: { "rows": [ { "campaign_id", "sbgt" }, ... ] } (max 100 unique campaigns; last row wins per campaign_id).
@@ -3043,5 +3212,70 @@ class AmazonAdsController extends Controller
         $acos = app(AmazonACOSController::class);
 
         return $acos->updateAmazonCampaignBgt($sub);
+    }
+
+    /**
+     * Push SBGT tier as SB daily budget ($) to Amazon; same tier → dollar mapping as {@see pushSpSbgts}.
+     *
+     * Expects JSON: { "rows": [ { "campaign_id", "sbgt" }, ... ] } (max 100 unique campaigns; last row wins per campaign_id).
+     */
+    public function pushSbSbgts(Request $request): JsonResponse
+    {
+        $rows = $request->input('rows');
+        if (! is_array($rows) || $rows === []) {
+            return response()->json([
+                'message' => 'Provide a non-empty rows array with campaign_id and a valid SBGT tier for the current BGT rule.',
+                'status' => 400,
+            ], 400);
+        }
+
+        $allowedTiers = AmazonAcosSbgtRule::allowedSbgtTierValues();
+        /** @var array<string, float> $tierByCampaignId */
+        $tierByCampaignId = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $raw = $row['sbgt'] ?? null;
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+            $tier = (int) $raw;
+            if (! in_array($tier, $allowedTiers, true)) {
+                continue;
+            }
+            $tierByCampaignId[$cid] = (float) $tier;
+        }
+
+        if ($tierByCampaignId === []) {
+            return response()->json([
+                'message' => 'No valid campaign_id / SBGT tier pairs (tier must be one of the configured rule values: '.implode(', ', $allowedTiers).').',
+                'status' => 422,
+            ], 422);
+        }
+        if (count($tierByCampaignId) > 100) {
+            return response()->json([
+                'message' => 'At most 100 distinct campaigns per request.',
+                'status' => 422,
+            ], 422);
+        }
+
+        $campaignIds = array_keys($tierByCampaignId);
+        $bgts = array_values($tierByCampaignId);
+
+        $sub = Request::create('/amazon-ads/push-sb-sbgts', 'PUT', [
+            'campaign_ids' => $campaignIds,
+            'bgts' => $bgts,
+        ]);
+
+        /** @var AmazonACOSController $acos */
+        $acos = app(AmazonACOSController::class);
+
+        return $acos->updateAmazonSbCampaignBgt($sub);
     }
 }

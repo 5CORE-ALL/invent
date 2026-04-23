@@ -314,7 +314,7 @@ class AmazonACOSController extends Controller
             $newBgt = floatval($newBgts[$index] ?? 0);
 
             $allCampaigns[] = [
-                'campaignId' => $campaignId,
+                'campaignId' => (string) $campaignId,
                 'budget' => $newBgt,
             ];
         }
