@@ -9,6 +9,8 @@ use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Support\AmazonAdsSbidRule;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
 
@@ -167,6 +169,7 @@ class AutoUpdateAmzUnderPtBids extends Command
     public function getAutomateAmzUtilizedBgtPt()
     {
         try {
+            $sbidRule = AmazonAdsSbidRule::resolvedRule();
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy('sku', 'asc')
@@ -357,6 +360,7 @@ class AutoUpdateAmzUnderPtBids extends Command
                 : (int) ($shopify->inv ?? 0);
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+            $row['campaignStatus'] = strtoupper(trim($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? 'PAUSED')));
             // Keep utilization budget stable across windows so command-side UB matches frontend behavior.
             // Prefer the higher non-zero budget from recent windows.
             $budgetCandidates = [
@@ -438,24 +442,43 @@ class AutoUpdateAmzUnderPtBids extends Command
             $l2_spend = floatval($row['l2_spend'] ?? 0);
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
-            $ub2 = ($budget > 0 && $l2_spend > 0) ? ($l2_spend / $budget) * 100 : 0;
-            $ub2Red = $ub2 < 66;
-            $ub1Red = $ub1 < 66;
+            $ub2 = AmazonBidUtilizationService::ub2PercentFromL2Spend($budget, $l2_spend);
 
-            // Under-utilized: 2UB red AND 1UB red (same as KW/tabulator)
-            if ($row['INV'] > 0 && $row['campaignName'] !== '' && ($ub2Red && $ub1Red)) {
-                $row['sbid'] = 0;
-                if ($l1_cpc > 0) {
-                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                } elseif ($l2_cpc > 0) {
-                    $row['sbid'] = floor($l2_cpc * 1.10 * 100) / 100;
-                } elseif ($l7_cpc > 0) {
-                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                } else {
-                    $row['sbid'] = 0.60;
-                }
+            $resolved = AmazonBidUtilizationService::resolveUb(
+                (string) $row['campaign_id'],
+                'pt',
+                ['ub7' => $ub7, 'ub1' => $ub1]
+            );
+            $ub7 = $resolved['ub7'];
+            $ub1 = $resolved['ub1'];
+
+            $fbL1 = $matchedCampaignL1 ? (float) ($matchedCampaignL1->costPerClick ?? 0) : 0.0;
+            $fbL7 = $matchedCampaignL7 ? (float) ($matchedCampaignL7->costPerClick ?? 0) : 0.0;
+            $cpcFallback = ($l1_cpc <= 0 && $l2_cpc <= 0 && $l7_cpc <= 0) ? max($fbL1, $fbL7) : null;
+            if ($cpcFallback === null || $cpcFallback <= 0) {
+                $cpcFallback = null;
+            }
+
+            $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
+                $ub2,
+                $ub1,
+                $l1_cpc,
+                $l2_cpc,
+                $l7_cpc,
+                $cpcFallback
+            );
+            $row['sbid'] = $bidOut['sbid'];
+            $row['ub2'] = $ub2;
+
+            $bothLowPt = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+            // Same gating as PT over / grid: red+red + under band + ENABLED + inventory
+            if ($row['INV'] > 0 && $row['campaignName'] !== '' && $bothLowPt && $bidOut['band'] === 'under'
+                && $row['sbid'] !== null && is_numeric($row['sbid']) && (float) $row['sbid'] > 0
+                && ($row['campaignStatus'] ?? '') === 'ENABLED') {
                 if ($price < 10 && $row['sbid'] > 0.10) {
                     $row['sbid'] = 0.10;
+                } elseif ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
+                    $row['sbid'] = 0.20;
                 }
                 $result[] = (object) $row;
             }

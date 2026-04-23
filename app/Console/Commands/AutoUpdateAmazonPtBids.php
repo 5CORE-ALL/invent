@@ -10,6 +10,7 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Support\AmazonAdsSbidRule;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
 
@@ -57,7 +58,8 @@ class AutoUpdateAmazonPtBids extends Command
             // Build a map to handle duplicate campaign IDs properly
             $campaignBudgetMap = [];
             $campaignDetails = [];
-            
+            $sbidRule = AmazonAdsSbidRule::resolvedRule();
+
             foreach ($campaigns as $campaign) {
                 $campaignId = $campaign->campaign_id ?? '';
                 $sbid = $campaign->sbid ?? 0;
@@ -72,8 +74,8 @@ class AutoUpdateAmazonPtBids extends Command
                         $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                         $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
                         $ub2 = floatval($campaign->ub2 ?? 0);
-                        $pinkPink = ($ub2 > 99 && $ub1 > 99);
-                        $redRed = ($ub2 < 66 && $ub1 < 66);
+                        $pinkPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+                        $redRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
@@ -244,6 +246,7 @@ class AutoUpdateAmazonPtBids extends Command
     public function getAutomateAmzUtilizedBgtPt()
     {
         try {
+            $sbidRule = AmazonAdsSbidRule::resolvedRule();
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy('sku', 'asc')
@@ -548,13 +551,12 @@ class AutoUpdateAmazonPtBids extends Command
                 continue;
             }
 
-            $ub2Pink = $ub2 > 99;
-            $ub1Pink = $ub1 > 99;
-            $ub2Red = $ub2 < 66;
-            $ub1Red = $ub1 < 66;
+            $bothRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+            $bothPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
 
-            // Include when U2/U1 both red or both pink (over- or under-utilized) + ENABLED + inventory
-            if ($row['INV'] > 0 && ($ub2Red && $ub1Red || $ub2Pink && $ub1Pink) && ($row['campaignStatus'] ?? '') === 'ENABLED') {
+            // Include when U2/U1 both red or both pink and band matches (same gating as over-KW / HL)
+            if ($row['INV'] > 0 && ($row['campaignStatus'] ?? '') === 'ENABLED'
+                && (($bothRed && $bidOut['band'] === 'under') || ($bothPink && $bidOut['band'] === 'over'))) {
                 $result[] = (object) $row;
             }
         }

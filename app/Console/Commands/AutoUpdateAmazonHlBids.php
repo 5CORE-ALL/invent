@@ -11,6 +11,7 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Support\AmazonAdsSbidRule;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -58,7 +59,8 @@ class AutoUpdateAmazonHlBids extends Command
             // Build a map to handle duplicate campaign IDs properly
             $campaignBudgetMap = [];
             $campaignDetails = [];
-            
+            $sbidRuleLog = AmazonAdsSbidRule::resolvedRule();
+
             foreach ($campaigns as $campaign) {
                 $campaignId = $campaign->campaign_id ?? '';
                 $sbid = $campaign->sbid ?? 0;
@@ -72,16 +74,18 @@ class AutoUpdateAmazonHlBids extends Command
                         $l1_spend = floatval($campaign->l1_spend ?? 0);
                         $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                         $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
-                        $overUtilized = $ub1 > 70;
-                        $underUtilized = $ub1 < 50;
+                        $ub2 = floatval($campaign->ub2 ?? 0);
+                        $bothHigh = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRuleLog);
+                        $bothLow = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRuleLog);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
                             'bid' => $sbid,
                             'ub7' => round($ub7, 2),
+                            'ub2' => round($ub2, 2),
                             'ub1' => round($ub1, 2),
-                            'over_utilized' => $overUtilized,
-                            'under_utilized' => $underUtilized,
+                            'over_utilized' => $bothHigh,
+                            'under_utilized' => $bothLow,
                             'inv' => (int)($campaign->INV ?? 0)
                         ];
                     } else {
@@ -119,8 +123,8 @@ class AutoUpdateAmazonHlBids extends Command
                 $this->info("Campaign Name: {$details['name']}");
                 $this->info("  - Campaign ID: {$campaignId}");
                 $this->info("  - Bid: {$details['bid']}");
-                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
-                $this->info("  - Over (1UB>70%): " . (!empty($details['over_utilized']) ? 'Yes' : 'No') . " | Under (1UB<50%): " . (!empty($details['under_utilized']) ? 'Yes' : 'No'));
+                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 2UB: " . ($details['ub2'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
+                $this->info("  - Pink+Pink (over): " . (!empty($details['over_utilized']) ? 'Yes' : 'No') . " | Red+Red (under): " . (!empty($details['under_utilized']) ? 'Yes' : 'No'));
                 $this->info("  - INV: " . ($details['inv'] ?? 0));
                 $this->info("---");
             }
@@ -243,6 +247,7 @@ class AutoUpdateAmazonHlBids extends Command
     public function getAutomateAmzUtilizedBgtHl()
     {
         try {
+            $sbidRule = AmazonAdsSbidRule::resolvedRule();
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy('sku', 'asc')
@@ -278,6 +283,22 @@ class AutoUpdateAmazonHlBids extends Command
 
         $amazonSpCampaignReportsL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
             ->where('report_date_range', 'L1')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
+            ->get();
+
+        $latestDateSb = DB::table('amazon_sb_campaign_reports')
+            ->where('ad_type', 'SPONSORED_BRANDS')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->max('report_date_range');
+        $l2DateSb = $latestDateSb
+            ? date('Y-m-d', strtotime($latestDateSb.' -1 day'))
+            : date('Y-m-d', strtotime('-2 days'));
+        $amazonSpCampaignReportsL2 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', $l2DateSb)
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
@@ -322,6 +343,15 @@ class AutoUpdateAmazonHlBids extends Command
                 return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
+            $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($sku) {
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                $cleanSku = preg_replace('/\s+/', ' ', $sku);
+                $expected1 = $cleanSku;
+                $expected2 = $cleanSku . ' HEAD';
+
+                return ($cleanName === $expected1 || $cleanName === $expected2);
+            });
+
             $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
                 $cleanSku = preg_replace('/\s+/', ' ', $sku);
@@ -345,9 +375,11 @@ class AutoUpdateAmazonHlBids extends Command
             $row['INV']    = $shopify->inv ?? 0;
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-            // Align HL budget source with frontend preference (L30 first, then L7/L1 fallback).
+            $row['campaignStatus'] = strtoupper(trim($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? 'PAUSED')));
+            // Align HL budget source with frontend preference (L30 first, then L2/L7/L1 fallback).
             $budgetCandidates = [
                 floatval(($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? 0),
+                floatval($matchedCampaignL2 ? ($matchedCampaignL2->campaignBudgetAmount ?? 0) : 0),
                 floatval($matchedCampaignL7->campaignBudgetAmount ?? 0),
                 floatval($matchedCampaignL1->campaignBudgetAmount ?? 0),
             ];
@@ -370,6 +402,11 @@ class AutoUpdateAmazonHlBids extends Command
             $row['l7_cpc']   = $costPerClick7;
             $row['l1_spend'] = $matchedCampaignL1->cost ?? 0;
             $row['l1_cpc']   = $costPerClick1;
+            $row['l2_spend'] = $matchedCampaignL2 ? (float) ($matchedCampaignL2->cost ?? 0) : 0;
+            $costPerClick2 = ($matchedCampaignL2 && $matchedCampaignL2->clicks > 0)
+                ? ($matchedCampaignL2->cost / $matchedCampaignL2->clicks)
+                : 0;
+            $row['l2_cpc'] = $costPerClick2;
 
             // Calculate avg_cpc (lifetime average from daily records)
             $avgCpc = 0;
@@ -407,49 +444,59 @@ class AutoUpdateAmazonHlBids extends Command
             $ubSource = $resolved['source'];
 
             $l1_cpc = floatval($row['l1_cpc']);
+            $l2_cpc = floatval($row['l2_cpc'] ?? 0);
             $l7_cpc = floatval($row['l7_cpc']);
+            $l2_spend = floatval($row['l2_spend'] ?? 0);
+            $ub2 = AmazonBidUtilizationService::ub2PercentFromL2Spend($budget, $l2_spend);
+
+            $cpcFallback = ($l1_cpc <= 0 && $l2_cpc <= 0 && $l7_cpc <= 0) ? max($l1_cpc, $l7_cpc) : null;
+            if ($cpcFallback === null || $cpcFallback <= 0) {
+                $cpcFallback = null;
+            }
+
+            $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
+                $ub2,
+                $ub1,
+                $l1_cpc,
+                $l2_cpc,
+                $l7_cpc,
+                $cpcFallback
+            );
+            $row['sbid'] = $bidOut['sbid'];
+            $row['ub2'] = $ub2;
 
             $baseBid = ($matchedCampaignL30 ? floatval($matchedCampaignL30->last_sbid ?? 0) : 0);
             if ($baseBid <= 0) {
                 $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
-            }
-            if ($baseBid <= 0) {
-                $baseBid = 0.60;
-            }
-
-            $row['sbid'] = 0;
-            // Over-utilized HL: decrease when 1-day utilization > 70%
-            if ($ub1 > 70) {
-                $row['sbid'] = round($baseBid * 0.90, 2);
-                AmazonBidUtilizationService::logBidDecision(
-                    (string) $row['campaign_id'],
-                    'hl_over',
-                    $ub1,
-                    $baseBid,
-                    (float) $row['sbid'],
-                    $ubSource
-                );
-            } elseif ($ub1 < 50) {
-                // Under-utilized HL: increase when 1-day utilization < 50%
-                $row['sbid'] = round($baseBid * 1.10, 2);
-                AmazonBidUtilizationService::logBidDecision(
-                    (string) $row['campaign_id'],
-                    'hl_under',
-                    $ub1,
-                    $baseBid,
-                    (float) $row['sbid'],
-                    $ubSource
-                );
             }
 
             // Validate all required fields before adding
             if (empty($row['campaign_id'])) {
                 continue; // Skip if no campaign ID
             }
-            
-            if (!is_numeric($row['sbid']) || $row['sbid'] <= 0) {
-                continue; // Skip if invalid bid
+
+            if ($row['sbid'] === null || ! is_numeric($row['sbid']) || $row['sbid'] <= 0) {
+                continue;
             }
+
+            $bothLow = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+            $bothHigh = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+            if (! (($bothLow && $bidOut['band'] === 'under') || ($bothHigh && $bidOut['band'] === 'over'))) {
+                continue;
+            }
+
+            if (($row['campaignStatus'] ?? '') !== 'ENABLED') {
+                continue;
+            }
+
+            AmazonBidUtilizationService::logBidDecision(
+                (string) $row['campaign_id'],
+                $bidOut['band'] === 'over' ? 'hl_over' : 'hl_under',
+                $ub1,
+                $baseBid > 0 ? $baseBid : ($l1_cpc > 0 ? $l1_cpc : ($l2_cpc > 0 ? $l2_cpc : ($l7_cpc > 0 ? $l7_cpc : 0.0))),
+                (float) $row['sbid'],
+                $ubSource
+            );
 
             $result[] = (object) $row;
 

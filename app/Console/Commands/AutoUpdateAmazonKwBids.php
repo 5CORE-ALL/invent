@@ -10,6 +10,7 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Support\AmazonAdsSbidRule;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -67,7 +68,8 @@ class AutoUpdateAmazonKwBids extends Command
             // Build a map to handle duplicate campaign IDs properly
             $campaignBudgetMap = [];
             $campaignDetails = [];
-            
+            $sbidRule = AmazonAdsSbidRule::resolvedRule();
+
             foreach ($campaigns as $campaign) {
                 $campaignId = $campaign->campaign_id ?? '';
                 $sbid = $campaign->sbid ?? 0;
@@ -79,8 +81,8 @@ class AutoUpdateAmazonKwBids extends Command
                         $ub7 = floatval($campaign->ub7 ?? 0);
                         $ub1 = floatval($campaign->ub1 ?? 0);
                         $ub2 = floatval($campaign->ub2 ?? 0);
-                        $pinkPink = ($ub2 > 99 && $ub1 > 99);
-                        $redRed = ($ub2 < 66 && $ub1 < 66);
+                        $pinkPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+                        $redRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
@@ -309,6 +311,7 @@ class AutoUpdateAmazonKwBids extends Command
     public function getAutomateAmzUtilizedBgtKw()
     {
         try {
+            $sbidRule = AmazonAdsSbidRule::resolvedRule();
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy('sku', 'asc')
@@ -687,9 +690,11 @@ class AutoUpdateAmazonKwBids extends Command
                 continue; // Skip if invalid bid
             }
 
-            // Include campaigns with valid SBID and ENABLED when U2/U1 are both red or both pink
+            $bothLowKw = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+            $bothHighKw = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+            // Match grid / HL jobs: only extremes + band agrees (under when red+red, over when pink+pink)
             if (! empty($row['campaign_id']) && is_numeric($row['sbid']) && $row['sbid'] > 0 && ($row['campaignStatus'] ?? '') === 'ENABLED'
-                && (($ub2 < 66 && $ub1 < 66) || ($ub2 > 99 && $ub1 > 99))) {
+                && (($bothLowKw && $bidOut['band'] === 'under') || ($bothHighKw && $bidOut['band'] === 'over'))) {
                 $row['ub7'] = $ub7;
                 $row['ub1'] = $ub1;
                 $result[] = (object) $row;

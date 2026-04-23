@@ -172,8 +172,8 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
             // Same ACOS → SBGT tiers as FBM ACOS control / utilized KW (pink 12 … red 1)
             $newBudget = AmazonAcosSbgtRule::sbgtFromAcosL30((float) $acos);
 
-            $allowedSbgt = [1, 2, 4, 8, 12];
-            if (!in_array($newBudget, $allowedSbgt, true)) {
+            $allowedSbgt = AmazonAcosSbgtRule::allowedSbgtTierValues();
+            if (! in_array($newBudget, $allowedSbgt, true)) {
                 $this->error("INVALID BUDGET VALUE for SKU {$sellerSku} Campaign {$campaignId}: {$newBudget}. Skipping update!");
                 continue;
             }
@@ -208,13 +208,13 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
                 return 1;
             }
 
-            $allowedSbgt = [1, 2, 4, 8, 12];
+            $allowedSbgt = AmazonAcosSbgtRule::allowedSbgtTierValues();
             $invalidBudgets = array_filter($budgetsToUpdate, function ($budget) use ($allowedSbgt) {
                 return !in_array($budget, $allowedSbgt, true);
             });
 
             if (!empty($invalidBudgets)) {
-                $this->error("INVALID BUDGET VALUES FOUND: " . implode(', ', $invalidBudgets) . ". Only 1, 2, 4, 8, or 12 allowed. Aborting update!");
+                $this->error('INVALID BUDGET VALUES FOUND: '.implode(', ', $invalidBudgets).'. Only allowed SBGT tiers: '.implode(', ', $allowedSbgt).'. Aborting update!');
                 $this->error("Campaign IDs: " . implode(', ', $campaignIdsToUpdate));
                 $this->error("Budgets: " . implode(', ', $budgetsToUpdate));
                 return 1;

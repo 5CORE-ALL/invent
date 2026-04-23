@@ -12,6 +12,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Support\AmazonAdsSbidRule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -230,6 +231,7 @@ class AutoUpdateAmzUnderHlBids extends Command
     public function getAutomateAmzUtilizedBgtHl()
     {
         try {
+            $sbidRule = AmazonAdsSbidRule::resolvedRule();
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy('sku', 'asc')
@@ -363,6 +365,7 @@ class AutoUpdateAmzUnderHlBids extends Command
             $row['INV'] = (int) (($shopify?->inv) ?? 0);
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+            $row['campaignStatus'] = strtoupper(trim($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? 'PAUSED')));
             // Align HL budget source with frontend preference (L30 first, then L7/L1 fallback).
             $budgetCandidates = [
                 floatval(($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? 0),
@@ -455,8 +458,11 @@ class AutoUpdateAmzUnderHlBids extends Command
 
             $row['INV'] = (int) ($row['INV'] ?? 0);
             $row['sbid'] = $bidOut['sbid'];
-            if ($row['campaignName'] !== '' && $row['sbid'] !== null && $row['sbid'] > 0
-                && (($ub2 < 66 && $ub1 < 66) || ($ub2 > 99 && $ub1 > 99))) {
+            $bothLowHl = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+            $bothHighHl = AmazonAdsSbidRule::isBothAboveUtilHigh($ub2, $ub1, $sbidRule);
+            if ($row['campaignName'] !== '' && ($row['campaignStatus'] ?? '') === 'ENABLED'
+                && $row['sbid'] !== null && $row['sbid'] > 0
+                && (($bothLowHl && $bidOut['band'] === 'under') || ($bothHighHl && $bidOut['band'] === 'over'))) {
                 AmazonBidUtilizationService::logBidDecision(
                     (string) $row['campaign_id'],
                     $bidOut['band'] === 'over' ? 'hl_over' : 'hl_under',

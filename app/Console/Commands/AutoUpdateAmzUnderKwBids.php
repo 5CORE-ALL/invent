@@ -11,6 +11,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Support\AmazonAdsSbidRule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -174,6 +175,7 @@ class AutoUpdateAmzUnderKwBids extends Command
     public function getAutomateAmzUtilizedBgtKw()
     {
         try {
+            $sbidRule = AmazonAdsSbidRule::resolvedRule();
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy('sku', 'asc')
@@ -376,6 +378,7 @@ class AutoUpdateAmzUnderKwBids extends Command
                 : (int) ($shopify->inv ?? 0);
             $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? ($matchedCampaignL30->campaign_id ?? ''));
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? ($matchedCampaignL30->campaignName ?? ''));
+            $row['campaignStatus'] = strtoupper(trim($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? ($matchedCampaignL30->campaignStatus ?? 'PAUSED'))));
             // Use a stable utilization budget so command-side UB matches KW frontend behavior.
             // Prefer the higher non-zero budget among recent windows (L2/L1/L7/L30) instead of only L7.
             $budgetCandidates = [
@@ -512,9 +515,32 @@ class AutoUpdateAmzUnderKwBids extends Command
                 $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
             }
 
-            // Under-utilized: increase bid when 1-day utilization < 50%
-            if ($row['INV'] > 0 && $row['campaignName'] !== '' && $baseBid > 0 && $ub1 < 50) {
-                $row['sbid'] = round($baseBid * 1.10, 2);
+            $l2_spend = floatval($row['l2_spend'] ?? 0);
+            $ub2 = AmazonBidUtilizationService::ub2PercentFromL2Spend($budget, $l2_spend);
+            $l2_cpc = floatval($row['l2_cpc'] ?? 0);
+            $fbL1 = $matchedCampaignL1 ? (float) ($matchedCampaignL1->costPerClick ?? 0) : 0.0;
+            $fbL7 = $matchedCampaignL7 ? (float) ($matchedCampaignL7->costPerClick ?? 0) : 0.0;
+            $cpcFallback = ($l1_cpc <= 0 && $l2_cpc <= 0 && $l7_cpc <= 0) ? max($fbL1, $fbL7) : null;
+            if ($cpcFallback === null || $cpcFallback <= 0) {
+                $cpcFallback = null;
+            }
+
+            $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
+                $ub2,
+                $ub1,
+                $l1_cpc,
+                $l2_cpc,
+                $l7_cpc,
+                $cpcFallback
+            );
+            $row['sbid'] = $bidOut['sbid'];
+            $row['ub2'] = $ub2;
+
+            $bothLowKw = AmazonAdsSbidRule::isBothBelowUtilLow($ub2, $ub1, $sbidRule);
+            // Same persisted SBID rule as over-KW / grid: red+red + under band only
+            if ($row['INV'] > 0 && $row['campaignName'] !== '' && $baseBid > 0 && $bothLowKw && $bidOut['band'] === 'under'
+                && $row['sbid'] !== null && is_numeric($row['sbid']) && (float) $row['sbid'] > 0
+                && ($row['campaignStatus'] ?? '') === 'ENABLED') {
                 if ($price < 10 && $row['sbid'] > 0.10) {
                     $row['sbid'] = 0.10;
                 } elseif ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {

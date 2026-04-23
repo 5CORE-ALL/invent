@@ -287,6 +287,7 @@ class AutoUpdateAmazonFbaUnderKwBids extends Command
                 ->get();
 
             $candidatesByCampaignId = [];
+            $sbidRule = \App\Support\AmazonAdsSbidRule::resolvedRule();
 
             foreach ($fbaData as $fba) {
                 $sellerSkuUpper = strtoupper(trim((string) ($fba->seller_sku ?? '')));
@@ -338,27 +339,46 @@ class AutoUpdateAmazonFbaUnderKwBids extends Command
                 $cpcL1 = $this->cpcFromCampaign($amazonSpCampaignReportsL1, $campaignId);
                 $cpcL2 = $this->cpcFromCampaign($amazonSpCampaignReportsL2, $campaignId);
                 $cpcL7 = $this->cpcFromCampaign($amazonSpCampaignReportsL7, $campaignId);
+                $l2_spend = $this->spendFromCampaign($amazonSpCampaignReportsL2, $campaignId);
 
-                $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
-                $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
-
-                if ($ub1 >= self::UNDER_UTILIZED_THRESHOLD) {
+                $ruleBid = $this->fbaRuleBasedSbidOrNull(
+                    $campaignId,
+                    'fba_kw',
+                    false,
+                    $budget,
+                    $l7_spend,
+                    $l1_spend,
+                    $l2_spend,
+                    $cpcL1,
+                    $cpcL2,
+                    $cpcL7,
+                    $sbidRule
+                );
+                if ($ruleBid === null) {
                     continue;
                 }
 
                 $currentBid = $this->resolveCurrentBidFromReport($matchedCampaignL7, $matchedCampaignL1, $l7_cpcRow, $l1_cpcRow);
-                $calc = $this->calculateUnderUtilizedBidFromCpc($cpcL1, $cpcL2, $cpcL7);
-                $newBid = $calc['bid'];
+                $newBid = $ruleBid['sbid'];
                 if ($newBid <= 0 || abs($newBid - $currentBid) < 0.001) {
                     continue;
                 }
+
+                $calc = [
+                    'source' => (string) ($ruleBid['bid_out']['band'] ?? 'under'),
+                    'band' => (string) ($ruleBid['bid_out']['band'] ?? 'under'),
+                    'base_cpc' => 0.0,
+                    'multiplier' => 1.0,
+                    'ub_source' => $ruleBid['ub_source'],
+                ];
 
                 $candidate = (object) [
                     'campaign_id' => $campaignId,
                     'current_bid' => round($currentBid, 2),
                     'sbid' => (float) $newBid,
-                    'ub7' => round($ub7, 2),
-                    'ub1' => round($ub1, 2),
+                    'ub7' => $ruleBid['ub7'],
+                    'ub1' => $ruleBid['ub1'],
+                    'ub2' => $ruleBid['ub2'],
                     'l7_cpc' => $cpcL7,
                     'l1_cpc' => $cpcL1,
                     'l2_cpc' => $cpcL2,

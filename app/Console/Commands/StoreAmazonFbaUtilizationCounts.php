@@ -7,6 +7,7 @@ use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonUtilizationCount;
 use App\Models\FbaTable;
+use App\Support\AmazonAdsSbidRule;
 use Illuminate\Support\Facades\Log;
 
 class StoreAmazonFbaUtilizationCounts extends Command
@@ -104,7 +105,10 @@ class StoreAmazonFbaUtilizationCounts extends Command
         $correctlyUtilizedCount7ub1ub = 0;
 
         $fbaTypeKey = $campaignType === 'PT' ? 'fba_pt' : 'fba_kw';
-        
+        $sbidRule = AmazonAdsSbidRule::resolvedRule();
+        $utilLow = (float) ($sbidRule['util_low'] ?? 66);
+        $utilHigh = (float) ($sbidRule['util_high'] ?? 99);
+
         foreach ($campaignMap as $campaignId => $campaignData) {
             $budget = $campaignData['budget'] ?? 0;
             $l7_spend = $campaignData['l7_spend'] ?? 0;
@@ -138,21 +142,21 @@ class StoreAmazonFbaUtilizationCounts extends Command
                 ]);
             }
             
-            // Categorize based on 7UB only condition
-            if ($ub7 > 90) {
+            // Categorize 7UB only — thresholds align with Amazon Ads SBID rule util_low / util_high (same spirit as U7% bands).
+            if ($ub7 > $utilHigh) {
                 $overUtilizedCount7ub++;
-            } elseif ($ub7 < 70) {
+            } elseif ($ub7 < $utilLow) {
                 $underUtilizedCount7ub++;
-            } elseif ($ub7 >= 70 && $ub7 <= 90) {
+            } elseif ($ub7 >= $utilLow && $ub7 <= $utilHigh) {
                 $correctlyUtilizedCount7ub++;
             }
-            
-            // Categorize based on 7UB + 1UB condition
-            if ($ub7 > 90 && $ub1 > 90) {
+
+            // 7UB + 1UB: both above high / both below low / both in band (mirrors red+red / pink+pink / mid for two windows).
+            if ($ub7 > $utilHigh && $ub1 > $utilHigh) {
                 $overUtilizedCount7ub1ub++;
-            } elseif ($ub7 < 70 && $ub1 < 70) {
+            } elseif ($ub7 < $utilLow && $ub1 < $utilLow) {
                 $underUtilizedCount7ub1ub++;
-            } elseif ($ub7 >= 70 && $ub7 <= 90 && $ub1 >= 70 && $ub1 <= 90) {
+            } elseif ($ub7 >= $utilLow && $ub7 <= $utilHigh && $ub1 >= $utilLow && $ub1 <= $utilHigh) {
                 $correctlyUtilizedCount7ub1ub++;
             }
         }

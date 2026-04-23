@@ -71,6 +71,32 @@ final class AmazonAdsSbidRule
     }
 
     /**
+     * True when both U2% and U1% are strictly below the configured low utilization threshold.
+     *
+     * @param  array{util_low?: float, util_high?: float}|null  $rule  Result of {@see resolvedRule()}, or null to resolve once.
+     */
+    public static function isBothBelowUtilLow(float $ub2, float $ub1, ?array $rule = null): bool
+    {
+        $r = $rule ?? self::resolvedRule();
+        $low = (float) ($r['util_low'] ?? self::defaults()['util_low']);
+
+        return $ub2 < $low && $ub1 < $low;
+    }
+
+    /**
+     * True when both U2% and U1% are strictly above the configured high utilization threshold.
+     *
+     * @param  array{util_low?: float, util_high?: float}|null  $rule  Result of {@see resolvedRule()}, or null to resolve once.
+     */
+    public static function isBothAboveUtilHigh(float $ub2, float $ub1, ?array $rule = null): bool
+    {
+        $r = $rule ?? self::resolvedRule();
+        $high = (float) ($r['util_high'] ?? self::defaults()['util_high']);
+
+        return $ub2 > $high && $ub1 > $high;
+    }
+
+    /**
      * @param  array<string, mixed>  $input
      * @return array{
      *     util_low: float,
