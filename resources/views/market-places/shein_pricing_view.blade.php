@@ -962,9 +962,10 @@
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v) || v === 0) return '0%';
+                            const r = Math.round(v);
                             // Same color coding as GPFT
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
+                            return `<span style="color:${color};font-weight:600;">${r}%</span>`;
                         }
                     },
                     {
@@ -977,6 +978,7 @@
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v) || v === 0) return '0%';
+                            const r = Math.round(v);
                             // Same color ranges as GROI
                             let color;
                             if      (v < 40)  color = '#a00211';
@@ -984,7 +986,7 @@
                             else if (v < 125) color = '#3591dc';
                             else if (v < 250) color = '#28a745';
                             else              color = '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
+                            return `<span style="color:${color};font-weight:600;">${r}%</span>`;
                         }
                     },
                 ],
