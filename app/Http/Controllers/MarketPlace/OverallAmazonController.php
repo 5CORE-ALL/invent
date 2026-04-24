@@ -4271,25 +4271,32 @@ class OverallAmazonController extends Controller
                     $prcGtLmpCount++;
                 }
                 
-                // Count Missing L, Map, N Map (same logic as frontend)
+                // Count Missing L, Map, N Map (aligned with amazon_tabulator_view: Map if |INV-INV_AMZ| <= 3 OR <= 3% of INV; exclude FBA from missing + nmap)
                 $inv = floatval($row['INV'] ?? 0);
                 $nrValue = $row['NR'] ?? '';
                 $isMissingAmazon = $row['is_missing_amazon'] ?? false;
                 $rowPrice = floatval($row['price'] ?? 0);
-                
+                $fbaFlag = $row['fba'] ?? null;
+                $childSku = strtoupper((string) ($row['(Child) sku'] ?? ''));
+                $parentSku = strtoupper((string) ($row['Parent'] ?? ''));
+                $isFbaRow = ($fbaFlag === 1 || $fbaFlag === '1' || $fbaFlag === true)
+                    || str_contains($childSku, 'FBA')
+                    || str_contains($parentSku, 'FBA');
+
                 if ($inv > 0 && $nrValue === 'REQ') {
-                    if ($isMissingAmazon || $rowPrice <= 0) {
-                        // SKU doesn't exist in amazon_datsheets OR has blank/zero price
+                    if (($isMissingAmazon || $rowPrice <= 0) && ! $isFbaRow) {
+                        // SKU doesn't exist in amazon_datsheets OR has blank/zero price (non-FBA only; NR rows excluded above)
                         $missingAmazonCount++;
-                    } else {
-                        // SKU exists with valid price, check inventory sync
+                    } elseif (! $isMissingAmazon && $rowPrice > 0) {
+                        // SKU exists with valid price, check inventory sync (within 3% of Shopify INV = Map)
                         $invAmzNum = floatval($row['INV_AMZ'] ?? 0);
                         $invDifference = abs($inv - $invAmzNum);
-                        
-                        if ($invDifference == 0) {
-                            $mapCount++; // Perfect match
-                        } else {
-                            $nmapCount++; // Inventory mismatch
+                        $invMapTolerance = $inv * 0.03;
+
+                        if ($invDifference <= 3 + 1e-9 || $invDifference <= $invMapTolerance + 1e-9) {
+                            $mapCount++;
+                        } elseif (! $isFbaRow) {
+                            $nmapCount++;
                         }
                     }
                 }

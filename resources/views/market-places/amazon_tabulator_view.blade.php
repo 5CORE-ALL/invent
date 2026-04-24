@@ -798,6 +798,30 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
+        /** INV vs INV_AMZ counts as Map if diff <= 3 units OR diff <= 3% of Shopify INV (same as saveDailySummaryIfNeeded). */
+        function amazonInvWithinMapTolerance(inv, invAmz) {
+            const invNum = parseFloat(inv) || 0;
+            const amzNum = parseFloat(invAmz) || 0;
+            if (invNum <= 0) {
+                return true;
+            }
+            const diff = Math.abs(invNum - amzNum);
+            if (diff <= 3 + 1e-9) {
+                return true;
+            }
+            const tolerance = invNum * 0.03;
+            return diff <= tolerance + 1e-9;
+        }
+
+        /** FBA row: fba flag or SKU/Parent contains "FBA" (aligns with rowIsFba in filters). */
+        function amazonRowIsFba(rowData) {
+            if (!rowData) return false;
+            const fbaFlag = rowData.fba;
+            if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
+            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').toUpperCase();
+            return sku.indexOf('FBA') !== -1;
+        }
+
         /** Parent group key: Parent/parent field, or "PARENT xxx" pseudo-SKU on summary rows (matches table filters). */
         function amazonParentKeyFromRow(rowData) {
             if (!rowData) return '';
@@ -2934,9 +2958,9 @@
                             if (rowData.is_parent_summary) return '';
                             
                             const isMissingAmazon = rowData.is_missing_amazon || false;
-                            
-                            // Show M whenever SKU is not listed on Amazon (missing listing)
-                            if (isMissingAmazon) {
+                            const nrVal = rowData.NR || '';
+                            // Missing L badge/column: exclude NR and FBA from "datasheet missing" indicator
+                            if (isMissingAmazon && nrVal !== 'NR' && !amazonRowIsFba(rowData)) {
                                 return `<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>`;
                             }
                             
@@ -2970,16 +2994,18 @@
                             const invAmz = parseFloat(rowData.INV_AMZ) || 0;
                             const difference = Math.abs(inv - invAmz);
                             
-                            if (difference === 0) {
-                                // Perfect match - show green dot
+                            if (amazonInvWithinMapTolerance(inv, invAmz)) {
+                                // Within 3% of Shopify INV — treat as mapped (green)
                                 return `<span style="font-size: 20px; color: #28a745;">🟢</span>`;
-                            } else {
-                                // Not matching - show red dot with difference count
-                                return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                            }
+                            // FBA: inventory mismatch vs Shopify is not shown in Missing M (excluded from badge counts)
+                            if (amazonRowIsFba(rowData)) {
+                                return '';
+                            }
+                            return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
                                     <span style="font-size: 16px; color: #dc3545;">🔴</span>
                                     <span style="font-size: 11px; color: #dc3545; font-weight: 600;">${Math.round(difference)}</span>
                                 </div>`;
-                            }
                         }
                     },
                     {
@@ -3087,8 +3113,9 @@
                             const shopifyInv = parseFloat(rowData.INV) || 0;
                             let color = '';
                             const difference = Math.abs(value - shopifyInv);
-                            if (difference === 0) color = '#28a745';
-                            else if (difference <= 3) color = '#ffc107';
+                            const tol = shopifyInv * 0.03;
+                            if (amazonInvWithinMapTolerance(shopifyInv, value)) color = '#28a745';
+                            else if (difference <= Math.max(tol, 3)) color = '#ffc107';
                             else color = '#dc3545';
                             const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span> ${dotBtn}`.trim();
@@ -4366,12 +4393,11 @@
                         if (inv <= 0 || nrValue !== 'REQ' || isMissingAmazon || price <= 0) return false;
                         
                         const invAmz = parseFloat(data.INV_AMZ) || 0;
-                        const difference = Math.abs(inv - invAmz);
                         
                         if (mapFilterActive === 'mapped') {
-                            return difference === 0; // Show only matched items (Map)
+                            return amazonInvWithinMapTolerance(inv, invAmz);
                         } else if (mapFilterActive === 'nmapped') {
-                            return difference > 0; // Show only mismatched items (Missing M)
+                            return !amazonRowIsFba(data) && !amazonInvWithinMapTolerance(inv, invAmz);
                         }
                         return true;
                     });
@@ -4396,21 +4422,24 @@
                 if (missingAmazonFbaFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return false;
-                        return !!(data.is_missing_amazon && rowIsFba(data));
+                        const nr = data.NR || '';
+                        return !!(data.is_missing_amazon && rowIsFba(data) && nr !== 'NR');
                     });
                 }
                 // Missing M FBM (non-FBA): not listed on Amazon and row is not FBA. Exclude parent rows.
                 if (missingAmazonNonFbaFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return false;
-                        return !!(data.is_missing_amazon && !rowIsFba(data));
+                        const nr = data.NR || '';
+                        return !!(data.is_missing_amazon && !rowIsFba(data) && nr !== 'NR');
                     });
                 }
-                // Missing L filter — all (header dot): not listed on Amazon. Exclude parent rows.
+                // Missing L filter — all (header dot): not listed on Amazon. Exclude parent, NR, and FBA (same as badge logic).
                 if (missingAmazonFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return false;
-                        return !!(data.is_missing_amazon);
+                        const nr = data.NR || '';
+                        return !!(data.is_missing_amazon && nr !== 'NR' && !rowIsFba(data));
                     });
                 }
 
@@ -4864,25 +4893,18 @@
                         const isMissingAmazon = row['is_missing_amazon'] || false;
                         const rowPrice = parseFloat(row['price'] || 0);
                         
-                        // Missing L: split by FBA / Non-FBA (FBA = fba flag OR SKU contains "FBA")
-                        if (isMissingAmazon) {
-                            const isFba = row['fba'] === 1 || row['fba'] === '1' || row['fba'] === true ||
-                                String((row['(Child) sku'] || row['Parent'] || '')).toUpperCase().indexOf('FBA') !== -1;
-                            if (isFba) {
-                                missingAmazonFbaCount++;
-                            } else {
-                                missingAmazonNonFbaCount++;
-                            }
+                        // Missing L: exclude NR and FBA from datasheet-missing counts (aligns with filters)
+                        if (isMissingAmazon && nrValue !== 'NR' && !amazonRowIsFba(row)) {
+                            missingAmazonNonFbaCount++;
                         }
                         
-                        // Map / Missing M: only for INV > 0, NR = REQ, and listed on Amazon with price
+                        // Map / Missing M: REQ, listed, price > 0; FBA rows excluded from mismatch count only
                         if (inv > 0 && nrValue === 'REQ' && !isMissingAmazon && rowPrice > 0) {
                             const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
-                            const invDifference = Math.abs(inv - invAmzNum);
-                            if (invDifference === 0) {
-                                mapCount++; // Perfect match
-                            } else {
-                                missingCount++; // Inventory mismatch
+                            if (amazonInvWithinMapTolerance(inv, invAmzNum)) {
+                                mapCount++;
+                            } else if (!amazonRowIsFba(row)) {
+                                missingCount++; // Inventory mismatch beyond 3% tolerance (non-FBA only)
                             }
                         }
                         
