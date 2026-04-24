@@ -856,7 +856,7 @@ class SheinController extends Controller
                 $headerRow = fgetcsv($handle, 0, $delimiter);
                 if (!$headerRow) {
                     fclose($handle);
-                    return response()->json(['success' => false, 'message' => 'Empty file.'], 422);
+                    return response()->json(['success' => false, 'message' => 'Empty file.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
                 }
 
                 $rawData = [];
@@ -870,7 +870,7 @@ class SheinController extends Controller
             }
 
             if (empty($rows)) {
-                return response()->json(['success' => false, 'message' => 'No data rows found.'], 422);
+                return response()->json(['success' => false, 'message' => 'No data rows found.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
             }
 
             $updated = 0;
@@ -887,10 +887,17 @@ class SheinController extends Controller
                 $updated++;
             }
 
-            return response()->json(['success' => true, 'message' => "{$updated} SKU(s) updated.", 'updated' => $updated]);
+            return response()->json(
+                ['success' => true, 'message' => "{$updated} SKU(s) updated.", 'updated' => $updated],
+                200,
+                [],
+                JSON_INVALID_UTF8_SUBSTITUTE
+            );
         } catch (\Throwable $e) {
             Log::error('Shein pricing upload failed: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Upload failed: ' . $e->getMessage()], 500);
+            $msg = $this->sanitizeUtf8String('Upload failed: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $msg], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 
@@ -978,8 +985,13 @@ class SheinController extends Controller
             $spOffer    = $spOfferIdx   !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$spOfferIdx]   ?? ''))) : 0;
             $stock      = $stockIdx     !== null ? (int) trim((string) ($row[$stockIdx] ?? '0')) : 0;
 
+            // Simple sku/price/stock sheets have no "special offer" column — grid + margin math use special_offer_price.
+            if ($spOffer <= 0 && $price > 0) {
+                $spOffer = $price;
+            }
+
             $rows[] = [
-                'sku'                 => $sku,
+                'sku'                 => $this->sanitizeUtf8String($sku),
                 'price'               => $price,
                 'original_price'      => $origPrice,
                 'special_offer_price' => $spOffer,
@@ -997,6 +1009,41 @@ class SheinController extends Controller
         $magic  = fread($handle, 4);
         fclose($handle);
         return str_starts_with($magic, "\x50\x4B\x03\x04") || str_starts_with($magic, "\xD0\xCF\x11\xE0");
+    }
+
+    /**
+     * Strip invalid UTF-8 from a string (legacy DB / CSV bytes mis-labeled as UTF-8).
+     */
+    private function sanitizeUtf8String(string $s): string
+    {
+        if ($s === '') {
+            return $s;
+        }
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+
+        return $clean !== false ? $clean : '';
+    }
+
+    /**
+     * @param  mixed  $data
+     * @return mixed
+     */
+    private function sanitizeUtf8Recursive($data)
+    {
+        if (is_array($data)) {
+            $out = [];
+            foreach ($data as $k => $v) {
+                $key = is_string($k) ? $this->sanitizeUtf8String($k) : $k;
+                $out[$key] = $this->sanitizeUtf8Recursive($v);
+            }
+
+            return $out;
+        }
+        if (is_string($data)) {
+            return $this->sanitizeUtf8String($data);
+        }
+
+        return $data;
     }
 
     public function getSheinPricingData(Request $request)
@@ -1151,11 +1198,19 @@ class SheinController extends Controller
             });
 
             $rows = $this->insertSheinParentRows($rows);
+            $rows = $this->sanitizeUtf8Recursive($rows);
 
-            return response()->json($rows);
+            $jsonFlags = JSON_INVALID_UTF8_SUBSTITUTE;
+            if (defined('JSON_UNESCAPED_UNICODE')) {
+                $jsonFlags |= JSON_UNESCAPED_UNICODE;
+            }
+
+            return response()->json($rows, 200, [], $jsonFlags);
         } catch (\Exception $e) {
             Log::error('Shein pricing data error: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
+            $msg = $this->sanitizeUtf8String($e->getMessage());
+
+            return response()->json(['error' => $msg], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 

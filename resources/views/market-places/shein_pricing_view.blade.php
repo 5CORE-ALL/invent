@@ -1109,9 +1109,12 @@
                     return;
                 }
 
+                const $btn = $('#uploadPriceSheetBtn');
                 const formData = new FormData();
                 formData.append('price_file', file);
                 formData.append('_token', '{{ csrf_token() }}');
+
+                $btn.prop('disabled', true);
 
                 $.ajax({
                     url: '/shein/pricing-upload-price',
@@ -1119,23 +1122,45 @@
                     data: formData,
                     processData: false,
                     contentType: false,
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
                     success: function(response) {
+                        if (response && response.success === false) {
+                            const errMsg = response.message || 'Price upload failed.';
+                            if (window.toastr) toastr.error(errMsg);
+                            else alert(errMsg);
+                            return;
+                        }
                         if (window.toastr) {
-                            toastr.success(response.message || 'Price upload completed.');
+                            toastr.success((response && response.message) ? response.message : 'Price upload completed.');
                         } else {
-                            alert(response.message || 'Price upload completed.');
+                            alert((response && response.message) ? response.message : 'Price upload completed.');
                         }
                         $('#uploadPriceSheetModal').modal('hide');
                         $('#priceSheetFile').val('');
                         table.setData('/shein/pricing-data');
                     },
                     error: function(xhr) {
-                        const message = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Price upload failed.';
-                        if (window.toastr) {
-                            toastr.error(message);
-                        } else {
-                            alert(message);
+                        let message = 'Price upload failed.';
+                        const j = xhr.responseJSON;
+                        if (j) {
+                            if (j.message) message = j.message;
+                            else if (j.errors) {
+                                message = Object.values(j.errors).flat().join(' ');
+                            }
+                        } else if (xhr.status === 419) {
+                            message = 'Session expired. Refresh the page and try again.';
+                        } else if (xhr.status === 0) {
+                            message = 'Network error. Check your connection.';
                         }
+                        if (window.toastr) toastr.error(message);
+                        else alert(message);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false);
                     }
                 });
             });
