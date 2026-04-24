@@ -229,16 +229,16 @@
                     {{-- ── Summary badges ── --}}
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
                         <div class="d-flex flex-wrap gap-2">
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-total-sku-badge"    data-metric="total_sku"   style="font-weight:700;cursor:pointer;">Total SKU: 0</span>
-                            <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Total Sales: $0</span>
-                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">Total Sh L30: 0</span>
-                            <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">AVG GPFT: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-total-sku-badge"    data-metric="total_sku"   style="font-weight:700;cursor:pointer;">SKU: 0</span>
+                            <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Sales: $0</span>
+                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">Sh L30: 0</span>
+                            <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">GPFT: 0%</span>
                             <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#0d6efd;color:#fff;" title="Click for trend / filter">Map: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-zero-sold-badge"   data-metric="zero_sold"     style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click for trend / filter">0 Sold: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-more-sold-badge"   data-metric="more_sold"     style="font-weight:700;cursor:pointer;background:#28a745;color:#fff;" title="Click for trend / filter">&gt;0 Sold: 0</span>
                             <span class="badge bg-warning  fs-6 p-2 ae-badge-chart d-none" id="ae-avg-dil-badge"     data-metric="avg_dil"     style="font-weight:700;color:#111;cursor:pointer;">DIL%: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#111;cursor:pointer;">AVG ROI: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#fff;cursor:pointer;">ROI: 0%</span>
                         </div>
                     </div>
 
@@ -352,6 +352,15 @@
             return Math.ceil(price) - 0.01;
         }
 
+        /** When clamped SPRICE is under $20, use cents only; at $20+ apply .99 retail rounding. */
+        function finalizeSprice(price) {
+            const clamped = Math.max(0.99, parseFloat(price) || 0);
+            if (clamped < 20) {
+                return Math.round(clamped * 100) / 100;
+            }
+            return roundToRetailPrice(clamped);
+        }
+
         function syncPriceModeUi() {
             const $btn = $('#ae-price-mode-btn');
             const selectCol = table ? table.getColumn('_ae_select') : null;
@@ -423,7 +432,7 @@
                         ? currentPrice + discountVal
                         : currentPrice - discountVal;
                 }
-                newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
+                newSprice = finalizeSprice(newSprice);
 
                 const margin = parseFloat(rowData._margin) || 1;
                 const lp     = parseFloat(rowData.lp)   || 0;
@@ -628,17 +637,17 @@
             const avgDil  = dilCount  > 0 ? dilSum  / dilCount  : 0;
             const avgRoi  = roiCount  > 0 ? roiSum  / roiCount  : 0;
 
-            $('#ae-total-sku-badge').text(`Total SKU: ${childCount.toLocaleString()}`);
-            $('#ae-total-sales-badge').text(totalSales   > 0 ? `Total Sales: $${Math.round(totalSales).toLocaleString()}`       : 'Total Sales: –');
-            $('#ae-total-al30-badge').text(`Total Sh L30: ${totalAl30.toLocaleString()}`);
-            $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `AVG GPFT: ${Math.round(avgGpft)}%`  : 'AVG GPFT: –');
+            $('#ae-total-sku-badge').text(`SKU: ${childCount.toLocaleString()}`);
+            $('#ae-total-sales-badge').text(totalSales   > 0 ? `Sales: $${Math.round(totalSales).toLocaleString()}`       : 'Sales: –');
+            $('#ae-total-al30-badge').text(`Sh L30: ${totalAl30.toLocaleString()}`);
+            $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `GPFT: ${Math.round(avgGpft)}%`  : 'GPFT: –');
             $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`>0 Sold: ${moreSold.toLocaleString()}`);
             $('#ae-avg-dil-badge').text(dilCount > 0 ? `DIL%: ${avgDil.toFixed(1)}%` : 'DIL%: –');
             if ($('#ae-avg-roi-badge').length) {
-                $('#ae-avg-roi-badge').text(roiCount > 0 ? `AVG ROI: ${Math.round(avgRoi)}%` : 'AVG ROI: –');
+                $('#ae-avg-roi-badge').text(roiCount > 0 ? `ROI: ${Math.round(avgRoi)}%` : 'ROI: –');
             }
         }
 
@@ -1177,10 +1186,10 @@
             const aePercentMetrics = ['avg_gpft','avg_roi','avg_dil'];
 
             const aeBadgeLabels = {
-                total_sales: 'Total Sales',   total_al30: 'Total Sh L30',
-                avg_gpft: 'AVG GPFT%',        avg_roi: 'AVG ROI%',          avg_dil: 'DIL%',
+                total_sales: 'Sales',         total_al30: 'Sh L30',
+                avg_gpft: 'GPFT%',            avg_roi: 'ROI%',              avg_dil: 'DIL%',
                 total_cogs: 'COGS',           missing_count: 'Missing',     map_count: 'Map',
-                total_sku: 'Total SKU',       zero_sold: '0 Sold',          more_sold: '>0 Sold',
+                total_sku: 'SKU',             zero_sold: '0 Sold',          more_sold: '>0 Sold',
             };
 
             function aeFormatChartVal(v) {
