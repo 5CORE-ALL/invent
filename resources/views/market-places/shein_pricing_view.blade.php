@@ -232,13 +232,12 @@
                             <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-total-sku-badge"    data-metric="total_sku"   style="font-weight:700;cursor:pointer;">Total SKU: 0</span>
                             <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Total Sales: $0</span>
                             <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">Total Sh L30: 0</span>
-                            <span class="badge bg-success  fs-6 p-2 ae-badge-chart" id="ae-total-profit-badge" data-metric="total_pft"  style="font-weight:700;cursor:pointer;">Total Profit: $0</span>
                             <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">AVG GPFT: 0%</span>
                             <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#0d6efd;color:#fff;" title="Click for trend / filter">Map: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-zero-sold-badge"   data-metric="zero_sold"     style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click for trend / filter">0 Sold: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-more-sold-badge"   data-metric="more_sold"     style="font-weight:700;cursor:pointer;background:#28a745;color:#fff;" title="Click for trend / filter">&gt;0 Sold: 0</span>
-                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-avg-dil-badge"     data-metric="avg_dil"     style="font-weight:700;color:#111;cursor:pointer;">DIL%: 0%</span>
+                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart d-none" id="ae-avg-dil-badge"     data-metric="avg_dil"     style="font-weight:700;color:#111;cursor:pointer;">DIL%: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#111;cursor:pointer;">AVG ROI: 0%</span>
                         </div>
                     </div>
@@ -409,7 +408,9 @@
                 if (!rows.length) return;
                 const row     = rows[0];
                 const rowData = row.getData();
-                const currentPrice = parseFloat(rowData.original_price) || parseFloat(rowData.special_offer) || 0;
+                // Base on Sp. Price (special_offer) first — same as GPFT/calc_price on server.
+                // Using original_price first made "decrease" raise SPRICE when original ≫ listing.
+                const currentPrice = parseFloat(rowData.special_offer) || parseFloat(rowData.original_price) || 0;
                 if (currentPrice <= 0) return;
 
                 let newSprice;
@@ -590,7 +591,7 @@
             }
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
-            let totalSales = 0, totalAl30 = 0, totalProfit = 0;
+            let totalSales = 0, totalAl30 = 0;
             let gpftSum = 0, gpftCount = 0;
             let roiSum  = 0, roiCount  = 0;
             let missingCount = 0, mapCount = 0;
@@ -603,12 +604,10 @@
                 if (row.is_parent) return;
                 const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
                 const al30   = parseFloat(row.al30)   || 0;
-                const profit = parseFloat(row.profit) || 0;
                 const inv    = parseFloat(row.inv)    || 0;
                 const ovL30  = parseFloat(row.ov_l30) || 0;
 
                 if (!isMissing) {
-                    totalProfit += al30 * profit;
                     totalSales  += parseFloat(row.sales) || 0;
 
                     const gpft = parseFloat(row.gpft);
@@ -632,15 +631,14 @@
             $('#ae-total-sku-badge').text(`Total SKU: ${childCount.toLocaleString()}`);
             $('#ae-total-sales-badge').text(totalSales   > 0 ? `Total Sales: $${Math.round(totalSales).toLocaleString()}`       : 'Total Sales: –');
             $('#ae-total-al30-badge').text(`Total Sh L30: ${totalAl30.toLocaleString()}`);
-            $('#ae-total-profit-badge').text(totalProfit !== 0 ? `Total Profit: $${Math.round(totalProfit).toLocaleString()}`    : 'Total Profit: –');
-            $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `AVG GPFT: ${avgGpft.toFixed(1)}%`  : 'AVG GPFT: –');
+            $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `AVG GPFT: ${Math.round(avgGpft)}%`  : 'AVG GPFT: –');
             $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`>0 Sold: ${moreSold.toLocaleString()}`);
             $('#ae-avg-dil-badge').text(dilCount > 0 ? `DIL%: ${avgDil.toFixed(1)}%` : 'DIL%: –');
             if ($('#ae-avg-roi-badge').length) {
-                $('#ae-avg-roi-badge').text(roiCount > 0 ? `AVG ROI: ${avgRoi.toFixed(1)}%` : 'AVG ROI: –');
+                $('#ae-avg-roi-badge').text(roiCount > 0 ? `AVG ROI: ${Math.round(avgRoi)}%` : 'AVG ROI: –');
             }
         }
 
@@ -839,10 +837,11 @@
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
-                            if (v === 0 && !d.is_parent) return '0.00%';
+                            if (v === 0 && !d.is_parent) return '0%';
                             if (v === 0 &&  d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const r = Math.round(v);
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${v.toFixed(2)}%</span>`;
+                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${r}%</span>`;
                         }
                     },
                     {
@@ -861,12 +860,14 @@
                             else if (v < 125) color = '#3591dc';  // blue   – 75–125%
                             else if (v < 250) color = '#28a745';  // green  – 125–250%
                             else              color = '#e83e8c';  // pink   – > 250%
-                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
+                            const r = Math.round(v);
+                            return `<span style="color:${color};font-weight:600;">${r}%</span>`;
                         }
                     },
                     {
                         title: "Profit",
                         field: "profit",
+                        visible: false,
                         sorter: "number",
                         hozAlign: "right",
                         formatter: function(cell) {
@@ -1146,12 +1147,12 @@
             let aeBadgeDays      = 30;
             let aeBadgeAjax      = null;
 
-            const aeDollarMetrics  = ['total_pft','total_sales','total_cogs'];
+            const aeDollarMetrics  = ['total_sales','total_cogs'];
             const aeCountMetrics   = ['total_sku','total_al30','missing_count','map_count','zero_sold','more_sold'];
             const aePercentMetrics = ['avg_gpft','avg_roi','avg_dil'];
 
             const aeBadgeLabels = {
-                total_pft: 'Total Profit',   total_sales: 'Total Sales',   total_al30: 'Total Sh L30',
+                total_sales: 'Total Sales',   total_al30: 'Total Sh L30',
                 avg_gpft: 'AVG GPFT%',        avg_roi: 'AVG ROI%',          avg_dil: 'DIL%',
                 total_cogs: 'COGS',           missing_count: 'Missing',     map_count: 'Map',
                 total_sku: 'Total SKU',       zero_sold: '0 Sold',          more_sold: '>0 Sold',
@@ -1160,7 +1161,10 @@
             function aeFormatChartVal(v) {
                 const n = Number(v) || 0;
                 if (aeDollarMetrics.includes(aeBadgeMetric))  return '$' + Math.round(n).toLocaleString('en-US');
-                if (aePercentMetrics.includes(aeBadgeMetric)) return n.toFixed(1) + '%';
+                if (aePercentMetrics.includes(aeBadgeMetric)) {
+                    if (aeBadgeMetric === 'avg_dil') return n.toFixed(1) + '%';
+                    return Math.round(n) + '%';
+                }
                 return Math.round(n).toLocaleString('en-US');
             }
 

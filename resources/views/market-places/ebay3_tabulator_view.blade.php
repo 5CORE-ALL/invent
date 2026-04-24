@@ -2003,6 +2003,29 @@
             return !!(row && String(row.nr_req || '').trim() === 'NR');
         }
 
+        /** Shopify INV vs eBay quantity: mapped if |diff| <= 3 (same as Amazon tabulator). */
+        function ebay3InvWithinMapTolerance(inv, channelQty) {
+            const invNum = parseFloat(inv) || 0;
+            const ch = parseFloat(channelQty) || 0;
+            if (invNum <= 0) {
+                return true;
+            }
+            return Math.abs(invNum - ch) <= 3 + 1e-9;
+        }
+
+        /** FBA row: fba flag or SKU/Parent contains "FBA" (aligns with Amazon tabulator). */
+        function ebay3RowIsFba(rowData) {
+            if (!rowData) return false;
+            const fbaFlag = rowData.fba;
+            if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
+            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').toUpperCase();
+            return sku.indexOf('FBA') !== -1;
+        }
+
+        function ebay3EbayStockQty(row) {
+            return parseFloat(row['eBay Stock'] || row['E Stock'] || 0) || 0;
+        }
+
         /** Rows to show in Play: INV>0, not NR/REQ=NR; parent row only if INV>0 and not NR. */
         function ebay3BuildPlayDisplayData(parentRow) {
             if (!parentRow) return [];
@@ -2645,7 +2668,9 @@
                         if (isParentRow && children && Array.isArray(children)) {
                             if (children.length > 0) {
                                 const anyChildMissing = children.some(function(ch) {
-                                    return isMissingItemId(ch['eBay_item_id']);
+                                    return isMissingItemId(ch['eBay_item_id'])
+                                        && !ebay3RowNrReqIsNr(ch)
+                                        && !ebay3RowIsFba(ch);
                                 });
                                 if (anyChildMissing) {
                                     return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
@@ -2654,9 +2679,9 @@
                             return '<span title="All child SKUs have eBay listing" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#28a745;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,0.12);"></span>';
                         }
 
-                        // Child / leaf: Missing = no eBay3 item_id
+                        // Child / leaf: Missing = no eBay3 item_id (exclude NR / FBA from indicator — Amazon Missing L parity)
                         const itemId = rowData['eBay_item_id'];
-                        if (isMissingItemId(itemId)) {
+                        if (isMissingItemId(itemId) && !ebay3RowNrReqIsNr(rowData) && !ebay3RowIsFba(rowData)) {
                             return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                         }
                         return '';
@@ -2723,20 +2748,22 @@
                     width: 90,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const ebayStock = parseFloat(rowData['eBay Stock']) || 0;
+                        const ebayStock = ebay3EbayStockQty(rowData);
                         const inv = parseFloat(rowData['INV']) || 0;
-                        
-                        if (inv > 0 && ebayStock > 0) {
-                            if (inv === ebayStock) {
-                                return '<span style="color: #28a745; font-weight: bold;">MP</span>';
-                            } else {
-                                // Show signed difference: +X means INV has X more, -X means INV has X less
-                                const diff = inv - ebayStock;
-                                const sign = diff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                            }
+                        const nrReq = String(rowData.nr_req || '').trim();
+
+                        if (inv <= 0 || ebayStock <= 0 || nrReq !== 'REQ') {
+                            return '';
                         }
-                        return '';
+                        if (ebay3InvWithinMapTolerance(inv, ebayStock)) {
+                            return '<span style="color: #28a745; font-weight: bold;">MP</span>';
+                        }
+                        if (ebay3RowIsFba(rowData)) {
+                            return '';
+                        }
+                        const diff = inv - ebayStock;
+                        const sign = diff > 0 ? '+' : '';
+                        return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                     }
                 },
                
@@ -4560,8 +4587,10 @@
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
                     
                     const itemId = data['eBay_item_id'];
-                    // Missing: SKU exists in ProductMaster but not in eBay3 (no item_id)
-                    return !itemId || itemId === null || itemId === '';
+                    // Missing: no eBay3 item_id; exclude NR / FBA (Amazon Missing L parity)
+                    return (!itemId || itemId === null || itemId === '')
+                        && !ebay3RowNrReqIsNr(data)
+                        && !ebay3RowIsFba(data);
                 });
             }
 
@@ -4580,30 +4609,33 @@
                 });
             }
 
-            // Map filter - show SKUs where INV = eBay Stock
+            // Map filter — |INV − eBay stock| <= 3, REQ only (Amazon tabulator parity)
             if (mapFilterActive) {
                 table.addFilter(function(data) {
                     // Skip filter for parent rows in tree mode
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
                     
-                    const ebayStock = parseFloat(data['eBay Stock']) || 0;
+                    const ebayStock = ebay3EbayStockQty(data);
                     const inv = parseFloat(data['INV']) || 0;
-                    return inv > 0 && ebayStock > 0 && inv === ebayStock;
+                    const nrReq = String(data.nr_req || '').trim();
+                    return inv > 0 && ebayStock > 0 && nrReq === 'REQ' && ebay3InvWithinMapTolerance(inv, ebayStock);
                 });
             }
 
-            // N Map filter - show SKUs where INV != eBay Stock (not mapped)
+            // N Map filter — beyond ±3 or REQ mismatch path; exclude FBA mismatches from list
             if (invStockFilterActive) {
                 table.addFilter(function(data) {
                     // Skip filter for parent rows in tree mode
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
                     
-                    const ebayStock = parseFloat(data['eBay Stock']) || 0;
+                    const ebayStock = ebay3EbayStockQty(data);
                     const inv = parseFloat(data['INV']) || 0;
-                    // Show both: INV > Stock AND Stock > INV
-                    return inv > 0 && ebayStock > 0 && inv !== ebayStock;
+                    const nrReq = String(data.nr_req || '').trim();
+                    return inv > 0 && ebayStock > 0 && nrReq === 'REQ'
+                        && !ebay3RowIsFba(data)
+                        && !ebay3InvWithinMapTolerance(inv, ebayStock);
                 });
             }
 
@@ -5410,17 +5442,21 @@
                 }
 
                 const itemId = row['eBay_item_id'];
-                if (!itemId || itemId === null || itemId === '') {
+                if ((!itemId || itemId === null || itemId === '')
+                    && !ebay3RowNrReqIsNr(row)
+                    && !ebay3RowIsFba(row)) {
                     missingCount++;
                 }
 
-                const ebayStock = parseFloat(row['eBay Stock']) || 0;
+                const ebayStock = ebay3EbayStockQty(row);
                 const inv = parseFloat(row['INV']) || 0;
-                if (inv > 0 && ebayStock > 0 && inv === ebayStock) {
-                    mapCount++;
-                }
-                if (inv > 0 && ebayStock > 0 && inv !== ebayStock) {
-                    invStockCount++;
+                const nrReq = String(row.nr_req || '').trim();
+                if (inv > 0 && ebayStock > 0 && nrReq === 'REQ') {
+                    if (ebay3InvWithinMapTolerance(inv, ebayStock)) {
+                        mapCount++;
+                    } else if (!ebay3RowIsFba(row)) {
+                        invStockCount++;
+                    }
                 }
             });
 

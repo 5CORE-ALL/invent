@@ -2282,7 +2282,7 @@ class EbayThreeController extends Controller
 
     /**
      * Auto-save daily eBay 3 summary snapshot (channel-wise)
-     * Matches JavaScript updateSummary() logic exactly
+     * Matches JavaScript updateSummary() / filters (±3 INV vs eBay stock, FBA exclusions on missing + N Map)
      */
     private function saveDailySummaryIfNeeded($products)
     {
@@ -2393,22 +2393,32 @@ class EbayThreeController extends Controller
                     }
                 }
                 
-                // Count Missing - no item_id
+                // Count Missing — no item_id; exclude FBA (NR already filtered to REQ above; Amazon Missing L parity)
                 $itemId = $row['eBay_item_id'] ?? '';
-                if (!$itemId || $itemId === null || $itemId === '') {
+                $childSkuU = strtoupper((string) ($row['(Child) sku'] ?? ''));
+                $parentSkuU = strtoupper((string) ($row['Parent'] ?? ''));
+                $fbaFlag = $row['fba'] ?? null;
+                $isFbaRow = ($fbaFlag === 1 || $fbaFlag === '1' || $fbaFlag === true)
+                    || str_contains($childSkuU, 'FBA')
+                    || str_contains($parentSkuU, 'FBA');
+                if ((! $itemId || $itemId === null || $itemId === '') && ! $isFbaRow) {
                     $missingCount++;
                 }
-                
-                // Stock comparison
+
+                // Stock comparison — |INV − eBay qty| <= 3 = Map; N Map excludes FBA (Amazon tabulator parity)
                 $ebayStock = floatval($row['eBay Stock'] ?? 0);
-                $inv = floatval($row['INV'] ?? 0);
-                
-                if ($inv > 0 && $ebayStock > 0 && $inv == $ebayStock) {
-                    $mapCount++;
+                if ($ebayStock == 0.0) {
+                    $ebayStock = floatval($row['E Stock'] ?? 0);
                 }
-                
-                if ($inv > 0 && $ebayStock > 0 && $inv != $ebayStock) {
-                    $invStockCount++;
+                $inv = floatval($row['INV'] ?? 0);
+                $invDiff = abs($inv - $ebayStock);
+
+                if ($inv > 0 && $ebayStock > 0) {
+                    if ($invDiff <= 3 + 1e-9) {
+                        $mapCount++;
+                    } elseif (! $isFbaRow) {
+                        $invStockCount++;
+                    }
                 }
                 
                 // Weighted price

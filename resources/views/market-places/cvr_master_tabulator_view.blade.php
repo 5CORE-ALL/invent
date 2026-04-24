@@ -711,6 +711,21 @@
                     width: 110
                 },
                 {
+                    title: "LQS",
+                    field: "listing_quality_score",
+                    hozAlign: "center",
+                    sorter: "number",
+                    tooltip: "5core Listing Quality Score from Jungle Scout",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '<span style="color: #6c757d;">-</span>';
+                        const num = typeof value === 'number' ? value : parseFloat(value);
+                        if (isNaN(num)) return '<span style="color: #6c757d;">-</span>';
+                        return '<span style="font-weight: 600;">' + num + '</span>';
+                    },
+                    width: 55
+                },
+                {
                     title: "Avg CVR",
                     field: "avg_cvr",
                     hozAlign: "center",
