@@ -313,6 +313,7 @@
                         <span class="badge bg-success fs-6 p-2" id="total-inv-badge" style="color: white; font-weight: bold;">Total INV: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total OV L30: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">AVG DIL%: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="avg-lqs-badge" style="color: white; font-weight: bold;">AVG LQS: -</span>
                     </div>
                 </div>
             </div>
@@ -1236,10 +1237,26 @@
 
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
 
+            const skuParentFilter = $('#sku-parent-filter').val();
+            const lqsRows = skuParentFilter === 'parent'
+                ? data.filter(r => r.is_parent_summary === true)
+                : data.filter(r => r.is_parent_summary !== true);
+            let lqsSum = 0, lqsCount = 0;
+            lqsRows.forEach(row => {
+                const lqs = row.listing_quality_score;
+                if (lqs == null || lqs === '') return;
+                const num = typeof lqs === 'number' ? lqs : parseFloat(lqs);
+                if (isNaN(num)) return;
+                lqsSum += num;
+                lqsCount++;
+            });
+            const avgLqs = lqsCount > 0 ? lqsSum / lqsCount : null;
+
             $('#total-items-badge').text(`Total Items: ${data.length.toLocaleString()}`);
             $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
             $('#total-l30-badge').text(`Total OV L30: ${totalL30.toLocaleString()}`);
             $('#avg-dil-badge').text(`AVG DIL%: ${avgDil.toFixed(1)}%`);
+            $('#avg-lqs-badge').text(avgLqs === null ? 'AVG LQS: -' : `AVG LQS: ${avgLqs.toFixed(1)}`);
         }
 
         // ==================== COLUMN VISIBILITY FUNCTIONS ====================

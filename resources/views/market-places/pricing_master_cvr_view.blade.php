@@ -788,6 +788,11 @@
                     <span>Amz LMP:</span>
                     <span class="summary-badge-value" id="amz-lmp-badge">$0.00</span>
                 </span>
+                <span class="summary-badge-only">
+                    <span class="summary-badge-dot" style="background-color: #6f42c1;"></span>
+                    <span>AVG LQS:</span>
+                    <span class="summary-badge-value" id="avg-lqs-badge">-</span>
+                </span>
                 <span class="d-flex align-items-center gap-2 ms-auto">
                     <label class="mb-0 fw-semibold">Change Price:</label>
                     <input type="number" id="change-price-input" class="form-control form-control-sm" placeholder="Enter price" step="0.01" min="0" style="width: 100px;">
@@ -3778,6 +3783,21 @@ title: "Dil %",
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgAmzLmp = amzLmpCount > 0 ? totalAmzLmp / amzLmpCount : 0;
 
+            const skuParentFilter = $('#sku-parent-filter').val();
+            const lqsRows = skuParentFilter === 'parent'
+                ? data.filter(r => r.is_parent_summary === true)
+                : data.filter(r => r.is_parent_summary !== true);
+            let lqsSum = 0, lqsCount = 0;
+            lqsRows.forEach(row => {
+                const lqs = row.listing_quality_score;
+                if (lqs == null || lqs === '') return;
+                const num = typeof lqs === 'number' ? lqs : parseFloat(lqs);
+                if (isNaN(num)) return;
+                lqsSum += num;
+                lqsCount++;
+            });
+            const avgLqs = lqsCount > 0 ? lqsSum / lqsCount : null;
+
             $('#total-inv-badge').text(totalInv.toLocaleString());
             $('#total-l30-badge').text(totalL30.toLocaleString());
             $('#avg-dil-badge').text(avgDil.toFixed(1) + '%');
@@ -3785,6 +3805,7 @@ title: "Dil %",
             $('#avg-cvr-badge').text(avgCvr.toFixed(1) + '%');
             $('#avg-price-badge').text('$' + avgPrice.toFixed(2));
             $('#amz-lmp-badge').text('$' + avgAmzLmp.toFixed(2));
+            $('#avg-lqs-badge').text(avgLqs === null ? '-' : avgLqs.toFixed(1));
 
             const headerCb = document.querySelector('#cvr-table .select-all-cb');
             if (headerCb) headerCb.checked = isAllFilteredSelected();
