@@ -55,6 +55,8 @@
             </div>
         </div>
 
+        @include('layouts.shared.world-clocks-inline')
+
         <ul class="topbar-menu d-flex align-items-center gap-3">
             <li class="dropdown d-lg-none">
                 <a class="nav-link dropdown-toggle arrow-none" data-bs-toggle="dropdown" href="#" role="button"

@@ -1077,32 +1077,6 @@
             max-width: 100%;
         }
 
-        .dashboard-world-clocks .dashboard-clock-time {
-            font-size: 1.35rem;
-            font-weight: 600;
-            font-variant-numeric: tabular-nums;
-            letter-spacing: 0.02em;
-            color: #111827;
-            line-height: 1.2;
-        }
-        .dashboard-world-clocks .dashboard-clock-sub {
-            font-size: 0.78rem;
-            color: #6b7280;
-            margin-top: 2px;
-        }
-        .dashboard-world-clocks .dashboard-clock-label {
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #64748b;
-            margin-bottom: 4px;
-        }
-        @media (min-width: 768px) {
-            .dashboard-world-clocks .clock-col:not(:last-child) {
-                border-right: 1px solid #e5e7eb;
-            }
-        }
 </style>
 @endsection
 
@@ -1119,28 +1093,6 @@
             'done' => 0,
         ];
     @endphp
-
-    <div class="dashboard-world-clocks card border-0 shadow-sm mb-3" role="region" aria-label="World clocks">
-        <div class="card-body py-3 px-3 px-md-4">
-            <div class="row g-3 align-items-center text-center text-md-start">
-                <div class="col-12 col-md-4 clock-col">
-                    <div class="dashboard-clock-label">California</div>
-                    <div class="dashboard-clock-time" id="dashboard-clock-lax-time">—</div>
-                    <div class="dashboard-clock-sub" id="dashboard-clock-lax-sub"></div>
-                </div>
-                <div class="col-12 col-md-4 clock-col">
-                    <div class="dashboard-clock-label">India</div>
-                    <div class="dashboard-clock-time" id="dashboard-clock-ist-time">—</div>
-                    <div class="dashboard-clock-sub" id="dashboard-clock-ist-sub"></div>
-                </div>
-                <div class="col-12 col-md-4 clock-col">
-                    <div class="dashboard-clock-label">Ohio (Eastern)</div>
-                    <div class="dashboard-clock-time" id="dashboard-clock-ohio-time">—</div>
-                    <div class="dashboard-clock-sub" id="dashboard-clock-ohio-sub"></div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <div id="dashboard-summary-stats" class="mt-2 mb-3 p-3 bg-light rounded">
         <h6 class="mb-1">Summary Statistics</h6>
@@ -3193,80 +3145,12 @@
             showSummaryMetricChart('All', metricKey, badgeValue);
         });
 
-        var dashboardWorldClockTimer = null;
-
-        function updateDashboardWorldClocks() {
-            var zones = [
-                { timeId: 'dashboard-clock-lax-time', subId: 'dashboard-clock-lax-sub', tz: 'America/Los_Angeles' },
-                { timeId: 'dashboard-clock-ist-time', subId: 'dashboard-clock-ist-sub', tz: 'Asia/Kolkata' },
-                { timeId: 'dashboard-clock-ohio-time', subId: 'dashboard-clock-ohio-sub', tz: 'America/New_York' }
-            ];
-            var now = new Date();
-            zones.forEach(function (z) {
-                var timeEl = document.getElementById(z.timeId);
-                var subEl = document.getElementById(z.subId);
-                if (!timeEl) {
-                    return;
-                }
-                try {
-                    timeEl.textContent = new Intl.DateTimeFormat('en-US', {
-                        timeZone: z.tz,
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hour12: true
-                    }).format(now);
-                    if (subEl) {
-                        var datePart = new Intl.DateTimeFormat('en-US', {
-                            timeZone: z.tz,
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                        }).format(now);
-                        var tzPart = '';
-                        try {
-                            var parts = new Intl.DateTimeFormat('en-US', {
-                                timeZone: z.tz,
-                                timeZoneName: 'short'
-                            }).formatToParts(now);
-                            for (var i = 0; i < parts.length; i++) {
-                                if (parts[i].type === 'timeZoneName') {
-                                    tzPart = parts[i].value;
-                                    break;
-                                }
-                            }
-                        } catch (e2) { /* ignore */ }
-                        subEl.textContent = datePart + (tzPart ? ' · ' + tzPart : '');
-                    }
-                } catch (e) {
-                    timeEl.textContent = '—';
-                    if (subEl) {
-                        subEl.textContent = '';
-                    }
-                }
-            });
-        }
-
-        function initDashboardWorldClocks() {
-            if (!document.getElementById('dashboard-clock-lax-time')) {
-                return;
-            }
-            if (dashboardWorldClockTimer) {
-                clearInterval(dashboardWorldClockTimer);
-                dashboardWorldClockTimer = null;
-            }
-            updateDashboardWorldClocks();
-            dashboardWorldClockTimer = setInterval(updateDashboardWorldClocks, 1000);
-        }
-
         function initDashboardPage() {
             document.querySelectorAll('.dashboard-grid .subcard-item').forEach(function (el) {
                 el.addEventListener('click', function (e) {
                     e.stopPropagation();
                 });
             });
-            initDashboardWorldClocks();
             if (document.getElementById('dashboard-summary-stats')) {
                 loadDashboardFromChannels();
             }
