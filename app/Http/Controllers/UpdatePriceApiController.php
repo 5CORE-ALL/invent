@@ -78,18 +78,46 @@ class UpdatePriceApiController extends Controller
                 'payload' => $payload
             ]);
 
-            $response = Http::withHeaders([
-                "X-Shopify-Access-Token" => $accessToken,
-                "Content-Type" => "application/json",
-            ])->put($url, $payload);
+            // API enforces ~2 calls/sec; small gap before first attempt reduces immediate 429 when
+            // multiple features fire back-to-back (Amazon tab + CVR + other jobs).
+            usleep(600000);
 
-            $statusCode = $response->status();
-            $responseBody = $response->json();
+            $response = null;
+            $statusCode = 0;
+            $responseBody = null;
+            $maxAttempts = 4;
+            $baseDelayMs = 700; // Shopify allows low burst; back off quickly on 429.
 
-            Log::info('Shopify API response received', [
-                'status_code' => $statusCode,
-                'response' => $responseBody
-            ]);
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                $response = Http::withHeaders([
+                    "X-Shopify-Access-Token" => $accessToken,
+                    "Content-Type" => "application/json",
+                ])->put($url, $payload);
+
+                $statusCode = $response->status();
+                $responseBody = $response->json();
+
+                Log::info('Shopify API response received', [
+                    'status_code' => $statusCode,
+                    'response' => $responseBody,
+                    'attempt' => $attempt,
+                    'max_attempts' => $maxAttempts,
+                ]);
+
+                if ($statusCode !== 429) {
+                    break;
+                }
+
+                if ($attempt < $maxAttempts) {
+                    $retryAfterSec = (int) ($response->header('Retry-After') ?? 0);
+                    $sleepMs = $retryAfterSec > 0 ? ($retryAfterSec * 1000) : ($baseDelayMs * $attempt);
+                    Log::warning('Shopify API rate limited (429), retrying', [
+                        'attempt' => $attempt,
+                        'sleep_ms' => $sleepMs,
+                    ]);
+                    usleep($sleepMs * 1000);
+                }
+            }
 
             if ($response->successful()) {
                 // CRITICAL: Verify the price was actually updated in the response

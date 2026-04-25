@@ -1842,6 +1842,130 @@
                 }
             }
 
+            function showAmazonShopifyPushMessage(sku, price, response) {
+                const base = `Amazon pushed $${Number(price).toFixed(2)} for SKU: ${sku}`;
+                const shopify = response && response.shopify_push ? response.shopify_push : null;
+                if (!shopify) {
+                    if (response && (response.S_STATUS === 'pushed' || response.S_STATUS === 'error')) {
+                        showToast(response.S_STATUS === 'pushed' ? 'success' : 'warning', `${base} | Shopify: ${response.S_STATUS === 'pushed' ? 'pushed' : 'failed'}`);
+                    } else {
+                        showToast('success', `${base} | Shopify status not available`);
+                    }
+                    return;
+                }
+                if (shopify.ok) {
+                    const msg = shopify.message || 'Shopify B2C pushed successfully';
+                    showToast('success', `${base} | Shopify: ${msg}`);
+                } else {
+                    const msg = shopify.message || 'Shopify B2C push failed';
+                    // Do not use "success" styling when Shopify did not update (Amazon may still be OK).
+                    showToast('error', `${base} | Shopify NOT updated: ${msg}`);
+                }
+            }
+
+            function sStatusFromApiResponse(res) {
+                if (!res) {
+                    return null;
+                }
+                if (res.S_STATUS === 'pushed' || res.S_STATUS === 'error') {
+                    return res.S_STATUS;
+                }
+                if (res.shopify_push) {
+                    return res.shopify_push.ok ? 'pushed' : 'error';
+                }
+                return null;
+            }
+
+            function updateTabulatorRowShopifyStatus(sku, res) {
+                if (!table || !sku) {
+                    return;
+                }
+                const s = sStatusFromApiResponse(res);
+                if (!s) {
+                    return;
+                }
+                const tabRow = table.getRows().find(function(r) {
+                    return (r.getData()['(Child) sku'] || '') === sku;
+                });
+                if (!tabRow) {
+                    return;
+                }
+                const d = tabRow.getData();
+                d.S_STATUS = s;
+                tabRow.update(d);
+            }
+
+            /** True for timeout, no connection, rate limit, or gateway errors — safe to retry the HTTP call. */
+            function isRetryableTransportError(xhr, textStatus) {
+                if (textStatus === 'timeout') {
+                    return true;
+                }
+                if (textStatus === 'abort') {
+                    return false;
+                }
+                const s = (xhr && typeof xhr.status === 'number') ? xhr.status : 0;
+                if (s === 0) {
+                    return true;
+                }
+                if (s === 429 || s === 502 || s === 503 || s === 504) {
+                    return true;
+                }
+                if (s >= 500) {
+                    return true;
+                }
+                return false;
+            }
+
+            /**
+             * After Amazon succeeds, if Shopify B2C failed (e.g. 429, timeout), retry in the background
+             * so the user is not blocked. Updates row + toast on success.
+             */
+            function backgroundRetryShopifyB2C(sku, price, maxAttempts, delayMs) {
+                return new Promise(function(resolve) {
+                    var attempt = 0;
+
+                    function run() {
+                        attempt++;
+                        $.ajax({
+                            url: '/cvr-master-push-price',
+                            method: 'POST',
+                            timeout: 120000,
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: { sku: sku, price: price, marketplace: 'shopifyb2c' },
+                            success: function(resp) {
+                                if (resp && resp.success) {
+                                    resolve({ ok: true, message: resp.message || 'Shopify B2C OK', attempt: attempt });
+                                    return;
+                                }
+                                if (attempt < maxAttempts) {
+                                    console.log('Background Shopify retry ' + attempt + '/' + maxAttempts + ' for ' + sku + ' (API said fail)');
+                                    setTimeout(run, delayMs * attempt);
+                                } else {
+                                    resolve({ ok: false, message: (resp && resp.message) ? resp.message : 'Shopify B2C failed', attempt: attempt });
+                                }
+                            },
+                            error: function(xhr, textStatus) {
+                                if (attempt < maxAttempts) {
+                                    var wait = delayMs * attempt;
+                                    if (isRetryableTransportError(xhr, textStatus)) {
+                                        wait = Math.max(wait, 2000);
+                                    }
+                                    console.log('Background Shopify retry ' + attempt + '/' + maxAttempts + ' for ' + sku + ' (' + (textStatus || 'error') + ')');
+                                    setTimeout(run, wait);
+                                } else {
+                                    var em = (xhr && xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : (textStatus || 'error');
+                                    resolve({ ok: false, message: em, attempt: attempt });
+                                }
+                            }
+                        });
+                    }
+
+                    setTimeout(run, 0);
+                });
+            }
+
             // Retry function for applying price with up to 5 attempts
             // NOTE: Backend now includes automatic verification and retry (2 attempts with fresh token)
             // This frontend retry is for network errors, timeouts, or persistent failures
@@ -1859,6 +1983,7 @@
                         $.ajax({
                             url: '/apply-amazon-price',
                             method: 'POST',
+                            timeout: 120000,
                             headers: {
                                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                             },
@@ -1890,13 +2015,42 @@
                                         }
                                     }
                                 } else {
-                                    // Success
-                                    resolve({ success: true, response: response });
+                                    // Amazon OK — optional background retries if Shopify B2C failed
+                                    if (response && response.shopify_push && response.shopify_push.ok === false) {
+                                        setTimeout(function() {
+                                            backgroundRetryShopifyB2C(sku, price, 5, 4000).then(function(bg) {
+                                                if (bg && bg.ok) {
+                                                    response.shopify_push = { ok: true, message: bg.message || 'Shopify B2C OK' };
+                                                    response.S_STATUS = 'pushed';
+                                                    showToast('success', 'Shopify B2C updated (background retry ' + bg.attempt + '): ' + (bg.message || ''));
+                                                    updateTabulatorRowShopifyStatus(sku, response);
+                                                }
+                                            });
+                                        }, 0);
+                                    }
+                                    // Success (backend may also include Shopify push result)
+                                    resolve({
+                                        success: true,
+                                        response: response,
+                                        shopify_push: response && response.shopify_push ? response.shopify_push : null
+                                    });
                                 }
                             },
-                            error: function(xhr) {
+                            error: function(xhr, textStatus) {
                                 const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseText || 'Network error';
-                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
+                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, textStatus, errorMsg);
+
+                                if (isRetryableTransportError(xhr, textStatus) && attempt < maxRetries) {
+                                    var waitT = (textStatus === 'timeout' ? Math.max(delay, 3000) : delay);
+                                    console.log(`Transport/timeout — retry in ${waitT/1000}s (attempt ${attempt} for ${sku})`);
+                                    setTimeout(attemptApply, waitT);
+                                    return;
+                                }
+
+                                if ((xhr.status === 400 || xhr.status === 404 || xhr.status === 422) && xhr.responseJSON) {
+                                    reject({ error: true, xhr: xhr, notRetryable: true });
+                                    return;
+                                }
                                 
                                 // Check if it's an authentication error
                                 if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || xhr.status === 401 || errorMsg.includes('Client authentication failed')) {
@@ -1974,6 +2128,7 @@
                 
                 let successCount = 0;
                 let errorCount = 0;
+                let shopifyFailCount = 0;
                 let currentIndex = 0;
                 
                 // Process SKUs sequentially (one by one) with delay to avoid rate limiting
@@ -1987,7 +2142,11 @@
                             $btn.removeClass('btn-primary').addClass('btn-success');
                             const selectedCount = selectedSkus.size;
                             $btn.html(`<i class="fas fa-check-double" style="color: black; font-weight: bold;"></i> Applied (<span class="apply-all-count">${selectedCount}</span>)`);
-                            showToast('success', `Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
+                            if (shopifyFailCount === 0) {
+                                showToast('success', `Amazon + Shopify B2C: ${successCount} SKU${successCount > 1 ? 's' : ''} pushed.`);
+                            } else {
+                                showToast('warning', `Amazon OK for ${successCount} SKU${successCount > 1 ? 's' : ''}; Shopify failed for ${shopifyFailCount}. Check per-SKU toasts / log.`);
+                            }
                             
                             // Reset to original state after 3 seconds
                             setTimeout(() => {
@@ -2032,11 +2191,20 @@
                     applyPriceWithRetry(sku, price, null, 5, 5000, asin || null)
                         .then((result) => {
                             successCount++;
+                            const resp = result && result.response ? result.response : null;
+                            if (resp && resp.shopify_push && !resp.shopify_push.ok) {
+                                shopifyFailCount++;
+                            }
+                            showAmazonShopifyPushMessage(sku, price, resp);
                             
                             // Update row data with pushed status instantly
                             if (row) {
                                 const rowData = row.getData();
                                 rowData.SPRICE_STATUS = 'pushed';
+                                const ss = sStatusFromApiResponse(resp);
+                                if (ss) {
+                                    rowData.S_STATUS = ss;
+                                }
                                 row.update(rowData);
                                 
                                 // Update button to show green tick in circular button
@@ -2191,6 +2359,7 @@
                             'Spft%': 0,
                             SROI: 0,
                             SPRICE_STATUS: null,
+                            S_STATUS: null,
                             has_custom_sprice: false
                         });
 
@@ -2418,9 +2587,10 @@
                 // Same retry path as Accept column (backend verifies listing price after PATCH)
                 const asinBtn = ($btn.attr('data-asin') || '').trim();
                 applyPriceWithRetry(sku, price, null, 5, 5000, asinBtn || null)
-                    .then(function() {
+                    .then(function(result) {
                         $btn.prop('disabled', false);
-                        showToast('success', `Price $${price.toFixed(2)} applied successfully to Amazon for SKU: ${sku}`);
+                        updateTabulatorRowShopifyStatus(sku, result && result.response ? result.response : null);
+                        showAmazonShopifyPushMessage(sku, price, result && result.response ? result.response : null);
                         $btn.removeClass('btn-success').addClass('btn-secondary');
                         $btn.html('<i class="fas fa-check-circle"></i> Applied');
                         setTimeout(function() {
@@ -2465,7 +2635,7 @@
                 $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
                 const asinModal = ($btn.attr('data-asin') || '').trim();
                 applyPriceWithRetry(sku, price, null, 5, 5000, asinModal || null)
-                    .then(function() {
+                    .then(function(result) {
                         if (table) {
                             const tabRow = table.getRows().find(function(r) {
                                 return (r.getData()['(Child) sku'] || '') === sku;
@@ -2473,10 +2643,14 @@
                             if (tabRow) {
                                 const rowData = tabRow.getData();
                                 rowData.SPRICE_STATUS = 'pushed';
+                                const ss = sStatusFromApiResponse(result && result.response ? result.response : null);
+                                if (ss) {
+                                    rowData.S_STATUS = ss;
+                                }
                                 tabRow.update(rowData);
                             }
                         }
-                        showToast('success', 'Price $' + price.toFixed(2) + ' pushed to Amazon for ' + sku);
+                        showAmazonShopifyPushMessage(sku, price, result && result.response ? result.response : null);
                         const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
                         if (pk) {
                             showParentPricingBreakdownModal(pk);
@@ -3628,6 +3802,28 @@
                         width: 80
                     },
                     {
+                        title: "S st",
+                        field: "S_STATUS",
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Shopify B2C push: ✓✓ pushed, ✗ failed, — not pushed",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) {
+                                return '';
+                            }
+                            const st = rowData.S_STATUS;
+                            if (st === 'pushed') {
+                                return '<span style="color:#28a745;" title="Shopify B2C: price pushed"><i class="fa-solid fa-check-double"></i></span>';
+                            }
+                            if (st === 'error') {
+                                return '<span style="color:#dc3545;" title="Shopify B2C: push failed"><i class="fa-solid fa-xmark"></i></span>';
+                            }
+                            return '<span style="color:#adb5bd;" title="Shopify: not pushed">—</span>';
+                        },
+                        width: 44
+                    },
+                    {
                         title: "Accept",
                         field: "_accept",
                         hozAlign: "center",
@@ -3718,12 +3914,18 @@
                                         // Success - update row data with pushed status
                                         const row = cell.getRow();
                                         const rowData = row.getData();
+                                        const pushResp = result && result.response ? result.response : null;
                                         rowData.SPRICE_STATUS = 'pushed';
+                                        const ss = sStatusFromApiResponse(pushResp);
+                                        if (ss) {
+                                            rowData.S_STATUS = ss;
+                                        }
                                         row.update(rowData);
                                         
                                         $btn.prop('disabled', false);
                                         // Show green tick icon in circular button
                                         $btn.html('<i class="fas fa-check-circle" style="color: black; font-size: 1.1em;"></i>');
+                                        showAmazonShopifyPushMessage(sku, price, pushResp);
                                     })
                                     .catch((error) => {
                                         // Update row data with error status

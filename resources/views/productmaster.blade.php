@@ -495,6 +495,8 @@
             display: none;
             max-width: 540px;
             max-height: 540px;
+            /* Don't steal pointer from the cell — avoids show/hide flicker when the popup sits under the cursor */
+            pointer-events: none;
         }
 
         .sku-tooltip img {
@@ -6799,17 +6801,22 @@
 
             const tooltipEl = document.getElementById('skuImageTooltip');
             let tooltipRAF = null;
+            let lastTooltipImageUrl = null;
             function getHoverImageTarget(eventTarget) {
-                return eventTarget.closest('.sku-hover, .image-hover');
+                return eventTarget.closest('.image-hover');
             }
             document.addEventListener('mouseover', function(e) {
                 const target = getHoverImageTarget(e.target);
                 if (target && tooltipEl) {
                     const image = target.getAttribute('data-image');
                     if (image) {
-                        tooltipEl.innerHTML = `<img src="${image}" alt="Product Image">`;
+                        if (lastTooltipImageUrl !== image) {
+                            lastTooltipImageUrl = image;
+                            tooltipEl.innerHTML = `<img src="${image}" alt="Product Image">`;
+                        }
                         tooltipEl.style.display = 'block';
                     } else {
+                        lastTooltipImageUrl = null;
                         tooltipEl.style.display = 'none';
                     }
                 }
@@ -6827,6 +6834,7 @@
                 const hoverTarget = getHoverImageTarget(e.target);
                 const relatedHoverTarget = e.relatedTarget ? getHoverImageTarget(e.relatedTarget) : null;
                 if (hoverTarget && hoverTarget !== relatedHoverTarget && tooltipEl) {
+                    lastTooltipImageUrl = null;
                     tooltipEl.style.display = 'none';
                 }
             });

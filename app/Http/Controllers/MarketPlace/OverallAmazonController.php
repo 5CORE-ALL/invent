@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Models\ShopifySku;
+use App\Models\Shopifyb2cDataView;
 use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
@@ -15,6 +16,7 @@ use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
 use App\Models\JungleScoutProductData;
 use App\Http\Controllers\ApiController;
+use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Jobs\UpdateAmazonSPriceJob;
 use App\Models\AmazonDatasheet;
 use App\Models\ADVMastersData;
@@ -161,6 +163,13 @@ class OverallAmazonController extends Controller
         });
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
+
+        // Last Shopify B2C price push status (CVR / UpdatePriceApiController persist into shopifyb2c_data_view.value)
+        $shopifyB2cDataBySku = [];
+        foreach (Shopifyb2cDataView::whereIn('sku', $skus)->get() as $b2cRow) {
+            $k = strtoupper(str_replace("\xC2\xA0", ' ', trim((string) ($b2cRow->sku ?? ''))));
+            $shopifyB2cDataBySku[$k] = $b2cRow;
+        }
 
         // FBA price by SKU (seller_sku like "ABC FBA" -> key "ABC")
         $fbaPriceBySku = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
@@ -1889,6 +1898,16 @@ class OverallAmazonController extends Controller
 
             $row['image_path'] = $shopify->image_src ?? ($values['image_path'] ?? null);
 
+            // Shopify B2C push status for tabulator "S st" column (pushed / error; null = never pushed / unknown)
+            $b2cDv = $shopifyB2cDataBySku[$skuClean] ?? $shopifyB2cDataBySku[$sku] ?? null;
+            $row['S_STATUS'] = null;
+            if ($b2cDv && is_array($b2cDv->value)) {
+                $b2cSt = $b2cDv->value['SPRICE_STATUS'] ?? null;
+                if (in_array($b2cSt, ['pushed', 'error'], true)) {
+                    $row['S_STATUS'] = $b2cSt;
+                }
+            }
+
             $this->applyAmazonTabulatorFbaSuffixZeroFbaInvAdPauseOverlay($row);
 
             $result[] = (object) $row;
@@ -3354,17 +3373,28 @@ class OverallAmazonController extends Controller
             // Check if response indicates success (pushed)
             // If no errors, consider it pushed initially
             $this->saveSpriceStatus($statusSku, 'pushed');
+
+            // Match Pricing Master CVR Shopify B2C behavior exactly by routing through
+            // CvrMasterController::pushPriceToAmazon(marketplace=shopifyb2c).
+            $shopifyPush = $this->pushShopifyB2CViaCvrController(
+                $statusSku !== '' ? $statusSku : strtoupper(trim($skuForAmazon)),
+                $priceFloat
+            );
             
             Log::info('Amazon price update successful', [
                 'status_sku' => $statusSku,
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_param' => $asinParam,
-                'price' => $priceFloat
+                'price' => $priceFloat,
+                'shopify_push_ok' => $shopifyPush['ok'] ?? false,
+                'shopify_push_message' => $shopifyPush['message'] ?? null,
             ]);
             
             return response()->json(array_merge(is_array($result) ? $result : [], [
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
+                'shopify_push' => $shopifyPush,
+                'S_STATUS' => ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error',
             ]));
         } catch (\Exception $e) {
             // Save error status
@@ -3452,6 +3482,58 @@ class OverallAmazonController extends Controller
         }
 
         return false;
+    }
+
+    /**
+     * Use CVR controller's Shopify B2C push flow so Amazon tabulator and pricing-master-cvr stay aligned.
+     */
+    private function pushShopifyB2CViaCvrController(string $sku, float $price): array
+    {
+        try {
+            $req = Request::create('/cvr-master-push-price', 'POST', [
+                'sku' => strtoupper(trim($sku)),
+                'price' => round($price, 2),
+                'marketplace' => 'shopifyb2c',
+            ]);
+
+            $res = app(CvrMasterController::class)->pushPriceToAmazon($req);
+            $http = method_exists($res, 'getStatusCode') ? (int) $res->getStatusCode() : 200;
+            $payload = [];
+            if (method_exists($res, 'getContent')) {
+                $raw = $res->getContent();
+                if (is_string($raw) && $raw !== '') {
+                    $decoded = json_decode($raw, true);
+                    $payload = is_array($decoded) ? $decoded : [];
+                }
+            }
+            if ($payload === [] && method_exists($res, 'getData')) {
+                $d = $res->getData(true);
+                $payload = is_array($d) ? $d : (is_object($d) ? json_decode(json_encode($d), true) : []);
+            }
+            $ok = !empty($payload['success']);
+            if ($http >= 400) {
+                $ok = false;
+            }
+
+            return [
+                'ok' => $ok,
+                'message' => $payload['message'] ?? ($ok ? 'Shopify B2C push successful.' : 'Shopify B2C push failed.'),
+                'status_code' => $http,
+                'errors' => $payload['errors'] ?? null,
+                'data' => $payload['data'] ?? null,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Amazon tab -> CVR Shopify B2C push exception', [
+                'sku' => $sku,
+                'price' => $price,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'ok' => false,
+                'message' => 'Shopify B2C push exception: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**

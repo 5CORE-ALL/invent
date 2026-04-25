@@ -3541,8 +3541,10 @@ class CvrMasterController extends Controller
     private function pushToShopifyB2C($sku, $price)
     {
         try {
-            // Get variant_id from shopify_skus table
-            $shopifyRecord = ShopifySku::where('sku', $sku)->first();
+            // Get variant_id from shopify_skus — use normalized SKU match (spaces / NBSP) like mapByProductSkus
+            $byNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku([$sku]);
+            $k = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $shopifyRecord = ($k !== '' && isset($byNorm[$k])) ? $byNorm[$k] : ShopifySku::where('sku', $sku)->first();
             
             if (!$shopifyRecord) {
                 $this->savePricePushStatus($sku, 'shopifyb2c', 'error', $price);
