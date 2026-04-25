@@ -3360,7 +3360,7 @@ class UpdateMarketplaceDailyMetrics extends Command
     private function calculatePurchasingPowerMetrics($date)
     {
         $sales = PurchasingPowerSale::query()
-            ->whereNotIn('status', ['Canceled', 'canceled'])
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled'])
             ->orderBy('id')
             ->get();
 

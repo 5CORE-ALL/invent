@@ -1746,6 +1746,25 @@ class ProductMasterController extends Controller
             'operations.*.value' => 'required',
         ]);
 
+        $allowedBulkStatuses = ['active', 'inactive', 'DC', 'upcoming', '2BDC'];
+        foreach ($data['operations'] as $operation) {
+            if (($operation['field'] ?? '') === 'status') {
+                if (($operation['operation'] ?? '') !== 'set') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Status bulk update only supports the "set" operation.',
+                    ], 422);
+                }
+                $sv = is_string($operation['value']) ? trim($operation['value']) : '';
+                if (! in_array($sv, $allowedBulkStatuses, true)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid status. Allowed: '.implode(', ', $allowedBulkStatuses).'.',
+                    ], 422);
+                }
+            }
+        }
+
         DB::beginTransaction();
 
         try {
@@ -1763,6 +1782,9 @@ class ProductMasterController extends Controller
                 foreach ($data['operations'] as $operation) {
                     $field = $operation['field'];
                     $value = $operation['value'];
+                    if ($field === 'status' && ($operation['operation'] ?? '') === 'set' && is_string($value)) {
+                        $value = trim($value);
+                    }
 
                     // Parent is a direct column on the model, not stored in Values
                     if ($field === 'parent') {

@@ -25,7 +25,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Purchasing Power Sales',
-        'sub_title'  => 'Data in purchasing_power_sales (this grid). Run php artisan app:update-marketplace-daily-metrics so All Marketplace Master matches these rollups.',
+        'sub_title'  => '',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -68,7 +68,7 @@
 
                 <!-- Summary Badges (margin from marketplace_percentages.marketplace = Purchase; default 65%) -->
                 <div class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (Purchase margin: {{ number_format($ppMargin ?? 65, 2) }}%)</h6>
+                    <h6 class="mb-3">Summary — matches All Marketplace Master rollups (full dataset; Purchase margin: {{ number_format($ppMargin ?? 65, 2) }}%)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color:white;font-weight:bold;">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-qty-badge" style="color:white;font-weight:bold;">Total Qty: 0</span>
@@ -389,56 +389,84 @@
         });
 
         function isCanceledRow(row) {
-            const s = (row.status || '').toLowerCase();
+            const s = (row.status || '').toLowerCase().replace(/\s+/g, ' ').trim();
             return s === 'canceled' || s === 'cancelled';
         }
 
-        // Summary update
+        /**
+         * Same line revenue as UpdateMarketplaceDailyMetrics::calculatePurchasingPowerMetrics (non-canceled, qty > 0).
+         */
+        function lineRevenueRollup(row) {
+            if (isCanceledRow(row)) {
+                return 0;
+            }
+            const qty = parseInt(row.quantity, 10) || 0;
+            if (qty <= 0) {
+                return 0;
+            }
+            let unit = parseFloat(row.unit_price) || 0;
+            if (unit <= 0) {
+                const amt = parseFloat(row.amount) || 0;
+                unit = qty > 0 ? amt / qty : 0;
+            }
+            return unit * qty;
+        }
+
+        // Summary update — use full table data (not filtered) so totals match All Marketplace Master / artisan metrics
         function updateSummary() {
-            const data = table.getData('active');
-            let totalOrders = data.length;
-            let totalQty = 0, totalRevenue = 0, totalCommission = 0, totalTransferred = 0;
-            let totalPft = 0, canceledCount = 0, totalPrice = 0, priceCount = 0;
-            let gpftRevenue = 0, gpftPft = 0, gpftCogs = 0;
+            const data = table.getData();
+            let rollupOrders = 0;
+            let rollupQty = 0;
+            let rollupRevenue = 0;
+            let rollupPft = 0;
+            let rollupCogs = 0;
+            let totalCommission = 0;
+            let totalTransferred = 0;
+            let canceledCount = 0;
+            let totalPrice = 0;
+            let priceCount = 0;
 
             data.forEach(row => {
-                const qty = parseInt(row.quantity) || 0;
+                const qty = parseInt(row.quantity, 10) || 0;
                 const amount = parseFloat(row.amount) || 0;
                 const comm = parseFloat(row.commission) || 0;
                 const transferred = parseFloat(row.amount_transferred) || 0;
                 const pft = parseFloat(row.pft) || 0;
                 const price = parseFloat(row.unit_price) || 0;
 
-                totalQty += qty;
-                totalRevenue += amount;
+                if (isCanceledRow(row)) {
+                    canceledCount++;
+                } else {
+                    rollupOrders++;
+                }
+
                 totalCommission += comm;
                 totalTransferred += transferred;
-                totalPft += pft;
-                if (isCanceledRow(row)) canceledCount++;
-                if (price > 0) { totalPrice += price; priceCount++; }
 
-                if (!isCanceledRow(row)) {
-                    let lineRev = amount;
-                    if (lineRev <= 0) {
-                        const up = parseFloat(row.unit_price) || 0;
-                        lineRev = up * qty;
-                    }
-                    gpftRevenue += lineRev;
-                    gpftPft += pft;
-                    gpftCogs += parseFloat(row.cogs) || 0;
+                if (price > 0) {
+                    totalPrice += price;
+                    priceCount++;
+                }
+
+                if (!isCanceledRow(row) && qty > 0) {
+                    const lr = lineRevenueRollup(row);
+                    rollupRevenue += lr;
+                    rollupQty += qty;
+                    rollupPft += pft;
+                    rollupCogs += parseFloat(row.cogs) || 0;
                 }
             });
 
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-            const gpftRevPct = gpftRevenue > 0 ? (gpftPft / gpftRevenue) * 100 : 0;
-            const groiPct = gpftCogs > 0 ? (gpftPft / gpftCogs) * 100 : 0;
+            const gpftRevPct = rollupRevenue > 0 ? (rollupPft / rollupRevenue) * 100 : 0;
+            const groiPct = rollupCogs > 0 ? (rollupPft / rollupCogs) * 100 : 0;
 
-            $('#total-orders-badge').text(`Orders: ${totalOrders.toLocaleString()}`);
-            $('#total-qty-badge').text(`Total Qty: ${totalQty.toLocaleString()}`);
-            $('#total-revenue-badge').text(`Revenue: $${Math.round(totalRevenue).toLocaleString()}`);
+            $('#total-orders-badge').text(`Orders: ${rollupOrders.toLocaleString()}`);
+            $('#total-qty-badge').text(`Total Qty: ${rollupQty.toLocaleString()}`);
+            $('#total-revenue-badge').text(`Revenue: $${Math.round(rollupRevenue).toLocaleString()}`);
             $('#total-commission-badge').text(`Commission: $${Math.round(totalCommission).toLocaleString()}`);
             $('#total-transferred-badge').text(`Transferred: $${Math.round(totalTransferred).toLocaleString()}`);
-            $('#total-pft-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
+            $('#total-pft-badge').text(`PFT: $${Math.round(rollupPft).toLocaleString()}`);
             $('#gpft-rev-badge').text(`GPFT % (rev): ${gpftRevPct.toFixed(1)}%`);
             $('#groi-badge').text(`GROI %: ${groiPct.toFixed(1)}%`);
             $('#canceled-badge').text(`Canceled: ${canceledCount}`);

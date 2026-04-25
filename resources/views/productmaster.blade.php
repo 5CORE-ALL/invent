@@ -1516,7 +1516,7 @@
                         </div>
                     </div>
 
-                    <!-- Bulk Actions Modal (Parent, CP, Unit, MOQ) - same style as Tasks -->
+                    <!-- Bulk Actions Modal (Parent, CP, Unit, MOQ, Status) - same style as Tasks -->
                     <div class="modal fade" id="bulkActionsModal" tabindex="-1" aria-hidden="true">
                         <div class="modal-dialog modal-lg">
                             <div class="modal-content">
@@ -1552,6 +1552,11 @@
                                             <strong>Change MOQ</strong>
                                             <small class="d-block text-muted">Set minimum order quantity for all selected products</small>
                                         </a>
+                                        <a href="#" class="list-group-item list-group-item-action" id="bulk-change-status-btn">
+                                            <i class="fas fa-toggle-on text-secondary me-2"></i>
+                                            <strong>Change Status</strong>
+                                            <small class="d-block text-muted">Set the same status (Active, Inactive, DC, etc.) for all selected products</small>
+                                        </a>
                                     </div>
                                 </div>
                                 <div class="modal-footer">
@@ -1585,7 +1590,7 @@
                     <div class="selection-actions" id="selectionActions">
                         <span class="selection-count">0 items selected</span>
                         <button class="btn btn-sm btn-light" id="cancelSelection">Cancel</button>
-                        <button class="btn btn-sm btn-info" id="bulkActionsBtn" title="Bulk edit Parent, CP, Unit, MOQ">
+                        <button class="btn btn-sm btn-info" id="bulkActionsBtn" title="Bulk edit Parent, CP, Unit, MOQ, Status">
                             <i class="fas fa-tasks me-1"></i>Bulk Actions
                         </button>
                         <button class="btn btn-sm btn-success" id="processSelected" title="Update price, status, etc. for selected products"><i class="fas fa-edit me-1"></i> Update selected</button>
@@ -6072,7 +6077,7 @@
                 }
             }
 
-            // Bulk Actions Modal (Parent, CP, Unit, MOQ) - same pattern as Tasks page
+            // Bulk Actions Modal (Parent, CP, Unit, MOQ, Status) - same pattern as Tasks page
             function setupBulkActionsModal() {
                 const bulkActionsBtn = document.getElementById('bulkActionsBtn');
                 const bulkActionsModal = document.getElementById('bulkActionsModal');
@@ -6239,6 +6244,32 @@
                     `, function() {
                         const v = document.getElementById('bulk-moq-input').value.trim();
                         if (v === '') { alert('Please enter an MOQ value.'); return null; }
+                        return v;
+                    });
+                });
+
+                document.getElementById('bulk-change-status-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    bootstrap.Modal.getInstance(bulkActionsModal).hide();
+                    window._bulkActionField = 'status';
+                    const n = Object.keys(selectedItems).length;
+                    showBulkForm('Change Status', `
+                        <p class="mb-3"><strong>Set status for ${n} product(s):</strong></p>
+                        <div class="mb-3">
+                            <label for="bulk-status-select" class="form-label">Status</label>
+                            <select class="form-select" id="bulk-status-select">
+                                <option value="">Select status…</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                                <option value="DC">DC</option>
+                                <option value="upcoming">Upcoming</option>
+                                <option value="2BDC">2BDC</option>
+                            </select>
+                        </div>
+                    `, function() {
+                        const el = document.getElementById('bulk-status-select');
+                        const v = el ? el.value.trim() : '';
+                        if (v === '') { alert('Please choose a status.'); return null; }
                         return v;
                     });
                 });
