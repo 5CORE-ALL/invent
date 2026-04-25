@@ -602,6 +602,9 @@
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: E Stock &gt; 0, no eBay item id (Missing L)">Missing: 0</span>
+                        <span class="badge fs-6 p-2" id="ebay2-map-count-badge" style="background-color: #198754; color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: |INV − E Stock| ≤ 3 (MP rows)">Map: 0</span>
+                        <span class="badge fs-6 p-2" id="ebay2-nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;" title="Click to filter: N Map rows (same as MAP column)">N Map: 0</span>
                         
                     </div>
                 </div>
@@ -998,6 +1001,43 @@
         // Badge filter state variables
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
+        let missingFilterActive = false;
+        let mapFilterActive = false;
+        let nmapFilterActive = false;
+
+        function rowEbay2StockQty(data) {
+            return parseFloat(data['E Stock'] || 0) || 0;
+        }
+        function isEbay2TabulatorParentRowForMap(data) {
+            if (!data) return false;
+            if (data.is_parent_summary === true) return true;
+            const p = data.Parent;
+            return !!(p && String(p).toUpperCase().startsWith('PARENT'));
+        }
+        /** Same N Map test as eBay 1 tabulator (isEbayTabulatorNMapRow), E Stock field. */
+        function isEbay2TabulatorNMapRow(data) {
+            if (isEbay2TabulatorParentRowForMap(data)) return false;
+            const itemId = data['eBay_item_id'];
+            if (!itemId || String(itemId).trim() === '') return false;
+            const inv = parseFloat(data['INV']) || 0;
+            if (inv <= 0) return false;
+            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
+            const ebayStock = rowEbay2StockQty(data);
+            if (ebayStock === 0) return inv > 3;
+            if (ebayStock > 0 && Math.abs(inv - ebayStock) > 3) return true;
+            return false;
+        }
+        function isEbay2TabulatorMapRow(data) {
+            if (isEbay2TabulatorParentRowForMap(data)) return false;
+            const itemId = data['eBay_item_id'];
+            if (!itemId || String(itemId).trim() === '') return false;
+            const inv = parseFloat(data['INV']) || 0;
+            if (inv <= 0) return false;
+            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
+            const ebayStock = rowEbay2StockQty(data);
+            if (ebayStock <= 0) return false;
+            return Math.abs(inv - ebayStock) <= 3;
+        }
         
         // Toast notification function
         function showToast(message, type = 'info') {
@@ -1414,12 +1454,49 @@
             $('.sold-filter-badge[data-filter="zero"], #zero-sold-count-badge').on('click', function() {
                 zeroSoldFilterActive = !zeroSoldFilterActive;
                 moreSoldFilterActive = false;
+                missingFilterActive = false;
+                mapFilterActive = false;
+                nmapFilterActive = false;
                 applyFilters();
             });
 
             $('.sold-filter-badge[data-filter="sold"]').on('click', function() {
                 moreSoldFilterActive = !moreSoldFilterActive;
                 zeroSoldFilterActive = false;
+                missingFilterActive = false;
+                mapFilterActive = false;
+                nmapFilterActive = false;
+                applyFilters();
+            });
+
+            $('#ebay2-missing-count-badge').on('click', function() {
+                missingFilterActive = !missingFilterActive;
+                if (missingFilterActive) {
+                    mapFilterActive = false;
+                    nmapFilterActive = false;
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                applyFilters();
+            });
+            $('#ebay2-map-count-badge').on('click', function() {
+                mapFilterActive = !mapFilterActive;
+                if (mapFilterActive) {
+                    missingFilterActive = false;
+                    nmapFilterActive = false;
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                applyFilters();
+            });
+            $('#ebay2-nmap-count-badge').on('click', function() {
+                nmapFilterActive = !nmapFilterActive;
+                if (nmapFilterActive) {
+                    missingFilterActive = false;
+                    mapFilterActive = false;
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
                 applyFilters();
             });
 
@@ -2676,6 +2753,55 @@
                                 return '<span style="color: #dc3545; font-weight: 600;">0</span>';
                             }
                             return `<span style="font-weight: 600;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "Missing L",
+                        field: "Missing",
+                        hozAlign: "center",
+                        width: 70,
+                        headerTooltip: "M when listed in REQ scope but no eBay item id (same as eBay 1 tabulator).",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
+                                return '';
+                            }
+                            const itemId = rowData['eBay_item_id'];
+                            if (!itemId || itemId === null || itemId === '') {
+                                return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: "MAP",
+                        field: "MAP",
+                        hozAlign: "center",
+                        width: 90,
+                        headerTooltip: "MP when |INV − E Stock| ≤ 3; N MP otherwise (listed rows only). Matches eBay 1 tabulator.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
+                                return '';
+                            }
+                            const itemId = rowData['eBay_item_id'];
+                            if (!itemId || itemId === null || itemId === '') {
+                                return '';
+                            }
+                            const ebayStock = parseFloat(rowData['E Stock']) || 0;
+                            const inv = parseFloat(rowData['INV']) || 0;
+                            if (inv > 0 && ebayStock === 0) {
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
+                            }
+                            if (inv > 0 && ebayStock > 0) {
+                                if (Math.abs(inv - ebayStock) <= 3) {
+                                    return '<span style="color: #28a745; font-weight: bold;">MP</span>';
+                                }
+                                const diff = inv - ebayStock;
+                                const sign = diff > 0 ? '+' : '';
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
+                            }
+                            return '';
                         }
                     },
 
@@ -4427,6 +4553,26 @@
                     });
                 }
 
+                if (missingFilterActive) {
+                    table.addFilter(function(data) {
+                        const estock = rowEbay2StockQty(data);
+                        if (estock <= 0) return false;
+                        const itemId = data['eBay_item_id'];
+                        if (isEbay2TabulatorParentRowForMap(data)) return false;
+                        return !itemId || itemId === null || itemId === '';
+                    });
+                }
+                if (mapFilterActive) {
+                    table.addFilter(function(data) {
+                        return isEbay2TabulatorMapRow(data);
+                    });
+                }
+                if (nmapFilterActive) {
+                    table.addFilter(function(data) {
+                        return isEbay2TabulatorNMapRow(data);
+                    });
+                }
+
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
                         const INV = parseFloat(data['INV'] || 0);
@@ -4682,7 +4828,7 @@
 
             // Section Filter: column visibility groups
             var pricingOnlyColumns = [
-                'image_path', 'E Stock', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
+                'image_path', 'E Stock', 'Missing', 'MAP', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
                 'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI'
             ];
@@ -5089,6 +5235,21 @@
                     }
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+
+                let missingCount = 0;
+                let mapCount = 0;
+                let nmapCount = 0;
+                data.forEach(row => {
+                    const estock = rowEbay2StockQty(row);
+                    if (estock > 0) {
+                        const itemId = row['eBay_item_id'];
+                        if ((!itemId || itemId === null || itemId === '') && !isEbay2TabulatorParentRowForMap(row)) {
+                            missingCount++;
+                        }
+                    }
+                    if (isEbay2TabulatorMapRow(row)) mapCount++;
+                    if (isEbay2TabulatorNMapRow(row)) nmapCount++;
+                });
                 
                 // TACOS badge = AD% column (channel Ads%, not PMT÷filtered sales)
                 const tacosPercent = EBAY2_CHANNEL_ADS_PCT;
@@ -5115,6 +5276,9 @@
                 $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
+                $('#ebay2-missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
+                $('#ebay2-map-count-badge').text('Map: ' + mapCount.toLocaleString());
+                $('#ebay2-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             }
 
             // Build Column Visibility Dropdown
@@ -5339,6 +5503,9 @@
                 'ROI%': 'ROI%',
                 'GPFT%': 'GPFT%',
                 'views': 'Views',
+                'E Stock': 'E Stock',
+                'Missing': 'Missing L',
+                'MAP': 'MAP',
                 'nr_req': 'NR/REQ',
                 'SPRICE': 'SPRICE',
                 'SPFT': 'SPFT',

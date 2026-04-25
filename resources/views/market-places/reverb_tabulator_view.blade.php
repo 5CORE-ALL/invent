@@ -221,6 +221,11 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary"
+                        title="Channel overview — Reverb Map / Miss / NMap use the same live rules as this page">
+                        <i class="fas fa-th-large"></i> All Marketplace Master
+                    </a>
+
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
@@ -252,7 +257,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">MISSING: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs">N MAP: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="INV vs R Stock mismatch &gt; 3 (same tolerance as other channels)">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -1810,7 +1815,7 @@
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
             $('#missing-count-badge').text(`MISSING: ${missingCount}`);
-            $('#inv-r-stock-badge').text(`N MAP: ${invRStockCount}`);
+            $('#inv-r-stock-badge').text('N Map: ' + invRStockCount.toLocaleString());
         }
 
         // Build Column Visibility Dropdown

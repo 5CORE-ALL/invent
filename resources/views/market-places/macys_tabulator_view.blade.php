@@ -127,6 +127,11 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary"
+                        title="Channel overview — Macys Map / Miss / NMap use the same live rules as this page">
+                        <i class="fas fa-th-large"></i> All Marketplace Master
+                    </a>
+
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>

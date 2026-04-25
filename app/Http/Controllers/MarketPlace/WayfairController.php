@@ -743,13 +743,16 @@ class WayfairController extends Controller
                 // Same as AliExpress pricing: missing when no product master or no positive uploaded channel price.
                 $isMissing = ! $productMaster || $price <= 0;
 
+                // Map / N Map: same ±3 tolerance as TikTok / Reverb / Best Buy (|INV − Wayfair stock| ≤ 3 → Map).
                 if ($isMissing) {
                     $mapValue = '';
-                } elseif ($inv === $wfStock) {
-                    $mapValue = 'Map';
                 } else {
                     $diff = abs($inv - $wfStock);
-                    $mapValue = "N Map|{$diff}";
+                    if ($diff <= 3) {
+                        $mapValue = 'Map';
+                    } else {
+                        $mapValue = "N Map|{$diff}";
+                    }
                 }
 
                 $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
@@ -898,7 +901,7 @@ class WayfairController extends Controller
 
             $validMetrics = [
                 'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
-                'total_al30', 'avg_dil', 'missing_count', 'map_count',
+                'total_al30', 'avg_dil', 'missing_count', 'map_count', 'nmap_count',
                 'total_sku', 'zero_sold', 'more_sold',
             ];
             if (!in_array($metric, $validMetrics, true)) {
@@ -1189,6 +1192,7 @@ class WayfairController extends Controller
             $dilCount = 0;
             $missingCount = 0;
             $mapCount = 0;
+            $nmapCount = 0;
             $zeroSold = 0;
             $moreSold = 0;
 
@@ -1227,8 +1231,15 @@ class WayfairController extends Controller
                 if (($r['missing'] ?? '') === 'M') {
                     $missingCount++;
                 }
-                if (($r['map'] ?? '') === 'Map') {
+                $mapCell = (string) ($r['map'] ?? '');
+                if ($mapCell === 'Map') {
                     $mapCount++;
+                } elseif (str_starts_with($mapCell, 'N Map|')) {
+                    $rest = substr($mapCell, strlen('N Map|'));
+                    $diffVal = abs((float) trim((string) $rest));
+                    if ($diffVal > 3) {
+                        $nmapCount++;
+                    }
                 }
             }
 
@@ -1248,6 +1259,7 @@ class WayfairController extends Controller
                 'avg_dil' => $dilCount > 0 ? round($dilSum / $dilCount, 2) : 0,
                 'missing_count' => $missingCount,
                 'map_count' => $mapCount,
+                'nmap_count' => $nmapCount,
                 'zero_sold' => $zeroSold,
                 'more_sold' => $moreSold,
                 'calculated_at' => now()->toDateTimeString(),

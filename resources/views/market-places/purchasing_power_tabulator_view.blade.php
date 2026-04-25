@@ -270,6 +270,14 @@
 
         function roundToRetailPrice(price) { return Math.ceil(price) - 0.01; }
 
+        /** |INV − PP Stock| ≤ 3 → MAP; > 3 → N MP (same as Wayfair / TikTok / Reverb). */
+        function ppInvPpStockDiff(ourInv, ppInv) {
+            return Math.abs((parseFloat(ourInv) || 0) - (parseFloat(ppInv) || 0));
+        }
+        function ppInvPpStockWithinTolerance(ourInv, ppInv) {
+            return ppInvPpStockDiff(ourInv, ppInv) <= 3;
+        }
+
         function applyDiscount() {
             const discountType  = $('#discount-type-select').val();
             const discountValue = parseFloat($('#discount-percentage-input').val());
@@ -480,15 +488,20 @@
                     }
                 },
                 {
-                    title: 'Mapping', field: 'Mapping', hozAlign: 'center', width: 90,
+                    title: 'Mapping',
+                    field: 'Mapping',
+                    hozAlign: 'center',
+                    width: 90,
+                    headerTooltip: 'MAP when |INV − PP Stock| ≤ 3; N MP when > 3 (NR rows excluded).',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const ourInv = parseFloat(d.INV) || 0, mcInv = parseFloat(d['PP INV']) || 0;
                         const price = parseFloat(d['PP Price']) || 0, nrReq = d.nr_req || 'REQ';
                         if (nrReq === 'NR' || ourInv === 0 || price === 0) return '';
-                        return ourInv === mcInv
+                        const diff = ppInvPpStockDiff(ourInv, mcInv);
+                        return ppInvPpStockWithinTolerance(ourInv, mcInv)
                             ? '<span style="color:#28a745;font-weight:600;background-color:#d4edda;padding:2px 6px;border-radius:3px;">MAP</span>'
-                            : `<span style="color:#a00211;font-weight:600;background-color:#f8d7da;padding:2px 6px;border-radius:3px;">N MP (${Math.abs(mcInv - ourInv)})</span>`;
+                            : `<span style="color:#a00211;font-weight:600;background-color:#f8d7da;padding:2px 6px;border-radius:3px;">N MP (${diff})</span>`;
                     }
                 },
                 {
@@ -685,7 +698,7 @@
             if (missingFilterActive) table.addFilter(d => { return (d.nr_req || 'REQ') === 'REQ' && (parseFloat(d.INV) || 0) > 0 && (parseFloat(d['PP Price']) || 0) === 0; });
             if (mappingFilterActive) table.addFilter(d => {
                 const ourInv = parseFloat(d.INV) || 0, mcInv = parseFloat(d['PP INV']) || 0, price = parseFloat(d['PP Price']) || 0;
-                return (d.nr_req || 'REQ') === 'REQ' && ourInv > 0 && price > 0 && ourInv !== mcInv;
+                return (d.nr_req || 'REQ') === 'REQ' && ourInv > 0 && price > 0 && !ppInvPpStockWithinTolerance(ourInv, mcInv);
             });
 
             updateSummary();
@@ -722,7 +735,7 @@
                 if (roi !== 0) { totalRoi += roi; roiCount++; }
 
                 if (nrReq === 'REQ' && inv > 0 && price > 0) {
-                    if (inv !== (parseFloat(row['PP INV']) || 0)) mappingCount++;
+                    if (!ppInvPpStockWithinTolerance(inv, row['PP INV'])) mappingCount++;
                 }
 
                 totalPpStock += parseFloat(row['PP INV']) || 0;

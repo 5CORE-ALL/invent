@@ -767,7 +767,7 @@ class SheinController extends Controller
 
             $validMetrics = [
                 'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
-                'total_al30', 'avg_dil', 'total_cogs', 'missing_count', 'map_count',
+                'total_al30', 'avg_dil', 'total_cogs', 'missing_count', 'map_count', 'nmap_count',
                 'total_sku', 'zero_sold', 'more_sold',
             ];
             if (!in_array($metric, $validMetrics, true)) {
@@ -1153,10 +1153,17 @@ class SheinController extends Controller
                 // Missing only when special_offer_price is 0 or no row exists
                 $isMissing  = !$priceRow || $spOffer <= 0;
 
-                // MAP: INV vs Shein Stock
-                if ($isMissing) { $mapValue = ''; }
-                elseif ($inv === $sheinStock) { $mapValue = 'Map'; }
-                else { $mapValue = "N Map|" . abs($inv - $sheinStock); }
+                // MAP: |INV − Shein stock| ≤ 3 → Map (same tolerance as other pricing pages)
+                if ($isMissing) {
+                    $mapValue = '';
+                } else {
+                    $adiff = abs($inv - $sheinStock);
+                    if ($adiff <= 3) {
+                        $mapValue = 'Map';
+                    } else {
+                        $mapValue = 'N Map|' . $adiff;
+                    }
+                }
 
                 $rows[] = [
                     'sku'          => trim((string) $displaySku),

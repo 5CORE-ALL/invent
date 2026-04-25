@@ -65,6 +65,31 @@
             opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
+
+        /* Summary badges — horizontal scroll on narrow viewports (same as eBay 2 / TikTok pricing) */
+        #fr-summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        #fr-summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -213,16 +238,17 @@
                     </div>
 
                     <div id="fr-summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                        <div class="d-flex flex-wrap gap-2">
+                        <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                             <span class="badge bg-primary fs-6 p-2" id="fr-total-sales-badge" style="font-weight:700;">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="fr-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
                             <span class="badge bg-success fs-6 p-2 d-none" id="fr-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="fr-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty).">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2" id="fr-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2" id="fr-missing-badge" style="font-weight:700;">Missing L: 0</span>
-                            <span class="badge fs-6 p-2" id="fr-map-badge" style="font-weight:700;background:#0d6efd;color:#fff;">N Map: 0</span>
-                            <span class="badge fs-6 p-2" id="fr-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2" id="fr-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;">&gt;0 Sold: 0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="fr-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L (no product master or list price ≤ 0)">Missing L: 0</span>
+                            <span class="badge fs-6 p-2" id="fr-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: |INV − Faire stock| ≤ 3">Map: 0</span>
+                            <span class="badge fs-6 p-2" id="fr-nmap-count-badge" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter: N Map rows (|INV − Faire stock| &gt; 3)">N Map: 0</span>
+                            <span class="badge fs-6 p-2" id="fr-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2" id="fr-more-sold-badge" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter: sold &gt; 0">&gt;0 Sold: 0</span>
                         </div>
                     </div>
 
@@ -260,6 +286,7 @@
         let table = null;
         let summaryDataCache = [];
         let frMissingActive = false;
+        let frMapActive = false;
         let frNMapActive = false;
         let frZeroSoldActive = false;
         let frMoreSoldActive = false;
@@ -592,7 +619,7 @@
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
             let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0;
-            let missingCount = 0, mapCount = 0;
+            let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
 
             rows.forEach(row => {
@@ -602,6 +629,7 @@
                 const sales = parseFloat(row.sales) || 0;
                 const lp = parseFloat(row.lp) || 0;
                 const listProfitPerUnit = parseFloat(row.profit) || 0;
+                const mapVal = (row.map || '').trim();
 
                 totalSales += sales;
                 totalFqty += fqty;
@@ -617,7 +645,8 @@
 
                 if (fqty === 0) zeroSold++; else moreSold++;
                 if (isMissing) missingCount++;
-                if ((row.map || '').startsWith('N Map|')) mapCount++;
+                else if (mapVal === 'Map') mapCount++;
+                else if (mapVal.startsWith('N Map|')) nmapCount++;
             });
 
             const pftPct = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
@@ -629,7 +658,8 @@
             $('#fr-avg-gpft-badge').text('PFt: ' + Math.round(pftPct) + '%');
             $('#fr-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
             $('#fr-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
-            $('#fr-map-badge').text('N Map: ' + mapCount.toLocaleString());
+            $('#fr-map-count-badge').text('Map: ' + mapCount.toLocaleString());
+            $('#fr-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             $('#fr-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#fr-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
         }
@@ -740,6 +770,7 @@
                 });
             }
             if (frMissingActive) table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
+            if (frMapActive) table.addFilter(d => (d.map || '') === 'Map');
             if (frNMapActive) table.addFilter(d => (d.map || '').startsWith('N Map|'));
             if (frZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (frMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
@@ -1002,7 +1033,7 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
                             const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#0d6efd;font-weight:bold;">Map</span>';
+                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
                             if (val.startsWith('N Map|')) {
                                 const diff = val.split('|')[1];
                                 return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
@@ -1316,22 +1347,27 @@
 
             $('#fr-missing-badge').on('click', function() {
                 frMissingActive = !frMissingActive;
-                frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
+                frMapActive = frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
                 applyFilters();
             });
-            $('#fr-map-badge').on('click', function() {
+            $('#fr-map-count-badge').on('click', function() {
+                frMapActive = !frMapActive;
+                frMissingActive = frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
+                applyFilters();
+            });
+            $('#fr-nmap-count-badge').on('click', function() {
                 frNMapActive = !frNMapActive;
-                frMissingActive = frZeroSoldActive = frMoreSoldActive = false;
+                frMissingActive = frMapActive = frZeroSoldActive = frMoreSoldActive = false;
                 applyFilters();
             });
             $('#fr-zero-sold-badge').on('click', function() {
                 frZeroSoldActive = !frZeroSoldActive;
-                frMoreSoldActive = frMissingActive = frNMapActive = false;
+                frMoreSoldActive = frMissingActive = frMapActive = frNMapActive = false;
                 applyFilters();
             });
             $('#fr-more-sold-badge').on('click', function() {
                 frMoreSoldActive = !frMoreSoldActive;
-                frZeroSoldActive = frMissingActive = frNMapActive = false;
+                frZeroSoldActive = frMissingActive = frMapActive = frNMapActive = false;
                 applyFilters();
             });
 

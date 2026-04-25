@@ -2215,7 +2215,7 @@ title: "Dil %",
                     minWidth: 70
                 },
                 {
-                    title: "LQS",
+                    title: "AVG LQS",
                     field: "listing_quality_score",
                     hozAlign: "center",
                     sorter: "number",

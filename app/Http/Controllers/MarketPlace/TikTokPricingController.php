@@ -537,20 +537,14 @@ class TikTokPricingController extends Controller
             // Get L30 sold from ShipHub
             $processedItem["TT L30"] = isset($soldData[$skuUpper]) ? $soldData[$skuUpper] : 0;
 
-            // Calculate MAP (INV vs TT Stock comparison)
-            $inv = $processedItem["INV"];
-            $ttStock = $processedItem["TT Stock"];
-            
-            if ($inv == $ttStock) {
+            // MAP: same tolerance as Reverb — |INV − TT Stock| ≤ 3 → Map; else signed N Map (INV − TT Stock)
+            $inv = (float) $processedItem["INV"];
+            $ttStock = (float) $processedItem["TT Stock"];
+            $delta = $inv - $ttStock;
+            if (abs($delta) <= 3) {
                 $processedItem["MAP"] = 'Map';
-            } elseif ($ttStock > $inv) {
-                // TT Stock is more than INV - show N Map with qty
-                $diff = $ttStock - $inv;
-                $processedItem["MAP"] = "N Map|$diff";
             } else {
-                // INV is more than TT Stock - show only the difference number
-                $diff = $inv - $ttStock;
-                $processedItem["MAP"] = "Diff|$diff";
+                $processedItem["MAP"] = 'N Map|'.sprintf('%+g', $delta);
             }
 
             // Get SPRICE, SGPFT, SPFT, SROI, NR from per-channel shop data view; fallback to reverb_view_data
@@ -1428,15 +1422,30 @@ class TikTokPricingController extends Controller
                 
                 $isMissing = (strtoupper(trim((string)($row['Missing'] ?? ''))) === 'M');
 
-                // Count Map
+                // Count Map / N Map (Reverb-style: |INV − TT Stock| ≤ 3 = Map; listed rows only)
                 $mapValue = $row['MAP'] ?? '';
-                if ($mapValue === 'Map' && !$isMissing) {
+                if ($mapValue === 'Map' && ! $isMissing) {
                     $mapCount++;
                 }
-                
-                // Count INV > TT Stock (check if MAP starts with 'Diff|')
-                if ($mapValue && str_starts_with($mapValue, 'Diff|') && !$isMissing) {
-                    $invTTStockCount++;
+                // N Map: only when |INV − TT Stock| > 3 (≤3 is Map; exclude stale N Map|/Diff| with small diffs)
+                if (! $isMissing && $mapValue) {
+                    $absDiff = null;
+                    if (str_starts_with($mapValue, 'N Map|')) {
+                        $rest = substr($mapValue, strlen('N Map|'));
+                        $f = 0.0;
+                        if (sscanf((string) $rest, '%f', $f) === 1) {
+                            $absDiff = abs($f);
+                        }
+                    } elseif (str_starts_with($mapValue, 'Diff|')) {
+                        $rest = substr($mapValue, strlen('Diff|'));
+                        $f = 0.0;
+                        if (sscanf((string) $rest, '%f', $f) === 1) {
+                            $absDiff = abs($f);
+                        }
+                    }
+                    if ($absDiff !== null && $absDiff > 3) {
+                        $invTTStockCount++;
+                    }
                 }
             }
             

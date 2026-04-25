@@ -896,11 +896,13 @@ class FaireController extends Controller
 
                 if ($isMissing) {
                     $mapValue = '';
-                } elseif ($inv === $faireStock) {
-                    $mapValue = 'Map';
                 } else {
                     $diff = abs($inv - $faireStock);
-                    $mapValue = "N Map|{$diff}";
+                    if ($diff <= 3) {
+                        $mapValue = 'Map';
+                    } else {
+                        $mapValue = "N Map|{$diff}";
+                    }
                 }
 
                 $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
@@ -1200,6 +1202,7 @@ class FaireController extends Controller
             $dilCount = 0;
             $missingCount = 0;
             $mapCount = 0;
+            $nmapCount = 0;
             $zeroSold = 0;
             $moreSold = 0;
 
@@ -1238,8 +1241,11 @@ class FaireController extends Controller
                 if (($r['missing'] ?? '') === 'M') {
                     $missingCount++;
                 }
-                if (($r['map'] ?? '') === 'Map') {
+                $mapVal = (string) ($r['map'] ?? '');
+                if ($mapVal === 'Map') {
                     $mapCount++;
+                } elseif (str_starts_with($mapVal, 'N Map|')) {
+                    $nmapCount++;
                 }
             }
 
@@ -1259,6 +1265,7 @@ class FaireController extends Controller
                 'avg_dil' => $dilCount > 0 ? round($dilSum / $dilCount, 2) : 0,
                 'missing_count' => $missingCount,
                 'map_count' => $mapCount,
+                'nmap_count' => $nmapCount,
                 'zero_sold' => $zeroSold,
                 'more_sold' => $moreSold,
                 'calculated_at' => now()->toDateTimeString(),

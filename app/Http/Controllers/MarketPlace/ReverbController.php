@@ -936,14 +936,13 @@ class ReverbController extends Controller
                 $processedItem["Missing"] = '';
             }
             
-            // MAP: Only for REQ items with INV > 0 and NOT Missing
+            // MAP: Only for REQ items with INV > 0 and NOT Missing (|INV − R Stock| ≤ 3 = Map, same as Best Buy / Macys / eBay)
             if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
-                if ($inv == $rStock) {
+                $diff = abs((float) $inv - (float) $rStock);
+                if ($diff <= 3) {
                     $processedItem["MAP"] = 'Map';
                 } else {
-                    // Stocks don't match - show N Map with qty difference
-                    $diff = abs($inv - $rStock);
-                    $processedItem["MAP"] = "N Map|$diff";
+                    $processedItem["MAP"] = 'N Map|'.$diff;
                 }
             } else {
                 // Don't show MAP for NR items, INV = 0, or Missing items
@@ -1212,7 +1211,7 @@ class ReverbController extends Controller
 
     /**
      * Auto-save daily Reverb summary snapshot (channel-wise)
-     * Matches JavaScript updateSummary() logic exactly
+     * Matches JavaScript updateSummary() (MAP / N Map from row MAP field; tolerance is applied in getViewReverbTabularData).
      */
     private function saveDailySummaryIfNeeded($products)
     {

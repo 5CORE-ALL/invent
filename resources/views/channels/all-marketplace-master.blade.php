@@ -168,6 +168,35 @@
             width: 100%;
             max-width: 100%;
         }
+
+        /* Summary badges — horizontal scroll; each badge keeps full width (no flex-shrink overlap) */
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.4rem;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            padding-bottom: 4px; /* room for scrollbar */
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 0 0 auto;
+            min-width: max-content;
+            max-width: none;
+            font-size: 0.8125rem;
+            padding: 0.4rem 0.55rem;
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -292,7 +321,7 @@
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-1">Summary Statistics</h6>
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Channels: <span id="total-channels">0</span>
                         </span>
@@ -335,11 +364,11 @@
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="clicks" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             Clicks: <span id="total-clicks">0</span>
                         </span>
-                        {{-- <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
-                             Map: <span id="total-map">0</span>
-                        </span> --}}
-                        <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="nmap" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Missing M: <span id="total-nmap">0</span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="map" style="background-color:#198754;color:#fff;font-weight:bold;cursor:pointer;" title="Sum of Map column (|INV − channel stock| within tolerance — same as pricing pages)">
+                            Map: <span id="total-map">0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="nmap" style="background-color:#a71d2a;color:#fff;font-weight:bold;cursor:pointer;" title="Sum of N Map column (not mapped / INV vs channel stock beyond tolerance — same as pricing pages)">
+                            N Map: <span id="total-nmap">0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="missing_l" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Missing L : <span id="total-miss">0</span>
@@ -1050,27 +1079,34 @@
                             return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
-                    // {
-                    //     title: "Map",
-                    //     field: "Map",
-                    //     hozAlign: "center",
-                    //     sorter: "number",
-                    //     formatter: function(cell) {
-                    //         const value = parseNumber(cell.getValue());
-
-                    //         // Simple black text - no background colors
-                    //         const style = 'color:black;font-weight:600;';
-
-                    //         return `<span style="${style}">${value}</span>`;
-                    //     },
-                    //     bottomCalc: "sum",
-                    //     bottomCalcFormatter: function(cell) {
-                    //         const value = cell.getValue();
-                    //         return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                    //     }
-                    // },
                     {
-                        title: "Missing M",
+                        title: "Map",
+                        field: "Map",
+                        visible: false,
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = value === 0 ? DEFAULT_DOT_GRAY : '#198754';
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="map" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            const style = value === 0 ? 'color:#6c757d;font-weight:600;' : 'color:#198754;font-weight:600;';
+                            return `<span style="${style}">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "N Map",
                         field: "NMap",
                         hozAlign: "center",
                         sorter: "number",
@@ -2928,7 +2964,7 @@
             });
 
             // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
-            var metricDotMetricKeys = ['missing_l','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -3183,6 +3219,8 @@
                 table.getColumns().forEach(col => {
                     col.show();
                 });
+                const mapColShowAll = table.getColumn('Map');
+                if (mapColShowAll) mapColShowAll.hide();
                 buildColumnDropdown();
             });
 
@@ -3233,12 +3271,14 @@
                 if (section === 'all') {
                     $('#type-filter').val('all');
                     applyMasterFilters();
-                    // Show all columns
+                    // Show all columns (Map stays hidden — use Columns menu to show)
                     table.getColumns().forEach(col => {
                         if (col.getField() !== 'Channel ') { // Keep channel column always visible
                             col.show();
                         }
                     });
+                    const mapColAll = table.getColumn('Map');
+                    if (mapColAll) mapColAll.hide();
                     console.log('✓ All columns visible');
                 } else {
                     // Column section: show/hide column groups
@@ -3798,7 +3838,8 @@
                 'npft': 'N PFT%',
                 'nroi': 'N ROI%',
                 'missing_l': 'Missing L',
-                'nmap': 'Missing M',
+                'map': 'Map',
+                'nmap': 'N Map',
                 'ad_spend': 'Spend',
                 'clicks': 'AD Clicks',
                 'ad_sales': 'AD Sales',

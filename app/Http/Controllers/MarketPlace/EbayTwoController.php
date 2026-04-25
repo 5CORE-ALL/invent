@@ -1747,13 +1747,17 @@ class EbayTwoController extends Controller
                     $missingCount++;
                 }
                 
-                // Count Map and N MP
+                // Count Map and N MP (|INV − E Stock| ≤ 3 → map; same as ebay_tabulator_view MAP column)
                 if ($itemId && $itemId !== null && $itemId !== '') {
                     $ebayStock = floatval($row->{'E Stock'} ?? 0);
-                    if ($inv > 0 && $ebayStock > 0 && $inv == $ebayStock) {
-                        $mapCount++;
-                    } elseif ($inv > 0 && ($ebayStock == 0 || ($ebayStock > 0 && $inv != $ebayStock))) {
-                        $notMapCount++;
+                    if ($inv > 0) {
+                        if ($ebayStock == 0) {
+                            $notMapCount++;
+                        } elseif (abs($inv - $ebayStock) <= 3) {
+                            $mapCount++;
+                        } else {
+                            $notMapCount++;
+                        }
                     }
                 }
                 

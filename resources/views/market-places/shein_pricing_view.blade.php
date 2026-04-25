@@ -234,7 +234,8 @@
                             <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">Sh L30: 0</span>
                             <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">GPFT: 0%</span>
                             <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#0d6efd;color:#fff;" title="Click for trend / filter">Map: 0</span>
+                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click for trend / filter">Map: 0</span>
+                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-nmap-badge"       data-metric="nmap_count"    style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click for trend / filter">N Map: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-zero-sold-badge"   data-metric="zero_sold"     style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click for trend / filter">0 Sold: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-more-sold-badge"   data-metric="more_sold"     style="font-weight:700;cursor:pointer;background:#28a745;color:#fff;" title="Click for trend / filter">&gt;0 Sold: 0</span>
                             <span class="badge bg-warning  fs-6 p-2 ae-badge-chart d-none" id="ae-avg-dil-badge"     data-metric="avg_dil"     style="font-weight:700;color:#111;cursor:pointer;">DIL%: 0%</span>
@@ -340,6 +341,7 @@
         // Badge-click filter flags (identical to TikTok pattern)
         let aeMissingActive  = false;
         let aeMapActive      = false;
+        let aeNMapActive     = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
 
@@ -468,6 +470,14 @@
             return `$${(parseFloat(value) || 0).toFixed(2)}`;
         }
 
+        /** Shein map "N Map|{abs diff}" — N Map badge/filter only when diff > 3 (≤3 is Map). */
+        function aeSheinStrictNMapFromMap(mapVal) {
+            if (!mapVal || typeof mapVal !== 'string' || !mapVal.startsWith('N Map|')) return false;
+            const part = mapVal.split('|')[1];
+            const d = parseFloat(String(part == null ? '' : part).trim(), 10);
+            return Number.isFinite(d) && Math.abs(d) > 3;
+        }
+
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
         function applyFilters() {
             if (!table) return;
@@ -547,7 +557,7 @@
             if (mapFilter === 'map') {
                 table.addFilter(d => (d.map || '') === 'Map');
             } else if (mapFilter === 'nmap') {
-                table.addFilter(d => (d.map || '').startsWith('N Map|'));
+                table.addFilter(d => aeSheinStrictNMapFromMap(d.map || ''));
             }
 
             // DIL% filter (identical to TikTok)
@@ -567,6 +577,7 @@
             // Badge-click filters
             if (aeMissingActive)  table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
             if (aeMapActive)      table.addFilter(d => (d.map     || '') === 'Map');
+            if (aeNMapActive)     table.addFilter(d => aeSheinStrictNMapFromMap(d.map || ''));
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
         }
@@ -603,7 +614,7 @@
             let totalSales = 0, totalAl30 = 0;
             let gpftSum = 0, gpftCount = 0;
             let roiSum  = 0, roiCount  = 0;
-            let missingCount = 0, mapCount = 0;
+            let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
             let dilSum = 0, dilCount = 0;
 
@@ -630,7 +641,9 @@
                 if (al30 === 0) zeroSold++; else moreSold++;
                 if (inv > 0) { dilSum += (ovL30 / inv) * 100; dilCount++; }
                 if (isMissing) missingCount++;
-                if ((row.map || '') === 'Map') mapCount++;
+                const mapVal = (row.map || '').trim();
+                if (!isMissing && mapVal === 'Map') mapCount++;
+                else if (aeSheinStrictNMapFromMap(mapVal)) nmapCount++;
             });
 
             const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
@@ -643,6 +656,7 @@
             $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `GPFT: ${Math.round(avgGpft)}%`  : 'GPFT: –');
             $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
+            $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`>0 Sold: ${moreSold.toLocaleString()}`);
             $('#ae-avg-dil-badge').text(dilCount > 0 ? `DIL%: ${avgDil.toFixed(1)}%` : 'DIL%: –');
@@ -829,10 +843,14 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
                             const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#0d6efd;font-weight:bold;">Map</span>';
+                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
                             if (val.startsWith('N Map|')) {
-                                const diff = val.split('|')[1];
-                                return `<span style="color:#dc3545;font-weight:bold;">N Map (${diff})</span>`;
+                                const part = val.split('|')[1];
+                                const ad = Math.abs(parseFloat(String(part || '').trim(), 10) || 0);
+                                if (Number.isFinite(ad) && ad <= 3) {
+                                    return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                                }
+                                return `<span style="color:#dc3545;font-weight:bold;">N Map (${part})</span>`;
                             }
                             return '';
                         }
@@ -1086,22 +1104,27 @@
             // Badge click filters (identical to TikTok)
             $('#ae-missing-badge').on('click', function() {
                 aeMissingActive = !aeMissingActive;
-                aeMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+                aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
             $('#ae-map-badge').on('click', function() {
                 aeMapActive = !aeMapActive;
-                aeMissingActive = aeZeroSoldActive = aeMoreSoldActive = false;
+                aeMissingActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+                applyFilters();
+            });
+            $('#ae-nmap-badge').on('click', function() {
+                aeNMapActive = !aeNMapActive;
+                aeMissingActive = aeMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
             $('#ae-zero-sold-badge').on('click', function() {
                 aeZeroSoldActive = !aeZeroSoldActive;
-                aeMoreSoldActive = aeMissingActive = aeMapActive = false;
+                aeMoreSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
                 applyFilters();
             });
             $('#ae-more-sold-badge').on('click', function() {
                 aeMoreSoldActive = !aeMoreSoldActive;
-                aeZeroSoldActive = aeMissingActive = aeMapActive = false;
+                aeZeroSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
                 applyFilters();
             });
 
@@ -1184,14 +1207,14 @@
             let aeBadgeAjax      = null;
 
             const aeDollarMetrics  = ['total_sales','total_cogs'];
-            const aeCountMetrics   = ['total_sku','total_al30','missing_count','map_count','zero_sold','more_sold'];
+            const aeCountMetrics   = ['total_sku','total_al30','missing_count','map_count','nmap_count','zero_sold','more_sold'];
             const aePercentMetrics = ['avg_gpft','avg_roi','avg_dil'];
 
             const aeBadgeLabels = {
                 total_sales: 'Sales',         total_al30: 'Sh L30',
                 avg_gpft: 'GPFT%',            avg_roi: 'ROI%',              avg_dil: 'DIL%',
                 total_cogs: 'COGS',           missing_count: 'Missing',     map_count: 'Map',
-                total_sku: 'SKU',             zero_sold: '0 Sold',          more_sold: '>0 Sold',
+                nmap_count: 'N Map',         total_sku: 'SKU',             zero_sold: '0 Sold',          more_sold: '>0 Sold',
             };
 
             function aeFormatChartVal(v) {

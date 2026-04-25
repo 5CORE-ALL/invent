@@ -817,7 +817,7 @@ class BestBuyPricingController extends Controller
 
     /**
      * Auto-save daily BestBuy summary snapshot (channel-wise)
-     * Matches JavaScript updateSummary() logic exactly
+     * Matches JavaScript updateSummary() (including |INV − BB INV| &gt; 3 for mapping issues, like Temu/Macys/eBay).
      */
     private function saveDailySummaryIfNeeded($products)
     {
@@ -903,11 +903,10 @@ class BestBuyPricingController extends Controller
                     $roiCount++;
                 }
                 
-                // Count mapping issues (any inventory mismatch, only for REQ items with INV > 0 and NOT Missing)
-                if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
-                    $ourInv = $inv;
+                // Count mapping issues when |INV − BB INV| > 3 (REQ, priced, INV > 0) — same tolerance as other marketplaces
+                if ($nrReq === 'REQ' && $inv > 0 && ! $isMissing) {
                     $bbInv = floatval($row['BB INV'] ?? 0);
-                    if ($ourInv != $bbInv) {
+                    if (abs($inv - $bbInv) > 3) {
                         $mappingCount++;
                     }
                 }

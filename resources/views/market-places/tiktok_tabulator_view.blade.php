@@ -126,6 +126,31 @@
             opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
+
+        /* Summary badges — horizontal scroll on narrow viewports (same as eBay 2 pricing) */
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -382,7 +407,7 @@
                     <h6 class="mb-3">Summary
                         ({{ rtrim(rtrim(number_format((float) ($tiktokPercentage ?? 80), 2, '.', ''), '0'), '.') }}% Margin)
                     </h6>
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                         <span class="badge bg-primary fs-6 p-2 tt-badge-chart" data-metric="total_sales"
                             id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
                             title="View trend">Sales: $0</span>
@@ -399,20 +424,20 @@
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter 0 sold items">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge"
-                            style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;"
+                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
                             title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                         <span class="badge bg-secondary fs-6 p-2 tt-badge-chart" data-metric="avg_roi"
                             id="roi-percent-badge" style="color: black; font-weight: bold; cursor: pointer;"
                             title="View trend">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter missing SKUs">Missing: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter mapped SKUs">Map: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="inv-tt-stock-badge"
-                            style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Click to filter INV > TT Stock">INV > TT Stock: 0</span>
+                            title="Click to filter: Missing L (not listed on TikTok)">Missing L: 0</span>
+                        <span class="badge fs-6 p-2" id="map-count-badge"
+                            style="background-color: #198754; color: #fff; font-weight: bold; cursor: pointer;"
+                            title="Click to filter: |INV − TT Stock| ≤ 3 (listed, not Missing)">Map: 0</span>
+                        <span class="badge fs-6 p-2" id="inv-tt-stock-badge"
+                            style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;"
+                            title="Click to filter: |INV − TT Stock| &gt; 3 only (≤3 excluded from N Map)">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -557,6 +582,28 @@
             return Number.isFinite(rowMarginFactor) && rowMarginFactor > 0 ?
                 rowMarginFactor :
                 DEFAULT_TIKTOK_MARGIN_FACTOR;
+        }
+
+        /** Parsed abs(INV−TT Stock) from MAP; null if not legacy Diff| / N Map|. N Map badge uses only > 3. */
+        function ttAbsDiffFromMapValue(mapValue) {
+            if (mapValue == null || typeof mapValue !== 'string') return null;
+            const v = mapValue.trim();
+            let rest = '';
+            if (v.startsWith('N Map|')) {
+                rest = v.slice('N Map|'.length);
+            } else if (v.startsWith('Diff|')) {
+                rest = v.slice('Diff|'.length);
+            } else {
+                return null;
+            }
+            const n = parseFloat(String(rest).trim());
+            return Number.isFinite(n) ? Math.abs(n) : null;
+        }
+
+        function ttIsStrictNMapMapValue(mapValue, isMissing) {
+            if (isMissing) return false;
+            const d = ttAbsDiffFromMapValue(mapValue);
+            return d !== null && d > 3;
         }
 
         $(document).ready(function() {
@@ -857,11 +904,16 @@
                 clearSpriceForSelected();
             });
 
-            // 0 Sold badge click handler
+            // 0 Sold badge click handler (same mutual exclusivity as ebay2-tabulator-view)
             let zeroSoldFilterActive = false;
             $('#zero-sold-count-badge').on('click', function() {
                 zeroSoldFilterActive = !zeroSoldFilterActive;
                 moreSoldFilterActive = false;
+                missingFilterActive = false;
+                mapFilterActive = false;
+                invTTStockFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
             });
 
@@ -870,15 +922,26 @@
             $('#more-sold-count-badge').on('click', function() {
                 moreSoldFilterActive = !moreSoldFilterActive;
                 zeroSoldFilterActive = false;
+                missingFilterActive = false;
+                mapFilterActive = false;
+                invTTStockFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
             });
 
-            // Missing badge click handler
+            // Missing L badge click handler
             let missingFilterActive = false;
             $('#missing-count-badge').on('click', function() {
                 missingFilterActive = !missingFilterActive;
-                mapFilterActive = false;
-                invTTStockFilterActive = false;
+                if (missingFilterActive) {
+                    mapFilterActive = false;
+                    invTTStockFilterActive = false;
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
             });
 
@@ -886,17 +949,29 @@
             let mapFilterActive = false;
             $('#map-count-badge').on('click', function() {
                 mapFilterActive = !mapFilterActive;
-                missingFilterActive = false;
-                invTTStockFilterActive = false;
+                if (mapFilterActive) {
+                    missingFilterActive = false;
+                    invTTStockFilterActive = false;
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
             });
 
-            // INV > TT Stock badge click handler
+            // N Map badge — same scope as MAP column / ebay2 N Map badge
             let invTTStockFilterActive = false;
             $('#inv-tt-stock-badge').on('click', function() {
                 invTTStockFilterActive = !invTTStockFilterActive;
-                missingFilterActive = false;
-                mapFilterActive = false;
+                if (invTTStockFilterActive) {
+                    missingFilterActive = false;
+                    mapFilterActive = false;
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
                 applyFilters();
             });
 
@@ -910,6 +985,11 @@
                     $('#utilized-count-section .ads-section-badge[data-ads-filter="' + adsBadgeFilter +
                         '"]').addClass('border border-3 border-dark');
                 }
+                missingFilterActive = false;
+                mapFilterActive = false;
+                invTTStockFilterActive = false;
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
                 applyFilters();
                 if (typeof updateUtilizedCounts === 'function') updateUtilizedCounts();
             });
@@ -1379,7 +1459,7 @@
                         }
                     },
                     {
-                        title: "Missing",
+                        title: "Missing L",
                         field: "Missing",
                         hozAlign: "center",
                         width: 70,
@@ -1613,12 +1693,17 @@
                             if (!isParent && isMissing) return '';
                             if (value === 'Map') {
                                 return '<span style="color: #28a745; font-weight: bold;">Map</span>';
-                            } else if (value && value.startsWith('N Map|')) {
-                                const diff = value.split('|')[1];
-                                return `<span style="color: #dc3545; font-weight: bold;">N Map (${diff})</span>`;
-                            } else if (value && value.startsWith('Diff|')) {
-                                const diff = value.split('|')[1];
-                                return `<span style="color: #ffc107; font-weight: bold;">${diff}<br>(INV > TT Stock)</span>`;
+                            } else if (value && (value.startsWith('N Map|') || value.startsWith('Diff|'))) {
+                                const d = ttAbsDiffFromMapValue(value);
+                                if (d !== null && d <= 3) {
+                                    return '<span style="color: #28a745; font-weight: bold;">Map</span>';
+                                }
+                                if (value.startsWith('N Map|')) {
+                                    const signed = value.split('|')[1] || '';
+                                    return `<span style="color: #dc3545; font-weight: bold;">N Map (${signed})</span>`;
+                                }
+                                const diff = value.split('|')[1] || '';
+                                return `<span style="color: #dc3545; font-weight: bold;">N Map (+${diff})</span>`;
                             }
                             return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         }
@@ -2614,13 +2699,12 @@
                     });
                 }
 
-                // INV > TT Stock filter (parent rows always visible)
+                // N Map filter — legacy Diff|/N Map| rows with |diff| > 3 only (≤3 is Map)
                 if (invTTStockFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
                         const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
-                        const mapValue = data['MAP'];
-                        return mapValue && mapValue.startsWith('Diff|') && !isMissing;
+                        return ttIsStrictNMapMapValue(data['MAP'], isMissing);
                     });
                 }
 
@@ -2810,7 +2894,7 @@
                         mapCount++;
                     }
 
-                    if (mapValue && mapValue.startsWith('Diff|') && !isMissing) {
+                    if (ttIsStrictNMapMapValue(mapValue, isMissing)) {
                         invTTStockCount++;
                     }
                 });
@@ -2826,9 +2910,9 @@
                 $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
                 $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
                 $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
-                $('#missing-count-badge').text(`Missing: ${missingCount}`);
+                $('#missing-count-badge').text(`Missing L: ${missingCount}`);
                 $('#map-count-badge').text(`Map: ${mapCount}`);
-                $('#inv-tt-stock-badge').text(`INV > TT Stock: ${invTTStockCount}`);
+                $('#inv-tt-stock-badge').text('N Map: ' + invTTStockCount.toLocaleString());
             }
 
             // Update Ads/Utilized count section (from table data: campaign, NR, spend, etc.)

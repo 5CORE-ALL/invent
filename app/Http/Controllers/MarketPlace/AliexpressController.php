@@ -1121,14 +1121,16 @@ class AliexpressController extends Controller
                 $displaySku = $productMaster->sku ?? ($sale->sku_code ?? $normalizedSku);
                 $isMissing  = !$productMaster || $price <= 0;
 
-                // MAP: INV == AE Stock → "Map" | INV != AE Stock → "N Map|{diff}"
+                // MAP: |INV − AE stock| ≤ 3 → "Map", else "N Map|{abs diff}"
                 if ($isMissing) {
                     $mapValue = '';
-                } elseif ($inv === $aeStock) {
-                    $mapValue = 'Map';
                 } else {
-                    $diff     = abs($inv - $aeStock);
-                    $mapValue = "N Map|{$diff}";
+                    $diff = abs($inv - $aeStock);
+                    if ($diff <= 3) {
+                        $mapValue = 'Map';
+                    } else {
+                        $mapValue = "N Map|{$diff}";
+                    }
                 }
 
                 // Calculate SPRICE derived values (whole-number %, matches grid)
@@ -1304,7 +1306,7 @@ class AliexpressController extends Controller
             $roiSum      = 0; $roiCount    = 0;
             $dilSum      = 0; $dilCount    = 0;
             $totalCogs   = 0;
-            $missingCount= 0; $mapCount    = 0;
+            $missingCount= 0; $mapCount    = 0; $nmapCount = 0;
             $zeroSold    = 0; $moreSold    = 0;
 
             // Financial metrics — listed rows only (non-missing)
@@ -1334,8 +1336,19 @@ class AliexpressController extends Controller
                 $totalAl30 += $al30;
                 if ($al30 === 0.0) $zeroSold++; else $moreSold++;
                 if ($inv > 0) { $dilSum += ($ovL30 / $inv) * 100; $dilCount++; }
-                if (($r['missing'] ?? '') === 'M')  $missingCount++;
-                if (($r['map']     ?? '') === 'Map') $mapCount++;
+                if (($r['missing'] ?? '') === 'M') {
+                    $missingCount++;
+                }
+                $mv = (string) ($r['map'] ?? '');
+                if ($mv === 'Map') {
+                    $mapCount++;
+                } elseif (str_starts_with($mv, 'N Map|')) {
+                    $rest = substr($mv, strlen('N Map|'));
+                    $f = 0.0;
+                    if (sscanf($rest, '%f', $f) === 1 && abs($f) > 3) {
+                        $nmapCount++;
+                    }
+                }
             }
 
             $totalSkuCount = $allChildRows->count();
@@ -1351,6 +1364,7 @@ class AliexpressController extends Controller
                 'avg_dil'      => $dilCount  > 0 ? round($dilSum   / $dilCount,  2) : 0,
                 'missing_count'=> $missingCount,
                 'map_count'    => $mapCount,
+                'nmap_count'   => $nmapCount,
                 'zero_sold'    => $zeroSold,
                 'more_sold'    => $moreSold,
                 'calculated_at'=> now()->toDateTimeString(),
@@ -1377,7 +1391,7 @@ class AliexpressController extends Controller
 
             $validMetrics = [
                 'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
-                'total_al30', 'avg_dil', 'total_cogs', 'missing_count', 'map_count',
+                'total_al30', 'avg_dil', 'total_cogs', 'missing_count', 'map_count', 'nmap_count',
                 'total_sku', 'zero_sold', 'more_sold',
             ];
             if (!in_array($metric, $validMetrics, true)) {

@@ -325,6 +325,397 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Map / Miss / NMap for Best Buy USA — same rules as bestbuy-pricing (MISSING + N Map badges).
+     * Miss: REQ + INV>0 + BB Price=0
+     * Map / NMap: REQ + INV>0 + BB Price>0 + |INV − BB INV| ≤ 3 (map) or > 3 (NMap)
+     */
+    private function getBestbuyLiveMapMissNMapFromPricingData(Request $request): array
+    {
+        try {
+            $ctrl = app(\App\Http\Controllers\MarketPlace\BestBuyPricingController::class);
+            $response = $ctrl->getViewBestBuyData($request);
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('bestbuy');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $parent = trim((string) ($row['Parent'] ?? ''));
+                if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                $bbInv = (float) ($row['BB INV'] ?? 0);
+                $price = (float) ($row['BB Price'] ?? 0);
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $isReq = ($nrReq === 'REQ');
+
+                if ($isReq && $inv > 0 && $price == 0.0) {
+                    $miss++;
+                }
+
+                if ($isReq && $inv > 0 && $price > 0) {
+                    $diff = abs($inv - $bbInv);
+                    if ($diff <= 3) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('BestBuy live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('bestbuy');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for Reverb — same rules as reverb-pricing (Missing badge + MAP / N MP column, |INV − R Stock| ≤ 3).
+     * Miss: REQ + INV>0 + not listed on Reverb (Missing === 'M').
+     * Map / NMap: REQ + INV>0 + listed + |INV − R Stock| ≤ 3 (map) or > 3 (NMap). Total Views summed for those listed rows.
+     */
+    private function getReverbLiveMapMissNMapFromPricingData(Request $request): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\ReverbController::class)->getViewReverbTabularData($request);
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('reverb');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $parent = trim((string) ($row['Parent'] ?? ''));
+                if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $isReq = ($nrReq === 'REQ');
+                $isMissing = (($row['Missing'] ?? '') === 'M');
+
+                if ($isMissing && $isReq && $inv > 0) {
+                    $miss++;
+                }
+
+                if ($isReq && $inv > 0 && ! $isMissing) {
+                    $rStock = (float) ($row['R Stock'] ?? 0);
+                    $diff = abs($inv - $rStock);
+                    if ($diff <= 3) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                    $views += (int) ($row['Views'] ?? 0);
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Reverb live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('reverb');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for TikTok Shop — same rules as tiktok-pricing / Reverb (|INV − TT Stock| ≤ 3).
+     * Miss: listed row Missing === 'M' with INV > 0 (non-parent).
+     * Map / NMap: INV > 0, listed, |INV − TT Stock| ≤ 3 (map) or > 3 (NMap). Views = video + ads + affl on those rows.
+     */
+    private function getTiktokLiveMapMissNMapFromPricingData(Request $request): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\TikTokPricingController::class)->getViewTikTokTabularData($request, 'v1');
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('tiktok');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $parent = trim((string) ($row['Parent'] ?? ''));
+                if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                if ($inv <= 0) {
+                    continue;
+                }
+
+                $isMissing = strtoupper(trim((string) ($row['Missing'] ?? ''))) === 'M';
+                if ($isMissing) {
+                    $miss++;
+
+                    continue;
+                }
+
+                $ttStock = (float) ($row['TT Stock'] ?? 0);
+                $diff = abs($inv - $ttStock);
+                if ($diff <= 3) {
+                    $map++;
+                } else {
+                    $nmap++;
+                }
+
+                $views += (int) ($row['video_views'] ?? 0) + (int) ($row['ads_views'] ?? 0) + (int) ($row['affl_views'] ?? 0);
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('TikTok live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('tiktok');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for TikTok Shop 2 — same rules as TikTok 1 / tiktok-pricing v2 (|INV − TT Stock| ≤ 3).
+     */
+    private function getTiktok2LiveMapMissNMapFromPricingData(Request $request): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\TikTokPricingController::class)->getViewTikTokTabularData($request, 'v2');
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('tiktok2');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $parent = trim((string) ($row['Parent'] ?? ''));
+                if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                if ($inv <= 0) {
+                    continue;
+                }
+
+                $isMissing = strtoupper(trim((string) ($row['Missing'] ?? ''))) === 'M';
+                if ($isMissing) {
+                    $miss++;
+
+                    continue;
+                }
+
+                $ttStock = (float) ($row['TT Stock'] ?? 0);
+                $diff = abs($inv - $ttStock);
+                if ($diff <= 3) {
+                    $map++;
+                } else {
+                    $nmap++;
+                }
+
+                $views += (int) ($row['video_views'] ?? 0) + (int) ($row['ads_views'] ?? 0) + (int) ($row['affl_views'] ?? 0);
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('TikTok 2 live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('tiktok2');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for Purchasing Power — same rules as purchasing-power-pricing
+     * (REQ + INV>0 + PP Price>0; |INV − PP Stock| ≤ 3 → map, else NMap; miss: REQ + INV>0 + PP Price=0).
+     */
+    private function getPurchasingPowerLiveMapMissNMapFromPricingData(Request $request): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\PurchasingPowerController::class)->getViewData($request);
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('purchasingpower');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                if (strtoupper(trim((string) ($row['nr_req'] ?? 'REQ'))) === 'NR') {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                if ($inv <= 0) {
+                    continue;
+                }
+
+                $price = (float) ($row['PP Price'] ?? 0);
+                if ($price <= 0) {
+                    $miss++;
+
+                    continue;
+                }
+
+                $ppStock = (float) ($row['PP INV'] ?? 0);
+                $diff = abs($inv - $ppStock);
+                if ($diff <= 3) {
+                    $map++;
+                } else {
+                    $nmap++;
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => 0,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('purchasingpower');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for Faire — same rules as /faire-pricing (|INV − Faire stock| ≤ 3 → Map; miss = Missing L).
+     */
+    private function getFaireLiveMapMissNMapFromPricingData(Request $request): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\FaireController::class)->getFairePricingData($request);
+            $raw = json_decode($response->getContent(), true);
+            if (! is_array($raw) || isset($raw['error'])) {
+                return $this->getMapAndMissCounts('faire');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($raw as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+                if (! empty($row['is_parent'])) {
+                    continue;
+                }
+
+                $views += (int) ($row['ov_l30'] ?? 0);
+
+                if (strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M') {
+                    $miss++;
+
+                    continue;
+                }
+
+                $mapVal = (string) ($row['map'] ?? '');
+                if ($mapVal === 'Map') {
+                    $map++;
+                } elseif (str_starts_with($mapVal, 'N Map|')) {
+                    $nmap++;
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Faire live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('faire');
+        }
+    }
+
+    /**
      * eBay 1/2/3: sum of listing "eBay L30" units from the latest tabulator snapshot (amazon_channel_summary_data).
      * Same snapshot as Total Views (tabulator save), so CVR = L30 Orders / Total Views matches ebay-tabulator-view
      * (units ÷ views). Falls back to marketplace_daily_metrics when the key is absent (older snapshots).
@@ -4226,8 +4617,7 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'EbayTwo')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('ebay2');
+        $mapMissCounts = $this->getEbay2LiveMapMissCountsFromTabulator($request);
 
         $result[] = [
             'Channel '   => 'EbayTwo',
@@ -4609,6 +4999,82 @@ class ChannelMasterController extends Controller
         } catch (\Throwable $e) {
             Log::warning('eBay live map/miss fallback used: ' . $e->getMessage());
             return $this->getMapAndMissCounts('ebay');
+        }
+    }
+
+    /**
+     * Keep all-marketplace-master eBay 2 Map/Miss/NMap aligned with ebay2-tabulator-view.
+     * Same rules as eBay 1 tabulator: E Stock &gt; 0, nr_req = REQ; |INV − E Stock| ≤ 3 → map.
+     */
+    private function getEbay2LiveMapMissCountsFromTabulator(Request $request): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\EbayTwoController::class)->getViewEbayData($request);
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('ebay2');
+            }
+
+            $missing = 0;
+            $map = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $parent = trim((string) ($row['Parent'] ?? ''));
+                $isParentSummary = (($row['is_parent_summary'] ?? false) === true)
+                    || ($parent !== '' && stripos($parent, 'PARENT') === 0);
+                if ($isParentSummary) {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                $eStockRaw = $row['E Stock'] ?? ($row['eBay Stock'] ?? 0);
+                $eStock = is_numeric($eStockRaw) ? (float) $eStockRaw : 0.0;
+                $rawItemId = $row['eBay_item_id'] ?? null;
+                $hasItem = $this->ebayTabulatorRowHasListingItemId($rawItemId);
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $isReq = ($nrReq === 'REQ');
+
+                if ($eStock <= 0) {
+                    continue;
+                }
+                if (! $isReq) {
+                    continue;
+                }
+
+                $views += (float) ($row['views'] ?? 0);
+
+                if (! $hasItem) {
+                    $missing++;
+                } elseif ($inv > 0) {
+                    $diff = abs($inv - $eStock);
+                    if ($diff <= 3) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $missing,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('eBay 2 live map/miss fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('ebay2');
         }
     }
 
@@ -5021,7 +5487,7 @@ class ChannelMasterController extends Controller
         $nRoi = $gRoi;
 
         $channelData = ChannelMaster::where('channel', 'Reverb')->first();
-        $mapMissCounts = $this->getMapAndMissCounts('reverb');
+        $mapMissCounts = $this->getReverbLiveMapMissNMapFromPricingData($request);
 
         $result[] = [
             'Channel '   => 'Reverb',
@@ -5948,8 +6414,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'BestBuy USA')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('bestbuy');
+        // Live counts from bestbuy-pricing data (same as MISSING / N Map badges + Map column tolerance)
+        $mapMissCounts = $this->getBestbuyLiveMapMissNMapFromPricingData($request);
 
         $result[] = [
             'Channel '   => 'BestBuy USA',
@@ -6386,7 +6852,7 @@ class ChannelMasterController extends Controller
 
         if (! $metrics) {
             $channelData = ChannelMaster::where('channel', 'Faire')->first();
-            $mapMissCounts = $this->getMapAndMissCounts('faire');
+            $mapMissCounts = $this->getFaireLiveMapMissNMapFromPricingData($request);
             $result[] = [
                 'Channel '   => 'Faire',
                 'L-60 Sales' => 0,
@@ -6448,7 +6914,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = 0;
 
         $channelData = ChannelMaster::where('channel', 'Faire')->first();
-        $mapMissCounts = $this->getMapAndMissCounts('faire');
+        $mapMissCounts = $this->getFaireLiveMapMissNMapFromPricingData($request);
 
         $result[] = [
             'Channel '   => 'Faire',
@@ -6501,7 +6967,7 @@ class ChannelMasterController extends Controller
 
         if (! $metrics) {
             $channelData = ChannelMaster::where('channel', 'Purchasing Power')->first();
-            $mapMissCounts = $this->getMapAndMissCounts('purchasingpower');
+            $mapMissCounts = $this->getPurchasingPowerLiveMapMissNMapFromPricingData($request);
             $result[] = [
                 'Channel '   => 'Purchasing Power',
                 'L-60 Sales' => 0,
@@ -6563,7 +7029,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = 0;
 
         $channelData = ChannelMaster::where('channel', 'Purchasing Power')->first();
-        $mapMissCounts = $this->getMapAndMissCounts('purchasingpower');
+        $mapMissCounts = $this->getPurchasingPowerLiveMapMissNMapFromPricingData($request);
 
         $result[] = [
             'Channel '   => 'Purchasing Power',
@@ -7179,8 +7645,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Tiktok Shop')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('tiktok');
+        // Live Map / Miss / NMap from tiktok-pricing (same tolerance as Reverb)
+        $mapMissCounts = $this->getTiktokLiveMapMissNMapFromPricingData($request);
 
         // Total Ad Spend: fetch directly from tiktok_campaign_reports table
         $tiktokAdSpend = $this->fetchTotalAdSpendFromTables('tiktokshop');
@@ -7220,6 +7686,8 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
             'base'       => $channelData->base ?? 0,
             'sheet_link' => $channelData->sheet_link ?? '',
             'ra'         => $channelData->ra ?? 0,
@@ -7326,7 +7794,7 @@ class ChannelMasterController extends Controller
         }
 
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-        $mapMissCounts = $this->getMapAndMissCounts('tiktok2');
+        $mapMissCounts = $this->getTiktok2LiveMapMissNMapFromPricingData($request);
         $channelData = ChannelMaster::whereIn('channel', ['TikTok 2', 'Tiktok Shop 2'])->first();
 
         $result[] = [
@@ -7360,6 +7828,8 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
             'base'       => optional($channelData)->base ?? 0,
             'sheet_link' => optional($channelData)->sheet_link ?? '',
             'ra'         => optional($channelData)->ra ?? 0,

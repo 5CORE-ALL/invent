@@ -128,6 +128,11 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary"
+                        title="Channel overview — Best Buy Map / Miss / NMap use the same live rules as this page">
+                        <i class="fas fa-th-large"></i> All Marketplace Master
+                    </a>
+
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
@@ -163,7 +168,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">MISSING: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">MAPPING: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="N Map: INV vs BB INV mismatch &gt; 3 units (same tolerance as Temu/Macys/eBay)">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -231,6 +236,15 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "bestbuy_tabulator_column_visibility";
+    /** Same as Temu / Macys / eBay: |INV − BB INV| ≤ this counts as MAP, not a mapping issue. */
+    const BB_INV_MAP_TOLERANCE = 3;
+    function bestbuyInvMappingDiff(ourInv, bbInv) {
+        return Math.abs((parseFloat(ourInv) || 0) - (parseFloat(bbInv) || 0));
+    }
+    function isBestbuyInvMappingMismatch(ourInv, bbInv) {
+        return bestbuyInvMappingDiff(ourInv, bbInv) > BB_INV_MAP_TOLERANCE;
+    }
+
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -396,11 +410,11 @@
         let missingFilterActive = false;
         $('#missing-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            mappingFilterActive = false; // Deactivate mapping filter
+            mappingFilterActive = false; // Deactivate N Map filter
             applyFilters();
         });
 
-        // MAPPING badge click handler - filter only (no column hiding)
+        // N Map badge click handler - filter only (no column hiding)
         let mappingFilterActive = false;
         $('#mapping-badge').on('click', function() {
             mappingFilterActive = !mappingFilterActive;
@@ -972,14 +986,11 @@
                             return '';
                         }
                         
-                        if (ourInv === bbInv) {
-                            // Stocks match exactly - show green MAP
+                        const diff = bestbuyInvMappingDiff(ourInv, bbInv);
+                        if (diff <= BB_INV_MAP_TOLERANCE) {
                             return '<span style="color: #28a745; font-weight: 600; background-color: #d4edda; padding: 2px 6px; border-radius: 3px;">MAP</span>';
-                        } else {
-                            // Stocks don't match - show red N MP with qty difference
-                            const diff = Math.abs(bbInv - ourInv);
-                            return `<span style="color: #a00211; font-weight: 600; background-color: #f8d7da; padding: 2px 6px; border-radius: 3px;">N MP (${diff})</span>`;
                         }
+                        return `<span style="color: #a00211; font-weight: 600; background-color: #f8d7da; padding: 2px 6px; border-radius: 3px;">N MP (${diff})</span>`;
                     },
                     width: 90
                 },
@@ -1411,7 +1422,7 @@
                 });
             }
 
-            // MAPPING filter - show rows with inventory mismatch (excluding NR items, INV = 0, and Missing items)
+            // N Map filter — rows with |INV - BB INV| > tolerance (excluding NR, INV = 0, missing price)
             if (mappingFilterActive) {
                 table.addFilter(function(data) {
                     const ourInv = parseFloat(data['INV']) || 0;
@@ -1419,8 +1430,8 @@
                     const price = parseFloat(data['BB Price']) || 0;
                     const nrReq = data['nr_req'] || 'REQ';
                     const isMissing = (price === 0);
-                    // Only show REQ items with INV > 0, NOT Missing, and mapping issues (any difference)
-                    return nrReq === 'REQ' && ourInv > 0 && !isMissing && ourInv !== bbInv;
+                    // REQ, INV > 0, priced: mapping issue only if |INV - BB INV| > tolerance (same as other channels)
+                    return nrReq === 'REQ' && ourInv > 0 && !isMissing && isBestbuyInvMappingMismatch(ourInv, bbInv);
                 });
             }
 
@@ -1487,11 +1498,10 @@
                     roiCount++;
                 }
 
-                // Count mapping issues (any inventory mismatch, only for REQ items with INV > 0 and NOT Missing)
+                // Count mapping issues (|INV - BB INV| > tolerance), REQ + priced only — same rule as Temu/Macys/eBay
                 if (nrReq === 'REQ' && inv > 0 && !isMissing) {
-                    const ourInv = inv;
                     const bbInv = parseFloat(row['BB INV']) || 0;
-                    if (ourInv !== bbInv) {
+                    if (isBestbuyInvMappingMismatch(inv, bbInv)) {
                         mappingCount++;
                     }
                 }
@@ -1513,7 +1523,7 @@
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
             $('#missing-badge').text(`MISSING: ${missingCount}`);
-            $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
+            $('#mapping-badge').text('N Map: ' + mappingCount.toLocaleString());
         }
 
         // Build Column Visibility Dropdown

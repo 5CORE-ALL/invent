@@ -65,6 +65,31 @@
             opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
+
+        /* Summary badges — horizontal scroll on narrow viewports (same as Faire / AliExpress pricing) */
+        #wf-summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        #wf-summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -210,16 +235,17 @@
                     </div>
 
                     <div id="wf-summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                        <div class="d-flex flex-wrap gap-2">
+                        <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                             <span class="badge bg-primary fs-6 p-2" id="wf-total-sales-badge" style="font-weight:700;">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="wf-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
                             <span class="badge bg-success fs-6 p-2 d-none" id="wf-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;">Missing L: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-map-badge" style="font-weight:700;background:#0d6efd;color:#fff;">N Map: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;">&gt;0 Sold: 0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L (no product master or list price ≤ 0)">Missing L: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: |INV − Wayfair stock| ≤ 3">Map: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-nmap-count-badge" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter: N Map (|INV − Wayfair stock| &gt; 3)">N Map: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;cursor:pointer;" title="Click to filter: sold &gt; 0">&gt;0 Sold: 0</span>
                         </div>
                     </div>
 
@@ -267,6 +293,7 @@
         let table = null;
         let summaryDataCache = [];
         let wfMissingActive = false;
+        let wfMapActive = false;
         let wfNMapActive = false;
         let wfZeroSoldActive = false;
         let wfMoreSoldActive = false;
@@ -629,6 +656,14 @@
             $('#wf-discount-input').val('');
         }
 
+        /** Wayfair map "N Map|{abs diff}" — N Map count/filter only when |diff| &gt; 3 (≤3 is Map). */
+        function wfWfStrictNMapFromMap(mapVal) {
+            if (!mapVal || typeof mapVal !== 'string' || !mapVal.startsWith('N Map|')) return false;
+            const part = mapVal.split('|')[1];
+            const d = parseFloat(String(part == null ? '' : part).trim(), 10);
+            return Number.isFinite(d) && Math.abs(d) > 3;
+        }
+
         function wfClearSpriceForSelected() {
             if (wfUniformPriceModeActive) {
                 const limitToSelection = wfSelectedSkus.size > 0;
@@ -670,7 +705,7 @@
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
             let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0;
-            let missingCount = 0, mapCount = 0;
+            let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
 
             rows.forEach(row => {
@@ -696,7 +731,11 @@
 
                 if (fqty === 0) zeroSold++; else moreSold++;
                 if (isMissing) missingCount++;
-                if ((row.map || '').startsWith('N Map|')) mapCount++;
+                else {
+                    const mapVal = (row.map || '').trim();
+                    if (mapVal === 'Map') mapCount++;
+                    else if (wfWfStrictNMapFromMap(mapVal)) nmapCount++;
+                }
             });
 
             const pftPct = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
@@ -708,7 +747,8 @@
             $('#wf-avg-gpft-badge').text('PFt: ' + Math.round(pftPct) + '%');
             $('#wf-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
             $('#wf-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
-            $('#wf-map-badge').text('N Map: ' + mapCount.toLocaleString());
+            $('#wf-map-count-badge').text('Map: ' + mapCount.toLocaleString());
+            $('#wf-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#wf-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
         }
@@ -804,7 +844,7 @@
             if (mapFilter === 'map') {
                 table.addFilter(d => (d.map || '') === 'Map');
             } else if (mapFilter === 'nmap') {
-                table.addFilter(d => (d.map || '').startsWith('N Map|'));
+                table.addFilter(d => wfWfStrictNMapFromMap(d.map || ''));
             }
             if (dilColor !== 'all') {
                 table.addFilter(function(d) {
@@ -819,7 +859,8 @@
                 });
             }
             if (wfMissingActive) table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
-            if (wfNMapActive) table.addFilter(d => (d.map || '').startsWith('N Map|'));
+            if (wfMapActive) table.addFilter(d => (d.map || '') === 'Map');
+            if (wfNMapActive) table.addFilter(d => wfWfStrictNMapFromMap(d.map || ''));
             if (wfZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (wfMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
         }
@@ -1078,12 +1119,16 @@
                         }
                     },
                     {
-                        title: 'Map', field: 'map', hozAlign: 'center', width: 90,
+                        title: 'Map',
+                        field: 'map',
+                        hozAlign: 'center',
+                        width: 90,
+                        headerTooltip: 'Map when |INV − Wayfair stock| ≤ 3; N Map when > 3 (same tolerance as TikTok / Reverb pricing).',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
                             const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#0d6efd;font-weight:bold;">Map</span>';
+                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
                             if (val.startsWith('N Map|')) {
                                 const diff = val.split('|')[1];
                                 return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
@@ -1420,25 +1465,31 @@
 
             $('#wf-missing-badge').on('click', function() {
                 wfMissingActive = !wfMissingActive;
-                wfNMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                wfMapActive = wfNMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });
-            $('#wf-map-badge').on('click', function() {
+            $('#wf-map-count-badge').on('click', function() {
+                wfMapActive = !wfMapActive;
+                wfMissingActive = wfNMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                wfClearSkuSelections();
+                applyFilters();
+            });
+            $('#wf-nmap-count-badge').on('click', function() {
                 wfNMapActive = !wfNMapActive;
-                wfMissingActive = wfZeroSoldActive = wfMoreSoldActive = false;
+                wfMissingActive = wfMapActive = wfZeroSoldActive = wfMoreSoldActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-zero-sold-badge').on('click', function() {
                 wfZeroSoldActive = !wfZeroSoldActive;
-                wfMoreSoldActive = wfMissingActive = wfNMapActive = false;
+                wfMoreSoldActive = wfMissingActive = wfMapActive = wfNMapActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-more-sold-badge').on('click', function() {
                 wfMoreSoldActive = !wfMoreSoldActive;
-                wfZeroSoldActive = wfMissingActive = wfNMapActive = false;
+                wfZeroSoldActive = wfMissingActive = wfMapActive = wfNMapActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });

@@ -89,6 +89,31 @@
         .ae-sc.yellow { background:#ffc107; }
         .ae-sc.green  { background:#28a745; }
         .ae-sc.pink   { background:#e83e8c; }
+
+        /* Summary badges — horizontal scroll on narrow viewports (Shein / eBay 2 style) */
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -241,15 +266,16 @@
 
                     {{-- ── Summary badges ── --}}
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                        <div class="d-flex flex-wrap gap-2">
+                        <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                             <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Sales: $0</span>
                             <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">AL30: 0</span>
                             <span class="badge bg-success  fs-6 p-2 ae-badge-chart" id="ae-total-profit-badge" data-metric="total_pft"  style="font-weight:700;cursor:pointer;">Profit: $0</span>
                             <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">GPFT: 0%</span>
                             <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing L: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#0d6efd;color:#fff;" title="Click for trend / filter">Map: 0</span>
+                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click for trend / filter">Map: 0</span>
+                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-nmap-badge"       data-metric="nmap_count"    style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click for trend / filter">N Map: 0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-zero-sold-badge"   data-metric="zero_sold"     style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click for trend / filter">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-more-sold-badge"   data-metric="more_sold"     style="font-weight:700;cursor:pointer;background:#28a745;color:#fff;" title="Click for trend / filter">&gt;0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-more-sold-badge"   data-metric="more_sold"     style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click for trend / filter">&gt;0 Sold: 0</span>
                             <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#111;cursor:pointer;">ROI: 0%</span>
                         </div>
                     </div>
@@ -419,6 +445,7 @@
         // Badge-click filter flags (identical to TikTok pattern)
         let aeMissingActive  = false;
         let aeMapActive      = false;
+        let aeNMapActive     = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
 
@@ -536,6 +563,14 @@
             return `$${(parseFloat(value) || 0).toFixed(2)}`;
         }
 
+        /** AE map "N Map|{abs diff}" — N Map filter only when diff > 3 (≤3 is Map). */
+        function aeAliStrictNMapFromMap(mapVal) {
+            if (!mapVal || typeof mapVal !== 'string' || !mapVal.startsWith('N Map|')) return false;
+            const part = mapVal.split('|')[1];
+            const d = parseFloat(String(part == null ? '' : part).trim(), 10);
+            return Number.isFinite(d) && Math.abs(d) > 3;
+        }
+
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
         function applyFilters() {
             if (!table) return;
@@ -632,7 +667,7 @@
             if (mapFilter === 'map') {
                 table.addFilter(d => (d.map || '') === 'Map');
             } else if (mapFilter === 'nmap') {
-                table.addFilter(d => (d.map || '').startsWith('N Map|'));
+                table.addFilter(d => aeAliStrictNMapFromMap(d.map || ''));
             }
 
             // DIL% filter (identical to TikTok)
@@ -652,6 +687,7 @@
             // Badge-click filters
             if (aeMissingActive)  table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
             if (aeMapActive)      table.addFilter(d => (d.map     || '') === 'Map');
+            if (aeNMapActive)     table.addFilter(d => aeAliStrictNMapFromMap(d.map || ''));
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
         }
@@ -688,7 +724,7 @@
             let totalSales = 0, totalAl30 = 0, totalProfit = 0;
             let gpftSum = 0, gpftCount = 0;
             let roiSum  = 0, roiCount  = 0;
-            let missingCount = 0, mapCount = 0;
+            let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
 
             rows.forEach(row => {
@@ -696,6 +732,7 @@
                 const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
                 const al30   = parseFloat(row.al30)   || 0;
                 const profit = parseFloat(row.profit) || 0;
+                const mapVal = (row.map || '').trim();
 
                 if (!isMissing) {
                     totalProfit += al30 * profit;
@@ -711,7 +748,8 @@
                 totalAl30 += al30;
                 if (al30 === 0) zeroSold++; else moreSold++;
                 if (isMissing) missingCount++;
-                if ((row.map || '') === 'Map') mapCount++;
+                if (!isMissing && mapVal === 'Map') mapCount++;
+                else if (aeAliStrictNMapFromMap(mapVal)) nmapCount++;
             });
 
             const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
@@ -723,6 +761,7 @@
             $('#ae-avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
             $('#ae-missing-badge').text(`Missing L: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
+            $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`>0 Sold: ${moreSold.toLocaleString()}`);
             if ($('#ae-avg-roi-badge').length) {
@@ -941,10 +980,14 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
                             const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#0d6efd;font-weight:bold;">Map</span>';
+                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
                             if (val.startsWith('N Map|')) {
-                                const diff = val.split('|')[1];
-                                return `<span style="color:#dc3545;font-weight:bold;">N Map (${diff})</span>`;
+                                const part = val.split('|')[1];
+                                const ad = Math.abs(parseFloat(String(part || '').trim(), 10) || 0);
+                                if (Number.isFinite(ad) && ad <= 3) {
+                                    return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                                }
+                                return `<span style="color:#dc3545;font-weight:bold;">N Map (${part})</span>`;
                             }
                             return '';
                         }
@@ -1193,22 +1236,27 @@
             // Badge click filters (identical to TikTok)
             $('#ae-missing-badge').on('click', function() {
                 aeMissingActive = !aeMissingActive;
-                aeMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+                aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
             $('#ae-map-badge').on('click', function() {
                 aeMapActive = !aeMapActive;
-                aeMissingActive = aeZeroSoldActive = aeMoreSoldActive = false;
+                aeMissingActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+                applyFilters();
+            });
+            $('#ae-nmap-badge').on('click', function() {
+                aeNMapActive = !aeNMapActive;
+                aeMissingActive = aeMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
                 applyFilters();
             });
             $('#ae-zero-sold-badge').on('click', function() {
                 aeZeroSoldActive = !aeZeroSoldActive;
-                aeMoreSoldActive = aeMissingActive = aeMapActive = false;
+                aeMoreSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
                 applyFilters();
             });
             $('#ae-more-sold-badge').on('click', function() {
                 aeMoreSoldActive = !aeMoreSoldActive;
-                aeZeroSoldActive = aeMissingActive = aeMapActive = false;
+                aeZeroSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
                 applyFilters();
             });
 
@@ -1376,14 +1424,14 @@
             let aeBadgeAjax      = null;
 
             const aeDollarMetrics  = ['total_pft','total_sales','total_cogs'];
-            const aeCountMetrics   = ['total_sku','total_al30','missing_count','map_count','zero_sold','more_sold'];
+            const aeCountMetrics   = ['total_sku','total_al30','missing_count','map_count','nmap_count','zero_sold','more_sold'];
             const aePercentMetrics = ['avg_gpft','avg_roi'];
 
             const aeBadgeLabels = {
                 total_pft: 'Profit',   total_sales: 'Sales',   total_al30: 'AL30',
                 avg_gpft: 'GPFT%',            avg_roi: 'ROI%',
                 total_cogs: 'COGS',           missing_count: 'Missing L',     map_count: 'Map',
-                total_sku: 'Total SKU',       zero_sold: '0 Sold',          more_sold: '>0 Sold',
+                nmap_count: 'N Map',         total_sku: 'Total SKU',       zero_sold: '0 Sold',          more_sold: '>0 Sold',
             };
 
             function aeFormatChartVal(v) {
