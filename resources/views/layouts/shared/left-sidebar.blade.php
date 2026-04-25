@@ -1795,6 +1795,9 @@
                             <a href="{{ route('google.shopping.report') }}">G-Shopping Report</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.ads.campaigns.raw') }}">G-Shopping DB (raw)</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.serp.list') }}">Google SERP</a>
                         </li>
                         <li>
