@@ -41,6 +41,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWayfairController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
+use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThreeController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Models\AliExpressSheetData;
 use App\Models\AliexpressDailyData;
@@ -183,6 +184,144 @@ class ChannelMasterController extends Controller
             'nmap' => $nmapCount,
             'total_views' => $totalViews,
         ];
+    }
+
+    /**
+     * Map / Miss (Missing L) / NMap for Temu & Temu 2 — same rules as temu_decrease / temu2_decrease badges
+     * (TemuController JSON: missing, inv×price, nr_req=NR, |INV−temu_stock|≤3 tolerance).
+     */
+    private function getTemuLiveMapMissNMapFromDecreaseData(bool $isTemu2 = false): array
+    {
+        try {
+            $req = Request::create($isTemu2 ? '/temu2-decrease-data' : '/temu-decrease-data', 'GET');
+            $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+            $response = $isTemu2
+                ? $temuCtrl->getTemu2DecreaseData($req)
+                : $temuCtrl->getTemuDecreaseData($req);
+            $responseData = json_decode($response->getContent(), true);
+            if (! is_array($responseData)) {
+                $ch = $isTemu2 ? 'temu2' : 'temu';
+
+                return $this->getMapAndMissCounts($ch);
+            }
+            $data = $responseData['data'] ?? [];
+            if (! is_array($data)) {
+                $ch = $isTemu2 ? 'temu2' : 'temu';
+
+                return $this->getMapAndMissCounts($ch);
+            }
+
+            $missingC = 0;
+            $mapC = 0;
+            $nmapC = 0;
+            $totalViews = 0;
+
+            foreach ($data as $row) {
+                if (empty($row['sku'] ?? null)) {
+                    continue;
+                }
+                $inventory = (float) ($row['inventory'] ?? 0);
+                $temuStock = (float) ($row['temu_stock'] ?? 0);
+                $missing = (string) ($row['missing'] ?? '');
+                $goodsId = trim((string) ($row['goods_id'] ?? ''));
+                $totalViews += (int) ($row['product_clicks'] ?? 0);
+
+                if ($missing === 'M' && $inventory > 0) {
+                    $missingC++;
+                }
+
+                $invTemuDiff = abs($inventory - $temuStock);
+                if ($missing !== 'M' && $goodsId !== '') {
+                    if ($inventory > 0 && $temuStock > 0) {
+                        if ($invTemuDiff <= 3) {
+                            $mapC++;
+                        } else {
+                            $nmapC++;
+                        }
+                    } elseif ($inventory > 0 && $temuStock == 0.0) {
+                        if ($invTemuDiff > 3) {
+                            $nmapC++;
+                        } else {
+                            $mapC++;
+                        }
+                    }
+                }
+            }
+
+            return [
+                'map' => $mapC,
+                'miss' => $missingC,
+                'nmap' => $nmapC,
+                'total_views' => $totalViews,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Temu live map/miss/nmap fallback: '.$e->getMessage());
+            $ch = $isTemu2 ? 'temu2' : 'temu';
+
+            return $this->getMapAndMissCounts($ch);
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for Macys — same rules as macys-pricing badges.
+     * Missing L: REQ + INV>0 + MC Price=0
+     * Missing M: REQ + INV>0 + MC Price>0 + |INV-MC INV|>3
+     */
+    private function getMacysLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $req = Request::create('/macys-pricing-data', 'GET');
+            $macyCtrl = app(\App\Http\Controllers\MarketPlace\MacyController::class);
+            $response = $macyCtrl->getViewMacysTabulatorData($req);
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (!is_array($rows)) {
+                return $this->getMapAndMissCounts('macys');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $views = 0; // Macys pricing table doesn't expose views like Temu/eBay.
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                $mcInv = (float) ($row['MC INV'] ?? 0);
+                $price = (float) ($row['MC Price'] ?? 0);
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $isReq = ($nrReq === 'REQ');
+
+                if ($isReq && $inv > 0 && $price == 0.0) {
+                    $miss++;
+                }
+
+                if ($isReq && $inv > 0 && $price > 0) {
+                    $diff = abs($inv - $mcInv);
+                    if ($diff <= 3) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Macys live map/miss/nmap fallback: ' . $e->getMessage());
+            return $this->getMapAndMissCounts('macys');
+        }
     }
 
     /**
@@ -3937,8 +4076,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'eBay')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('ebay');
+        // Map/Miss/NMap from live eBay tabulator rules (includes <=3 tolerance for Map/NMap)
+        $mapMissCounts = $this->getEbayLiveMapMissCountsFromTabulator($request);
 
         $result[] = [
             'Channel '   => 'eBay',
@@ -4257,8 +4396,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'EbayThree')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('ebay3');
+        // eBay3 Map/Miss/NMap: compute from same tree payload as ebay3 tabulator view.
+        $mapMissCounts = $this->getEbay3LiveMapMissCountsFromTabulator($request);
 
         $result[] = [
             'Channel '   => 'EbayThree',
@@ -4300,6 +4439,186 @@ class ChannelMasterController extends Controller
             'message' => 'eBay three channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Keep all-marketplace-master eBay3 Map/Miss/NMap aligned with ebay3 tabulator rules.
+     */
+    private function getEbay3LiveMapMissCountsFromTabulator(Request $request): array
+    {
+        try {
+            $response = app(MarketPlaceEbayThreeController::class)->getViewEbay3DataTabulator($request);
+            $payload = json_decode($response->getContent(), true);
+            $tree = $payload['data'] ?? [];
+            if (!is_array($tree)) {
+                return $this->getMapAndMissCounts('ebay3');
+            }
+
+            $rows = [];
+            $walk = function ($node) use (&$rows, &$walk) {
+                if (!is_array($node)) return;
+                $sku = strtoupper(trim((string)($node['(Child) sku'] ?? '')));
+                if ($sku !== '' && stripos($sku, 'PARENT') === false) {
+                    $rows[] = $node;
+                }
+                if (!empty($node['_children']) && is_array($node['_children'])) {
+                    foreach ($node['_children'] as $child) {
+                        $walk($child);
+                    }
+                }
+            };
+            foreach ($tree as $root) {
+                $walk($root);
+            }
+
+            $missing = 0;
+            $map = 0;
+            $nmap = 0;
+            $views = 0;
+            $eps = 1e-9;
+
+            foreach ($rows as $row) {
+                $itemId = $row['eBay_item_id'] ?? null;
+                $hasItem = !($itemId === null || trim((string)$itemId) === '');
+                $nrReq = strtoupper(trim((string)($row['nr_req'] ?? 'REQ')));
+                $isNr = $nrReq === 'NR';
+                if (!$isNr && !$hasItem) {
+                    $missing++;
+                }
+
+                $views += (float)($row['views'] ?? 0);
+
+                $inv = $this->parseEbay3InvForMapMiss((string)($row['INV'] ?? '0'));
+                $eStock = (float)($row['eBay Stock'] ?? ($row['E Stock'] ?? 0));
+                if ($nrReq !== 'REQ' || $inv <= 0 || $eStock <= 0) {
+                    continue;
+                }
+
+                $isMap = abs($inv - $eStock) <= 3.0 + $eps;
+                if ($isMap) {
+                    $map++;
+                } elseif ($hasItem) {
+                    // Missing listing rows should not inflate NMap.
+                    $nmap++;
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $missing,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('eBay3 live map/miss fallback used: ' . $e->getMessage());
+            return $this->getMapAndMissCounts('ebay3');
+        }
+    }
+
+    /**
+     * Match ebay_tabulator_view.js missing/N Map checks for eBay_item_id: !itemId is true for 0
+     * (number) but the string "0" is still truthy, like Tabulator/JS.
+     */
+    private function ebayTabulatorRowHasListingItemId($raw): bool
+    {
+        if ($raw === null) {
+            return false;
+        }
+        if (is_int($raw) || is_float($raw)) {
+            return abs((float) $raw) >= 1e-9;
+        }
+        if (is_string($raw)) {
+            return trim($raw) !== '';
+        }
+        if (is_bool($raw)) {
+            return $raw;
+        }
+
+        return trim((string) $raw) !== '';
+    }
+
+    /**
+     * Keep all-marketplace-master eBay Map/Miss/NMap aligned with ebay tabulator default view.
+     * Same scope: child rows, E Stock &gt; 0, nr_req = REQ, parent summaries skipped.
+     * Missing: no listing item_id (per JS truthy rules) with E Stock &gt; 0.
+     * Map / NMap: has item, INV &gt; 0, and |INV − eBay Stock| &le; 3 (map) or &gt; 3 (NMap).
+     */
+    private function getEbayLiveMapMissCountsFromTabulator(Request $request): array
+    {
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\EbayController::class)->getViewEbayData($request);
+            $payload = json_decode($response->getContent(), true);
+            $rows = $payload['data'] ?? [];
+            if (!is_array($rows)) {
+                return $this->getMapAndMissCounts('ebay');
+            }
+
+            $missing = 0;
+            $map = 0;
+            $nmap = 0;
+            $views = 0;
+
+            foreach ($rows as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $parent = trim((string) ($row['Parent'] ?? ''));
+                $isParentSummary = (($row['is_parent_summary'] ?? false) === true)
+                    || ($parent !== '' && stripos($parent, 'PARENT') === 0);
+                if ($isParentSummary) {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                $eStockRaw = $row['eBay Stock'] ?? ($row['E Stock'] ?? 0);
+                $eStock = is_numeric($eStockRaw) ? (float) $eStockRaw : 0.0;
+                $rawItemId = $row['eBay_item_id'] ?? null;
+                $hasItem = $this->ebayTabulatorRowHasListingItemId($rawItemId);
+                $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+                $isReq = ($nrReq === 'REQ');
+
+                // Match default eBay tabulator view: "E Stock > 0" (listing qty) and REQ.
+                if ($eStock <= 0) {
+                    continue;
+                }
+                if (! $isReq) {
+                    continue;
+                }
+
+                $views += (float) ($row['views'] ?? 0);
+
+                if (! $hasItem) {
+                    $missing++;
+                } elseif ($inv > 0) {
+                    $diff = abs($inv - $eStock);
+                    if ($diff <= 3) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $missing,
+                'nmap' => $nmap,
+                'total_views' => $views,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('eBay live map/miss fallback used: ' . $e->getMessage());
+            return $this->getMapAndMissCounts('ebay');
+        }
+    }
+
+    private function parseEbay3InvForMapMiss(string $raw): float
+    {
+        $v = trim(str_replace(',', '', $raw));
+        if ($v === '' || $v === '-' || strtoupper($v) === 'N/A') {
+            return 0.0;
+        }
+        return is_numeric($v) ? (float)$v : 0.0;
     }
 
     /**
@@ -4381,8 +4700,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Macys')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('macys');
+        // Map / Miss / NMap: same live rules as macys-pricing badges (with <=3 tolerance for map)
+        $mapMissCounts = $this->getMacysLiveMapMissNMapFromPricingData();
 
         $result[] = [
             'Channel '   => 'Macys',
@@ -4913,7 +5232,7 @@ class ChannelMasterController extends Controller
         // When no metrics yet (cron not run or no Temu daily data), return defaults so the page doesn't break
         if (!$metrics) {
             $channelData = ChannelMaster::where('channel', 'Temu')->first();
-            $mapMissCounts = $this->getMapAndMissCounts('temu');
+            $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(false);
             $result[] = [
                 'Channel '   => 'Temu',
                 'L-60 Sales' => 0,
@@ -4991,8 +5310,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('temu');
+        // Map / Miss / NMap: same live rules as /temu-decrease (not amazon_channel_summary snapshot)
+        $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(false);
 
         $result[] = [
             'Channel '   => 'Temu',
@@ -5047,7 +5366,7 @@ class ChannelMasterController extends Controller
 
         if (!$metrics) {
             $channelData = ChannelMaster::where('channel', 'Temu 2')->first();
-            $mapMissCounts = $this->getMapAndMissCounts('temu2');
+            $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(true);
             $result[] = [
                 'Channel '   => 'Temu 2',
                 'L-60 Sales' => 0,
@@ -5109,7 +5428,7 @@ class ChannelMasterController extends Controller
         $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
 
         $channelData = ChannelMaster::where('channel', 'Temu 2')->first();
-        $mapMissCounts = $this->getMapAndMissCounts('temu2');
+        $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(true);
 
         $result[] = [
             'Channel '   => 'Temu 2',

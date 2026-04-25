@@ -2432,16 +2432,21 @@
                 
                 // Count MAP status - ONLY for items that exist in Temu (not missing)
                 // Skip missing items - same logic as eBay (only count if exists in marketplace)
+                // Tolerance: |INV − Temu Stock| <= 3 counts as mapped (not Missing M)
+                const invTemuDiff = Math.abs(inventory - temuStock);
                 if (missing !== 'M' && goodsId && goodsId !== '') {
-                    
                     if (inventory > 0 && temuStock > 0) {
-                        if (inventory === temuStock) {
-                            mappedCount++; // MP (Mapped)
+                        if (inventory === temuStock || invTemuDiff <= 3) {
+                            mappedCount++; // MP (Mapped) or within tolerance
                         } else {
                             notMappedCount++; // N MP (Not Mapped - mismatch)
                         }
                     } else if (inventory > 0 && temuStock === 0) {
-                        notMappedCount++; // N MP (Not Mapped - no Temu stock)
+                        if (invTemuDiff > 3) {
+                            notMappedCount++; // N MP (Not Mapped - no Temu stock)
+                        } else {
+                            mappedCount++;
+                        }
                     }
                 }
                 
@@ -2740,7 +2745,7 @@
                     field: "temu_stock",
                     hozAlign: "center",
                     sorter: "number",
-                    visible: false
+                    visible: true
                 },
                 {
                     title: "OVL30",
@@ -2862,7 +2867,7 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu_pricing table">M</span>';
+                            return '<span style="color: #dc3545; font-weight: bold;" title="Missing listing: not in temu_pricing, or in pricing with stock but no base price">M</span>';
                         }
                         return '';
                     }
@@ -2917,16 +2922,19 @@
                         const temuStock = parseFloat(rowData['temu_stock']) || 0;
                         const inv = parseFloat(rowData['inventory']) || 0;
                         
-                        // Show "N MP" with INV if Temu Stock is 0 but INV exists
+                        // Show "N MP" with INV if Temu Stock is 0 but INV exists (and diff > 3)
                         if (inv > 0 && temuStock === 0) {
+                            if (inv <= 3) {
+                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (≤3)">MP</span>';
+                            }
                             return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
                         }
                         
                         // Only show if both INV and Temu Stock exist
                         if (inv > 0 && temuStock > 0) {
-                            if (inv === temuStock) {
-                                // Perfect match - Green "MP" (Mapped)
-                                return '<span style="color: #28a745; font-weight: bold;">MP</span>';
+                            if (inv === temuStock || Math.abs(inv - temuStock) <= 3) {
+                                // Perfect match or within tolerance — Green "MP"
+                                return '<span style="color: #28a745; font-weight: bold;" title="Within ≤3: counts as MP">MP</span>';
                             } else {
                                 // Mismatch - Red "N MP" with difference
                                 const diff = inv - temuStock;
@@ -3316,7 +3324,7 @@
                         const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const percentage = 0.96; // Temu marketplace percentage (margin 96)
+                        const percentage = 0.95; // Temu marketplace percentage (hardcoded 95)
                         
                         if (sprice === 0) return '';
                         
@@ -3345,7 +3353,7 @@
                         const adsPercentRow = parseFloat(rowData['ads_percent']) || 0;
                         const spend = parseFloat(rowData['spend']) || 0;
                         const temuL30 = parseFloat(rowData['temu_l30']) || 0;
-                        const percentage = 0.96;
+                        const percentage = 0.95;
                         
                         if (sprice === 0) return '';
                         
@@ -4210,7 +4218,7 @@
                 });
             }
 
-            // Map badge filter (only INV > 0)
+            // Map badge filter (only INV > 0) — include |INV−Temu Stock| <= 3 as mapped
             if (mapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
@@ -4219,11 +4227,13 @@
                     if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
                     
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    return inv > 0 && temuStock > 0 && inv === temuStock;
+                    if (temuStock < 0) return false;
+                    const d = Math.abs(inv - temuStock);
+                    return d <= 3;
                 });
             }
 
-            // Not Map badge filter (only INV > 0)
+            // Not Map badge filter (only INV > 0) — exclude |diff| <= 3
             if (notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
@@ -4232,6 +4242,8 @@
                     if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
                     
                     const temuStock = parseFloat(data['temu_stock']) || 0;
+                    const d = Math.abs(inv - temuStock);
+                    if (d <= 3) return false;
                     return inv > 0 && (temuStock === 0 || (temuStock > 0 && inv !== temuStock));
                 });
             }

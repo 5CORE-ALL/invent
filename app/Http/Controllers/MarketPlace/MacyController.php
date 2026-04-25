@@ -1447,11 +1447,11 @@ class MacyController extends Controller
                     $roiCount++;
                 }
                 
-                // Count mapping issues (any inventory mismatch, only for REQ items with INV > 0 and NOT Missing)
+                // Count mapping issues (REQ, INV > 0, not Missing, and diff > 3 tolerance)
                 if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
                     $ourInv = $inv;
                     $mcInv = floatval($row['MC INV'] ?? 0);
-                    if ($ourInv != $mcInv) {
+                    if (abs($ourInv - $mcInv) > 3) {
                         $mappingCount++;
                     }
                 }

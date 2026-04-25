@@ -2714,7 +2714,11 @@ class TemuController extends Controller
      */
     public function temuDecreaseView()
     {
-        return view('market-places.temu_decrease');
+        $percentage = 95;
+
+        return view('market-places.temu_decrease', [
+            'percentage' => $percentage,
+        ]);
     }
 
     public function temu2DecreaseView()
@@ -3339,10 +3343,7 @@ class TemuController extends Controller
                 $rPricingItem = $goodsId ? $rPricingData->get($goodsId) : null;
                 $recommendedBasePrice = $rPricingItem ? $rPricingItem->recommended_base_price : null;
                 
-                // Check if SKU exists in temu_pricing table with NORMALIZED matching (same as price logic)
-                // Normalize the current SKU and check if it exists in temu_pricing
                 $normalizedCurrentSku = $normalizeSku($sku);
-                $missing = isset($temuPricingSkusNormalized[$normalizedCurrentSku]) ? '' : 'M';
                 
                 // nr_req / listed / links: Temu 2 → temu2_data_view JSON; Temu 1 → temu_listing_statuses
                 if ($isTemu2Pricing) {
@@ -3363,6 +3364,22 @@ class TemuController extends Controller
                     $listed = $statusValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
                     $buyer_link = $statusValue['buyer_link'] ?? null;
                     $seller_link = $statusValue['seller_link'] ?? null;
+                }
+
+                // Missing listing: not in temu_pricing, or in pricing with INV>0 and base price 0. Never when INV=0+base>0, or nr_req=NR.
+                $inPricing = isset($temuPricingSkusNormalized[$normalizedCurrentSku]);
+                $basePriceVal = (float) $basePrice;
+                $invVal = (float) $inventory;
+
+                $missing = $inPricing ? '' : 'M';
+                if ($inPricing && $invVal > 0 && $basePriceVal <= 0) {
+                    $missing = 'M';
+                }
+                if ($inPricing && $invVal <= 0 && $basePriceVal > 0) {
+                    $missing = '';
+                }
+                if (strtoupper(trim((string) $nr_req)) === 'NR') {
+                    $missing = '';
                 }
 
                 // LMP entries from Temu LMP table (array of {price, link}); first price used for lmp column display
@@ -5071,18 +5088,30 @@ class TemuController extends Controller
                     $zeroSoldCount++;
                 }
                 
-                // Missing
-                if (($row['missing'] ?? '') === 'M') {
+                // Missing (align with Temu decrease badge: INV>0)
+                if (($row['missing'] ?? '') === 'M' && floatval($row['inventory'] ?? 0) > 0) {
                     $missingCount++;
                 }
                 
-                // Mapped/Not Mapped
+                // Mapped/Not Mapped (|INV - Temu Stock| <= 3 = mapped, not Missing M)
                 $goodsId = $row['goods_id'] ?? '';
                 $temuStock = floatval($row['temu_stock'] ?? 0);
-                if ($goodsId && $inventory > 0 && $temuStock > 0 && $inventory == $temuStock) {
-                    $mappedCount++;
-                } elseif ($goodsId && ($temuStock == 0 || ($temuStock > 0 && $inventory != $temuStock))) {
-                    $notMappedCount++;
+                $isMissingL = ($row['missing'] ?? '') === 'M';
+                if ($goodsId && $inventory > 0 && ! $isMissingL) {
+                    $invTemuDiff = abs($inventory - $temuStock);
+                    if ($temuStock > 0) {
+                        if ((float) $inventory == (float) $temuStock || $invTemuDiff <= 3) {
+                            $mappedCount++;
+                        } else {
+                            $notMappedCount++;
+                        }
+                    } elseif ($temuStock == 0) {
+                        if ($invTemuDiff > 3) {
+                            $notMappedCount++;
+                        } else {
+                            $mappedCount++;
+                        }
+                    }
                 }
                 
                 // Compare Temu Price with Amazon Price

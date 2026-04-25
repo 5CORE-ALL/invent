@@ -1025,7 +1025,8 @@
                             const rowData = cell.getRow().getData();
                             const additionSheet = rowData['addition_sheet'] || '';
                             const channel = (rowData['Channel '] || '').trim();
-                            const dotColor = getMetricDotColor(channel, 'missing_l');
+                            // Dot matches number (trend dot can invert vs value and look "wrong")
+                            const dotColor = value === 0 ? '#198754' : (value > 0 ? '#dc3545' : DEFAULT_DOT_GRAY);
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="missing_l" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
 
                             const textColor = value === 0 ? '#198754' : value > 0 ? '#dc3545' : 'black';
@@ -1077,13 +1078,10 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = getMetricDotColor(channel, 'nmap');
+                            const dotColor = value === 0 ? '#28a745' : '#dc3545';
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nmap" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
 
-                            let color = 'red';
-                            if (value === 0) {
-                                color = 'green';
-                            }
+                            const color = value === 0 ? 'green' : 'red';
 
                             return `<span style="color:${color};font-weight:bold;">${value}</span>${chartIcon}`;
                         },

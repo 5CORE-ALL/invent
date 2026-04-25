@@ -683,7 +683,8 @@
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         
                         <!-- Badge Filters -->
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing eBay listing (E Stock>0)">Missing: 0</span>
+                        <span class="badge fs-6 p-2" id="nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;" title="N Map: shopify INV vs eBay stock mismatch (N MP rows)">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -1171,6 +1172,7 @@
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
         let missingFilterActive = false;
+        let nmapFilterActive = false;
 
         /**
          * When any narrowing filter/search is on, header "select all" should include every filtered row (all pages).
@@ -1195,7 +1197,7 @@
                 dil = $('.column-filter[data-column="dil_percent"].active').data('color') || 'all';
             } catch (eDil) { /* ignore */ }
             if (dil !== 'all') return true;
-            if (zeroSoldFilterActive || moreSoldFilterActive || missingFilterActive) return true;
+            if (zeroSoldFilterActive || moreSoldFilterActive || missingFilterActive || nmapFilterActive) return true;
 
             var sec = $('#section-filter').val();
             if (sec === 'kw_ads') {
@@ -1660,6 +1662,13 @@
 
             $('#missing-count-badge').on('click', function() {
                 missingFilterActive = !missingFilterActive;
+                if (missingFilterActive) nmapFilterActive = false;
+                applyFilters();
+            });
+
+            $('#nmap-count-badge').on('click', function() {
+                nmapFilterActive = !nmapFilterActive;
+                if (nmapFilterActive) missingFilterActive = false;
                 applyFilters();
             });
 
@@ -3206,7 +3215,7 @@
                                 return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
                             }
                             if (inv > 0 && ebayStock > 0) {
-                                if (inv === ebayStock) {
+                                if (Math.abs(inv - ebayStock) <= 3) {
                                     return '<span style="color: #28a745; font-weight: bold;">MP</span>';
                                 } else {
                                     const diff = inv - ebayStock;
@@ -4909,6 +4918,25 @@
                 return parseFloat(v || 0) || 0;
             }
 
+            /** Same rules as MAP column: N MP = listed (has item id) but INV vs eBay Stock mismatch. */
+            function isEbayTabulatorParentRowForMap(data) {
+                if (!data) return false;
+                if (data.is_parent_summary === true) return true;
+                var p = data.Parent;
+                return !!(p && String(p).toUpperCase().startsWith('PARENT'));
+            }
+            function isEbayTabulatorNMapRow(data) {
+                if (isEbayTabulatorParentRowForMap(data)) return false;
+                var itemId = data['eBay_item_id'];
+                if (!itemId || String(itemId).trim() === '') return false;
+                var inv = parseFloat(data['INV']) || 0;
+                if (inv <= 0) return false;
+                var ebayStock = rowEbayStockQty(data);
+                if (ebayStock === 0) return inv > 3;
+                if (ebayStock > 0 && Math.abs(inv - ebayStock) > 3) return true;
+                return false;
+            }
+
             // Apply filters
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
@@ -5122,6 +5150,12 @@
                         const itemId = data['eBay_item_id'];
                         const estock = rowEbayStockQty(data);
                         return (!itemId || itemId === null || itemId === '') && estock > 0;
+                    });
+                }
+
+                if (nmapFilterActive) {
+                    table.addFilter(function(data) {
+                        return isEbayTabulatorNMapRow(data);
                     });
                 }
 
@@ -6150,6 +6184,7 @@
                 let zeroSoldCount = 0;
                 let moreSoldCount = 0;
                 let missingCount = 0;
+                let nmapCount = 0;
                 filteredData.forEach(row => {
                     const estock = rowEbayStockQty(row);
                     const ebayL30 = parseFloat(row['eBay L30'] || 0);
@@ -6179,6 +6214,9 @@
                             missingCount++;
                         }
                         
+                    }
+                    if (isEbayTabulatorNMapRow(row)) {
+                        nmapCount++;
                     }
                 });
 
@@ -6233,6 +6271,7 @@
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
                 
                 $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
+                $('#nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             }
 
             // Build Column Visibility Dropdown

@@ -1114,8 +1114,8 @@
                             return '';
                         }
                         
-                        if (ourInv === mcInv) {
-                            // Stocks match exactly - show green MAP
+                        if (ourInv === mcInv || Math.abs(ourInv - mcInv) <= 3) {
+                            // Stocks match (or are within tolerance <= 3) - show green MAP
                             return '<span style="color: #28a745; font-weight: 600; background-color: #d4edda; padding: 2px 6px; border-radius: 3px;">MAP</span>';
                         } else {
                             // Stocks don't match - show red N MP with qty difference
@@ -1555,7 +1555,7 @@
                     const price = parseFloat(data['MC Price']) || 0;
                     const nrReq = data['nr_req'] || 'REQ';
                     const isMissing = (price === 0);
-                    return nrReq === 'REQ' && ourInv > 0 && !isMissing && ourInv !== mcInv;
+                    return nrReq === 'REQ' && ourInv > 0 && !isMissing && Math.abs(ourInv - mcInv) > 3;
                 });
             }
 
@@ -1622,7 +1622,7 @@
                 if (nrReq === 'REQ' && inv > 0 && !isMissing) {
                     const ourInv = inv;
                     const mcInv = parseFloat(row['MC INV']) || 0;
-                    if (ourInv !== mcInv) {
+                    if (Math.abs(ourInv - mcInv) > 3) {
                         mappingCount++;
                     }
                 }

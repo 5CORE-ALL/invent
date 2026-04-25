@@ -2341,17 +2341,21 @@
                 }
                 
                 // Count MAP status - ONLY for items that exist in Temu (not missing)
-                // Skip missing items - same logic as eBay (only count if exists in marketplace)
+                // Tolerance: |INV − Temu Stock| <= 3 counts as mapped (not Missing M)
+                const invTemuDiff2 = Math.abs(inventory - temuStock);
                 if (missing !== 'M' && goodsId && goodsId !== '') {
-                    
                     if (inventory > 0 && temuStock > 0) {
-                        if (inventory === temuStock) {
-                            mappedCount++; // MP (Mapped)
+                        if (inventory === temuStock || invTemuDiff2 <= 3) {
+                            mappedCount++;
                         } else {
-                            notMappedCount++; // N MP (Not Mapped - mismatch)
+                            notMappedCount++;
                         }
                     } else if (inventory > 0 && temuStock === 0) {
-                        notMappedCount++; // N MP (Not Mapped - no Temu stock)
+                        if (invTemuDiff2 > 3) {
+                            notMappedCount++;
+                        } else {
+                            mappedCount++;
+                        }
                     }
                 }
                 
@@ -2563,7 +2567,7 @@
                     field: "temu_stock",
                     hozAlign: "center",
                     sorter: "number",
-                    visible: false
+                    visible: true
                 },
                 {
                     title: "OVL30",
@@ -2710,18 +2714,17 @@
                         const temuStock = parseFloat(rowData['temu_stock']) || 0;
                         const inv = parseFloat(rowData['inventory']) || 0;
                         
-                        // Show "N MP" with INV if Temu Stock is 0 but INV exists
                         if (inv > 0 && temuStock === 0) {
+                            if (inv <= 3) {
+                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (≤3)">MP</span>';
+                            }
                             return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
                         }
                         
-                        // Only show if both INV and Temu Stock exist
                         if (inv > 0 && temuStock > 0) {
-                            if (inv === temuStock) {
-                                // Perfect match - Green "MP" (Mapped)
-                                return '<span style="color: #28a745; font-weight: bold;">MP</span>';
+                            if (inv === temuStock || Math.abs(inv - temuStock) <= 3) {
+                                return '<span style="color: #28a745; font-weight: bold;" title="Within ≤3: counts as MP">MP</span>';
                             } else {
-                                // Mismatch - Red "N MP" with difference
                                 const diff = inv - temuStock;
                                 const sign = diff > 0 ? '+' : '';
                                 return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
@@ -3637,28 +3640,28 @@
                 });
             }
 
-            // Map badge filter (only INV > 0)
+            // Map badge — |INV−Temu Stock| <= 3 counts as mapped
             if (mapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
                     const goodsId = data['goods_id'];
                     if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
-                    
                     const temuStock = parseFloat(data['temu_stock']) || 0;
-                    return inv > 0 && temuStock > 0 && inv === temuStock;
+                    if (temuStock < 0) return false;
+                    return Math.abs(inv - temuStock) <= 3;
                 });
             }
 
-            // Not Map badge filter (only INV > 0)
             if (notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['inventory']) || 0;
                     const missing = data['missing'];
                     const goodsId = data['goods_id'];
                     if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
-                    
                     const temuStock = parseFloat(data['temu_stock']) || 0;
+                    const d = Math.abs(inv - temuStock);
+                    if (d <= 3) return false;
                     return inv > 0 && (temuStock === 0 || (temuStock > 0 && inv !== temuStock));
                 });
             }

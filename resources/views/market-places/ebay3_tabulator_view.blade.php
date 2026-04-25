@@ -2003,27 +2003,42 @@
             return !!(row && String(row.nr_req || '').trim() === 'NR');
         }
 
-        /** Shopify INV vs eBay quantity: mapped if |diff| <= 3 (same as Amazon tabulator). */
-        function ebay3InvWithinMapTolerance(inv, channelQty) {
-            const invNum = parseFloat(inv) || 0;
-            const ch = parseFloat(channelQty) || 0;
-            if (invNum <= 0) {
-                return true;
-            }
-            return Math.abs(invNum - ch) <= 3 + 1e-9;
-        }
-
-        /** FBA row: fba flag or SKU/Parent contains "FBA" (aligns with Amazon tabulator). */
-        function ebay3RowIsFba(rowData) {
-            if (!rowData) return false;
-            const fbaFlag = rowData.fba;
-            if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
-            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').toUpperCase();
-            return sku.indexOf('FBA') !== -1;
-        }
-
         function ebay3EbayStockQty(row) {
             return parseFloat(row['eBay Stock'] || row['E Stock'] || 0) || 0;
+        }
+
+        // Full tree for badge math: use live table data (always has current rows); in Play mode use full snapshot.
+        function ebay3GetSummaryTreeRoots() {
+            try {
+                if (typeof isPlayNavigationActive !== 'undefined' && isPlayNavigationActive
+                    && allTableData && allTableData.length) {
+                    return allTableData;
+                }
+                if (typeof table !== 'undefined' && table && typeof table.getData === 'function') {
+                    const live = table.getData('all');
+                    if (live && live.length) {
+                        return live;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            return allTableData || [];
+        }
+
+        // Build SKU-only rows from tree (recurse _children, skip PARENT skus) — same idea as PHP flattenEbay3TreeForSummary
+        function ebay3GetBackendSkuRows() {
+            const skuRows = [];
+            function walk(node) {
+                if (!node) return;
+                const sku = String((node['(Child) sku']) || '').toUpperCase();
+                if (sku && !sku.includes('PARENT')) {
+                    skuRows.push(node);
+                }
+                if (node._children && Array.isArray(node._children) && node._children.length) {
+                    node._children.forEach(walk);
+                }
+            }
+            (ebay3GetSummaryTreeRoots() || []).forEach(walk);
+            return skuRows;
         }
 
         /** Rows to show in Play: INV>0, not NR/REQ=NR; parent row only if INV>0 and not NR. */
@@ -2226,12 +2241,36 @@
 
         // Store all unfiltered data for summary calculations
         let allTableData = [];
+        /** Missing/Map/N Map from last /ebay3-data-json (PHP). Cleared on cell edit so client recomputes. */
+        let ebay3ServerSummary = null;
 
         // Play/Pause parent navigation (like pricing-master-cvr)
         let isPlayNavigationActive = false;
         let currentPlayParentIndex = 0;
         /** While play is active: top-level parents sorted by CVR 30 (SCVR) ascending. */
         let playModeParentList = null;
+
+        /** Coerce /ebay3-data-json "summary" (PHP) — Tabulator/JSON can surface ints as number or string. */
+        function ebay3NormalizeServerSummary(raw) {
+            if (!raw || typeof raw !== 'object') {
+                return null;
+            }
+            const nMapVal = (raw.nMap != null) ? raw.nMap : (raw.n_map != null ? raw.n_map : raw['nMap']);
+            const toNum = function(v) {
+                if (v === null || v === undefined || v === '') {
+                    return NaN;
+                }
+                const n = Number(v);
+                return Number.isFinite(n) ? n : NaN;
+            };
+            const m = toNum(raw.missing);
+            const mp = toNum(raw.map);
+            const nm = toNum(nMapVal);
+            if (isNaN(m) || isNaN(mp) || isNaN(nm)) {
+                return null;
+            }
+            return { missing: m, map: mp, nMap: nm };
+        }
 
         let ebayMpImagePreviewHideTimer = null;
         let ebayMpImagePreviewEl = null;
@@ -2316,24 +2355,40 @@
         table = new Tabulator("#ebay3-table", {
             ajaxURL: "/ebay3-data-json",
             ajaxResponse: function(url, params, response) {
-                // Store all unfiltered data for summary calculations
-                allTableData = response || [];
-                console.log('API Response - Total rows:', allTableData.length);
-                
-                // Calculate total L30 for verification
+                let rows = response;
+                ebay3ServerSummary = null;
+                if (response && !Array.isArray(response) && response.data !== undefined) {
+                    rows = response.data;
+                    ebay3ServerSummary = ebay3NormalizeServerSummary(response.summary);
+                } else {
+                    rows = Array.isArray(response) ? response : [];
+                }
+                allTableData = rows || [];
+                if (ebay3ServerSummary) {
+                    console.log('eBay3 server summary (badges from PHP):', ebay3ServerSummary, 'root rows:', allTableData.length);
+                } else {
+                    console.log('API Response - Total rows:', allTableData.length, '(Missing/Map/N Map: client — add summary to /ebay3-data-json or check response shape)');
+                }
+
+                // Tree: eBay L30 is on child SKUs under _children — sum whole tree, not just roots
                 let totalL30 = 0;
-                let parentCount = 0;
-                allTableData.forEach(row => {
-                    const sku = row['(Child) sku'] || '';
-                    if (sku.toUpperCase().includes('PARENT')) {
-                        parentCount++;
+                let parentRowCount = 0;
+                function walkTreeL30Log(node) {
+                    if (!node) return;
+                    const skuU = String(node['(Child) sku'] || '').toUpperCase();
+                    if (skuU.includes('PARENT')) {
+                        parentRowCount++;
                     } else {
-                        totalL30 += parseFloat(row['eBay L30'] || 0);
+                        totalL30 += parseFloat(node['eBay L30'] || 0) || 0;
                     }
-                });
-                console.log('Total eBay3 L30 from API:', totalL30, '(excluding', parentCount, 'PARENT rows)');
-                
-                return response;
+                    if (node._children && Array.isArray(node._children) && node._children.length) {
+                        node._children.forEach(walkTreeL30Log);
+                    }
+                }
+                (allTableData || []).forEach(walkTreeL30Log);
+                console.log('Total eBay3 L30 (all SKU rows in tree):', totalL30, '· PARENT group rows in tree:', parentRowCount);
+
+                return rows;
             },
             ajaxSorting: false,
             layout: "fitDataStretch",
@@ -2669,8 +2724,7 @@
                             if (children.length > 0) {
                                 const anyChildMissing = children.some(function(ch) {
                                     return isMissingItemId(ch['eBay_item_id'])
-                                        && !ebay3RowNrReqIsNr(ch)
-                                        && !ebay3RowIsFba(ch);
+                                        && !ebay3RowNrReqIsNr(ch);
                                 });
                                 if (anyChildMissing) {
                                     return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
@@ -2679,9 +2733,9 @@
                             return '<span title="All child SKUs have eBay listing" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#28a745;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,0.12);"></span>';
                         }
 
-                        // Child / leaf: Missing = no eBay3 item_id (exclude NR / FBA from indicator — Amazon Missing L parity)
+                        // Child / leaf: Missing = no eBay3 item_id (exclude NR)
                         const itemId = rowData['eBay_item_id'];
-                        if (isMissingItemId(itemId) && !ebay3RowNrReqIsNr(rowData) && !ebay3RowIsFba(rowData)) {
+                        if (isMissingItemId(itemId) && !ebay3RowNrReqIsNr(rowData)) {
                             return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                         }
                         return '';
@@ -2748,18 +2802,15 @@
                     width: 90,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        const inv = typeof ebay3Qty === 'function' ? ebay3Qty(rowData['INV']) : (parseFloat(rowData['INV'] || 0) || 0);
                         const ebayStock = ebay3EbayStockQty(rowData);
-                        const inv = parseFloat(rowData['INV']) || 0;
                         const nrReq = String(rowData.nr_req || '').trim();
 
                         if (inv <= 0 || ebayStock <= 0 || nrReq !== 'REQ') {
                             return '';
                         }
-                        if (ebay3InvWithinMapTolerance(inv, ebayStock)) {
+                        if (ebay3RowMapStockMatch(rowData)) {
                             return '<span style="color: #28a745; font-weight: bold;">MP</span>';
-                        }
-                        if (ebay3RowIsFba(rowData)) {
-                            return '';
                         }
                         const diff = inv - ebayStock;
                         const sign = diff > 0 ? '+' : '';
@@ -4102,6 +4153,20 @@
                     }
                 });
             }
+            if (field === 'INV' || field === 'eBay Stock' || field === 'E Stock' || field === 'nr_req' || field === 'eBay_item_id') {
+                ebay3ServerSummary = null;
+                if (typeof isPlayNavigationActive === 'undefined' || !isPlayNavigationActive) {
+                    try {
+                        if (table && table.getData) {
+                            const d = table.getData('all');
+                            if (d && d.length) {
+                                allTableData = d;
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+                updateSummary();
+            }
         });
 
         /** Parse Shop/PM stock (INV) for row filters: numbers, comma thousands, trim, no false "0" from bad parse. */
@@ -4118,6 +4183,15 @@
             }
             var n = parseFloat(s);
             return Number.isFinite(n) ? n : 0;
+        }
+
+        /** INV (ebay3Qty) vs eBay stock: "mapped" (MP) when |INV − eBay| ≤ 3, both sides &gt; 0. */
+        function ebay3RowMapStockMatch(row) {
+            if (!row) return false;
+            const inv = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
+            const st = typeof ebay3EbayStockQty === 'function' ? ebay3EbayStockQty(row) : (parseFloat(row['eBay Stock'] || row['E Stock'] || 0) || 0);
+            if (inv <= 0 || st <= 0) return false;
+            return Math.abs(inv - st) <= 3 + 1e-9;
         }
 
         // Apply filters
@@ -4587,10 +4661,9 @@
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
                     
                     const itemId = data['eBay_item_id'];
-                    // Missing: no eBay3 item_id; exclude NR / FBA (Amazon Missing L parity)
+                    // Missing: no eBay3 item_id; exclude NR
                     return (!itemId || itemId === null || itemId === '')
-                        && !ebay3RowNrReqIsNr(data)
-                        && !ebay3RowIsFba(data);
+                        && !ebay3RowNrReqIsNr(data);
                 });
             }
 
@@ -4609,33 +4682,30 @@
                 });
             }
 
-            // Map filter — |INV − eBay stock| <= 3, REQ only (Amazon tabulator parity)
+            // Map filter — |INV − eBay stock| ≤ 3, REQ only
             if (mapFilterActive) {
                 table.addFilter(function(data) {
                     // Skip filter for parent rows in tree mode
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
                     
-                    const ebayStock = ebay3EbayStockQty(data);
-                    const inv = parseFloat(data['INV']) || 0;
                     const nrReq = String(data.nr_req || '').trim();
-                    return inv > 0 && ebayStock > 0 && nrReq === 'REQ' && ebay3InvWithinMapTolerance(inv, ebayStock);
+                    return nrReq === 'REQ' && ebay3RowMapStockMatch(data);
                 });
             }
 
-            // N Map filter — beyond ±3 or REQ mismatch path; exclude FBA mismatches from list
+            // N Map filter — beyond ±3 or REQ mismatch path; exclude missing listings (no eBay item id)
             if (invStockFilterActive) {
                 table.addFilter(function(data) {
                     // Skip filter for parent rows in tree mode
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
-                    
-                    const ebayStock = ebay3EbayStockQty(data);
-                    const inv = parseFloat(data['INV']) || 0;
+
+                    const itemId = data['eBay_item_id'];
+                    if (!itemId || itemId === null || itemId === '') return false;
+
                     const nrReq = String(data.nr_req || '').trim();
-                    return inv > 0 && ebayStock > 0 && nrReq === 'REQ'
-                        && !ebay3RowIsFba(data)
-                        && !ebay3InvWithinMapTolerance(inv, ebayStock);
+                    return nrReq === 'REQ' && !ebay3RowMapStockMatch(data);
                 });
             }
 
@@ -5409,14 +5479,14 @@
 
         // Update summary badges — same metrics/order as Ebay 2 (E Stock gate uses eBay Stock with E Stock fallback)
         function updateSummary() {
-            const data = table.getData('active');
+            const data = ebay3GetBackendSkuRows();
 
             let totalKwSpendL30 = 0;
             let totalPmtSpendL30 = 0;
             let totalPftAmt = 0;
             let totalSalesAmt = 0;
             let totalLpAmt = 0;
-            let totalFbaInv = 0;
+            let totalEStockSum = 0;
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
             let missingCount = 0;
@@ -5431,7 +5501,7 @@
                     totalPftAmt += parseFloat(row['Total_pft'] || 0);
                     totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                     totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * ebayL30;
-                    totalFbaInv += estock;
+                    totalEStockSum += estock;
                     totalKwSpendL30 += parseFloat(row['kw_spend_L30'] || 0);
                     totalPmtSpendL30 += parseFloat(row['pmt_spend_L30'] || 0);
                     if (ebayL30 === 0) {
@@ -5442,19 +5512,20 @@
                 }
 
                 const itemId = row['eBay_item_id'];
-                if ((!itemId || itemId === null || itemId === '')
-                    && !ebay3RowNrReqIsNr(row)
-                    && !ebay3RowIsFba(row)) {
+                const sku = String(row['(Child) sku'] || '').toUpperCase();
+                const isParentRow = sku.includes('PARENT');
+                if (!isParentRow
+                    && (!itemId || itemId === null || itemId === '')
+                    && !ebay3RowNrReqIsNr(row)) {
                     missingCount++;
                 }
 
-                const ebayStock = ebay3EbayStockQty(row);
-                const inv = parseFloat(row['INV']) || 0;
                 const nrReq = String(row.nr_req || '').trim();
-                if (inv > 0 && ebayStock > 0 && nrReq === 'REQ') {
-                    if (ebay3InvWithinMapTolerance(inv, ebayStock)) {
-                        mapCount++;
-                    } else if (!ebay3RowIsFba(row)) {
+                if (!isParentRow && nrReq === 'REQ' && ebay3RowMapStockMatch(row)) {
+                    mapCount++;
+                } else if (!isParentRow && nrReq === 'REQ' && (itemId && itemId !== null && itemId !== '') && !ebay3RowMapStockMatch(row)) {
+                    const invN = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
+                    if (invN > 0 && ebay3EbayStockQty(row) > 0) {
                         invStockCount++;
                     }
                 }
@@ -5474,6 +5545,12 @@
             });
             const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
             const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+
+            if (ebay3ServerSummary) {
+                missingCount = ebay3ServerSummary.missing;
+                mapCount = ebay3ServerSummary.map;
+                invStockCount = ebay3ServerSummary.nMap;
+            }
 
             const totalAdSpendL30 = totalKwSpendL30 + totalPmtSpendL30;
             const tacosPercent = EBAY3_CHANNEL_ADS_PCT;
@@ -5495,7 +5572,7 @@
             $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-            $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
+            $('#total-inv-badge').text('E Stock: ' + Math.round(totalEStockSum).toLocaleString());
 
             $('#missing-count-badge').text('Missing: ' + missingCount);
             $('#map-count-badge').text('Map: ' + mapCount);
@@ -5598,6 +5675,16 @@
         });
 
         table.on('dataLoaded', function() {
+            if (typeof isPlayNavigationActive === 'undefined' || !isPlayNavigationActive) {
+                try {
+                    if (table && table.getData) {
+                        const d = table.getData('all');
+                        if (d && d.length) {
+                            allTableData = d;
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+            }
             updateCalcValues();
             updateSummary();
             requestAnimationFrame(function() {
