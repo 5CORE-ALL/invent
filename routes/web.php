@@ -2658,6 +2658,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/image-master/upload', [ImageMasterController::class, 'uploadImages'])->name('image.master.upload');
     Route::get('/image-master/amazon-images', [ImageMasterController::class, 'getAmazonImages'])->name('image.master.amazon.images');
     Route::get('/image-master/ebay-images', [ImageMasterController::class, 'getEbayImages'])->name('image.master.ebay.images');
+    Route::get('/image-master/sku-images', [ImageMasterController::class, 'getSkuImages'])->name('image.master.sku.images');
+    Route::delete('/image-master/sku-image/{id}', [ImageMasterController::class, 'deleteSkuImage'])->name('image.master.sku.image.delete');
 
     Route::get('/bullet-point-master', [BulletPointMasterController::class, 'index'])->name('bullet.point.master');
     Route::get('/bullet-point-master-data', [BulletPointMasterController::class, 'getData'])->name('bullet.point.master.data');

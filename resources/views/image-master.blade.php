@@ -23,8 +23,34 @@
         .btn-shein { background-color:#000; } .btn-doba { background-color:#6c757d; } .btn-aliexpress { background-color:#e43225; }
         .btn-bestbuy { background-color:#0046be; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
-        .im-slot { border:1px dashed #cbd5e1; border-radius:8px; padding:6px; margin-bottom:8px; background:#f8fafc; cursor:grab; }
-        .im-slot-dragging { opacity:.6; }
+        /* ── Image card grid ─────────────────────────────────────── */
+        .im-grid { display:flex; flex-wrap:wrap; gap:10px; min-height:40px; padding:4px 0; }
+        .im-card { width:120px; border:2px solid #e2e8f0; border-radius:10px; overflow:hidden; cursor:pointer; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.06); transition:box-shadow .15s,border-color .15s; user-select:none; position:relative; }
+        .im-card:hover { box-shadow:0 3px 12px rgba(44,110,213,.18); border-color:#93c5fd; }
+        .im-card.im-card-dragging { opacity:.45; border:2px dashed #6366f1; }
+        /* Selected state */
+        .im-card.is-selected { border:2px solid #6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.22); }
+        .im-card.is-selected .im-card-img-wrap::after { content:''; position:absolute; inset:0; background:rgba(99,102,241,.12); pointer-events:none; }
+        /* Push-order badge — shows sequence number on selected cards */
+        .im-card-check { position:absolute; bottom:5px; left:5px; background:#6366f1; color:#fff; border-radius:50%; width:22px; height:22px; font-size:11px; display:none; align-items:center; justify-content:center; pointer-events:none; z-index:4; font-weight:800; line-height:1; box-shadow:0 1px 4px rgba(99,102,241,.45); }
+        .im-card.is-selected .im-card-check { display:flex; }
+        .im-card-img-wrap { position:relative; width:120px; height:100px; background:#f1f5f9; overflow:hidden; }
+        .im-card-img-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+        .im-card-badge { position:absolute; top:4px; left:4px; background:rgba(0,0,0,.55); color:#fff; border-radius:4px; font-size:9px; font-weight:700; padding:1px 5px; line-height:1.5; pointer-events:none; z-index:3; }
+        .im-card-del { position:absolute; top:4px; right:4px; background:rgba(220,38,38,.88); border:none; color:#fff; border-radius:50%; width:22px; height:22px; font-size:11px; cursor:pointer; display:none; align-items:center; justify-content:center; padding:0; line-height:1; transition:background .12s; z-index:5; }
+        .im-card-del:hover { background:#b91c1c; }
+        .im-card:hover .im-card-del { display:flex; }
+        .im-card-footer { padding:4px 6px 5px; }
+        .im-card-name { font-size:10px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:108px; }
+        .im-card-arrows { display:flex; gap:3px; margin-top:3px; }
+        .im-card-arrows button { flex:1; border:1px solid #e2e8f0; background:#f8fafc; border-radius:4px; font-size:11px; cursor:pointer; padding:1px 0; color:#475569; transition:background .1s; }
+        .im-card-arrows button:hover { background:#e0e7ff; color:#4338ca; }
+        /* stored-image badge tint */
+        .im-card.is-stored .im-card-img-wrap { border-bottom:2px solid #6366f1; }
+        /* selection bar */
+        .im-select-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+        .im-select-info { font-size:11px; font-weight:600; color:#6366f1; background:#eef2ff; border-radius:5px; padding:2px 8px; }
+        /* ─────────────────────────────────────────────────────────── */
         .toast-container { z-index:1100; }
     </style>
 @endsection
@@ -112,17 +138,45 @@
                     <input type="hidden" id="modalSku">
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     <div class="mb-3"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
-                    <div class="mb-2">
-                        <label class="form-label small">Add images (up to 12)</label>
-                        <input type="file" class="form-control form-control-sm" id="modalFileInput" accept="image/*" multiple>
+
+                    {{-- ── ADD IMAGES SECTION ─────────────────────────────────── --}}
+                    <div class="border rounded p-3 mb-3" style="background:#f8fafc;">
+                        <div class="fw-semibold small mb-2"><i class="fas fa-folder-open me-1"></i>Add Images</div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                            <label class="btn btn-outline-primary btn-sm mb-0" for="modalFileInput" style="cursor:pointer;">
+                                <i class="fas fa-image me-1"></i>Choose Files
+                            </label>
+                            <input type="file" class="d-none" id="modalFileInput" accept=".jpg,.jpeg,.png,.webp" multiple>
+                            <span class="text-muted small" id="fileChosenLabel">No file chosen</span>
+                        </div>
+                        {{-- Pre-upload preview list --}}
+                        <div id="uploadPreviewList" class="mb-2" style="display:none;">
+                            <div class="small text-muted mb-1">Selected files (not yet uploaded):</div>
+                            <div id="uploadPreviewItems" class="d-flex flex-wrap gap-2"></div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <button type="button" class="btn btn-success btn-sm" id="uploadImagesBtn" style="display:none;">
+                                <i class="fas fa-upload me-1"></i>Upload Images
+                            </button>
+                            <div class="spinner-border spinner-border-sm text-success" id="uploadSpinner" role="status" style="display:none;"></div>
+                            <span class="small text-success fw-semibold" id="uploadSuccessMsg" style="display:none;"></span>
+                        </div>
                     </div>
-                    <div class="mb-2">
+                    {{-- ── END ADD IMAGES ──────────────────────────────────────── --}}
+
+                    <!-- <div class="mb-2">
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchAmazonBtn"><i class="fab fa-amazon"></i> Fetch Amazon images</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay1Btn"><i class="fab fa-ebay"></i> Fetch eBay1</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay2Btn">eBay2</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay3Btn">eBay3</button>
+                    </div> -->
+                    <div class="fw-semibold small mb-1 d-flex align-items-center gap-2 flex-wrap">
+                        Order (drag to reorder)
+                        <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-2" id="selAllBtn" style="font-size:10px;">Select All</button>
+                        <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-2" id="selNoneBtn" style="font-size:10px;">Clear</button>
+                        <span id="selectionInfo" class="im-select-info" style="display:none;"></span>
+                        <span class="text-muted small ms-auto">Click card to select · drag to reorder</span>
                     </div>
-                    <div class="fw-semibold small mb-1">Order (drag to reorder)</div>
                     <div id="imSlots"></div>
                     <div class="mt-3">
                         <div class="fw-semibold small mb-1">Push to marketplaces</div>
@@ -137,6 +191,32 @@
             </div>
         </div>
     </div>
+
+    {{-- ── Push mode selection popup ──────────────────────────────── --}}
+    <div class="modal fade" id="pushModeModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%);">
+                    <h6 class="modal-title text-white mb-0"><i class="fas fa-cloud-upload-alt me-2"></i>How to push images?</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pb-1">
+                    <p class="small mb-1">Pushing <strong id="pmImageCount"></strong> image(s) to <strong id="pmMpCount"></strong> marketplace(s).</p>
+                    <p class="small text-muted mb-0">What should happen to the <strong>existing</strong> marketplace images?</p>
+                </div>
+                <div class="modal-footer flex-column gap-2 pt-2 pb-3 border-0">
+                    <button type="button" class="btn btn-danger w-100" id="pmReplaceBtn">
+                        <i class="fas fa-exchange-alt me-1"></i><strong>Replace</strong> — remove existing, use only selected
+                    </button>
+                    <button type="button" class="btn btn-success w-100" id="pmAddBtn">
+                        <i class="fas fa-plus me-1"></i><strong>Add</strong> — keep existing, append selected
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{-- ── End push mode popup ─────────────────────────────────────── --}}
 
     <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
 @endsection
@@ -171,6 +251,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const bySku = new Map();
     let editModal;
     let modalUrls = [];
+    let pendingFiles = [];
+    let selectedUrls = new Set();   // URLs checked for push
+
+    // Encode URL so spaces/special chars load correctly in <img src>
+    const imgSrc = url => { try { return encodeURI(decodeURIComponent(url)); } catch(_) { return encodeURI(url); } };
 
     const esc = (s) => { const d=document.createElement('div'); d.textContent = String(s??''); return d.innerHTML; };
 
@@ -269,66 +354,299 @@ document.addEventListener('DOMContentLoaded', () => {
         return u.slice(0,12);
     }
 
+    // storedImageIds: url → DB id (so we can delete from server)
+    const storedImageMeta = new Map();
+
     function openEditModal(sku) {
         const row = bySku.get(String(sku));
         if (!row) return;
         document.getElementById('modalSku').value = sku;
         document.getElementById('modalSkuLabel').textContent = sku;
         document.getElementById('modalProductLabel').textContent = row.Parent || sku;
+        storedImageMeta.clear();
+        selectedUrls.clear();
         modalUrls = pmImageUrls(row);
         renderSlots();
+        // Reset the upload section
+        pendingFiles = [];
+        document.getElementById('modalFileInput').value = '';
+        document.getElementById('fileChosenLabel').textContent = 'No file chosen';
+        document.getElementById('uploadPreviewList').style.display = 'none';
+        document.getElementById('uploadPreviewItems').innerHTML = '';
+        document.getElementById('uploadImagesBtn').style.display = 'none';
+        document.getElementById('uploadSuccessMsg').style.display = 'none';
         document.getElementById('modalMarketplaceChecks').innerHTML = MARKETPLACES.map(mp => `
             <div class="col-6 col-md-4 col-lg-3">
                 <label class="form-check small"><input type="checkbox" class="form-check-input im-mp-chk" value="${mp}"> ${esc(LABELS[mp])}</label>
             </div>`).join('');
         if (editModal) editModal.show();
+        // Load stored images for this SKU in the background
+        loadStoredSkuImages(sku);
+    }
+
+    async function loadStoredSkuImages(sku) {
+        try {
+            const r = await fetch('/image-master/sku-images?sku=' + encodeURIComponent(sku));
+            const j = await r.json();
+            if (!j.success || !j.images?.length) return;
+            const existingSet = new Set(modalUrls);
+            j.images.forEach(img => {
+                storedImageMeta.set(img.url, { id: img.id, name: img.name });
+                if (!existingSet.has(img.url)) {
+                    modalUrls.push(img.url);
+                    existingSet.add(img.url);
+                }
+            });
+            if (modalUrls.length > 12) modalUrls = modalUrls.slice(0, 12);
+            renderSlots();
+        } catch (_) {}
+    }
+
+    function updateSelectionUI() {
+        const info = document.getElementById('selectionInfo');
+        const pushBtn = document.getElementById('pushModalBtn');
+        if (selectedUrls.size > 0) {
+            info.style.display = 'inline';
+            info.textContent   = `${selectedUrls.size} of ${modalUrls.length} selected`;
+            if (pushBtn) pushBtn.innerHTML = `<i class="fas fa-cloud-upload-alt"></i> Push selected (${selectedUrls.size})`;
+        } else {
+            info.style.display = 'none';
+            if (pushBtn) pushBtn.innerHTML = `<i class="fas fa-cloud-upload-alt"></i> Push selected`;
+        }
     }
 
     function renderSlots() {
         const el = document.getElementById('imSlots');
-        el.innerHTML = modalUrls.map((url, idx) => `
-            <div class="im-slot" draggable="true" data-idx="${idx}">
-                <div class="d-flex justify-content-between align-items-center gap-2">
-                    <img src="${esc(url)}" alt="" style="max-height:56px;max-width:120px;object-fit:contain;">
-                    <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-outline-secondary im-up" data-i="${idx}">↑</button>
-                        <button type="button" class="btn btn-outline-secondary im-down" data-i="${idx}">↓</button>
-                        <button type="button" class="btn btn-outline-danger im-del" data-i="${idx}"><i class="fas fa-times"></i></button>
+        if (!modalUrls.length) {
+            el.innerHTML = '<div class="text-muted small py-2">No images yet. Upload or fetch from a marketplace above.</div>';
+            updateSelectionUI();
+            return;
+        }
+
+        // Build push-order map: url → sequence number (based on grid position, not click order)
+        // If nothing is selected, every image will be pushed, so every card shows its grid position.
+        let pushSeq = 0;
+        const pushOrderMap = new Map();
+        modalUrls.forEach(u => {
+            if (selectedUrls.size === 0 || selectedUrls.has(u)) {
+                pushOrderMap.set(u, ++pushSeq);
+            }
+        });
+
+        el.innerHTML = '<div class="im-grid" id="imGrid">' +
+            modalUrls.map((url, idx) => {
+                const meta     = storedImageMeta.get(url);
+                const isStored = !!meta;
+                const isSel    = selectedUrls.size === 0 ? false : selectedUrls.has(url);
+                const name     = meta?.name ?? decodeURIComponent(url.split('/').pop().split('?')[0]);
+                const dbId     = meta?.id ?? '';
+                const pushPos  = pushOrderMap.get(url);  // sequence number shown on card
+                return `<div class="im-card${isStored?' is-stored':''}${isSel?' is-selected':''}"
+                            draggable="true" data-idx="${idx}"
+                            data-url="${esc(url)}" data-dbid="${esc(String(dbId))}">
+                    <div class="im-card-img-wrap">
+                        <img src="${esc(url)}" alt=""
+                             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%22100%22%3E%3Crect width=%22120%22 height=%22100%22 fill=%22%23f1f5f9%22/%3E%3Ctext x=%2260%22 y=%2254%22 font-size=%2211%22 fill=%22%2394a3b8%22 text-anchor=%22middle%22%3ENo preview%3C/text%3E%3C/svg%3E'">
+                        <span class="im-card-badge">${idx + 1}</span>
+                        <span class="im-card-check">${pushPos !== undefined ? pushPos : ''}</span>
+                        <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
                     </div>
-                </div>
-                <div class="small text-truncate mt-1" title="${esc(url)}">${esc(url)}</div>
-            </div>`).join('');
-        el.querySelectorAll('.im-del').forEach(b => b.addEventListener('click', () => { modalUrls.splice(+b.dataset.i,1); renderSlots(); }));
-        el.querySelectorAll('.im-up').forEach(b => b.addEventListener('click', () => { const i=+b.dataset.i; if(i>0){ const t=modalUrls[i-1]; modalUrls[i-1]=modalUrls[i]; modalUrls[i]=t; renderSlots(); }}));
-        el.querySelectorAll('.im-down').forEach(b => b.addEventListener('click', () => { const i=+b.dataset.i; if(i<modalUrls.length-1){ const t=modalUrls[i+1]; modalUrls[i+1]=modalUrls[i]; modalUrls[i]=t; renderSlots(); }}));
-        el.querySelectorAll('.im-slot').forEach(slot => {
-            slot.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', slot.dataset.idx); slot.classList.add('im-slot-dragging'); });
-            slot.addEventListener('dragend', () => slot.classList.remove('im-slot-dragging'));
-            slot.addEventListener('dragover', e => e.preventDefault());
-            slot.addEventListener('drop', e => {
+                    <div class="im-card-footer">
+                        <div class="im-card-name" title="${esc(url)}">${esc(name)}</div>
+                        <div class="im-card-arrows">
+                            <button type="button" class="im-up" data-i="${idx}" title="Move left">&#8592;</button>
+                            <button type="button" class="im-down" data-i="${idx}" title="Move right">&#8594;</button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('') + '</div>';
+
+        const grid = document.getElementById('imGrid');
+
+        // ── Delete button ──────────────────────────────────────────
+        grid.querySelectorAll('.im-card-del').forEach(b => {
+            b.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const i      = +b.dataset.i;
+                const card   = b.closest('.im-card');
+                const dbId   = card?.dataset.dbid;
+                const removed = modalUrls.splice(i, 1)[0];
+                storedImageMeta.delete(removed);
+                selectedUrls.delete(removed);
+                renderSlots();
+                if (dbId) {
+                    try {
+                        await fetch('/image-master/sku-image/' + dbId, {
+                            method: 'DELETE',
+                            headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        });
+                    } catch (_) {}
+                }
+            });
+        });
+
+        // ── Click card body = toggle selection ────────────────────
+        grid.querySelectorAll('.im-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                // Don't toggle when clicking buttons inside the card
+                if (e.target.closest('.im-card-del, .im-card-arrows')) return;
+                const url = card.dataset.url;
+                if (selectedUrls.has(url)) selectedUrls.delete(url);
+                else selectedUrls.add(url);
+                card.classList.toggle('is-selected', selectedUrls.has(url));
+                const chk = card.querySelector('.im-card-check');
+                if (chk) chk.style.display = selectedUrls.has(url) ? 'flex' : '';
+                updateSelectionUI();
+            });
+        });
+
+        // ── Arrow buttons ─────────────────────────────────────────
+        grid.querySelectorAll('.im-up').forEach(b => {
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const i = +b.dataset.i;
+                if (i > 0) { [modalUrls[i-1], modalUrls[i]] = [modalUrls[i], modalUrls[i-1]]; renderSlots(); }
+            });
+        });
+        grid.querySelectorAll('.im-down').forEach(b => {
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const i = +b.dataset.i;
+                if (i < modalUrls.length - 1) { [modalUrls[i+1], modalUrls[i]] = [modalUrls[i], modalUrls[i+1]]; renderSlots(); }
+            });
+        });
+
+        // ── Drag to reorder ───────────────────────────────────────
+        let dragFrom = null;
+        grid.querySelectorAll('.im-card').forEach(card => {
+            card.addEventListener('dragstart', e => {
+                dragFrom = +card.dataset.idx;
+                card.classList.add('im-card-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            card.addEventListener('dragend', () => card.classList.remove('im-card-dragging'));
+            card.addEventListener('dragover', e => e.preventDefault());
+            card.addEventListener('drop', e => {
                 e.preventDefault();
-                const from = +e.dataTransfer.getData('text/plain');
-                const to = +slot.dataset.idx;
-                if (from === to) return;
-                const moved = modalUrls.splice(from,1)[0];
-                modalUrls.splice(to,0,moved);
+                const to = +card.dataset.idx;
+                if (dragFrom === null || dragFrom === to) return;
+                const moved = modalUrls.splice(dragFrom, 1)[0];
+                modalUrls.splice(to, 0, moved);
+                dragFrom = null;
                 renderSlots();
             });
         });
+
+        updateSelectionUI();
     }
 
-    document.getElementById('modalFileInput')?.addEventListener('change', async function() {
-        const sku = document.getElementById('modalSku').value;
-        if (!this.files?.length) return;
-        const fd = new FormData();
-        fd.append('sku', sku);
-        for (const f of this.files) fd.append('files[]', f);
-        const r = await fetch('/image-master/upload', { method:'POST', headers:{'X-CSRF-TOKEN':csrfToken,'Accept':'application/json'}, body: fd });
-        const j = await r.json();
-        if (j.success && j.urls) { modalUrls = modalUrls.concat(j.urls).slice(0,12); renderSlots(); toast('Uploaded'); }
-        else toast(j.message || 'Upload failed', false);
-        this.value = '';
+    // ── ADD IMAGES: two-step flow (preview → explicit upload) ───────────────────
+
+    document.getElementById('selAllBtn')?.addEventListener('click', () => {
+        modalUrls.forEach(u => selectedUrls.add(u));
+        renderSlots();
     });
+    document.getElementById('selNoneBtn')?.addEventListener('click', () => {
+        selectedUrls.clear();
+        renderSlots();
+    });
+
+    document.getElementById('modalFileInput')?.addEventListener('change', function () {
+        pendingFiles = Array.from(this.files || []);
+        const label  = document.getElementById('fileChosenLabel');
+        const list   = document.getElementById('uploadPreviewList');
+        const items  = document.getElementById('uploadPreviewItems');
+        const btn    = document.getElementById('uploadImagesBtn');
+        const msg    = document.getElementById('uploadSuccessMsg');
+
+        msg.style.display = 'none';
+
+        if (!pendingFiles.length) {
+            label.textContent = 'No file chosen';
+            list.style.display = 'none';
+            btn.style.display = 'none';
+            items.innerHTML = '';
+            return;
+        }
+
+        label.textContent = pendingFiles.length === 1
+            ? pendingFiles[0].name
+            : `${pendingFiles.length} files selected`;
+
+        items.innerHTML = '';
+        pendingFiles.forEach((f, idx) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const card = document.createElement('div');
+                card.className = 'text-center';
+                card.style.cssText = 'width:90px;';
+                card.innerHTML = `
+                    <img src="${esc(e.target.result)}" alt="" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;">
+                    <div class="small text-truncate mt-1" style="max-width:88px;" title="${esc(f.name)}">${esc(f.name)}</div>`;
+                items.appendChild(card);
+            };
+            reader.readAsDataURL(f);
+        });
+
+        list.style.display = 'block';
+        btn.style.display  = 'inline-flex';
+    });
+
+    document.getElementById('uploadImagesBtn')?.addEventListener('click', async function () {
+        const sku = document.getElementById('modalSku').value;
+        if (!pendingFiles.length) return;
+        if (modalUrls.length >= 12) { toast('Maximum 12 images already added', false); return; }
+
+        const btn     = this;
+        const spinner = document.getElementById('uploadSpinner');
+        const msg     = document.getElementById('uploadSuccessMsg');
+
+        btn.disabled       = true;
+        spinner.style.display = 'inline-block';
+        msg.style.display  = 'none';
+
+        try {
+            const fd = new FormData();
+            fd.append('sku', sku);
+            const allowed = 12 - modalUrls.length;
+            pendingFiles.slice(0, allowed).forEach(f => fd.append('files[]', f));
+
+            const r = await fetch('/image-master/upload', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: fd,
+            });
+            const j = await r.json();
+
+            if (j.success && j.urls?.length) {
+                // Register DB ids so ✕ can delete from server
+                (j.images || []).forEach(img => {
+                    storedImageMeta.set(img.url, { id: img.id, name: img.name });
+                });
+                modalUrls = modalUrls.concat(j.urls).slice(0, 12);
+                renderSlots();
+                const count = j.urls.length;
+                msg.textContent   = `${count} image${count > 1 ? 's' : ''} uploaded successfully!`;
+                msg.style.display = 'inline';
+                toast(`${count} image${count > 1 ? 's' : ''} uploaded`);
+                // Reset file input & preview
+                document.getElementById('modalFileInput').value = '';
+                document.getElementById('fileChosenLabel').textContent = 'No file chosen';
+                document.getElementById('uploadPreviewList').style.display = 'none';
+                document.getElementById('uploadPreviewItems').innerHTML = '';
+                btn.style.display = 'none';
+                pendingFiles = [];
+            } else {
+                toast(j.message || 'Upload failed', false);
+            }
+        } catch (e) {
+            toast(e.message || 'Upload error', false);
+        } finally {
+            btn.disabled          = false;
+            spinner.style.display = 'none';
+        }
+    });
+    // ── END ADD IMAGES ───────────────────────────────────────────────────────────
 
     document.getElementById('fetchAmazonBtn')?.addEventListener('click', async () => {
         const sku = document.getElementById('modalSku').value;
@@ -358,40 +676,111 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('savePmBtn')?.addEventListener('click', async () => {
         const sku = document.getElementById('modalSku').value;
-        const r = await fetch('/image-master/save-pm', {
-            method:'POST',
-            headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrfToken,'Accept':'application/json'},
-            body: JSON.stringify({ sku, images: modalUrls }),
-        });
-        const j = await r.json();
-        if (j.success) { toast('Saved to Product Master'); loadData(); }
-        else toast(j.message||'Save failed', false);
+
+        // ── If all images have been removed, also clear every marketplace ──
+        if (modalUrls.length === 0) {
+            if (!confirm('You have removed all images.\n\nSave to Product Master AND remove images from ALL marketplaces?')) return;
+
+            setPushProgress(true, 'Removing images from all marketplaces…', '');
+            const clearUpdates = MARKETPLACES.map(mp => ({ marketplace: mp, images: [] }));
+            const progress = [];
+            for (const mp of MARKETPLACES) {
+                try {
+                    const cr = await fetch('/image-master/push', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: JSON.stringify({ sku, mode: 'replace', updates: [{ marketplace: mp, images: [] }] }),
+                        signal: AbortSignal.timeout(300000),
+                    });
+                    const cj = await cr.json();
+                    const ok = cj.results?.[mp]?.success ?? cj.success;
+                    const msg = cj.results?.[mp]?.message ?? cj.message ?? '';
+                    progress.push(`${LABELS[mp]}: ${ok ? 'Cleared' : 'Failed'} ${msg ? '— '+esc(msg) : ''}`);
+                } catch (e) {
+                    progress.push(`${LABELS[mp]}: Failed — ${esc(e.message || 'error')}`);
+                }
+                setPushProgress(true, 'Removing images from all marketplaces…', progress.join('<br>'));
+            }
+            setPushProgress(true, 'Marketplace images cleared. Saving Product Master…', progress.join('<br>'));
+        }
+
+        // ── Save to Product Master ──────────────────────────────────────────
+        try {
+            const r = await fetch('/image-master/save-pm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ sku, images: modalUrls }),
+            });
+            const j = await r.json();
+            if (j.success) {
+                toast(modalUrls.length === 0 ? 'Images cleared from Product Master & all marketplaces' : 'Saved to Product Master');
+                loadData();
+                if (modalUrls.length === 0 && editModal) editModal.hide();
+            } else {
+                toast(j.message || 'Save failed', false);
+            }
+        } catch (e) {
+            toast(e.message || 'Save failed', false);
+        } finally {
+            setTimeout(() => setPushProgress(false, '', ''), 5000);
+        }
     });
 
-    document.getElementById('pushModalBtn')?.addEventListener('click', async () => {
-        const sku = document.getElementById('modalSku').value;
+    // ── Push mode popup ────────────────────────────────────────────────────────
+    let pushModeModal;
+    if (window.bootstrap?.Modal) {
+        pushModeModal = new bootstrap.Modal(document.getElementById('pushModeModal'));
+    }
+
+    document.getElementById('pushModalBtn')?.addEventListener('click', () => {
+        const sku    = document.getElementById('modalSku').value;
         const checks = Array.from(document.querySelectorAll('.im-mp-chk:checked')).map(c => c.value);
-        if (!checks.length) { toast('Select marketplaces', false); return; }
+        if (!checks.length) { toast('Select at least one marketplace', false); return; }
+
+        const imagesToPush = selectedUrls.size > 0
+            ? modalUrls.filter(u => selectedUrls.has(u))
+            : modalUrls;
+        if (!imagesToPush.length) { toast('No images to push', false); return; }
         if (!confirmEbay3Push(checks)) return;
-        setPushProgress(true, `Pushing images to ${checks.length} marketplaces... This may take 1-2 minutes`, '');
+
+        // Show mode-choice popup
+        document.getElementById('pmImageCount').textContent = imagesToPush.length;
+        document.getElementById('pmMpCount').textContent    = checks.length;
+        if (pushModeModal) pushModeModal.show();
+    });
+
+    async function doPush(mode) {
+        if (pushModeModal) pushModeModal.hide();
+
+        const sku    = document.getElementById('modalSku').value;
+        const checks = Array.from(document.querySelectorAll('.im-mp-chk:checked')).map(c => c.value);
+        // Always iterate modalUrls to preserve visual grid order — never iterate the Set directly
+        const imagesToPush = selectedUrls.size > 0
+            ? modalUrls.filter(u => selectedUrls.has(u))   // grid order, selected only
+            : [...modalUrls];                               // grid order, all
+
+        const selLabel = selectedUrls.size > 0 ? `${imagesToPush.length} selected` : `all ${imagesToPush.length}`;
+        const modeLabel = mode === 'add' ? 'adding to' : 'replacing';
+        setPushProgress(true, `Pushing ${selLabel} image(s) (${modeLabel} existing) to ${checks.length} marketplace(s)… Please wait, do not close this window.`, '');
+
         const progress = [];
-        let okCount = 0;
-        let failCount = 0;
-        let metricsFailCount = 0;
+        let okCount = 0, failCount = 0, metricsFailCount = 0;
         try {
             for (let i = 0; i < checks.length; i++) {
                 const mp = checks[i];
-                setPushProgress(true, `Pushing images to ${checks.length} marketplaces... This may take 1-2 minutes`, progress.join('<br>'));
+                setPushProgress(true, `Pushing ${selLabel} image(s) (${modeLabel} existing) to ${checks.length} marketplace(s)… This may take 1-2 minutes`, progress.join('<br>'));
                 const controller = new AbortController();
-                const t = setTimeout(() => controller.abort(), 120000);
+                // 5 minutes: each image upload + old image deletes needs ~0.4s × N calls,
+                // so 20 images + 20 deletes ≈ 16s minimum even at full speed.
+                const t = setTimeout(() => controller.abort(), 300000);
                 try {
                     const r = await fetch('/image-master/push', {
-                        method:'POST',
-                        headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrfToken,'Accept':'application/json'},
-                        body: JSON.stringify({ sku, updates: [{ marketplace: mp, images: modalUrls }] }),
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: JSON.stringify({ sku, mode, updates: [{ marketplace: mp, images: imagesToPush }] }),
                         signal: controller.signal,
                     });
-                    const j = await r.json();
+                    const j  = await r.json();
                     const row = (j.results && j.results[mp]) ? j.results[mp] : null;
                     const rowOk = !!(row && row.success);
                     const rowMetrics = !!(row && row.metrics_saved);
@@ -400,8 +789,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     progress.push(`${i + 1}/${checks.length} ${LABELS[mp]}: ${rowOk ? 'OK' : 'Failed'}${row && row.message ? ` - ${esc(row.message)}` : ''}`);
                 } catch (e) {
                     failCount++;
-                    const timeoutText = (e && e.name === 'AbortError') ? 'Request timed out after 120s' : (e.message || 'Request failed');
-                    progress.push(`${i + 1}/${checks.length} ${LABELS[mp]}: Failed - ${esc(timeoutText)}`);
+                    const txt = (e?.name === 'AbortError') ? 'Request timed out after 300s' : (e.message || 'Request failed');
+                    progress.push(`${i + 1}/${checks.length} ${LABELS[mp]}: Failed - ${esc(txt)}`);
                 } finally {
                     clearTimeout(t);
                 }
@@ -418,7 +807,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             setTimeout(() => setPushProgress(false, '', ''), 5000);
         }
-    });
+    }
+
+    document.getElementById('pmReplaceBtn')?.addEventListener('click', () => doPush('replace'));
+    document.getElementById('pmAddBtn')?.addEventListener('click', ()     => doPush('add'));
+    // ── End push mode popup ────────────────────────────────────────────────────
 
     function quickPush(sku, mp) {
         const row = bySku.get(String(sku));
