@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class ShopifyApiService
 {
@@ -754,37 +755,40 @@ class ShopifyApiService
      * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string}
      */
-    public function updateListingImages(string $identifier, array $imageUrls): array
+    public function updateListingImages(string $identifier, array $imageUrls, string $mode = 'replace'): array
     {
+        // Preserve caller's order — only trim whitespace, do NOT sort
         $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
         $urls = array_slice($urls, 0, 20);
-        if (trim($identifier) === '' || $urls === []) {
-            return ['success' => false, 'message' => 'SKU (or variant_id) and image URLs are required.'];
+
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU / identifier is required.'];
+        }
+
+        // Empty urls + add mode = nothing to do
+        if ($urls === [] && $mode !== 'replace') {
+            return ['success' => true, 'message' => 'No images to add; skipped.'];
         }
 
         try {
             $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
-            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+            $token  = config('services.shopify.access_token') ?: config('services.shopify.password');
             if (! $domain || ! $token) {
                 return ['success' => false, 'message' => 'Shopify credentials not configured.'];
             }
 
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = rtrim($domain, '/');
+            $domain = rtrim(preg_replace('#^https?://#', '', $domain), '/');
+            $trim   = trim($identifier);
 
-            $trim = trim($identifier);
             $variantId = $this->resolveMainStoreVariantId($trim);
             if (! $variantId) {
                 return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
             }
 
-            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
-            $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
-                return Http::withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                    'Content-Type' => 'application/json',
-                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
-            });
+            $variantRes = $this->retryOnRateLimit(fn () => Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type'           => 'application/json',
+            ])->timeout(60)->connectTimeout(25)->get("https://{$domain}/admin/api/2024-01/variants/{$variantId}.json"));
 
             if (! $variantRes->successful()) {
                 return ['success' => false, 'message' => 'Variant lookup failed: '.$variantRes->body()];
@@ -795,35 +799,94 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Product ID missing.'];
             }
 
-            $title = $this->getProductTitle($domain, $token, $productId);
-            if ($title === '') {
-                return ['success' => false, 'message' => 'Could not load product title.'];
+            $imagesBase = "https://{$domain}/admin/api/2024-01/products/{$productId}/images";
+            $headers    = ['X-Shopify-Access-Token' => $token, 'Content-Type' => 'application/json'];
+
+            // ── Always fetch existing IDs for replace mode ─────────────────
+            $existingIds = [];
+            if ($mode === 'replace') {
+                $listRes = $this->retryOnRateLimit(fn () =>
+                    Http::withHeaders($headers)->timeout(15)->get("{$imagesBase}.json")
+                );
+                if ($listRes->successful()) {
+                    $existingIds = array_column($listRes->json('images', []), 'id');
+                }
             }
 
-            $images = [];
+            // ── CLEAR ALL: empty replace → delete all existing images ───────
+            if ($urls === []) {
+                $deletedCount = 0;
+                foreach ($existingIds as $oldId) {
+                    // 0.4s spacing — fast enough for bulk deletes, safe for Shopify rate limits
+                    $delRes = $this->retryOnRateLimit(fn () =>
+                        Http::withHeaders($headers)->timeout(15)
+                            ->delete("{$imagesBase}/{$oldId}.json"),
+                        3, 0.4
+                    );
+                    if ($delRes->successful() || $delRes->status() === 404) {
+                        $deletedCount++;
+                    }
+                }
+                return ['success' => true, 'message' => "All images removed from Shopify ({$deletedCount} deleted)."];
+            }
+
+            // ── Upload each new image in sequence order (position 1, 2, 3…) ─
+            // For REPLACE: explicit position so card-1 → pos-1, card-2 → pos-2, etc.
+            // For ADD:     no position — Shopify appends in the order we send them.
+            $uploadedCount = 0;
             foreach ($urls as $i => $src) {
-                $images[] = ['src' => $src, 'position' => $i + 1];
+                $imageData  = $mode === 'replace' ? ['position' => $i + 1] : [];
+                $attachment = $this->readLocalStorageImageAsBase64($src);
+                if ($attachment !== null) {
+                    $imageData['attachment'] = $attachment;
+                    $imageData['filename']   = rawurldecode(
+                        basename((string) parse_url($src, PHP_URL_PATH))
+                    );
+                } else {
+                    $imageData['src'] = $src;
+                }
+
+                // 0.4s spacing keeps upload order intact and is well within Shopify rate limits
+                $postRes = $this->retryOnRateLimit(fn () =>
+                    Http::withHeaders($headers)->timeout(30)->connectTimeout(15)
+                        ->post("{$imagesBase}.json", ['image' => $imageData]),
+                    3, 0.4
+                );
+                if ($postRes->successful()) {
+                    $uploadedCount++;
+                }
             }
 
-            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
-            $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $images) {
-                return Http::withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                    'Content-Type' => 'application/json',
-                ])->timeout(60)->connectTimeout(25)->put($productUrl, [
-                    'product' => [
-                        'id' => $productId,
-                        'title' => $title,
-                        'images' => $images,
-                    ],
-                ]);
-            });
-
-            if ($updateRes->successful()) {
-                return ['success' => true, 'message' => 'Shopify product images updated.'];
+            if ($uploadedCount === 0) {
+                return ['success' => false, 'message' => 'No images could be uploaded to Shopify.'];
             }
 
-            return ['success' => false, 'message' => 'Shopify image update failed: '.$updateRes->body()];
+            // ── REPLACE: delete old images now that new ones are live ───────
+            $deletedCount = 0;
+            $deleteErrors = 0;
+            foreach ($existingIds as $oldId) {
+                $delRes = $this->retryOnRateLimit(fn () =>
+                    Http::withHeaders($headers)->timeout(15)
+                        ->delete("{$imagesBase}/{$oldId}.json"),
+                    3, 0.4
+                );
+                if ($delRes->successful() || $delRes->status() === 404) {
+                    $deletedCount++;
+                } else {
+                    $deleteErrors++;
+                    Log::warning('Shopify image DELETE failed', [
+                        'image_id' => $oldId,
+                        'status'   => $delRes->status(),
+                        'body'     => mb_substr($delRes->body(), 0, 300),
+                    ]);
+                }
+            }
+
+            $action = $mode === 'add' ? 'Added' : 'Replaced with';
+            $deleteNote = ($deleteErrors > 0) ? " ({$deleteErrors} old image(s) could not be deleted — retry Replace to clean up)" : '';
+
+            return ['success' => true, 'message' => "{$action} {$uploadedCount} image(s) on Shopify in sequence order.{$deleteNote}"];
+
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -835,14 +898,18 @@ class ShopifyApiService
      * @param  list<string>  $images
      * @return array{success: bool, message: string}
      */
-    public function updateImages(string $identifier, array $images): array
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
     {
-        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 20);
-        if ($images === []) {
-            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        // Preserve order — unique + trim only (no sort)
+        $seen = []; $images = array_values(array_filter(array_map('trim', $images), function($v) use (&$seen) {
+            if ($v === '' || isset($seen[$v])) return false; $seen[$v] = true; return true;
+        }));
+        $images = array_slice($images, 0, 20);
+        if ($images === [] && $mode !== 'replace') {
+            return ['success' => true, 'message' => 'No images to add; skipped.'];
         }
 
-        $res = $this->updateListingImages($identifier, $images);
+        $res = $this->updateListingImages($identifier, $images, $mode);
         if (! ($res['success'] ?? false)) {
             return $res;
         }
@@ -1352,6 +1419,41 @@ class ShopifyApiService
             Log::warning('ShopifyApiService: loadShopifyMetricsBulletPoints failed', ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return '';
+        }
+    }
+
+    /**
+     * If $url points to a file on our own public storage disk, return its base64 content.
+     * Returns null for external URLs so the caller can fall back to `src`.
+     */
+    private function readLocalStorageImageAsBase64(string $url): ?string
+    {
+        try {
+            $appUrl = rtrim((string) config('app.url', ''), '/');
+
+            // Match own app URL  OR  explicit localhost / 127.0.0.1
+            $isLocal = ($appUrl !== '' && str_starts_with($url, $appUrl))
+                || (bool) preg_match('#^https?://(127\.0\.0\.1|localhost)(:\d+)?/#i', $url);
+
+            if (! $isLocal) {
+                return null;
+            }
+
+            // Extract the storage-relative path from  /storage/{path}
+            $storagePath = null;
+            if (preg_match('#/storage/(.+)$#', $url, $m)) {
+                $storagePath = rawurldecode($m[1]);
+            }
+
+            if ($storagePath === null || ! Storage::disk('public')->exists($storagePath)) {
+                return null;
+            }
+
+            $content = Storage::disk('public')->get($storagePath);
+
+            return $content !== null ? base64_encode($content) : null;
+        } catch (\Throwable) {
+            return null;
         }
     }
 }

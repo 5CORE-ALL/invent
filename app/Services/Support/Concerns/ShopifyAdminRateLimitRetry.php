@@ -85,15 +85,24 @@ trait ShopifyAdminRateLimitRetry
      * Default: 4 attempts (up to 3 retries) with delays 1s, 2s, 4s, 8s before each retry.
      *
      * @param  callable(): Response  $call
+     * @param  float  $minSpacingSeconds  Minimum seconds between Shopify API calls.
+     *                                    Pass 0.4 for bulk image POST/DELETE loops to avoid
+     *                                    the default 2-second gap multiplying across many calls.
      */
-    private function retryOnRateLimit(callable $call, int $maxRetries = 4): Response
+    private function retryOnRateLimit(callable $call, int $maxRetries = 4, float $minSpacingSeconds = 2.0): Response
     {
         $backoff = $this->shopifyAdminRetryBackoffSeconds();
         $response = null;
 
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
-                $this->enforceShopifyApiSpacing();
+                // Enforce minimum spacing between Shopify Admin API calls
+                if (self::$shopifyAdminLastCallEndedAt !== null) {
+                    $elapsed = microtime(true) - self::$shopifyAdminLastCallEndedAt;
+                    if ($elapsed < $minSpacingSeconds) {
+                        usleep((int) (($minSpacingSeconds - $elapsed) * 1_000_000));
+                    }
+                }
                 $response = $call();
                 $this->markShopifyApiCallCompleted();
             } catch (\Throwable $e) {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
+use App\Models\ProductImage;
 use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
@@ -15,6 +16,7 @@ use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
+use Illuminate\Support\Facades\Storage;
 use App\Services\TemuApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -182,43 +184,59 @@ class ImageMasterController extends Controller
      */
     public function pushToMarketplace(Request $request)
     {
+        // Remove PHP execution time limit and keep running even if browser disconnects.
+        // Critical: without ignore_user_abort the DELETE loop gets killed mid-way when the
+        // browser's AbortController fires, leaving old Shopify images un-deleted.
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $validated = $request->validate([
-            'sku' => 'required|string|max:255',
-            'updates' => 'required|array|min:1',
-            'updates.*.marketplace' => 'required|string',
-            'updates.*.images' => 'required|array|max:12',
-            'updates.*.images.*' => 'nullable|string|max:2048',
+            'sku'                    => 'required|string|max:255',
+            'updates'                => 'required|array|min:1',
+            'updates.*.marketplace'  => 'required|string',
+            'updates.*.images'       => 'required|array',          // allow empty for "clear all"
+            'updates.*.images.*'     => 'nullable|string|max:2048',
+            'mode'                   => 'nullable|string|in:replace,add',
         ]);
 
-        $sku = $this->normalizeSku($validated['sku']);
+        $sku     = $this->normalizeSku($validated['sku']);
+        $mode    = $validated['mode'] ?? 'replace';   // 'replace' | 'add'
         $allowed = array_keys($this->marketplaceTableMap());
         $results = [];
 
         foreach ($validated['updates'] as $u) {
-            $mp = strtolower(trim($u['marketplace']));
+            $mp     = strtolower(trim($u['marketplace']));
+            // Preserve original order — do NOT sort, trim only
             $images = array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== ''));
-            $images = array_slice($images, 0, 12);
+            $images = array_slice($images, 0, 20);
 
             if (! in_array($mp, $allowed, true)) {
                 $results[$mp] = ['success' => false, 'message' => 'Unknown marketplace'];
                 continue;
             }
-            if ($images === []) {
-                $results[$mp] = ['success' => false, 'message' => 'No image URLs provided'];
+
+            // Empty images + add mode = nothing to do
+            if ($images === [] && $mode !== 'replace') {
+                $results[$mp] = ['success' => true, 'message' => 'No images to add; skipped.'];
                 continue;
             }
 
-            $remote = $this->pushImagesToRemote($mp, $sku, $images);
+            $remote   = $this->pushImagesToRemote($mp, $sku, $images, $mode);
             $remoteOk = (bool) ($remote['success'] ?? false);
-            $saved = $remoteOk && $this->saveImageMetricsToTable($mp, $sku, $images);
-            if ($remoteOk && in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
-                $saved = $this->saveShopifyCatalogImages($sku, $mp, $images) || $saved;
+
+            // Only persist metrics when we have actual image URLs
+            $saved = false;
+            if ($remoteOk && $images !== []) {
+                $saved = $this->saveImageMetricsToTable($mp, $sku, $images);
+                if (in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+                    $saved = $this->saveShopifyCatalogImages($sku, $mp, $images) || $saved;
+                }
             }
+
             $results[$mp] = [
-                // API success should not flip to false only because local metrics persistence failed.
-                'success' => $remoteOk,
-                'metrics_saved' => $saved,
-                'message' => ($remote['message'] ?? '').($saved ? '' : ' Metrics not saved.'),
+                'success'        => $remoteOk,
+                'metrics_saved'  => $saved,
+                'message'        => ($remote['message'] ?? '').($saved ? '' : ($images !== [] ? ' Metrics not saved.' : '')),
             ];
         }
 
@@ -270,33 +288,105 @@ class ImageMasterController extends Controller
     }
 
     /**
-     * Upload files to public disk; returns URL paths for use in push / PM save.
+     * Upload files to public disk under products/{sku}/, persist to product_images, return URLs.
      */
     public function uploadImages(Request $request)
     {
         $validated = $request->validate([
-            'sku' => 'required|string|max:255',
-            'files' => 'required|array|min:1|max:12',
-            'files.*' => 'file|image|max:10240',
+            'sku'    => 'required|string|max:255',
+            'files'  => 'required|array|min:1|max:12',
+            'files.*' => 'file|mimes:jpg,jpeg,png,webp|max:10240',
         ]);
-        $sku = preg_replace('/[^a-zA-Z0-9_\- ]/', '_', $this->normalizeSku($validated['sku']));
-        $urls = [];
+
+        $sku     = $this->normalizeSku($validated['sku']);
+        $safeSku = preg_replace('/[^a-zA-Z0-9_\- ]/', '_', $sku);
+        $folder  = "products/{$safeSku}";
+
+        $urls    = [];
+        $records = [];
+        $now     = now();
 
         foreach ($request->file('files', []) as $file) {
             if (! $file) {
                 continue;
             }
-            $path = $file->store("image-master/{$sku}", 'public');
-            $urls[] = asset('storage/'.$path);
+
+            $originalName = $file->getClientOriginalName();
+            $extension    = strtolower($file->getClientOriginalExtension());
+            $baseName     = pathinfo($originalName, PATHINFO_FILENAME);
+            $uniqueName   = $baseName.'_'.uniqid().'.'.$extension;
+
+            $path = $file->storeAs($folder, $uniqueName, 'public');
+
+            $record = ProductImage::create([
+                'sku'           => $sku,
+                'image_path'    => $path,
+                'original_name' => $originalName,
+                'file_size'     => $file->getSize(),
+                'mime_type'     => $file->getClientMimeType(),
+                'created_at'    => $now,
+            ]);
+
+            $url     = asset('storage/'.$path);
+            $urls[]  = $url;
+            $records[] = [
+                'id'    => $record->id,
+                'url'   => $url,
+                'name'  => $originalName,
+            ];
         }
 
-        return response()->json(['success' => true, 'urls' => $urls]);
+        return response()->json([
+            'success' => true,
+            'urls'    => $urls,
+            'images'  => $records,
+        ]);
+    }
+
+    /**
+     * Return all locally stored images for a SKU (from product_images table).
+     */
+    public function getSkuImages(Request $request)
+    {
+        $sku = $this->normalizeSku($request->get('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'images' => []]);
+        }
+
+        $images = ProductImage::where('sku', $sku)
+            ->orderBy('id')
+            ->get()
+            ->map(fn (ProductImage $img) => [
+                'id'   => $img->id,
+                'url'  => asset('storage/'.$img->image_path),
+                'name' => $img->original_name ?? basename($img->image_path),
+                'path' => $img->image_path,
+            ])
+            ->values();
+
+        return response()->json(['success' => true, 'images' => $images]);
+    }
+
+    /**
+     * Delete a stored SKU image from DB and disk.
+     */
+    public function deleteSkuImage(Request $request, int $id)
+    {
+        $image = ProductImage::find($id);
+        if (! $image) {
+            return response()->json(['success' => false, 'message' => 'Not found'], 404);
+        }
+
+        Storage::disk('public')->delete($image->image_path);
+        $image->delete();
+
+        return response()->json(['success' => true]);
     }
 
     /**
      * @return array{success: bool, message: string}
      */
-    private function pushImagesToRemote(string $marketplace, string $sku, array $imageUrls): array
+    private function pushImagesToRemote(string $marketplace, string $sku, array $imageUrls, string $mode = 'replace'): array
     {
         try {
             switch ($marketplace) {
@@ -311,9 +401,9 @@ class ImageMasterController extends Controller
                 case 'temu':
                     return app(TemuApiService::class)->updateImages($sku, $imageUrls);
                 case 'shopify_main':
-                    return app(ShopifyApiService::class)->updateImages($sku, $imageUrls);
+                    return app(ShopifyApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'shopify_pls':
-                    return app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls);
+                    return app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'macy':
                     return app(MacysApiService::class)->updateImages($sku, $imageUrls);
                 case 'reverb':
@@ -430,6 +520,41 @@ class ImageMasterController extends Controller
 
             return [];
         }
+    }
+
+    /**
+     * Load the last-pushed image URLs for a marketplace/sku from the metrics table.
+     * Used in "add" mode to append new images to whatever is already on the marketplace.
+     *
+     * @return list<string>
+     */
+    private function loadExistingMarketplaceImages(string $marketplace, string $sku): array
+    {
+        $table = $this->marketplaceTableMap()[$marketplace] ?? null;
+        if (! $table || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+            return [];
+        }
+
+        $hasMasterJson = Schema::hasColumn($table, 'image_master_json');
+        $hasImageUrls  = Schema::hasColumn($table, 'image_urls');
+        if (! $hasMasterJson && ! $hasImageUrls) {
+            return [];
+        }
+
+        $col = $hasMasterJson ? 'image_master_json' : 'image_urls';
+        $row = DB::table($table)->where('sku', $sku)->first();
+        if (! $row) {
+            return [];
+        }
+
+        $json    = trim((string) ($row->{$col} ?? ''));
+        $decoded = $json !== '' ? json_decode($json, true) : null;
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', $decoded), fn ($s) => $s !== ''));
     }
 
     private function normalizeSku(?string $sku): string

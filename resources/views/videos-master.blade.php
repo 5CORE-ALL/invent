@@ -203,7 +203,7 @@
                                         </select>
                                     </th>
                                     <th>
-                                        <div>Unboxing <span id="unboxingMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div>Shoppable <span id="unboxingMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
                                         <div class="small text-white-50">Status</div>
                                         <select id="filterUnboxing" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
