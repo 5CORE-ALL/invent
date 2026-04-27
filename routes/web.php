@@ -221,6 +221,7 @@ use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\WalmartZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\YamibuyZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\ZendropZeroController;
 use App\Http\Controllers\ProductMaster\BulletPointMasterController;
+use App\Http\Controllers\ProductMaster\VideosForAdsController;
 use App\Http\Controllers\ProductMaster\CostpriceAnalysisController;
 use App\Http\Controllers\ProductMaster\DescriptionMaster2Controller;
 use App\Http\Controllers\ProductMaster\DescriptionMasterController;
@@ -2686,6 +2687,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/title-master/update-platforms', [ProductMasterController::class, 'updateTitlesToPlatforms'])->name('title.master.update.platforms');
     Route::get('/videos-master', fn () => view('videos-master'))->name('videos.master');
     Route::post('/videos-master/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.master.save');
+    Route::get('/videos-for-ads', [VideosForAdsController::class, 'index'])->name('videos.for.ads');
+    Route::post('/videos-for-ads/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.for.ads.save');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
     Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');
