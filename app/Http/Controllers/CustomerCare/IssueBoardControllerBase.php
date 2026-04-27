@@ -30,6 +30,12 @@ abstract class IssueBoardControllerBase extends Controller
     /** Merge into CSV import row payload (override in subclass; avoid keys your table lacks) */
     protected function csvImportExtraPayload(callable $get): array { return []; }
 
+    /** Extra CSV header aliases (merged into import map). Override in dispatch boards for tracking_number, etc. */
+    protected function csvImportColumnMap(): array
+    {
+        return [];
+    }
+
     protected function normalizeFieldType(string $fieldType): string
     {
         $value = trim($fieldType);
@@ -46,7 +52,7 @@ abstract class IssueBoardControllerBase extends Controller
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
-            'what_happened' => 'nullable|string|max:50',
+            'what_happened' => 'nullable|string|max:100',
             'issue' => 'nullable|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
             'action_1' => 'nullable|string|max:255',
@@ -82,7 +88,24 @@ abstract class IssueBoardControllerBase extends Controller
         }
         $validated['department'] = $depts;
 
+        $this->validateIssueAttachments($request);
+
         return $validated;
+    }
+
+    /** Optional file validation (e.g. issue images). Override in subclass. */
+    protected function validateIssueAttachments(Request $request): void
+    {
+    }
+
+    /** Persist uploaded files after a new issue row is created. Override in subclass. */
+    protected function afterIssueInsert(int $issueId, Request $request): void
+    {
+    }
+
+    /** Persist uploaded files after an issue is updated. Override in subclass. */
+    protected function afterIssueUpdate(int $issueId, Request $request, object $existingIssueRow): void
+    {
     }
 
     protected function issueBoardIndexData(): array
@@ -319,7 +342,7 @@ abstract class IssueBoardControllerBase extends Controller
         $user = auth()->user();
         $createdBy = trim((string) ($user?->name ?? 'System')) ?: 'System';
 
-        $id = DB::transaction(function () use ($validated, $createdBy, $user) {
+        $id = DB::transaction(function () use ($request, $validated, $createdBy, $user) {
             $now = now();
             $payload = [
                 'sku' => trim($validated['sku']),
@@ -352,6 +375,8 @@ abstract class IssueBoardControllerBase extends Controller
                 'revision_no' => 0,
                 'logged_at' => $now,
             ]));
+            $this->afterIssueInsert($issueId, $request);
+
             return $issueId;
         });
 
@@ -397,7 +422,7 @@ abstract class IssueBoardControllerBase extends Controller
         $user = auth()->user();
         $actorName = trim((string) ($user?->name ?? 'System')) ?: 'System';
 
-        DB::transaction(function () use ($id, $validated, $actorName, $user) {
+        DB::transaction(function () use ($id, $validated, $actorName, $user, $request, $existing) {
             $now = now();
             $nextRevision = ((int) DB::table($this->historyTable())->where('orders_on_hold_issue_id', $id)->max('revision_no')) + 1;
             $payload = [
@@ -431,6 +456,7 @@ abstract class IssueBoardControllerBase extends Controller
                 'logged_at' => $now,
                 'created_at' => $now,
             ]));
+            $this->afterIssueUpdate($id, $request, $existing);
         });
 
         return response()->json(['message' => 'Hold issue updated successfully.']);
@@ -457,10 +483,10 @@ abstract class IssueBoardControllerBase extends Controller
             'parent'               => ['parent'],
             'marketplace_1'        => ['marketplace_1', 'mkt1', 'marketplace1'],
             'marketplace_2'        => ['marketplace_2', 'mkt2', 'marketplace2'],
-            'what_happened'        => ['what_happened', 'what?', 'what happened'],
+            'what_happened'        => ['what_happened', 'what?', 'issue?', 'what happened'],
             'action_1'             => ['action_1', 'action', 'action 1'],
             'action_1_remark'      => ['action_1_remark', 'action remark', 'action remark'],
-            'replacement_tracking' => ['replacement_tracking', 'replacement tracking'],
+            'replacement_tracking' => ['replacement_tracking', 'replacement tracking', 'track r'],
             'issue'                => ['issue', 'root_cause_found', 'root cause found'],
             'issue_remark'         => ['issue_remark', 'root cause remark', 'root_cause_remark'],
             'c_action_1'           => ['c_action_1', 'root_cause_fixed', 'root cause fixed'],
@@ -469,6 +495,7 @@ abstract class IssueBoardControllerBase extends Controller
             'department'           => ['department', 'dept'],
             'order_number'         => ['order_number', 'order id', 'order_id', 'order #'],
         ];
+        $map = array_merge($map, $this->csvImportColumnMap());
 
         while (($row = fgetcsv($handle)) !== false) {
             if ($headers === null) {

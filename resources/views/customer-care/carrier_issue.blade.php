@@ -17,6 +17,8 @@
     'marketplaces' => $marketplaces ?? collect(),
     'showDispatchExtras' => true,
     'defaultDepartmentFilter' => 'Carrier Issue',
+    'lockedDepartment' => 'Carrier Issue',
+    'hideDepartmentFieldInModal' => true,
     'hideDepartmentColumnAndFilter' => true,
     'hideRootCauseAndInstructionsCtnColumns' => true,
     'createdAtColumnAfterTrack' => true,
@@ -25,4 +27,6 @@
     'showAmpUsdColumn' => true,
     'showClaimReceivedColumn' => true,
     'showCarrierColumn' => true,
+    'hideLossDollarInput' => true,
+    'hideActionRemark' => true,
 ])->render() !!}

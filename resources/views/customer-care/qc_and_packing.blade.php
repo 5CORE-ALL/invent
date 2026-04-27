@@ -1,5 +1,33 @@
 @extends('layouts.vertical', ['title' => $pageTitle ?? 'QC And Packing', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
+@php
+    $woOrderId = (bool) ($showOrderIdField ?? false);
+    $hideActionRemarkFlag = (bool) ($hideActionRemark ?? false);
+    $importCsvHeaders = $woOrderId
+        ? ['sku', 'order_number', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1']
+        : ['sku', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1'];
+    if (! $hideActionRemarkFlag) {
+        $importCsvHeaders[] = 'action_1_remark';
+    }
+    $tailFromReplacement = ['replacement_tracking', 'issue', 'issue_remark', 'c_action_1', 'c_action_1_remark', 'department'];
+    if ($showDispatchExtras ?? false) {
+        $tailFromReplacement = array_merge(['tracking_number', 'issue_link'], $tailFromReplacement);
+    }
+    $importCsvHeaders = array_merge($importCsvHeaders, $tailFromReplacement);
+
+    $importCsvSampleRow = $woOrderId
+        ? ['SAMPLE-SKU-001', '112-1234567-8901234', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled']
+        : ['SAMPLE-SKU-001', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled'];
+    if (! $hideActionRemarkFlag) {
+        $importCsvSampleRow[] = '';
+    }
+    $sampleTail = ['TRK123', 'Quality Issue', '', 'Fixed', '', 'Dispatch'];
+    if ($showDispatchExtras ?? false) {
+        $sampleTail = array_merge(['1Z999AA10123456784', 'https://example.com'], $sampleTail);
+    }
+    $importCsvSampleRow = array_merge($importCsvSampleRow, $sampleTail);
+@endphp
+
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
@@ -303,7 +331,7 @@
             width: 100%;
         }
 
-        /* Dispatch issues: What? column — same layout as Action */
+        /* Dispatch issues: Issue? column — same layout as Action */
         .orders-hold-table th.dispatch-what-col {
             min-width: 150px;
             max-width: 280px;
@@ -409,6 +437,51 @@
         .tracking-cell:hover .tracking-dot  { display: none; }
         .tracking-cell:hover .tracking-full { display: inline; }
         .tracking-cell:hover .copy-tracking-btn { display: inline; }
+
+        .issue-attach-cell {
+            padding: 4px 2px !important;
+        }
+        .issue-img-thumb {
+            max-height: 42px;
+            max-width: 60px;
+            object-fit: cover;
+            border-radius: 4px;
+            vertical-align: middle;
+            border: 1px solid #dee2e6;
+        }
+        .issue-modal-thumb {
+            max-height: 48px;
+            max-width: 72px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            vertical-align: middle;
+        }
+
+        .issue-link-cell {
+            text-align: center;
+            vertical-align: middle;
+            white-space: nowrap;
+            width: 2.25rem;
+            max-width: 2.25rem;
+            padding-left: 4px !important;
+            padding-right: 4px !important;
+        }
+
+        .issue-link-cell .issue-link-icon {
+            color: #0d6efd;
+            line-height: 1;
+            padding: 4px 6px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .issue-link-cell .issue-link-icon:hover {
+            color: #0a58ca;
+            background: rgba(13, 110, 253, 0.1);
+        }
 
         .orders-hold-col-what {
             width: 5%;
@@ -797,12 +870,20 @@
                                     @endif
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-mp">MKT</th>
-                                    <th class="orders-hold-col-what @if($showDispatchExtras ?? false) dispatch-what-col @endif">What?</th>
+                                    <th class="orders-hold-col-what @if($showDispatchExtras ?? false) dispatch-what-col @endif">Issue?</th>
                                     <th class="orders-hold-col-action @if($showDispatchExtras ?? false) dispatch-action-col @endif">Action</th>
                                     @if($showCarrierColumn ?? false)
                                     <th class="orders-hold-col-carrier">Carrier</th>
                                     @endif
-                                    <th class="orders-hold-col-action">Track</th>
+                                    @if($showDispatchExtras ?? false)
+                                    <th class="orders-hold-col-action">Tracking</th>
+                                    @endif
+                                    <th class="orders-hold-col-action">Track R</th>
+                                    @if($showDispatchExtras ?? false)
+                                    <th class="orders-hold-col-action">Img 1</th>
+                                    <th class="orders-hold-col-action">Img 2</th>
+                                    <th class="orders-hold-col-action">Link</th>
+                                    @endif
                                     @if($createdAtColumnAfterTrack ?? false)
                                     <th class="orders-hold-col-created-at">Created At</th>
                                     @if($showClaimFiledColumn ?? false)
@@ -841,7 +922,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ (($showDispatchExtras ?? false) ? 18 : (($showOrderIdField ?? false) ? 17 : 16)) - (($hideDepartmentColumnAndFilter ?? false) ? 1 : 0) - (($hideRootCauseAndInstructionsCtnColumns ?? false) ? 3 : 0) + (($showClaimFiledColumn ?? false) ? 1 : 0) + (($showAmpUsdColumn ?? false) ? 1 : 0) + (($showClaimReceivedColumn ?? false) ? 1 : 0) + (($showCarrierColumn ?? false) ? 1 : 0) }}" class="text-center text-muted py-4">No records found.</td>
+                                    <td colspan="{{ (($showDispatchExtras ?? false) ? 22 : (($showOrderIdField ?? false) ? 17 : 16)) - (($hideDepartmentColumnAndFilter ?? false) ? 1 : 0) - (($hideRootCauseAndInstructionsCtnColumns ?? false) ? 3 : 0) + (($showClaimFiledColumn ?? false) ? 1 : 0) + (($showAmpUsdColumn ?? false) ? 1 : 0) + (($showClaimReceivedColumn ?? false) ? 1 : 0) + (($showCarrierColumn ?? false) ? 1 : 0) }}" class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -867,9 +948,17 @@
                                     @endif
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-mp">MKT</th>
-                                    <th class="orders-hold-col-what @if($showDispatchExtras ?? false) dispatch-what-col @endif">What?</th>
+                                    <th class="orders-hold-col-what @if($showDispatchExtras ?? false) dispatch-what-col @endif">Issue?</th>
                                     <th class="orders-hold-col-action">Action</th>
-                                    <th class="orders-hold-col-action">Track</th>
+                                    @if($showDispatchExtras ?? false)
+                                    <th class="orders-hold-col-action">Tracking</th>
+                                    @endif
+                                    <th class="orders-hold-col-action">Track R</th>
+                                    @if($showDispatchExtras ?? false)
+                                    <th class="orders-hold-col-action">Img 1</th>
+                                    <th class="orders-hold-col-action">Img 2</th>
+                                    <th class="orders-hold-col-action">Link</th>
+                                    @endif
                                     @if($createdAtColumnAfterTrack ?? false)
                                     <th class="orders-hold-col-created-at">Logged At</th>
                                     @endif
@@ -891,7 +980,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ (($showOrderIdField ?? false) ? 18 : 17) - (($hideDepartmentColumnAndFilter ?? false) ? 1 : 0) - (($hideRootCauseAndInstructionsCtnColumns ?? false) ? 3 : 0) }}" class="text-center text-muted py-4">No history found.</td>
+                                    <td colspan="{{ (($showOrderIdField ?? false) ? 18 : 17) + (($showDispatchExtras ?? false) ? 4 : 0) - (($hideDepartmentColumnAndFilter ?? false) ? 1 : 0) - (($hideRootCauseAndInstructionsCtnColumns ?? false) ? 3 : 0) }}" class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -914,9 +1003,9 @@
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
                         <code>@if($showOrderIdField ?? false)
-                            sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department
+                            sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1, what_happened, action_1@if(!($hideActionRemark ?? false)), action_1_remark@endif@if($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department
                         @else
-                            sku, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department
+                            sku, qty, order_qty, parent, marketplace_1, what_happened, action_1@if(!($hideActionRemark ?? false)), action_1_remark@endif@if($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department
                         @endif</code>
                     </p>
                     <p class="text-muted small mb-3">
@@ -1003,16 +1092,20 @@
                             </div>
 
                             @if($showDispatchExtras ?? false)
-                            <div class="col-md-6">
+                            <div class="@if($hideLossDollarInput ?? false) col-12 @else col-md-6 @endif">
                                 <label for="hold_issue_order_number" class="form-label">Order Number</label>
                                 <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
                                     placeholder="Enter order number">
                             </div>
+                            @if($hideLossDollarInput ?? false)
+                            <input type="hidden" id="hold_issue_total_loss" name="total_loss" value="">
+                            @else
                             <div class="col-md-6">
                                 <label for="hold_issue_total_loss" class="form-label">Loss $</label>
                                 <input type="number" class="form-control" id="hold_issue_total_loss" name="total_loss"
                                     step="0.01" placeholder="0.00">
                             </div>
+                            @endif
                             @elseif($showOrderIdField ?? false)
                             <div class="col-md-6">
                                 <label for="hold_issue_order_number" class="form-label">{{ $orderIdFieldLabel ?? 'Order ID' }}</label>
@@ -1028,9 +1121,9 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="hold_issue_what_happened" class="form-label">What?</label>
+                                <label for="hold_issue_what_happened" class="form-label">Issue?</label>
                                 <input type="text" class="form-control" id="hold_issue_what_happened" name="what_happened"
-                                    placeholder="e.g. 0 Stock, Damaged">
+                                    maxlength="100" placeholder="e.g. 0 Stock, Damaged">
                             </div>
 
                             <datalist id="hold_issue_marketplace_datalist">
@@ -1054,18 +1147,51 @@
                                 </datalist>
                             </div>
 
+                            @unless($hideActionRemark ?? false)
                             <div class="col-md-6" id="action1RemarkWrap">
                                 <label for="hold_issue_action_1_remark" class="form-label">Action Remark
                                     <span id="action1RemarkRequiredStar" class="text-danger d-none" aria-hidden="true">*</span></label>
                                 <input type="text" class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
                                     placeholder="Write action remark...">
                             </div>
+                            @else
+                            <input type="hidden" id="hold_issue_action_1_remark" name="action_1_remark" value="">
+                            @endunless
+
+                            @if($showDispatchExtras ?? false)
+                            <div class="col-md-6">
+                                <label for="hold_issue_tracking_number" class="form-label">Tracking</label>
+                                <input type="text" class="form-control" id="hold_issue_tracking_number"
+                                    name="tracking_number" maxlength="50" placeholder="Optional tracking">
+                            </div>
+                            <div class="col-12">
+                                <label for="hold_issue_issue_link" class="form-label">Link</label>
+                                <input type="text" class="form-control" id="hold_issue_issue_link" name="issue_link"
+                                    maxlength="500" placeholder="https://… or paste any reference URL" autocomplete="off" inputmode="url">
+                            </div>
+                            @endif
 
                             <div class="col-md-6">
                                 <label for="hold_issue_replacement_tracking" class="form-label">Replacement Tracking Number</label>
                                 <input type="text" class="form-control" id="hold_issue_replacement_tracking"
                                     name="replacement_tracking" maxlength="50" placeholder="Optional tracking number">
                             </div>
+
+                            @if($showDispatchExtras ?? false)
+                            <div class="col-md-6">
+                                <label for="hold_issue_image_1" class="form-label">Image 1</label>
+                                <input type="file" accept="image/*" class="form-control" id="hold_issue_image_1" autocomplete="off">
+                                <div id="hold_issue_image_1_existing" class="mt-1 d-none small"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="hold_issue_image_2" class="form-label">Image 2</label>
+                                <input type="file" accept="image/*" class="form-control" id="hold_issue_image_2" autocomplete="off">
+                                <div id="hold_issue_image_2_existing" class="mt-1 d-none small"></div>
+                            </div>
+                            <div class="col-12">
+                                <p class="text-muted small mb-0">Attach screenshots or image files. You can also paste an image from the clipboard (Ctrl/Cmd+V) while this dialog is focused — it fills Image 1, then Image 2.</p>
+                            </div>
+                            @endif
 
                             <div class="col-md-6">
                                 <label for="hold_issue_text" class="form-label">Root Cause Found <span class="text-danger">*</span></label>
@@ -1089,6 +1215,7 @@
                                 <datalist id="hold_issue_root_cause_fixed_datalist"></datalist>
                             </div>
 
+                            @if(!($hideDepartmentFieldInModal ?? false))
                             <div class="col-md-6">
                                 <label for="hold_issue_department" class="form-label">Department <span class="text-danger">*</span></label>
                                 @if(!empty($lockedDepartment ?? null))
@@ -1110,6 +1237,7 @@
                                 <div class="form-text">Select one or more. Hold <kbd>Ctrl</kbd> (Windows) or <kbd>⌘</kbd> (Mac) for multiple.</div>
                                 @endif
                             </div>
+                            @endif
 
                             <div class="col-12 d-none" id="cAction1RemarkWrap">
                                 <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark <span class="text-danger">*</span></label>
@@ -1242,6 +1370,7 @@
             const dropdownOptionsStoreUrl = @json($dropdownOptionsStoreUrl ?? route('customer.care.qc.and.packing.dropdown.options.store'));
             const dropdownOptionsDeleteUrl = @json($dropdownOptionsDeleteUrl ?? route('customer.care.qc.and.packing.dropdown.options.delete'));
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const hideActionRemark = @json((bool) ($hideActionRemark ?? false));
 
             const skuInput = document.getElementById('hold_issue_sku');
             const skuDatalist = document.getElementById('hold_issue_sku_datalist');
@@ -1260,6 +1389,8 @@
             const action1Input = document.getElementById('hold_issue_action_1');
             const action1RemarkInput = document.getElementById('hold_issue_action_1_remark');
             const action1RemarkWrap = document.getElementById('action1RemarkWrap');
+            const trackingNumberInput = document.getElementById('hold_issue_tracking_number');
+            const issueLinkInput = document.getElementById('hold_issue_issue_link');
             const replacementTrackingInput = document.getElementById('hold_issue_replacement_tracking');
             const cAction1Input = document.getElementById('hold_issue_c_action_1');
             const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
@@ -1282,6 +1413,7 @@
             const lockedDepartment = @json($lockedDepartment ?? null);
             const defaultDepartmentFilter = @json($defaultDepartmentFilter ?? null);
             const hideDepartmentColumnAndFilter = @json((bool) ($hideDepartmentColumnAndFilter ?? false));
+            const showDispatchExtras = @json((bool) ($showDispatchExtras ?? false));
             const showClaimFiledColumn = @json((bool) ($showClaimFiledColumn ?? false));
             const showAmpUsdColumn = @json((bool) ($showAmpUsdColumn ?? false));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
@@ -1294,6 +1426,32 @@
             let holdIssueHistoryRows = [];
             let editingIssueId = null;
             let activeDeptFilter = lockedDepartment || defaultDepartmentFilter || null;
+
+            if (modalEl && showDispatchExtras) {
+                modalEl.addEventListener('paste', function(pe) {
+                    const items = pe.clipboardData && pe.clipboardData.items;
+                    if (!items) return;
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') === -1) continue;
+                        const file = items[i].getAsFile();
+                        if (!file) continue;
+                        const inp1 = document.getElementById('hold_issue_image_1');
+                        const inp2 = document.getElementById('hold_issue_image_2');
+                        if (!inp1 || !inp2) return;
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        if (!inp1.files || inp1.files.length === 0) {
+                            inp1.files = dt.files;
+                        } else if (!inp2.files || inp2.files.length === 0) {
+                            inp2.files = dt.files;
+                        } else {
+                            return;
+                        }
+                        pe.preventDefault();
+                        return;
+                    }
+                });
+            }
 
             function parseDepartmentList(val) {
                 if (val == null || val === '') return [];
@@ -1841,8 +1999,60 @@
                 return '<span class="tracking-cell">' +
                     '<span class="tracking-dot">•</span>' +
                     '<span class="tracking-full">' + escapeHtml(text) + '</span>' +
-                    '<button class="copy-tracking-btn" data-copy="' + escAttr(text) + '" title="Copy tracking number"><i class="bi bi-clipboard"></i></button>' +
+                    '<button class="copy-tracking-btn" data-copy="' + escAttr(text) + '" title="Copy tracking"><i class="bi bi-clipboard"></i></button>' +
                     '</span>';
+            }
+
+            function linkHrefFromText(text) {
+                const t = String(text || '').trim();
+                if (!t) return '';
+                if (/^https?:\/\//i.test(t)) return t;
+                if (/^\/\//.test(t)) return 'https:' + t;
+                return 'https://' + t;
+            }
+
+            function linkCellHtml(issueLink) {
+                const text = String(issueLink || '').trim();
+                if (!text) return '<td class="issue-link-cell">—</td>';
+                const href = linkHrefFromText(text);
+                return '<td class="issue-link-cell">' +
+                    '<a href="' + escAttr(href) + '" target="_blank" rel="noopener noreferrer" class="issue-link-icon" ' +
+                    'title="' + escAttr(text) + '" aria-label="Open link">' +
+                    '<i class="bi bi-link-45deg fs-5" aria-hidden="true"></i>' +
+                    '</a></td>';
+            }
+
+            function issueImageThumbCell(imageUrl) {
+                const u = String(imageUrl || '').trim();
+                if (!u) return '—';
+                return '<a href="' + escAttr(u) + '" target="_blank" rel="noopener" class="d-inline-block">' +
+                    '<img src="' + escAttr(u) + '" alt="" class="issue-img-thumb" loading="lazy"></a>';
+            }
+
+            function fillIssueFormData(fd, payload, isMultiSku) {
+                for (const k of Object.keys(payload)) {
+                    if (k === 'skus') continue;
+                    const v = payload[k];
+                    if (k === 'department' && Array.isArray(v)) {
+                        v.forEach(d => fd.append('department[]', d));
+                        continue;
+                    }
+                    if (v === undefined || v === null) continue;
+                    if (typeof v === 'object') continue;
+                    fd.append(k, String(v));
+                }
+                if (isMultiSku && Array.isArray(payload.skus)) {
+                    payload.skus.forEach((row, i) => {
+                        fd.append('skus[' + i + '][sku]', row.sku ?? '');
+                        fd.append('skus[' + i + '][qty]', String(row.qty ?? 0));
+                        fd.append('skus[' + i + '][order_qty]', row.order_qty == null || row.order_qty === '' ? '' : String(row.order_qty));
+                        fd.append('skus[' + i + '][parent]', row.parent ?? '');
+                    });
+                }
+                const img1 = document.getElementById('hold_issue_image_1');
+                const img2 = document.getElementById('hold_issue_image_2');
+                if (img1 && img1.files && img1.files[0]) fd.append('image_1', img1.files[0]);
+                if (img2 && img2.files && img2.files[0]) fd.append('image_2', img2.files[0]);
             }
 
             function whatHappenedDotHtml(value) {
@@ -1916,6 +2126,7 @@
             }
 
             function toggleAction1RemarkField() {
+                if (hideActionRemark) return;
                 const selected = String(action1Input?.value || '').trim();
                 const isOther = selected === 'Other';
                 const star = document.getElementById('action1RemarkRequiredStar');
@@ -2067,14 +2278,22 @@
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         @endif
                         @if($showDispatchExtras ?? false)
-                        '<td class="dispatch-action-cell"><span class="action-cell-wrap">' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</span></td>' +
+                        '<td class="dispatch-action-cell"><span class="action-cell-wrap">' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</span></td>' +
                         @else
-                        '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
+                        '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</td>' +
                         @endif
 @if($showCarrierColumn ?? false)
                         carrierSelectCellHtml(row) +
 @endif
+@if($showDispatchExtras ?? false)
+                        '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+@endif
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
+@if($showDispatchExtras ?? false)
+                        '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_1_url) + '</td>' +
+                        '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_2_url) + '</td>' +
+                        linkCellHtml(row.issue_link) +
+@endif
 @if($createdAtColumnAfterTrack ?? false)
                         issueRecordDateTdHtml(row.created_at) +
 @endif
@@ -2150,8 +2369,16 @@
                         @else
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         @endif
-                        '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
+                        '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</td>' +
+@if($showDispatchExtras ?? false)
+                        '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+@endif
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
+@if($showDispatchExtras ?? false)
+                        '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_1_url) + '</td>' +
+                        '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_2_url) + '</td>' +
+                        linkCellHtml(row.issue_link) +
+@endif
 @if($createdAtColumnAfterTrack ?? false)
                         issueRecordDateTdHtml(row.logged_at) +
 @endif
@@ -2193,7 +2420,11 @@
                     issue_remark: row?.issue_remark ?? '',
                     action_1: row?.action_1 ?? '',
                     action_1_remark: row?.action_1_remark ?? '',
+                    tracking_number: row?.tracking_number ?? '',
+                    issue_link: row?.issue_link ?? '',
                     replacement_tracking: row?.replacement_tracking ?? '',
+                    image_1_url: row?.image_1_url ?? null,
+                    image_2_url: row?.image_2_url ?? null,
                     c_action_1: row?.c_action_1 ?? '',
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
@@ -2230,7 +2461,11 @@
                     issue_remark: row?.issue_remark ?? '',
                     action_1: row?.action_1 ?? '',
                     action_1_remark: row?.action_1_remark ?? '',
+                    tracking_number: row?.tracking_number ?? '',
+                    issue_link: row?.issue_link ?? '',
                     replacement_tracking: row?.replacement_tracking ?? '',
+                    image_1_url: row?.image_1_url ?? null,
+                    image_2_url: row?.image_2_url ?? null,
                     c_action_1: row?.c_action_1 ?? '',
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
@@ -2304,9 +2539,23 @@
                 issueRemarkInput.value = '';
                 toggleRootCauseRemarkField();
                 action1Input.value = '';
-                action1RemarkInput.value = '';
+                if (action1RemarkInput) action1RemarkInput.value = '';
                 toggleAction1RemarkField();
+                if (trackingNumberInput) trackingNumberInput.value = '';
+                if (issueLinkInput) issueLinkInput.value = '';
                 replacementTrackingInput.value = '';
+                @if($showDispatchExtras ?? false)
+                (function() {
+                    const hi1 = document.getElementById('hold_issue_image_1');
+                    const hi2 = document.getElementById('hold_issue_image_2');
+                    if (hi1) hi1.value = '';
+                    if (hi2) hi2.value = '';
+                    ['hold_issue_image_1_existing', 'hold_issue_image_2_existing'].forEach(function(id) {
+                        const el = document.getElementById(id);
+                        if (el) { el.classList.add('d-none'); el.innerHTML = ''; }
+                    });
+                })();
+                @endif
                 cAction1Input.value = '';
                 cAction1RemarkInput.value = '';
                 if (departmentInput) {
@@ -2352,9 +2601,39 @@
                 issueRemarkInput.value = record.issue_remark || '';
                 toggleRootCauseRemarkField();
                 action1Input.value = record.action_1 || '';
-                action1RemarkInput.value = record.action_1_remark || '';
+                if (action1RemarkInput) {
+                    action1RemarkInput.value = hideActionRemark ? '' : (record.action_1_remark || '');
+                }
                 toggleAction1RemarkField();
+                if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
+                if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
                 replacementTrackingInput.value = record.replacement_tracking || '';
+                @if($showDispatchExtras ?? false)
+                (function() {
+                    const hi1 = document.getElementById('hold_issue_image_1');
+                    const hi2 = document.getElementById('hold_issue_image_2');
+                    const e1 = document.getElementById('hold_issue_image_1_existing');
+                    const e2 = document.getElementById('hold_issue_image_2_existing');
+                    if (hi1) hi1.value = '';
+                    if (hi2) hi2.value = '';
+                    if (e1 && e2) {
+                        if (record.image_1_url) {
+                            e1.innerHTML = '<span class="text-muted small me-1">Current:</span><a href="' + escAttr(record.image_1_url) + '" target="_blank" rel="noopener"><img src="' + escAttr(record.image_1_url) + '" class="issue-modal-thumb" alt="Preview"></a>';
+                            e1.classList.remove('d-none');
+                        } else {
+                            e1.innerHTML = '';
+                            e1.classList.add('d-none');
+                        }
+                        if (record.image_2_url) {
+                            e2.innerHTML = '<span class="text-muted small me-1">Current:</span><a href="' + escAttr(record.image_2_url) + '" target="_blank" rel="noopener"><img src="' + escAttr(record.image_2_url) + '" class="issue-modal-thumb" alt="Preview"></a>';
+                            e2.classList.remove('d-none');
+                        } else {
+                            e2.innerHTML = '';
+                            e2.classList.add('d-none');
+                        }
+                    }
+                })();
+                @endif
                 cAction1Input.value = record.c_action_1 || '';
                 cAction1RemarkInput.value = record.c_action_1_remark || '';
                 setDepartmentMultiSelect(record);
@@ -2501,7 +2780,7 @@
                     issueInput.focus();
                     return;
                 }
-                if (action1Input.value.trim() === 'Other' && action1RemarkInput.value.trim() === '') {
+                if (!hideActionRemark && action1Input.value.trim() === 'Other' && action1RemarkInput && action1RemarkInput.value.trim() === '') {
                     showAlert('Please enter Action remark when Action is Other.');
                     action1RemarkInput.focus();
                     return;
@@ -2540,7 +2819,11 @@
                         what_happened: whatHappenedInput.value.trim(),
                         issue_remark: issueRemarkInput.value.trim(),
                         action_1: action1Input.value.trim(),
-                        action_1_remark: action1RemarkInput.value.trim(),
+                        action_1_remark: hideActionRemark ? '' : (action1RemarkInput?.value || '').trim(),
+                        @if($showDispatchExtras ?? false)
+                        tracking_number: (trackingNumberInput?.value || '').trim(),
+                        issue_link: (issueLinkInput?.value || '').trim(),
+                        @endif
                         replacement_tracking: replacementTrackingInput.value.trim(),
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
@@ -2585,16 +2868,32 @@
                         ? recordsUpdateBaseUrl + '/' + encodeURIComponent(editingIssueId)
                         : recordsStoreUrl;
 
-                    const response = await fetch(targetUrl, {
-                        method: isEdit ? 'PUT' : 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'X-CSRF-TOKEN': csrfToken,
-                        },
-                        body: JSON.stringify(payload),
-                    });
+                    let response;
+                    if (showDispatchExtras) {
+                        const fd = new FormData();
+                        if (isEdit) fd.append('_method', 'PUT');
+                        fillIssueFormData(fd, payload, isMultiSku);
+                        response = await fetch(targetUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                            body: fd,
+                        });
+                    } else {
+                        response = await fetch(targetUrl, {
+                            method: isEdit ? 'PUT' : 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                            body: JSON.stringify(payload),
+                        });
+                    }
 
                     const data = await response.json();
 
@@ -2781,12 +3080,14 @@
                 if (exportIncludeOrderId) {
                     activeHeaders.push(exportOrderIdLabel);
                 }
-                activeHeaders.push(
-                    'Order QTY', 'MKT',
-                    'What?', 'Action', 'Action Remark', 'Track',
-                    'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
-                    'Root Cause Fixed Remark'
-                );
+                activeHeaders.push('Order QTY', 'MKT', 'Issue?', 'Action');
+                if (!hideActionRemark) {
+                    activeHeaders.push('Action Remark');
+                }
+                if (showDispatchExtras) {
+                    activeHeaders.push('Tracking', 'Link');
+                }
+                activeHeaders.push('Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed', 'Root Cause Fixed Remark');
                 if (!hideDepartmentColumnAndFilter) {
                     activeHeaders.push('Dept');
                 }
@@ -2796,10 +3097,16 @@
                     if (exportIncludeOrderId) {
                         row.push(r.order_number || '');
                     }
+                    row.push(r.order_qty, r.marketplace_1, r.what_happened, r.action_1);
+                    if (!hideActionRemark) {
+                        row.push(r.action_1_remark);
+                    }
+                    if (showDispatchExtras) {
+                        row.push(r.tracking_number || '');
+                        row.push(r.issue_link || '');
+                    }
                     row.push(
-                        r.order_qty,
-                        r.marketplace_1, r.what_happened,
-                        r.action_1, r.action_1_remark, r.replacement_tracking,
+                        r.replacement_tracking,
                         r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark
                     );
                     if (!hideDepartmentColumnAndFilter) {
@@ -2829,12 +3136,8 @@
 
             document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
                 e.preventDefault();
-                const headers = {!! json_encode(($showOrderIdField ?? false)
-                    ? ['sku', 'order_number', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1', 'action_1_remark', 'replacement_tracking', 'issue', 'issue_remark', 'c_action_1', 'c_action_1_remark', 'department']
-                    : ['sku', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1', 'action_1_remark', 'replacement_tracking', 'issue', 'issue_remark', 'c_action_1', 'c_action_1_remark', 'department']) !!};
-                const sample  = {!! json_encode(($showOrderIdField ?? false)
-                    ? ['SAMPLE-SKU-001', '112-1234567-8901234', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled', '', 'TRK123', 'Quality Issue', '', 'Fixed', '', 'Dispatch']
-                    : ['SAMPLE-SKU-001', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled', '', 'TRK123', 'Quality Issue', '', 'Fixed', '', 'Dispatch']) !!};
+                const headers = @json($importCsvHeaders);
+                const sample  = @json($importCsvSampleRow);
                 const csv = [headers.join(','), sample.join(',')].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
