@@ -38,7 +38,7 @@
 @endsection
 
 @section('content')
-    <div class="container mt-4">
+    <div class="container-fluid team-management-page px-3 px-lg-4 px-xxl-5 mt-4">
         <!-- Page Header -->
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
@@ -70,18 +70,18 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <!-- Search Form -->
-                <div class="mb-4">
+                <div class="mb-2">
                     <div class="input-group">
                         <span class="input-group-text bg-light border-0">
                             <i class="fas fa-search text-muted"></i>
                         </span>
-                        <input type="text" id="searchInput" class="form-control form-control-lg border-0 bg-light" 
+                        <input type="text" id="searchInput" class="form-control border-0 bg-light" 
                             placeholder="Search by name, phone, email, designation, R&amp;R, resources, training, or checklist" onkeyup="filterTable()">
                     </div>
                 </div>
 
-                <!-- Users Table -->
-                <div class="table-responsive">
+                <!-- Users Table (scrolls inside viewport so edit mode stays on one screen) -->
+                <div class="users-active-table-wrap">
                     <table class="table users-table align-middle" id="usersTable">
                         <thead>
                             <tr>
@@ -179,22 +179,22 @@
                                         @php $resourcesVal = $user->userRR?->resources ?? ''; @endphp
                                         <div class="user-resources-cell" data-field="resources">
                                             @if($resourcesVal !== '')
-                                                <span class="user-display small text-break d-block user-resources-display" style="max-width: 280px;">{{ $resourcesVal }}</span>
+                                                <span class="user-display small text-break d-block user-resources-display">{{ $resourcesVal }}</span>
                                             @else
                                                 <span class="user-display">-</span>
                                             @endif
-                                            <textarea class="form-control form-control-sm user-edit d-none" rows="2" data-field="resources" placeholder="Links, docs, or notes">{{ $resourcesVal }}</textarea>
+                                            <textarea class="form-control form-control-sm user-edit user-edit-textarea d-none" rows="2" data-field="resources" placeholder="Links, docs, or notes">{{ $resourcesVal }}</textarea>
                                         </div>
                                     </td>
                                     <td>
                                         @php $trainingVal = $user->userRR?->training ?? ''; @endphp
                                         <div class="user-training-cell" data-field="training">
                                             @if($trainingVal !== '')
-                                                <span class="user-display small text-break d-block user-training-display" style="max-width: 280px;">{{ $trainingVal }}</span>
+                                                <span class="user-display small text-break d-block user-training-display">{{ $trainingVal }}</span>
                                             @else
                                                 <span class="user-display">-</span>
                                             @endif
-                                            <textarea class="form-control form-control-sm user-edit d-none" rows="2" data-field="training" placeholder="Training notes or link">{{ $trainingVal }}</textarea>
+                                            <textarea class="form-control form-control-sm user-edit user-edit-textarea d-none" rows="2" data-field="training" placeholder="Training notes or link">{{ $trainingVal }}</textarea>
                                         </div>
                                     </td>
                                     <td class="user-checklist-cell" data-checklist-base="{{ url('/performance/checklist') }}">
@@ -334,7 +334,7 @@
                                             <td>
                                                 @php $iuResources = $iu->userRR?->resources ?? ''; @endphp
                                                 @if($iuResources !== '')
-                                                    <span class="small text-break d-block" style="max-width: 280px;">{{ $iuResources }}</span>
+                                                    <span class="small text-break d-block inactive-long-text">{{ $iuResources }}</span>
                                                 @else
                                                     <span>-</span>
                                                 @endif
@@ -342,7 +342,7 @@
                                             <td>
                                                 @php $iuTraining = $iu->userRR?->training ?? ''; @endphp
                                                 @if($iuTraining !== '')
-                                                    <span class="small text-break d-block" style="max-width: 280px;">{{ $iuTraining }}</span>
+                                                    <span class="small text-break d-block inactive-long-text">{{ $iuTraining }}</span>
                                                 @else
                                                     <span>-</span>
                                                 @endif
@@ -499,9 +499,32 @@
         }
 
         /* Native .table-responsive clips overflow; allow tall tooltips to show */
-        .container.mt-4 .table-responsive {
+        .team-management-page .table-responsive {
             overflow-x: auto;
             overflow-y: visible;
+        }
+
+        /* Active users: keep table + edit row within the viewport */
+        .team-management-page .user-resources-display,
+        .team-management-page .user-training-display,
+        .team-management-page .inactive-long-text {
+            max-width: 100%;
+        }
+
+        #users-content .users-active-table-wrap {
+            overflow: auto;
+            max-height: calc(100dvh - 260px);
+            -webkit-overflow-scrolling: touch;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+
+        #users-content .users-active-table-wrap .users-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 4;
+            background-color: #f8f9fa;
+            box-shadow: 0 1px 0 #dee2e6;
         }
 
         /* Designation Badge */
@@ -612,9 +635,35 @@
             background-color: #fff3cd !important;
         }
 
+        .users-table tbody tr.editing-row td {
+            padding: 8px 10px;
+            vertical-align: top;
+        }
+
+        .users-table tbody tr.editing-row .avatar-circle {
+            width: 32px;
+            height: 32px;
+            font-size: 14px;
+        }
+
         .user-edit {
             min-width: 150px;
             font-size: 14px;
+        }
+
+        .users-table tbody tr.editing-row .user-edit {
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .users-table tbody tr.editing-row textarea.user-edit-textarea {
+            min-height: 2.25rem;
+            max-height: 4.25rem;
+            resize: none;
+            overflow-y: auto;
+            line-height: 1.35;
+            word-break: break-word;
         }
 
         .form-control:focus {
@@ -872,6 +921,7 @@
                         row.querySelector('.save-btn').classList.remove('d-none');
                         row.querySelector('.cancel-btn').classList.remove('d-none');
                         row.classList.add('editing-row');
+                        row.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
                     });
                 });
 
@@ -908,20 +958,16 @@
                                         display.textContent = tv || '-';
                                         if (tv) {
                                             display.className = 'user-display small text-break d-block user-training-display';
-                                            display.style.maxWidth = '280px';
                                         } else {
                                             display.className = 'user-display';
-                                            display.style.maxWidth = '';
                                         }
                                     } else if (field === 'resources') {
                                         const rv = originalData[userId][field] || '';
                                         display.textContent = rv || '-';
                                         if (rv) {
                                             display.className = 'user-display small text-break d-block user-resources-display';
-                                            display.style.maxWidth = '280px';
                                         } else {
                                             display.className = 'user-display';
-                                            display.style.maxWidth = '';
                                         }
                                     } else if (field === 'phone') {
                                         renderPhoneDisplay(display, originalData[userId][field]);
@@ -1032,10 +1078,8 @@
                                     resourcesDisplay.textContent = res || '-';
                                     if (res) {
                                         resourcesDisplay.className = 'user-display small text-break d-block user-resources-display';
-                                        resourcesDisplay.style.maxWidth = '280px';
                                     } else {
                                         resourcesDisplay.className = 'user-display';
-                                        resourcesDisplay.style.maxWidth = '';
                                     }
                                 }
                                 if (resourcesTextarea) {
@@ -1047,10 +1091,8 @@
                                     trainingDisplay.textContent = trn || '-';
                                     if (trn) {
                                         trainingDisplay.className = 'user-display small text-break d-block user-training-display';
-                                        trainingDisplay.style.maxWidth = '280px';
                                     } else {
                                         trainingDisplay.className = 'user-display';
-                                        trainingDisplay.style.maxWidth = '';
                                     }
                                 }
                                 if (trainingTextarea) {
