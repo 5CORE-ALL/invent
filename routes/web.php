@@ -3799,18 +3799,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/instagram-analytics/sample', [InstagramController::class, 'downloadSample'])->name('instagram.analytics.sample');
 
     // tiendamia
-    Route::get('tiendamiaAnalysis', action: [TiendamiaController::class, 'overallTiendamia']);
-    Route::get('/tiendamia/view-data', [TiendamiaController::class, 'getViewTiendamiaData']);
     Route::get('plsPricingCVR', [TiendamiaController::class, 'tiendamiaPricingCVR'])->name('tiendamia.pricing.cvr');
-    Route::post('/update-all-tiendamia-skus', [TiendamiaController::class, 'updateAllTiendamiaSkus']);
-    Route::post('/tiendamia/save-nr', [TiendamiaController::class, 'saveNrToDatabase']);
-    Route::post('/tiendamia/update-listed-live', [TiendamiaController::class, 'updateListedLive']);
-    Route::post('/tiendamia-analytics/import', [TiendamiaController::class, 'importTiendamiaAnalytics'])->name('tiendamia.analytics.import');
-    Route::get('/tiendamia-analytics/export', [TiendamiaController::class, 'exportTiendamiaAnalytics'])->name('tiendamia.analytics.export');
-    Route::get('/tiendamia-analytics/sample', [TiendamiaController::class, 'downloadSample'])->name('tiendamia.analytics.sample');
     Route::get('/tiendamia-products-pricing', [TiendamiaPricingController::class, 'tabulatorView'])->name('tiendamia.products.pricing');
     Route::get('/tiendamia-products-tabulator-data', [TiendamiaPricingController::class, 'getTabulatorData'])->name('tiendamia.products.tabulator.data');
     Route::post('/tiendamia/save-sprice', [TiendamiaPricingController::class, 'saveSpriceUpdates'])->name('tiendamia.products.save.sprice');
+    Route::post('/tiendamia/upload-price-file', [TiendamiaPricingController::class, 'uploadPriceFile'])->name('tiendamia.products.upload.price');
 
     // fbshop
     Route::get('fbshopAnalysis', action: [FbshopController::class, 'overallFbshop']);

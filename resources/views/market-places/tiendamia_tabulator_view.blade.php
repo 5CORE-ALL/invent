@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Tiendamia Products', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Tiendamia Princing', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -91,19 +91,65 @@
             display: inline-flex; align-items: center; justify-content: center;
             text-align: center; white-space: nowrap;
         }
+
+        #tmUploadPriceModal .modal-header {
+            background-color: #26b9bd !important;
+            color: #fff !important;
+            border-bottom: 0;
+        }
+        #tmUploadPriceModal .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+            opacity: 0.9;
+        }
+        #tmUploadPriceModal .tm-upload-warning {
+            background-color: #fffbeb;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+        }
     </style>
 @endsection
 
 @section('content')
-    @include('layouts.shared.page-title', [
-        'page_title' => 'Tiendamia Products',
-        'sub_title' => 'SKU metrics, pricing, and inventory (Tiendamia feed + Product Master + Shopify)',
-    ])
-
     <div class="row">
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
+
+                    <div class="modal fade" id="tmUploadPriceModal" tabindex="-1" aria-labelledby="tmUploadPriceModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title d-flex align-items-center gap-2 mb-0" id="tmUploadPriceModalLabel">
+                                        <i class="fas fa-dollar-sign"></i> Upload Price Data
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label for="tm-price-file" class="form-label mb-1">
+                                            <i class="fas fa-file-alt text-primary me-1"></i>Choose File
+                                        </label>
+                                        <input type="file" class="form-control" id="tm-price-file" name="price_file">
+                                        <div class="form-text">First row = header (same columns as <code>teinda.txt</code>). Plain text: delimiter is detected automatically (<strong>TAB</strong>, <strong>comma</strong>, or <strong>semicolon</strong>). <strong>Excel</strong> <code>.xlsx</code> / <code>.xls</code> / <code>.ods</code> uses the <strong>active sheet</strong>. Columns <strong>Offer SKU</strong> and <strong>Price</strong> are required.</div>
+                                    </div>
+                                    <div class="tm-upload-warning mb-3">
+                                        <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                                        <strong>Warning:</strong> This will TRUNCATE (clear) the <code>tiendamia_price_uploads</code> table before uploading!
+                                    </div>
+                                    <div id="tm-upload-price-result" class="small" role="status"></div>
+                                </div>
+                                <div class="modal-footer border-top">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn text-white" id="tm-upload-price-btn" style="background-color:#26b9bd;border-color:#26b9bd;">
+                                        <i class="fas fa-upload me-1"></i>Upload
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <select id="tm-row-type-filter" class="form-select form-select-sm" style="width:120px;">
@@ -184,6 +230,9 @@
                         </button>
                         <button type="button" id="tm-export-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-file-csv"></i> Export CSV
+                        </button>
+                        <button type="button" class="btn btn-sm text-white" data-bs-toggle="modal" data-bs-target="#tmUploadPriceModal" style="background-color:#26b9bd;border-color:#26b9bd;">
+                            <i class="fas fa-dollar-sign me-1"></i> Upload Price Data
                         </button>
                     </div>
 
@@ -613,6 +662,28 @@
                         formatter: function(cell) { return money(cell.getValue()); }
                     },
                     {
+                        title: 'WT ACT',
+                        field: 'wt_act',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        width: 78,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v === null || v === undefined || v === '') return '<span style="color:#6c757d;">—</span>';
+                            const n = parseFloat(v);
+                            if (!Number.isFinite(n)) return '<span style="color:#6c757d;">—</span>';
+                            return '<span style="font-weight:600;">' + n.toFixed(2) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'M Ship',
+                        field: 'm_ship',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        width: 78,
+                        formatter: function(cell) { return money(cell.getValue()); }
+                    },
+                    {
                         title: 'Sprice',
                         field: 'sprice',
                         sorter: 'number',
@@ -682,9 +753,9 @@
                 const sprice = parseFloat(cell.getValue()) || 0;
                 const margin = parseFloat(d._margin) || 1;
                 const lp = parseFloat(d.lp) || 0;
-                const ship = parseFloat(d.ship) || 0;
-                const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100) : 0;
-                const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 100) : 0;
+                const mShip = parseFloat(d.m_ship) || 0;
+                const sgpft = sprice > 0 ? Math.round(((sprice * margin - lp - mShip) / sprice) * 100) : 0;
+                const sroi = lp > 0 ? Math.round(((sprice * margin - lp - mShip) / lp) * 100) : 0;
                 cell.getRow().update({ sgpft: sgpft, sroi: sroi });
                 tmSaveSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
@@ -697,12 +768,69 @@
                 searchTimer = setTimeout(applyClientFilters, 200);
             });
 
+            const tmUploadModalEl = document.getElementById('tmUploadPriceModal');
+            if (tmUploadModalEl) {
+                tmUploadModalEl.addEventListener('show.bs.modal', function() {
+                    $('#tm-upload-price-result').empty();
+                    $('#tm-price-file').val('');
+                });
+            }
+
+            $('#tm-upload-price-btn').on('click', function() {
+                const $inp = $('#tm-price-file');
+                const $out = $('#tm-upload-price-result');
+                const $btn = $('#tm-upload-price-btn');
+                if (!$inp[0].files || !$inp[0].files.length) {
+                    $out.html('<span class="text-danger">Choose a file first.</span>');
+                    return;
+                }
+                const fd = new FormData();
+                fd.append('price_file', $inp[0].files[0]);
+                fd.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
+                $btn.prop('disabled', true);
+                $out.html('<span class="text-muted">Uploading…</span>');
+                fetch('{{ route('tiendamia.products.upload.price') }}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: fd,
+                }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+                    .then(function(res) {
+                        const j = res.j;
+                        if (!res.ok || !j.success) {
+                            $out.html('<span class="text-danger">' + (j.error || j.message || 'Upload failed') + '</span>');
+                            if (window.toastr) toastr.error(j.error || 'Upload failed');
+                            return;
+                        }
+                        const msg = 'Stored ' + j.rows_stored + ' rows. Updated ' + j.products_updated + ' products. ' +
+                            'Skipped (no SKU match): ' + j.skipped_no_matching_sku + ', open box: ' + j.skipped_open_box + '.';
+                        if (window.toastr) toastr.success(msg);
+                        if (tmUploadModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                            const inst = bootstrap.Modal.getInstance(tmUploadModalEl);
+                            if (inst) inst.hide();
+                        }
+                        if (j.products_updated > 0 || j.rows_stored > 0) {
+                            table.setData('{{ route('tiendamia.products.tabulator.data') }}');
+                        }
+                    })
+                    .catch(function() {
+                        $out.html('<span class="text-danger">Network error.</span>');
+                        if (window.toastr) toastr.error('Network error');
+                    })
+                    .finally(function() {
+                        $btn.prop('disabled', false);
+                    });
+            });
+
             $('#tm-refresh-btn').on('click', function() {
                 table.setData('{{ route('tiendamia.products.tabulator.data') }}');
             });
 
             $('#tm-export-btn').on('click', function() {
-                const name = 'tiendamia_products_' + new Date().toISOString().slice(0, 10) + '.csv';
+                const name = 'tiendamia_princing_' + new Date().toISOString().slice(0, 10) + '.csv';
                 table.download('csv', name);
             });
         });
