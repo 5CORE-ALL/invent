@@ -177,6 +177,42 @@ class EbayThreeController extends Controller
         return is_numeric($s) ? (float) $s : 0.0;
     }
 
+    /**
+     * Normalize SKU so product_masters.sku matches ebay_3_metrics.sku when the DB row
+     * differs only by case/spacing (whereIn still returns the row, but keyBy('sku') would not match PM).
+     */
+    private static function normalizeEbay3SkuForMatch(?string $sku): string
+    {
+        if ($sku === null || $sku === '') {
+            return '';
+        }
+        $sku = strtoupper(trim($sku));
+        $sku = preg_replace('/\s+/u', ' ', $sku);
+        $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+
+        return trim($sku);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Ebay3Metric>  $ebayMetricsExact
+     * @param  array<string, \App\Models\Ebay3Metric>  $ebayMetricsByNormalizedSku
+     */
+    private static function resolveEbay3MetricForPmSku(
+        string $pmSku,
+        $ebayMetricsExact,
+        array $ebayMetricsByNormalizedSku
+    ): ?Ebay3Metric {
+        if ($ebayMetricsExact->has($pmSku)) {
+            return $ebayMetricsExact->get($pmSku);
+        }
+        $nk = self::normalizeEbay3SkuForMatch($pmSku);
+        if ($nk !== '' && isset($ebayMetricsByNormalizedSku[$nk])) {
+            return $ebayMetricsByNormalizedSku[$nk];
+        }
+
+        return null;
+    }
+
     public function getViewEbay3DataTabulator(Request $request)
     {
         // Use fixed margin of 0.85 (85%) as specified
@@ -193,7 +229,28 @@ class EbayThreeController extends Controller
         });
         $skus = array_values($nonParentSkus);
 
-        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $allSkus)->get()->keyBy('sku');
+        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id', 'lmp_data', 'lmp_link')
+            ->whereIn('sku', $allSkus)
+            ->get();
+        $ebayMetrics = $ebayMetricsAll->keyBy('sku');
+        $ebayMetricsByNormalizedSku = [];
+        foreach ($ebayMetricsAll as $metric) {
+            $nk = self::normalizeEbay3SkuForMatch($metric->sku ?? '');
+            if ($nk === '') {
+                continue;
+            }
+            if (! isset($ebayMetricsByNormalizedSku[$nk])) {
+                $ebayMetricsByNormalizedSku[$nk] = $metric;
+
+                continue;
+            }
+            $cur = $ebayMetricsByNormalizedSku[$nk];
+            $newHas = ! empty($metric->item_id);
+            $curHas = ! empty($cur->item_id);
+            if ($newHas && ! $curHas) {
+                $ebayMetricsByNormalizedSku[$nk] = $metric;
+            }
+        }
 
         $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
         $shopifyForPmSku = static function (string $pmSku) use ($shopifyByNorm): ?ShopifySku {
@@ -282,13 +339,7 @@ class EbayThreeController extends Controller
         }
 
         // Pre-fetch all KW campaign data from Ebay3PriorityReport (L7, L1, L30)
-        $normalizeSku = function ($sku) {
-            if (empty($sku)) return '';
-            $sku = strtoupper(trim($sku));
-            $sku = preg_replace('/\s+/u', ' ', $sku);
-            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
-            return trim($sku);
-        };
+        $normalizeSku = static fn ($sku) => self::normalizeEbay3SkuForMatch($sku === null || $sku === '' ? null : (string) $sku);
 
         $allKwReports = Ebay3PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
             ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
@@ -387,7 +438,7 @@ class EbayThreeController extends Controller
         }
 
         // === PMT Ads pre-fetch: general reports for clicks L30 & L7 ===
-        $itemIds = $ebayMetrics->pluck('item_id')->filter()->toArray();
+        $itemIds = $ebayMetricsAll->pluck('item_id')->filter()->unique()->values()->toArray();
         $ebay3GeneralReportsL30 = Ebay3GeneralReport::where('report_range', 'L30')
             ->whereIn('listing_id', $itemIds)
             ->get();
@@ -397,7 +448,7 @@ class EbayThreeController extends Controller
 
         // Build item_id -> SKU map for PMT metrics aggregation
         $itemIdToSkuMap = [];
-        foreach ($ebayMetrics as $metric) {
+        foreach ($ebayMetricsAll as $metric) {
             if (!empty($metric->item_id)) {
                 $itemIdToSkuMap[$metric->item_id] = strtoupper($metric->sku);
             }
@@ -468,22 +519,23 @@ class EbayThreeController extends Controller
                     }
                     
                     // Add eBay L30, L60, Stock, views and price from metrics
-                    if (isset($ebayMetrics[$sku])) {
-                        $parentSums[$parentValue]['eBay L30'] += floatval($ebayMetrics[$sku]->ebay_l30 ?? 0);
-                        $parentSums[$parentValue]['eBay L60'] += floatval($ebayMetrics[$sku]->ebay_l60 ?? 0);
-                        $parentSums[$parentValue]['eBay Stock'] += floatval($ebayMetrics[$sku]->ebay_stock ?? 0);
-                        $parentSums[$parentValue]['views'] += floatval($ebayMetrics[$sku]->views ?? 0);
-                        $parentSums[$parentValue]['l7_views'] += floatval($ebayMetrics[$sku]->l7_views ?? 0);
+                    $childEbayMetric = self::resolveEbay3MetricForPmSku($sku, $ebayMetrics, $ebayMetricsByNormalizedSku);
+                    if ($childEbayMetric) {
+                        $parentSums[$parentValue]['eBay L30'] += floatval($childEbayMetric->ebay_l30 ?? 0);
+                        $parentSums[$parentValue]['eBay L60'] += floatval($childEbayMetric->ebay_l60 ?? 0);
+                        $parentSums[$parentValue]['eBay Stock'] += floatval($childEbayMetric->ebay_stock ?? 0);
+                        $parentSums[$parentValue]['views'] += floatval($childEbayMetric->views ?? 0);
+                        $parentSums[$parentValue]['l7_views'] += floatval($childEbayMetric->l7_views ?? 0);
                         
                         // Track price for average calculation (only count non-zero prices)
-                        $price = floatval($ebayMetrics[$sku]->ebay_price ?? 0);
+                        $price = floatval($childEbayMetric->ebay_price ?? 0);
                         if ($price > 0) {
                             $parentSums[$parentValue]['totalPrice'] += $price;
                             $parentSums[$parentValue]['priceCount']++;
                         }
                         
                         // PMT Ads: pick bid_percentage/suggested_bid from first child that has data
-                        $childItemId = $ebayMetrics[$sku]->item_id ?? null;
+                        $childItemId = $childEbayMetric->item_id ?? null;
                         if ($childItemId && $parentSums[$parentValue]['pmt_bid_percentage'] === null) {
                             if (isset($campaignListingsMap[$childItemId])) {
                                 $parentSums[$parentValue]['pmt_bid_percentage'] = $campaignListingsMap[$childItemId]->bid_percentage ?? null;
@@ -539,7 +591,7 @@ class EbayThreeController extends Controller
             
             // Include parent rows for display
 
-            $ebayMetric = $ebayMetrics[$sku] ?? null;
+            $ebayMetric = self::resolveEbay3MetricForPmSku($sku, $ebayMetrics, $ebayMetricsByNormalizedSku);
 
             // Initialize the data structure
             $row = [];
@@ -1623,8 +1675,28 @@ class EbayThreeController extends Controller
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link')
+            ->whereIn('sku', $skus)
+            ->get();
+        $ebayMetrics = $ebayMetricsAll->keyBy('sku');
+        $ebayMetricsByNormalizedSku = [];
+        foreach ($ebayMetricsAll as $metric) {
+            $nk = self::normalizeEbay3SkuForMatch($metric->sku ?? '');
+            if ($nk === '') {
+                continue;
+            }
+            if (! isset($ebayMetricsByNormalizedSku[$nk])) {
+                $ebayMetricsByNormalizedSku[$nk] = $metric;
 
+                continue;
+            }
+            $cur = $ebayMetricsByNormalizedSku[$nk];
+            $newHas = ! empty($metric->item_id);
+            $curHas = ! empty($cur->item_id);
+            if ($newHas && ! $curHas) {
+                $ebayMetricsByNormalizedSku[$nk] = $metric;
+            }
+        }
 
         $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
         $shopifyForPmSku = static function (string $pmSku) use ($shopifyByNorm): ?ShopifySku {
@@ -1692,7 +1764,7 @@ class EbayThreeController extends Controller
             $sku = $productMaster->sku;
             $isParent = stripos($sku, 'PARENT') !== false;
 
-            $ebayMetric = $ebayMetrics[$productMaster->sku] ?? null;
+            $ebayMetric = self::resolveEbay3MetricForPmSku($productMaster->sku, $ebayMetrics, $ebayMetricsByNormalizedSku);
 
             // Initialize the data structure
             $processedItem = [
