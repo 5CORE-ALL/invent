@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('amazon_acos_sbgt_rule_settings')) {
+            return;
+        }
+
         Schema::create('amazon_acos_sbgt_rule_settings', function (Blueprint $table) {
             $table->id();
             $table->json('rule');
