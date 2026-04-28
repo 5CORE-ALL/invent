@@ -192,6 +192,13 @@
                             <thead>
                                 <tr>
                                     <th style="min-width:50px;">#</th>
+                                    <th style="min-width:60px;">Images</th>
+                                    <th style="min-width:140px;">
+                                        Parent
+                                        <div class="th-filter">
+                                            <input type="text" id="parentSearch" placeholder="Search Parent">
+                                        </div>
+                                    </th>
                                     <th style="min-width:130px;">
                                         SKU <span id="skuCount" class="badge-count">(0)</span>
                                         <div class="th-filter">
@@ -539,6 +546,7 @@
         /* ── Filters ────────────────────────────────────────────── */
         function bindFilters() {
             document.getElementById('skuSearch').addEventListener('input', applyFilters);
+            document.getElementById('parentSearch').addEventListener('input', applyFilters);
             fields.forEach(f => {
                 document.getElementById('f_' + f.key).addEventListener('change', applyFilters);
             });
@@ -562,12 +570,14 @@
 
         /* ── Render ─────────────────────────────────────────────── */
         function applyFilters() {
-            const skuQ = document.getElementById('skuSearch').value.toLowerCase();
+            const skuQ    = document.getElementById('skuSearch').value.toLowerCase();
+            const parentQ = document.getElementById('parentSearch').value.toLowerCase();
             const filterVals = {};
             fields.forEach(f => { filterVals[f.key] = document.getElementById('f_' + f.key).value; });
 
             const filtered = allData.filter(row => {
-                if (skuQ && !row.sku.toLowerCase().includes(skuQ)) return false;
+                if (skuQ    && !row.sku.toLowerCase().includes(skuQ)) return false;
+                if (parentQ && !(row.parent_name && row.parent_name.toLowerCase().includes(parentQ))) return false;
                 for (const f of fields) {
                     if (filterVals[f.key] === 'missing' && !isEmpty(row[f.key])) return false;
                 }
@@ -582,7 +592,7 @@
             tbody.innerHTML = '';
 
             if (!data.length) {
-                tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">No records found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-muted">No records found</td></tr>';
                 document.getElementById('total-count').textContent = '0 records';
                 return;
             }
@@ -594,6 +604,21 @@
 
                 // #
                 td(tr, idx + 1, 'text-center text-muted');
+
+                // Image
+                const imgTd = document.createElement('td');
+                imgTd.style.textAlign = 'center';
+                imgTd.innerHTML = row.image_path
+                    ? '<img src="' + esc(row.image_path) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">'
+                    : '<span class="text-muted">—</span>';
+                tr.appendChild(imgTd);
+
+                // Parent
+                const parentTd = document.createElement('td');
+                parentTd.innerHTML = row.parent_name
+                    ? '<span style="font-size:12px;color:#6c757d;">' + esc(row.parent_name) + '</span>'
+                    : '<span class="text-muted" style="font-size:12px;">—</span>';
+                tr.appendChild(parentTd);
 
                 // SKU
                 const skuTd = document.createElement('td');

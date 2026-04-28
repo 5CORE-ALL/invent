@@ -5,6 +5,7 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\Controller;
 use App\Models\VideoForAd;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class VideosForAdsController extends Controller
 {
@@ -16,7 +17,34 @@ class VideosForAdsController extends Controller
     public function getData()
     {
         $records = VideoForAd::orderBy('sku')->get();
-        return response()->json(['success' => true, 'data' => $records]);
+
+        // Fetch parent + image from product_master keyed by SKU
+        $masters = DB::table('product_master')
+            ->select('sku', 'parent', 'Values')
+            ->get()
+            ->keyBy('sku');
+
+        $data = $records->map(function ($row) use ($masters) {
+            $item = $row->toArray();
+            $master = $masters->get($row->sku);
+
+            $item['parent_name'] = $master ? $master->parent : null;
+
+            // Resolve image_path from Values JSON (same logic as ProductMasterController)
+            $imagePath = null;
+            if ($master && $master->Values) {
+                $values = is_string($master->Values) ? json_decode($master->Values, true) : (array) $master->Values;
+                $localImage = $values['image_path'] ?? null;
+                if ($localImage) {
+                    $imagePath = '/' . ltrim($localImage, '/');
+                }
+            }
+            $item['image_path'] = $imagePath;
+
+            return $item;
+        });
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     public function store(Request $request)
