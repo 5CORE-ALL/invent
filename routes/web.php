@@ -185,6 +185,7 @@ use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\TiendamiaController;
+use App\Http\Controllers\MarketPlace\TiendamiaPricingController;
 use App\Http\Controllers\MarketPlace\TiktokController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\MarketPlace\WalmartControllerMarket;
@@ -3807,6 +3808,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tiendamia-analytics/import', [TiendamiaController::class, 'importTiendamiaAnalytics'])->name('tiendamia.analytics.import');
     Route::get('/tiendamia-analytics/export', [TiendamiaController::class, 'exportTiendamiaAnalytics'])->name('tiendamia.analytics.export');
     Route::get('/tiendamia-analytics/sample', [TiendamiaController::class, 'downloadSample'])->name('tiendamia.analytics.sample');
+    Route::get('/tiendamia-products-pricing', [TiendamiaPricingController::class, 'tabulatorView'])->name('tiendamia.products.pricing');
+    Route::get('/tiendamia-products-tabulator-data', [TiendamiaPricingController::class, 'getTabulatorData'])->name('tiendamia.products.tabulator.data');
+    Route::post('/tiendamia/save-sprice', [TiendamiaPricingController::class, 'saveSpriceUpdates'])->name('tiendamia.products.save.sprice');
 
     // fbshop
     Route::get('fbshopAnalysis', action: [FbshopController::class, 'overallFbshop']);
