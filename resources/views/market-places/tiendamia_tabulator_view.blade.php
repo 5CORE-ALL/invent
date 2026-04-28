@@ -234,6 +234,30 @@
                         <button type="button" class="btn btn-sm text-white" data-bs-toggle="modal" data-bs-target="#tmUploadPriceModal" style="background-color:#26b9bd;border-color:#26b9bd;">
                             <i class="fas fa-dollar-sign me-1"></i> Upload Price Data
                         </button>
+
+                        {{-- Decrease / Increase mode — same pattern as /bestbuy-pricing --}}
+                        <button type="button" id="tm-decrease-btn" class="btn btn-sm btn-warning">
+                            <i class="fas fa-arrow-down"></i> Decrease Mode
+                        </button>
+                        <button type="button" id="tm-increase-btn" class="btn btn-sm btn-success">
+                            <i class="fas fa-arrow-up"></i> Increase Mode
+                        </button>
+                    </div>
+
+                    <div id="tm-discount-input-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <span id="tm-selected-skus-count" class="fw-bold text-secondary"></span>
+                            <select id="tm-discount-type-select" class="form-select form-select-sm" style="width:120px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                            <input type="number" id="tm-discount-value-input" class="form-control form-control-sm"
+                                placeholder="Enter %" step="0.01" style="width:110px;">
+                            <button type="button" id="tm-apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                            <button type="button" id="tm-clear-sprice-btn" class="btn btn-danger btn-sm">
+                                <i class="fas fa-eraser"></i> Clear SPRICE
+                            </button>
+                        </div>
                     </div>
 
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
@@ -265,6 +289,60 @@
         let table = null;
         let allRows = [];
         let tmDilColor = 'all';
+
+        let decreaseModeActive = false;
+        let increaseModeActive = false;
+        let selectedSkus = new Set();
+
+        const TM_SELECT_FIELD = '_tm_select';
+
+        function tmToast(msg, type) {
+            if (window.toastr) {
+                if (type === 'error') toastr.error(msg);
+                else if (type === 'warning') toastr.warning(msg);
+                else toastr.success(msg);
+            } else {
+                alert(msg);
+            }
+        }
+
+        function roundToRetailPrice(price) {
+            return Math.ceil(price) - 0.01;
+        }
+
+        function tmPatchAllRowsSku(sku, patch) {
+            for (let i = 0; i < allRows.length; i++) {
+                const r = allRows[i];
+                if (r && r.sku === sku && !r.is_parent) {
+                    Object.assign(r, patch);
+                    break;
+                }
+            }
+        }
+
+        function tmRowsForSku(sku) {
+            if (!table) return [];
+            let rows = [];
+            if (typeof table.searchRows === 'function') {
+                try {
+                    rows = table.searchRows('sku', '=', sku) || [];
+                } catch (e) {
+                    rows = [];
+                }
+            }
+            if (rows.length) return rows;
+            return table.getRows().filter(function(r) {
+                const d = r.getData();
+                return d && String(d.sku) === String(sku) && !d.is_parent;
+            });
+        }
+
+        function tmResyncSelectColumn() {
+            if (!table || typeof table.showColumn !== 'function') return;
+            if (decreaseModeActive || increaseModeActive) {
+                table.showColumn(TM_SELECT_FIELD);
+            }
+        }
 
         function money(v) {
             const n = parseFloat(v);
@@ -408,6 +486,120 @@
             const filtered = computeFiltered();
             table.setData(filtered);
             updateSummary(filtered);
+            tmResyncSelectColumn();
+            updateTmSelectAllCheckbox();
+        }
+
+        function updateSelectedCount() {
+            const count = selectedSkus.size;
+            $('#tm-selected-skus-count').text(count + ' SKU' + (count !== 1 ? 's' : '') + ' selected');
+            $('#tm-discount-input-container').toggle(count > 0);
+        }
+
+        function updateTmSelectAllCheckbox() {
+            if (!table) return;
+            const data = table.getData();
+            const skus = data.filter(function(row) { return row && !row.is_parent && row.sku; }).map(function(r) { return r.sku; });
+            if (skus.length === 0) {
+                $('#tm-select-all-checkbox').prop('checked', false);
+                return;
+            }
+            const allSel = skus.every(function(s) { return selectedSkus.has(s); });
+            $('#tm-select-all-checkbox').prop('checked', allSel);
+        }
+
+        function tmSaveSpriceUpdates(updates) {
+            fetch('{{ route('tiendamia.products.save.sprice') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ updates: updates }),
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (!data.success) {
+                    tmToast(data.error || 'Save failed', 'error');
+                }
+            }).catch(function() {
+                tmToast('Save failed', 'error');
+            });
+        }
+
+        function applyTmDiscount() {
+            const discountType = $('#tm-discount-type-select').val();
+            const discountValue = parseFloat($('#tm-discount-value-input').val());
+            if (isNaN(discountValue) || discountValue === 0) {
+                tmToast('Please enter a valid discount value', 'error');
+                return;
+            }
+            if (selectedSkus.size === 0) {
+                tmToast('Please select at least one SKU', 'error');
+                return;
+            }
+            let updatedCount = 0;
+            const updates = [];
+            selectedSkus.forEach(function(sku) {
+                const rowData = allRows.find(function(r) { return r && r.sku === sku && !r.is_parent; });
+                if (!rowData) return;
+                const currentPrice = parseFloat(rowData.price) || 0;
+                if (currentPrice <= 0) return;
+                let newSprice;
+                if (discountType === 'percentage') {
+                    newSprice = increaseModeActive
+                        ? currentPrice * (1 + discountValue / 100)
+                        : currentPrice * (1 - discountValue / 100);
+                } else {
+                    newSprice = increaseModeActive
+                        ? currentPrice + discountValue
+                        : currentPrice - discountValue;
+                }
+                newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
+                const margin = parseFloat(rowData._margin) || 1;
+                const lp = parseFloat(rowData.lp) || 0;
+                const mShip = parseFloat(rowData.m_ship) || 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp - mShip) / newSprice) * 100) : 0;
+                const sroi = lp > 0 ? Math.round(((newSprice * margin - lp - mShip) / lp) * 100) : 0;
+                tmPatchAllRowsSku(sku, { sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                const found = tmRowsForSku(sku);
+                if (found.length) {
+                    found[0].update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                }
+                updates.push({ sku: sku, sprice: newSprice });
+                updatedCount++;
+            });
+            if (updates.length) {
+                tmSaveSpriceUpdates(updates);
+            }
+            $('#tm-discount-value-input').val('');
+            tmToast((increaseModeActive ? 'Increase' : 'Discount') + ' applied to ' + updatedCount + ' SKU(s) based on Price', 'success');
+            applyClientFilters();
+        }
+
+        function clearTmSpriceForSelected() {
+            if (selectedSkus.size === 0) {
+                tmToast('Please select SKUs first', 'error');
+                return;
+            }
+            if (!confirm('Clear SPRICE for ' + selectedSkus.size + ' selected SKU(s)?')) {
+                return;
+            }
+            let clearedCount = 0;
+            const updates = [];
+            selectedSkus.forEach(function(sku) {
+                tmPatchAllRowsSku(sku, { sprice: 0, sgpft: 0, sroi: 0 });
+                const found = tmRowsForSku(sku);
+                if (found.length) {
+                    found[0].update({ sprice: 0, sgpft: 0, sroi: 0 });
+                }
+                updates.push({ sku: sku, sprice: 0 });
+                clearedCount++;
+            });
+            if (updates.length) {
+                tmSaveSpriceUpdates(updates);
+            }
+            tmToast('SPRICE cleared for ' + clearedCount + ' SKU(s)', 'success');
+            applyClientFilters();
         }
 
         $(document).ready(function() {
@@ -444,6 +636,10 @@
                     allRows = Array.isArray(response) ? response : [];
                     const filtered = computeFiltered();
                     updateSummary(filtered);
+                    queueMicrotask(function() {
+                        tmResyncSelectColumn();
+                        updateTmSelectAllCheckbox();
+                    });
                     return filtered;
                 },
                 layout: 'fitDataStretch',
@@ -453,6 +649,22 @@
                 paginationCounter: 'rows',
                 initialSort: [{ column: 'sku', dir: 'asc' }],
                 columns: [
+                    {
+                        title: "<input type=\"checkbox\" id=\"tm-select-all-checkbox\">",
+                        field: TM_SELECT_FIELD,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        width: 40,
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent) return '';
+                            const sku = rowData.sku;
+                            const enc = encodeURIComponent(String(sku));
+                            const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                            return '<input type="checkbox" class="tm-sku-select-checkbox" data-sku-enc="' + enc + '" ' + isChecked + '>';
+                        }
+                    },
                     {
                         title: 'Parent',
                         field: 'parent',
@@ -727,23 +939,97 @@
                 ],
             });
 
-            function tmSaveSpriceUpdates(updates) {
-                fetch('{{ route('tiendamia.products.save.sprice') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({ updates: updates }),
-                }).then(function(r) { return r.json(); }).then(function(data) {
-                    if (!data.success && window.toastr) {
-                        toastr.error(data.error || 'Save failed');
+            $('#tm-decrease-btn').on('click', function() {
+                if (!table) return;
+                decreaseModeActive = !decreaseModeActive;
+                increaseModeActive = false;
+                if (decreaseModeActive) {
+                    $(this).removeClass('btn-warning').addClass('btn-danger')
+                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                    if (typeof table.showColumn === 'function') {
+                        table.showColumn(TM_SELECT_FIELD);
                     }
-                }).catch(function() {
-                    if (window.toastr) toastr.error('Save failed');
+                    $('#tm-increase-btn').removeClass('btn-danger').addClass('btn-success')
+                        .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                } else {
+                    $(this).removeClass('btn-danger').addClass('btn-warning')
+                        .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+                    if (typeof table.hideColumn === 'function') {
+                        table.hideColumn(TM_SELECT_FIELD);
+                    }
+                    selectedSkus.clear();
+                    $('#tm-select-all-checkbox').prop('checked', false);
+                }
+                updateSelectedCount();
+                table.redraw(true);
+                tmResyncSelectColumn();
+                updateTmSelectAllCheckbox();
+            });
+
+            $('#tm-increase-btn').on('click', function() {
+                if (!table) return;
+                increaseModeActive = !increaseModeActive;
+                decreaseModeActive = false;
+                if (increaseModeActive) {
+                    $(this).removeClass('btn-success').addClass('btn-danger')
+                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                    if (typeof table.showColumn === 'function') {
+                        table.showColumn(TM_SELECT_FIELD);
+                    }
+                    $('#tm-decrease-btn').removeClass('btn-danger').addClass('btn-warning')
+                        .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+                } else {
+                    $(this).removeClass('btn-danger').addClass('btn-success')
+                        .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                    if (typeof table.hideColumn === 'function') {
+                        table.hideColumn(TM_SELECT_FIELD);
+                    }
+                    selectedSkus.clear();
+                    $('#tm-select-all-checkbox').prop('checked', false);
+                }
+                updateSelectedCount();
+                table.redraw(true);
+                tmResyncSelectColumn();
+                updateTmSelectAllCheckbox();
+            });
+
+            $('#tm-discount-type-select').on('change', function() {
+                const t = $(this).val();
+                $('#tm-discount-value-input').attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+            });
+
+            $('#tm-apply-discount-btn').on('click', function() { applyTmDiscount(); });
+            $('#tm-discount-value-input').on('keypress', function(e) {
+                if (e.which === 13) applyTmDiscount();
+            });
+            $('#tm-clear-sprice-btn').on('click', function() { clearTmSpriceForSelected(); });
+
+            $(document).on('change', '#tm-select-all-checkbox', function() {
+                if (!table) return;
+                const isChecked = $(this).prop('checked');
+                table.getData().forEach(function(row) {
+                    if (!row || row.is_parent || !row.sku) return;
+                    if (isChecked) {
+                        selectedSkus.add(row.sku);
+                    } else {
+                        selectedSkus.delete(row.sku);
+                    }
                 });
-            }
+                $('.tm-sku-select-checkbox').prop('checked', isChecked);
+                updateSelectedCount();
+            });
+
+            $(document).on('change', '.tm-sku-select-checkbox', function() {
+                const enc = $(this).attr('data-sku-enc');
+                const sku = enc ? decodeURIComponent(enc) : '';
+                if ($(this).prop('checked')) {
+                    selectedSkus.add(sku);
+                } else {
+                    selectedSkus.delete(sku);
+                }
+                updateSelectedCount();
+                updateTmSelectAllCheckbox();
+            });
 
             table.on('cellEdited', function(cell) {
                 if (cell.getField() !== 'sprice') return;
@@ -757,7 +1043,9 @@
                 const sgpft = sprice > 0 ? Math.round(((sprice * margin - lp - mShip) / sprice) * 100) : 0;
                 const sroi = lp > 0 ? Math.round(((sprice * margin - lp - mShip) / lp) * 100) : 0;
                 cell.getRow().update({ sgpft: sgpft, sroi: sroi });
+                tmPatchAllRowsSku(sku, { sprice: sprice, sgpft: sgpft, sroi: sroi });
                 tmSaveSpriceUpdates([{ sku: sku, sprice: sprice }]);
+                updateSummary(computeFiltered());
             });
 
             $('#tm-row-type-filter, #tm-inv-filter, #tm-stock-filter, #tm-gpft-filter, #tm-roi-filter, #tm-ml30-filter, #tm-map-filter')
