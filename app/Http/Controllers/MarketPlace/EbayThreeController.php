@@ -84,6 +84,61 @@ class EbayThreeController extends Controller
     }
 
     /**
+     * Daily snapshot series for eBay 3 summary badges (amazon_channel_summary_data.channel = ebay3).
+     */
+    public function getEbay3BadgeChartData(Request $request)
+    {
+        try {
+            $metric = $request->input('metric', 'total_sales_amt');
+            $days = intval($request->input('days', 30));
+
+            $allowedMetrics = [
+                'zero_sold_count', 'sold_count',
+                'total_pft_amt', 'total_sales_amt', 'total_spend_l30',
+                'gpft_percent', 'npft_percent', 'groi_percent', 'nroi_percent', 'tcos_percent',
+                'avg_price', 'cvr_percent', 'total_views',
+                'missing_count', 'map_count', 'nmap_count',
+            ];
+
+            if (! in_array($metric, $allowedMetrics, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $query = AmazonChannelSummary::where('channel', 'ebay3')
+                ->orderBy('snapshot_date', 'asc');
+
+            if ($days > 0) {
+                $query->where('snapshot_date', '>=', now()->subDays($days)->toDateString());
+            }
+
+            $rows = $query->get();
+
+            $chartData = $rows->map(function ($row) use ($metric) {
+                $summary = $row->summary_data ?? [];
+                $raw = $summary[$metric] ?? null;
+                $sd = $row->snapshot_date;
+                $dateStr = '';
+                if ($sd) {
+                    $dateStr = $sd instanceof \DateTimeInterface
+                        ? $sd->format('M d')
+                        : date('M d', strtotime((string) $sd));
+                }
+
+                return [
+                    'date' => $dateStr,
+                    'value' => floatval($raw ?? 0),
+                ];
+            })->values()->toArray();
+
+            return response()->json(['success' => true, 'data' => $chartData]);
+        } catch (\Exception $e) {
+            Log::error('getEbay3BadgeChartData error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
+    /**
      * Same rules as ebay3_tabulator_view.blade.php badges (SKU rows only, no PARENT rows).
      */
     private function computeEbay3TabulatorSummary(array $treeData): array

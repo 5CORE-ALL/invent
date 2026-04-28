@@ -779,23 +779,23 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary (E Stock &gt; 0)</h6>
                     <div class="ebay2-summary-badge-row">
-                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: <span id="zero-sold-count">0</span></span>
-                        <span class="badge fs-6 p-2 sold-filter-badge" data-filter="sold" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">&gt; 0 Sold: <span id="more-sold-count">0</span></span>
-                        <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
-                        <span class="badge bg-warning fs-6 p-2 d-none" id="total-spend-l30-badge" style="color: black; font-weight: bold;" aria-hidden="true">PMT Spend: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">NPFT: 0%</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: white; font-weight: bold;">GROI: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
-                        <span class="badge fs-6 p-2 summary-badge-tacos" id="tacos-percent-badge">TACOS: 0.0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">CVR: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="zero" data-metric="zero_sold_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">0 Sold: <span id="zero-sold-count">0</span></span>
+                        <span class="badge fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="sold" data-metric="sold_count" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter · Hover for daily trend">&gt; 0 Sold: <span id="more-sold-count">0</span></span>
+                        <span class="badge bg-success fs-6 p-2 d-none ebay3-badge-chart ebay3-hover-chart" id="total-pft-amt-badge" data-metric="total_pft_amt" style="color: black; font-weight: bold; cursor: pointer;" aria-hidden="true" title="View trend">Total PFT: $0</span>
+                        <span class="badge bg-primary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-sales-amt-badge" data-metric="total_sales_amt" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Sales: $0</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none ebay3-badge-chart ebay3-hover-chart" id="total-spend-l30-badge" data-metric="total_spend_l30" style="color: black; font-weight: bold; cursor: pointer;" aria-hidden="true" title="View trend">PMT Spend: $0</span>
+                        <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-gpft-badge" data-metric="gpft_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-pft-badge" data-metric="npft_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">NPFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="groi-percent-badge" data-metric="groi_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">GROI: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="nroi-percent-badge" data-metric="nroi_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">NROI: 0%</span>
+                        <span class="badge fs-6 p-2 summary-badge-tacos ebay3-badge-chart ebay3-hover-chart" id="tacos-percent-badge" data-metric="tcos_percent" style="cursor: pointer;" title="View trend">TACOS: 0.0%</span>
+                        <span class="badge bg-warning fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">CVR: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Missing: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs">Map: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="inv-stock-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs">N Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 ebay3-hover-chart" id="missing-count-badge" data-metric="missing_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">Missing: 0</span>
+                        <span class="badge bg-success fs-6 p-2 ebay3-hover-chart" id="map-count-badge" data-metric="map_count" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">Map: 0</span>
+                        <span class="badge bg-warning fs-6 p-2 ebay3-hover-chart" id="inv-stock-badge" data-metric="nmap_count" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -918,6 +918,59 @@
             </div>
         </div>
     </div>
+
+    <!-- eBay 3 summary badge daily trend (same idea as amazon-tabulator-view badge chart) -->
+    <div class="modal fade" id="ebay3MetricChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header text-white py-1 px-3" style="background-color: #00a8a8;">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="ebay3ChartModalTitle">eBay 3 — Metric trend</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="ebay3ChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="ebay3ChartContainer" style="height: 22vh; display: none; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="ebay3MetricChart"></canvas>
+                        </div>
+                        <div id="ebay3ChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="ebay3ChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="ebay3ChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="ebay3ChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="ebay3ChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="ebay3ChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -942,6 +995,247 @@
     let missingFilterActive = false;
     let mapFilterActive = false;
     let invStockFilterActive = false;
+
+    /** Daily snapshot badge chart (amazon_channel_summary_data, channel=ebay3) */
+    const ebay3BadgeMetricLabels = {
+        zero_sold_count: '0 Sold',
+        sold_count: '> 0 Sold',
+        total_pft_amt: 'Total PFT',
+        total_sales_amt: 'Sales',
+        total_spend_l30: 'Ad spend (KW+PMT)',
+        gpft_percent: 'GPFT %',
+        npft_percent: 'NPFT %',
+        groi_percent: 'GROI %',
+        nroi_percent: 'NROI %',
+        tcos_percent: 'TACOS %',
+        avg_price: 'Avg price',
+        cvr_percent: 'CVR %',
+        total_views: 'Views',
+        missing_count: 'Missing',
+        map_count: 'Map',
+        nmap_count: 'N Map',
+    };
+    const ebay3BadgeDollarMetrics = ['total_pft_amt', 'total_sales_amt', 'total_spend_l30', 'avg_price'];
+    const ebay3BadgePctMetrics = ['gpft_percent', 'npft_percent', 'groi_percent', 'nroi_percent', 'tcos_percent', 'cvr_percent'];
+    let ebay3ChartInstance = null;
+    let ebay3ChartAjax = null;
+    let ebay3ChartDays = 30;
+    let ebay3ChartMetricKey = '';
+
+    function ebay3FmtChartVal(v) {
+        if (ebay3BadgeDollarMetrics.includes(ebay3ChartMetricKey)) {
+            const n = Number(v);
+            if (Number.isFinite(n) && Math.abs(n % 1) > 1e-9) {
+                return '$' + n.toFixed(2);
+            }
+            return '$' + Math.round(n).toLocaleString('en-US');
+        }
+        if (ebay3BadgePctMetrics.includes(ebay3ChartMetricKey)) {
+            return Number(v).toFixed(1) + '%';
+        }
+        return Math.round(Number(v)).toLocaleString('en-US');
+    }
+
+    function showEbay3MetricChart(metricKey) {
+        ebay3ChartMetricKey = metricKey;
+        ebay3ChartDays = 30;
+        $('#ebay3ChartRangeSelect').val('30');
+        const label = ebay3BadgeMetricLabels[metricKey] || metricKey;
+        $('#ebay3ChartModalTitle').text('eBay 3 — ' + label + ' (Daily snapshot)');
+        const modalEl = document.getElementById('ebay3MetricChartModal');
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        } else {
+            $(modalEl).modal('show');
+        }
+        loadEbay3MetricChart();
+    }
+
+    function loadEbay3MetricChart() {
+        if (ebay3ChartAjax) {
+            ebay3ChartAjax.abort();
+        }
+        $('#ebay3ChartNoData').hide();
+        $('#ebay3ChartContainer').hide();
+        $('#ebay3ChartLoading').show();
+
+        ebay3ChartAjax = $.ajax({
+            url: '/ebay3-badge-chart-data',
+            method: 'GET',
+            data: { metric: ebay3ChartMetricKey, days: ebay3ChartDays },
+            success: function(resp) {
+                ebay3ChartAjax = null;
+                $('#ebay3ChartLoading').hide();
+                if (resp.success && resp.data && resp.data.length > 0) {
+                    $('#ebay3ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                    renderEbay3MetricChart(resp.data);
+                } else {
+                    $('#ebay3ChartNoData').show();
+                }
+            },
+            error: function(xhr, status) {
+                ebay3ChartAjax = null;
+                if (status === 'abort') {
+                    return;
+                }
+                $('#ebay3ChartLoading').hide();
+                $('#ebay3ChartNoData').show();
+            }
+        });
+    }
+
+    function renderEbay3MetricChart(data) {
+        const ctx = document.getElementById('ebay3MetricChart').getContext('2d');
+        if (ebay3ChartInstance) {
+            ebay3ChartInstance.destroy();
+        }
+
+        const labels = data.map(function(d) { return d.date; });
+        const values = data.map(function(d) { return d.value; });
+
+        const dataMin = Math.min.apply(null, values);
+        const dataMax = Math.max.apply(null, values);
+        const sorted = values.slice().sort(function(a, b) { return a - b; });
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        const range = dataMax - dataMin || 1;
+        const yMin = Math.max(0, dataMin - range * 0.1);
+        const yMax = dataMax + range * 0.1;
+
+        document.getElementById('ebay3ChartHighest').textContent = ebay3FmtChartVal(dataMax);
+        document.getElementById('ebay3ChartMedian').textContent = ebay3FmtChartVal(median);
+        document.getElementById('ebay3ChartLowest').textContent = ebay3FmtChartVal(dataMin);
+
+        const dotColors = values.map(function(v, i) {
+            if (i === 0) return '#6c757d';
+            return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#198754' : '#6c757d');
+        });
+        const labelColors = values.map(function(v, i) {
+            if (i < 7) return '#6c757d';
+            return v < values[i - 7] ? '#dc3545' : (v > values[i - 7] ? '#198754' : '#6c757d');
+        });
+
+        const medianLinePlugin = {
+            id: 'ebay3MedianLine',
+            afterDraw: function(chart) {
+                const yScale = chart.scales.y;
+                const xScale = chart.scales.x;
+                const c = chart.ctx;
+                const yPixel = yScale.getPixelForValue(median);
+                c.save();
+                c.setLineDash([6, 4]);
+                c.strokeStyle = '#6c757d';
+                c.lineWidth = 1.2;
+                c.beginPath();
+                c.moveTo(xScale.left, yPixel);
+                c.lineTo(xScale.right, yPixel);
+                c.stroke();
+                c.restore();
+            }
+        };
+
+        const valueLabelsPlugin = {
+            id: 'ebay3ValueLabels',
+            afterDatasetsDraw: function(chart) {
+                const dataset = chart.data.datasets[0];
+                const meta = chart.getDatasetMeta(0);
+                const c = chart.ctx;
+                if (!dataset) return;
+                c.save();
+                c.font = 'bold 7px Inter, system-ui, sans-serif';
+                c.textAlign = 'center';
+                c.textBaseline = 'bottom';
+                meta.data.forEach(function(point, i) {
+                    const offsetY = (i % 2 === 0) ? -7 : -14;
+                    c.fillStyle = labelColors[i];
+                    c.fillText(ebay3FmtChartVal(dataset.data[i]), point.x, point.y + offsetY);
+                });
+                c.restore();
+            }
+        };
+
+        ebay3ChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: 'rgba(0, 168, 168, 0.08)',
+                    borderColor: '#00a8a8',
+                    borderWidth: 1.5,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: dotColors,
+                    pointBorderColor: dotColors,
+                    pointBorderWidth: 1.5
+                }]
+            },
+            plugins: [medianLinePlugin, valueLabelsPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 10 },
+                        padding: 6,
+                        callbacks: {
+                            label: function(context) {
+                                const idx = context.dataIndex;
+                                const parts = ['Value: ' + ebay3FmtChartVal(context.raw)];
+                                if (idx > 0) {
+                                    const diff = context.raw - values[idx - 1];
+                                    parts.push('vs prior: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + ebay3FmtChartVal(Math.abs(diff)));
+                                }
+                                return parts;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        min: yMin,
+                        max: yMax,
+                        ticks: { font: { size: 9 }, callback: function(v) { return ebay3FmtChartVal(v); } }
+                    },
+                    x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } }
+                }
+            }
+        });
+    }
+
+    let ebay3BadgeHoverTimer = null;
+    $(document).on('click', '.ebay3-badge-chart', function(e) {
+        e.stopPropagation();
+        const m = $(this).data('metric');
+        if (m) {
+            showEbay3MetricChart(m);
+        }
+    });
+    $(document).on('mouseenter', '.ebay3-hover-chart', function() {
+        const metric = $(this).data('metric');
+        if (!metric) return;
+        ebay3BadgeHoverTimer = setTimeout(function() {
+            showEbay3MetricChart(metric);
+        }, 500);
+    });
+    $(document).on('mouseleave', '.ebay3-hover-chart', function() {
+        if (ebay3BadgeHoverTimer) {
+            clearTimeout(ebay3BadgeHoverTimer);
+            ebay3BadgeHoverTimer = null;
+        }
+    });
+    $(document).on('mousedown', '.ebay3-hover-chart', function() {
+        if (ebay3BadgeHoverTimer) {
+            clearTimeout(ebay3BadgeHoverTimer);
+            ebay3BadgeHoverTimer = null;
+        }
+    });
+
     // PMT Ads dropdown filter state
     let pmtDropdownFilters = {
         'pmt_ov_dil': 'all',
@@ -1467,6 +1761,15 @@
     }
 
     $(document).ready(function() {
+        $('#ebay3ChartRangeSelect').on('change', function() {
+            const days = parseInt($(this).val(), 10);
+            if (days === ebay3ChartDays) return;
+            ebay3ChartDays = days;
+            const label = ebay3BadgeMetricLabels[ebay3ChartMetricKey] || ebay3ChartMetricKey;
+            $('#ebay3ChartModalTitle').text('eBay 3 — ' + label + ' (Daily snapshot)');
+            loadEbay3MetricChart();
+        });
+
         // Discount type dropdown change handler
         $('#discount-type-select').on('change', function() {
             if (samePriceModeActive) {

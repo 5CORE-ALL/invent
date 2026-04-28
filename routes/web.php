@@ -2819,6 +2819,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // eBay3 Tabulator View Routes
     Route::get('/ebay3-tabulator-view', [EbayThreeController::class, 'ebay3TabulatorView'])->name('ebay3.tabulator.view');
     Route::get('/ebay3-data-json', [EbayThreeController::class, 'ebay3DataJson'])->name('ebay3.data.json');
+    Route::get('/ebay3-badge-chart-data', [EbayThreeController::class, 'getEbay3BadgeChartData'])->name('ebay3.badge.chart.data');
     Route::get('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'showEbay3'])->name('ebay3.column.visibility.get');
     Route::post('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'storeEbay3'])->name('ebay3.column.visibility.set');
     Route::get('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'show'])->name('tabulator.column.visibility.get');

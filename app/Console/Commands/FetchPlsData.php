@@ -26,9 +26,9 @@ class FetchPlsData extends Command
 
     public function handle()
     {
-        $shopUrl  = config('services.shopify_pls.domain');
-        $apiKey   = config('services.shopify_pls.api_key');
-        $password = config('services.shopify_pls.password');
+        $shopUrl  = config('services.prolightsounds.domain');
+        $apiKey   = config('services.prolightsounds.api_key');
+        $password = config('services.prolightsounds.password');
         $version  = "2025-07";
 
         // Validate credentials
