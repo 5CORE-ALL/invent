@@ -834,15 +834,33 @@ class ShopifyApiService
             // For REPLACE: explicit position so card-1 → pos-1, card-2 → pos-2, etc.
             // For ADD:     no position — Shopify appends in the order we send them.
             $uploadedCount = 0;
-            foreach ($urls as $i => $src) {
-                $imageData  = $mode === 'replace' ? ['position' => $i + 1] : [];
+            $position      = 0; // track actual upload position (skipped images don't count)
+            foreach ($urls as $src) {
+                $imageData  = [];
                 $attachment = $this->readLocalStorageImageAsBase64($src);
+
                 if ($attachment !== null) {
+                    // ── Local file: always use base64 attachment ───────────────
+                    if ($mode === 'replace') {
+                        $imageData['position'] = ++$position;
+                    }
                     $imageData['attachment'] = $attachment;
                     $imageData['filename']   = rawurldecode(
                         basename((string) parse_url($src, PHP_URL_PATH))
                     );
+                    unset($attachment); // free memory immediately after use
+                } elseif ($this->isLocalStorageUrl($src)) {
+                    // ── Local URL but file unreadable → SKIP this image ────────
+                    // Sending a localhost URL as 'src' to Shopify would produce a
+                    // tiny broken placeholder image because Shopify cannot reach
+                    // 127.0.0.1 — this was the root cause of "low resolution" images.
+                    Log::warning('Shopify image upload: local file not readable, skipping', ['src' => $src]);
+                    continue;
                 } else {
+                    // ── Remote URL (Shopify CDN, Amazon, etc.) → direct fetch ──
+                    if ($mode === 'replace') {
+                        $imageData['position'] = ++$position;
+                    }
                     $imageData['src'] = $src;
                 }
 
@@ -1426,34 +1444,139 @@ class ShopifyApiService
      * If $url points to a file on our own public storage disk, return its base64 content.
      * Returns null for external URLs so the caller can fall back to `src`.
      */
+    /** Returns true if the URL points to this application's local storage. */
+    private function isLocalStorageUrl(string $url): bool
+    {
+        $appUrl = rtrim((string) config('app.url', ''), '/');
+        return ($appUrl !== '' && str_starts_with($url, $appUrl))
+            || (bool) preg_match('#^https?://(127\.0\.0\.1|localhost)(:\d+)?/#i', $url);
+    }
+
+    /**
+     * Read a local storage image and return its base64-encoded content.
+     * Returns null if the URL is not local OR if the file cannot be read.
+     *
+     * Uses fopen('rb') + stream_get_contents() instead of Storage::get() to
+     * guarantee true binary-mode reading on Windows (XAMPP).  Storage::get()
+     * can silently truncate JPEG/PNG files at certain byte sequences on Windows,
+     * causing Shopify to receive partial data and store a reduced-resolution image.
+     */
     private function readLocalStorageImageAsBase64(string $url): ?string
     {
         try {
-            $appUrl = rtrim((string) config('app.url', ''), '/');
-
-            // Match own app URL  OR  explicit localhost / 127.0.0.1
-            $isLocal = ($appUrl !== '' && str_starts_with($url, $appUrl))
-                || (bool) preg_match('#^https?://(127\.0\.0\.1|localhost)(:\d+)?/#i', $url);
-
-            if (! $isLocal) {
+            if (! $this->isLocalStorageUrl($url)) {
                 return null;
             }
 
-            // Extract the storage-relative path from  /storage/{path}
-            $storagePath = null;
-            if (preg_match('#/storage/(.+)$#', $url, $m)) {
-                $storagePath = rawurldecode($m[1]);
-            }
-
-            if ($storagePath === null || ! Storage::disk('public')->exists($storagePath)) {
+            // Extract the storage-relative path from the URL path component
+            $urlPath = (string) parse_url($url, PHP_URL_PATH);
+            if (! preg_match('#/storage/(.+)$#', $urlPath, $m)) {
                 return null;
             }
 
-            $content = Storage::disk('public')->get($storagePath);
+            // Try both raw-space and %20-encoded variants so SKUs like "138 RU" work
+            $candidates = array_unique([
+                rawurldecode($m[1]),
+                urldecode($m[1]),
+                $m[1],
+            ]);
 
-            return $content !== null ? base64_encode($content) : null;
+            $absolutePath = null;
+            foreach ($candidates as $candidate) {
+                if ($candidate === '') {
+                    continue;
+                }
+                $abs = Storage::disk('public')->path($candidate);
+                if (is_file($abs) && filesize($abs) > 0) {
+                    $absolutePath = $abs;
+                    break;
+                }
+            }
+
+            if ($absolutePath === null) {
+                return null;
+            }
+
+            // 'rb' = explicit binary mode — guarantees every byte of JPEG/PNG
+            // data is read exactly as stored, with no Windows CR/LF translation.
+            $fh = @fopen($absolutePath, 'rb');
+            if ($fh === false) {
+                return null;
+            }
+
+            $content = stream_get_contents($fh);
+            fclose($fh);
+
+            if ($content === false || $content === '') {
+                return null;
+            }
+
+            // Shopify product images must be square (1:1) to fill the storefront
+            // image container without white side-bars.  Pad to square here.
+            $content = $this->padImageToSquare($content, $absolutePath);
+
+            return base64_encode($content);
         } catch (\Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * Pad an image to 1:1 square with a white background (centred).
+     * Returns the original binary string unchanged if GD is unavailable,
+     * the image is already square, or processing fails for any reason.
+     */
+    private function padImageToSquare(string $content, string $absolutePath): string
+    {
+        if (! function_exists('imagecreatefromstring')) {
+            return $content; // GD not available — skip
+        }
+
+        try {
+            $img = @imagecreatefromstring($content);
+            if ($img === false) {
+                return $content;
+            }
+
+            $w = imagesx($img);
+            $h = imagesy($img);
+
+            if ($w === $h) {
+                imagedestroy($img);
+                return $content; // already square — nothing to do
+            }
+
+            $size   = max($w, $h);
+            $canvas = imagecreatetruecolor($size, $size);
+            if ($canvas === false) {
+                imagedestroy($img);
+                return $content;
+            }
+
+            // Fill canvas with white
+            $white = imagecolorallocate($canvas, 255, 255, 255);
+            imagefill($canvas, 0, 0, $white);
+
+            // Centre the original image on the canvas
+            $offsetX = (int) (($size - $w) / 2);
+            $offsetY = (int) (($size - $h) / 2);
+            imagecopy($canvas, $img, $offsetX, $offsetY, 0, 0, $w, $h);
+            imagedestroy($img);
+
+            // Re-encode in the same format as the source file
+            ob_start();
+            $ext = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
+            match ($ext) {
+                'png'  => imagepng($canvas, null, 6),
+                'webp' => imagewebp($canvas, null, 90),
+                default => imagejpeg($canvas, null, 95), // jpg / jpeg
+            };
+            $padded = ob_get_clean();
+            imagedestroy($canvas);
+
+            return ($padded !== false && $padded !== '') ? $padded : $content;
+        } catch (\Throwable) {
+            return $content; // fall back to original on any error
         }
     }
 }

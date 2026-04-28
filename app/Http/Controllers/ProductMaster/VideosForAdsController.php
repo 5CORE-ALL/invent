@@ -50,7 +50,7 @@ class VideosForAdsController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'sku' => 'required|string|max:255',
+            'sku' => 'nullable|string|max:255',
         ]);
 
         $fields = [

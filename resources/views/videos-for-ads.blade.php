@@ -350,14 +350,14 @@
                         <input type="hidden" id="editId" name="id">
 
                         <div class="mb-3" id="skuSelectWrap">
-                            <label class="form-label fw-semibold">SKU <span class="text-danger">*</span></label>
-                            <select class="form-select" id="f_sku" name="sku" required>
-                                <option value="">Choose SKU...</option>
+                            <label class="form-label fw-semibold">SKU / Target Products</label>
+                            <select class="form-select" id="f_sku" name="sku">
+                                <option value="">Choose or type SKU...</option>
                             </select>
-                            <div class="invalid-feedback">Please select a SKU.</div>
+                            <small class="text-muted">Select from the list <strong>or</strong> type a custom SKU and press Enter</small>
                         </div>
                         <div class="mb-3 d-none" id="skuDisplayWrap">
-                            <label class="form-label fw-semibold">SKU</label>
+                            <label class="form-label fw-semibold">SKU / Target Products</label>
                             <div id="skuDisplayBadge" class="sku-badge d-inline-block px-3 py-2" style="font-size:14px;"></div>
                         </div>
 
@@ -725,8 +725,14 @@
                         });
                         $(skuSelect).select2({
                             theme: 'bootstrap-5',
-                            placeholder: 'Search & choose SKU...',
+                            placeholder: 'Search, choose or type custom SKU...',
                             allowClear: true,
+                            tags: true,
+                            createTag: function(params) {
+                                const term = $.trim(params.term);
+                                if (!term) return null;
+                                return { id: term, text: term + ' (custom)', newTag: true };
+                            },
                             width: '100%',
                             dropdownParent: $('#videoModal')
                         });
@@ -776,10 +782,6 @@
                 ? skuBadge.textContent.trim()
                 : ($(skuEl).hasClass('select2-hidden-accessible') ? $(skuEl).val() : skuEl.value);
 
-            if (!sku) {
-                skuEl.classList.add('is-invalid');
-                return;
-            }
             skuEl.classList.remove('is-invalid');
 
             const payload = { sku };

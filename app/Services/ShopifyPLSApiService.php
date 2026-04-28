@@ -126,7 +126,9 @@ class ShopifyPLSApiService
     }
 
     /**
-     * Find product/variant on PLS store by SKU via GraphQL productVariants query.
+     * Find product/variant on PLS store by SKU.
+     * Tries GraphQL first; on HTTP 403 (token lacks GraphQL scope) immediately
+     * switches to a REST product-scan fallback so the push still succeeds.
      *
      * @return array{product_id: int, variant_id: string}|null
      */
@@ -167,6 +169,13 @@ class ShopifyPLSApiService
                     ])->timeout(60)->connectTimeout(25)->post($graphqlUrl, $payload);
                 });
 
+                // 403 = token lacks GraphQL scope — switch to REST scan immediately
+                if ($response->status() === 403) {
+                    Log::info('ShopifyPLS: GraphQL returned 403 (token lacks scope), falling back to REST product scan', ['sku' => $sku]);
+
+                    return $this->findProductBySkuViaREST($domain, $token, $sku);
+                }
+
                 if (! $response->successful()) {
                     Log::warning('ShopifyPLS: GraphQL request failed', ['status' => $response->status(), 'query' => $queryStr]);
 
@@ -200,6 +209,106 @@ class ShopifyPLSApiService
         }
 
         Log::warning('ShopifyPLS: SKU not found on PLS store via GraphQL', ['sku' => $sku, 'tried_values' => $skuValues]);
+
+        return null;
+    }
+
+    /**
+     * Fallback: page through all products on the PLS store via REST and find the
+     * variant whose SKU matches.  Results are cached for 1 hour per SKU so the
+     * full scan only runs once.
+     *
+     * @return array{product_id: int, variant_id: string}|null
+     */
+    private function findProductBySkuViaREST(string $domain, string $token, string $sku): ?array
+    {
+        $trimSku   = trim($sku);
+        $lowerSku  = strtolower($trimSku);
+        $cacheKey  = 'shopify_pls_sku_rest_' . md5($domain . '|' . $lowerSku);
+
+        /** @var array{product_id:int,variant_id:string}|null $cached */
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            Log::info('ShopifyPLS: REST lookup served from cache', ['sku' => $sku]);
+
+            return $cached;
+        }
+
+        // Candidate SKU spellings to match against (case-insensitive compare below)
+        $candidates = array_unique(array_filter([
+            $trimSku,
+            strtoupper($trimSku),
+            $lowerSku,
+            str_replace(' ', '', $trimSku),
+        ]));
+
+        $baseUrl  = "https://{$domain}/admin/api/2024-01/products.json";
+        $pageInfo = null;
+        $maxPages = 25; // scan up to 6 250 = 6 250 products maximum
+
+        for ($page = 0; $page < $maxPages; $page++) {
+            // cursor-based pagination: page_info MUST be the only filter when set
+            $params = $pageInfo
+                ? ['page_info' => $pageInfo, 'limit' => 250]
+                : ['fields' => 'id,variants', 'limit' => 250];
+
+            $response = $this->retryOnRateLimit(function () use ($token, $baseUrl, $params) {
+                return Http::withHeaders(['X-Shopify-Access-Token' => $token])
+                    ->timeout(30)->connectTimeout(15)
+                    ->get($baseUrl, $params);
+            }, 4, 1.0);
+
+            if (! $response->successful()) {
+                Log::warning('ShopifyPLS: REST product scan request failed', [
+                    'sku'    => $sku,
+                    'page'   => $page,
+                    'status' => $response->status(),
+                ]);
+                break;
+            }
+
+            $products = $response->json()['products'] ?? [];
+
+            foreach ($products as $product) {
+                foreach (($product['variants'] ?? []) as $variant) {
+                    $vSku = trim((string) ($variant['sku'] ?? ''));
+                    if ($vSku === '' || strtolower($vSku) !== $lowerSku) {
+                        continue;
+                    }
+
+                    $result = [
+                        'product_id' => (int) $product['id'],
+                        'variant_id' => (string) $variant['id'],
+                    ];
+
+                    Log::info('ShopifyPLS: found product via REST scan', ['sku' => $sku, 'page' => $page, ...$result]);
+
+                    // Cache for 1 hour to avoid repeated full scans
+                    Cache::put($cacheKey, $result, now()->addHour());
+
+                    return $result;
+                }
+            }
+
+            // Stop if this was the last page
+            if (count($products) < 250) {
+                break;
+            }
+
+            // Follow Shopify cursor pagination via Link header
+            $link     = $response->header('Link') ?? '';
+            $pageInfo = null;
+            if (preg_match('/<([^>]+)>;\s*rel="next"/', $link, $m)) {
+                parse_str((string) parse_url($m[1], PHP_URL_QUERY), $qp);
+                $pageInfo = $qp['page_info'] ?? null;
+            }
+
+            if (! $pageInfo) {
+                break;
+            }
+        }
+
+        Log::warning('ShopifyPLS: SKU not found via REST scan', ['sku' => $sku]);
 
         return null;
     }
@@ -886,15 +995,32 @@ class ShopifyPLSApiService
             // For REPLACE: explicit position so card-1 → pos-1, card-2 → pos-2, etc.
             // For ADD:     no position — Shopify appends in the order we send them.
             $uploadedCount = 0;
-            foreach ($urls as $i => $src) {
-                $imageData  = $mode === 'replace' ? ['position' => $i + 1] : [];
+            $position      = 0;
+            foreach ($urls as $src) {
+                $imageData  = [];
                 $attachment = $this->readLocalStorageImageAsBase64($src);
+
                 if ($attachment !== null) {
+                    // ── Local file: always use base64 attachment ───────────────
+                    if ($mode === 'replace') {
+                        $imageData['position'] = ++$position;
+                    }
                     $imageData['attachment'] = $attachment;
                     $imageData['filename']   = rawurldecode(
                         basename((string) parse_url($src, PHP_URL_PATH))
                     );
+                    unset($attachment);
+                } elseif ($this->isLocalStorageUrl($src)) {
+                    // ── Local URL but file unreadable → SKIP ───────────────────
+                    // Sending localhost as 'src' to Shopify creates a tiny broken
+                    // placeholder — this was the cause of "low resolution" images.
+                    Log::warning('Shopify PLS image upload: local file not readable, skipping', ['src' => $src]);
+                    continue;
                 } else {
+                    // ── Remote URL → let Shopify fetch directly ────────────────
+                    if ($mode === 'replace') {
+                        $imageData['position'] = ++$position;
+                    }
                     $imageData['src'] = $src;
                 }
 
@@ -1184,32 +1310,137 @@ class ShopifyPLSApiService
      * If $url points to a file on our own public storage disk, return its base64 content.
      * Returns null for external URLs so the caller can fall back to `src`.
      */
+    /** Returns true if the URL points to this application's local storage. */
+    private function isLocalStorageUrl(string $url): bool
+    {
+        $appUrl = rtrim((string) config('app.url', ''), '/');
+        return ($appUrl !== '' && str_starts_with($url, $appUrl))
+            || (bool) preg_match('#^https?://(127\.0\.0\.1|localhost)(:\d+)?/#i', $url);
+    }
+
+    /**
+     * Read a local storage image and return its base64-encoded content.
+     * Returns null if the URL is not local OR if the file cannot be read.
+     */
+    /**
+     * Read a local storage image and return its base64-encoded content.
+     * Uses fopen('rb') to guarantee binary-mode reading on Windows (XAMPP).
+     */
     private function readLocalStorageImageAsBase64(string $url): ?string
     {
         try {
-            $appUrl = rtrim((string) config('app.url', ''), '/');
-
-            $isLocal = ($appUrl !== '' && str_starts_with($url, $appUrl))
-                || (bool) preg_match('#^https?://(127\.0\.0\.1|localhost)(:\d+)?/#i', $url);
-
-            if (! $isLocal) {
+            if (! $this->isLocalStorageUrl($url)) {
                 return null;
             }
 
-            $storagePath = null;
-            if (preg_match('#/storage/(.+)$#', $url, $m)) {
-                $storagePath = rawurldecode($m[1]);
-            }
-
-            if ($storagePath === null || ! Storage::disk('public')->exists($storagePath)) {
+            $urlPath = (string) parse_url($url, PHP_URL_PATH);
+            if (! preg_match('#/storage/(.+)$#', $urlPath, $m)) {
                 return null;
             }
 
-            $content = Storage::disk('public')->get($storagePath);
+            // Try both raw-space and %20-encoded variants so SKUs like "138 RU" work
+            $candidates = array_unique([
+                rawurldecode($m[1]),
+                urldecode($m[1]),
+                $m[1],
+            ]);
 
-            return $content !== null ? base64_encode($content) : null;
+            $absolutePath = null;
+            foreach ($candidates as $candidate) {
+                if ($candidate === '') {
+                    continue;
+                }
+                $abs = Storage::disk('public')->path($candidate);
+                if (is_file($abs) && filesize($abs) > 0) {
+                    $absolutePath = $abs;
+                    break;
+                }
+            }
+
+            if ($absolutePath === null) {
+                return null;
+            }
+
+            // 'rb' = explicit binary mode — guarantees every byte of JPEG/PNG
+            // data is read exactly as stored, with no Windows CR/LF translation.
+            $fh = @fopen($absolutePath, 'rb');
+            if ($fh === false) {
+                return null;
+            }
+
+            $content = stream_get_contents($fh);
+            fclose($fh);
+
+            if ($content === false || $content === '') {
+                return null;
+            }
+
+            // Shopify product images must be square (1:1) to fill the storefront
+            // image container without white side-bars.  Pad to square here.
+            $content = $this->padImageToSquare($content, $absolutePath);
+
+            return base64_encode($content);
         } catch (\Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * Pad an image to 1:1 square with a white background (centred).
+     * Returns the original binary string unchanged if GD is unavailable,
+     * the image is already square, or processing fails for any reason.
+     */
+    private function padImageToSquare(string $content, string $absolutePath): string
+    {
+        if (! function_exists('imagecreatefromstring')) {
+            return $content; // GD not available — skip
+        }
+
+        try {
+            $img = @imagecreatefromstring($content);
+            if ($img === false) {
+                return $content;
+            }
+
+            $w = imagesx($img);
+            $h = imagesy($img);
+
+            if ($w === $h) {
+                imagedestroy($img);
+                return $content; // already square — nothing to do
+            }
+
+            $size   = max($w, $h);
+            $canvas = imagecreatetruecolor($size, $size);
+            if ($canvas === false) {
+                imagedestroy($img);
+                return $content;
+            }
+
+            // Fill canvas with white
+            $white = imagecolorallocate($canvas, 255, 255, 255);
+            imagefill($canvas, 0, 0, $white);
+
+            // Centre the original image on the canvas
+            $offsetX = (int) (($size - $w) / 2);
+            $offsetY = (int) (($size - $h) / 2);
+            imagecopy($canvas, $img, $offsetX, $offsetY, 0, 0, $w, $h);
+            imagedestroy($img);
+
+            // Re-encode in the same format as the source file
+            ob_start();
+            $ext = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
+            match ($ext) {
+                'png'  => imagepng($canvas, null, 6),
+                'webp' => imagewebp($canvas, null, 90),
+                default => imagejpeg($canvas, null, 95), // jpg / jpeg
+            };
+            $padded = ob_get_clean();
+            imagedestroy($canvas);
+
+            return ($padded !== false && $padded !== '') ? $padded : $content;
+        } catch (\Throwable) {
+            return $content; // fall back to original on any error
         }
     }
 }
