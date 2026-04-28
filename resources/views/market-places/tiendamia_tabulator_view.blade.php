@@ -235,18 +235,17 @@
                             <i class="fas fa-dollar-sign me-1"></i> Upload Price Data
                         </button>
 
-                        {{-- Decrease / Increase mode — same pattern as /bestbuy-pricing --}}
-                        <button type="button" id="tm-decrease-btn" class="btn btn-sm btn-warning">
-                            <i class="fas fa-arrow-down"></i> Decrease Mode
-                        </button>
-                        <button type="button" id="tm-increase-btn" class="btn btn-sm btn-success">
-                            <i class="fas fa-arrow-up"></i> Increase Mode
+                        {{-- One button cycles: Off → Decrease → Increase → Same price → Off --}}
+                        <button type="button" id="tm-price-mode-btn" class="btn btn-sm btn-secondary"
+                            title="Click to cycle: Off → Decrease → Increase → Same price → Off">
+                            <i class="fas fa-exchange-alt"></i> Price mode
                         </button>
                     </div>
 
                     <div id="tm-discount-input-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <span id="tm-selected-skus-count" class="fw-bold text-secondary"></span>
+                            <span id="tm-same-price-hint" class="small text-muted" style="display:none;">Same price: % / $ ignored — SPRICE = Price.</span>
                             <select id="tm-discount-type-select" class="form-select form-select-sm" style="width:120px;">
                                 <option value="percentage">Percentage</option>
                                 <option value="value">Value ($)</option>
@@ -290,8 +289,8 @@
         let allRows = [];
         let tmDilColor = 'all';
 
-        let decreaseModeActive = false;
-        let increaseModeActive = false;
+        /** 'off' | 'decrease' | 'increase' | 'same' */
+        let tmPriceMode = 'off';
         let selectedSkus = new Set();
 
         const TM_SELECT_FIELD = '_tm_select';
@@ -339,9 +338,40 @@
 
         function tmResyncSelectColumn() {
             if (!table || typeof table.showColumn !== 'function') return;
-            if (decreaseModeActive || increaseModeActive) {
+            if (tmPriceMode !== 'off') {
                 table.showColumn(TM_SELECT_FIELD);
             }
+        }
+
+        function syncTmPriceModeUi() {
+            const $btn = $('#tm-price-mode-btn');
+            if (table && typeof table.hideColumn === 'function' && typeof table.showColumn === 'function') {
+                if (tmPriceMode === 'off') {
+                    table.hideColumn(TM_SELECT_FIELD);
+                    selectedSkus.clear();
+                    $('#tm-select-all-checkbox').prop('checked', false);
+                } else {
+                    table.showColumn(TM_SELECT_FIELD);
+                }
+            }
+            $btn.removeClass('btn-secondary btn-warning btn-success btn-danger btn-primary btn-info');
+            $('#tm-same-price-hint').toggle(tmPriceMode === 'same');
+            const discDisabled = tmPriceMode === 'same';
+            $('#tm-discount-type-select, #tm-discount-value-input').prop('disabled', discDisabled);
+            if (tmPriceMode === 'off') {
+                $btn.addClass('btn-secondary').html('<i class="fas fa-exchange-alt"></i> Price mode');
+            } else if (tmPriceMode === 'decrease') {
+                $btn.addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> Decrease ON');
+            } else if (tmPriceMode === 'increase') {
+                $btn.addClass('btn-primary').html('<i class="fas fa-arrow-up"></i> Increase ON');
+            } else if (tmPriceMode === 'same') {
+                $btn.addClass('btn-info').html('<i class="fas fa-equals"></i> Same price ON');
+            }
+            updateSelectedCount();
+            if (table && typeof table.redraw === 'function') {
+                table.redraw(true);
+            }
+            updateTmSelectAllCheckbox();
         }
 
         function money(v) {
@@ -527,15 +557,21 @@
         }
 
         function applyTmDiscount() {
-            const discountType = $('#tm-discount-type-select').val();
-            const discountValue = parseFloat($('#tm-discount-value-input').val());
-            if (isNaN(discountValue) || discountValue === 0) {
-                tmToast('Please enter a valid discount value', 'error');
+            if (tmPriceMode === 'off') {
+                tmToast('Turn on a price mode first (click Price mode)', 'error');
                 return;
             }
             if (selectedSkus.size === 0) {
                 tmToast('Please select at least one SKU', 'error');
                 return;
+            }
+            const discountType = $('#tm-discount-type-select').val();
+            const discountValue = parseFloat($('#tm-discount-value-input').val());
+            if (tmPriceMode !== 'same') {
+                if (isNaN(discountValue) || discountValue === 0) {
+                    tmToast('Please enter a valid discount value', 'error');
+                    return;
+                }
             }
             let updatedCount = 0;
             const updates = [];
@@ -545,16 +581,22 @@
                 const currentPrice = parseFloat(rowData.price) || 0;
                 if (currentPrice <= 0) return;
                 let newSprice;
-                if (discountType === 'percentage') {
-                    newSprice = increaseModeActive
+                if (tmPriceMode === 'same') {
+                    newSprice = Math.round(currentPrice * 100) / 100;
+                    if (newSprice < 0.99) {
+                        newSprice = 0.99;
+                    }
+                } else if (discountType === 'percentage') {
+                    newSprice = tmPriceMode === 'increase'
                         ? currentPrice * (1 + discountValue / 100)
                         : currentPrice * (1 - discountValue / 100);
+                    newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
                 } else {
-                    newSprice = increaseModeActive
+                    newSprice = tmPriceMode === 'increase'
                         ? currentPrice + discountValue
                         : currentPrice - discountValue;
+                    newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
                 }
-                newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
                 const margin = parseFloat(rowData._margin) || 1;
                 const lp = parseFloat(rowData.lp) || 0;
                 const mShip = parseFloat(rowData.m_ship) || 0;
@@ -572,7 +614,8 @@
                 tmSaveSpriceUpdates(updates);
             }
             $('#tm-discount-value-input').val('');
-            tmToast((increaseModeActive ? 'Increase' : 'Discount') + ' applied to ' + updatedCount + ' SKU(s) based on Price', 'success');
+            const label = tmPriceMode === 'same' ? 'Same price' : (tmPriceMode === 'increase' ? 'Increase' : 'Discount');
+            tmToast(label + ' applied to ' + updatedCount + ' SKU(s)', 'success');
             applyClientFilters();
         }
 
@@ -939,59 +982,15 @@
                 ],
             });
 
-            $('#tm-decrease-btn').on('click', function() {
+            $('#tm-price-mode-btn').on('click', function() {
                 if (!table) return;
-                decreaseModeActive = !decreaseModeActive;
-                increaseModeActive = false;
-                if (decreaseModeActive) {
-                    $(this).removeClass('btn-warning').addClass('btn-danger')
-                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                    if (typeof table.showColumn === 'function') {
-                        table.showColumn(TM_SELECT_FIELD);
-                    }
-                    $('#tm-increase-btn').removeClass('btn-danger').addClass('btn-success')
-                        .html('<i class="fas fa-arrow-up"></i> Increase Mode');
-                } else {
-                    $(this).removeClass('btn-danger').addClass('btn-warning')
-                        .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-                    if (typeof table.hideColumn === 'function') {
-                        table.hideColumn(TM_SELECT_FIELD);
-                    }
-                    selectedSkus.clear();
-                    $('#tm-select-all-checkbox').prop('checked', false);
-                }
-                updateSelectedCount();
-                table.redraw(true);
-                tmResyncSelectColumn();
-                updateTmSelectAllCheckbox();
+                const order = ['off', 'decrease', 'increase', 'same'];
+                const i = order.indexOf(tmPriceMode);
+                tmPriceMode = order[(i + 1) % order.length];
+                syncTmPriceModeUi();
             });
 
-            $('#tm-increase-btn').on('click', function() {
-                if (!table) return;
-                increaseModeActive = !increaseModeActive;
-                decreaseModeActive = false;
-                if (increaseModeActive) {
-                    $(this).removeClass('btn-success').addClass('btn-danger')
-                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                    if (typeof table.showColumn === 'function') {
-                        table.showColumn(TM_SELECT_FIELD);
-                    }
-                    $('#tm-decrease-btn').removeClass('btn-danger').addClass('btn-warning')
-                        .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-                } else {
-                    $(this).removeClass('btn-danger').addClass('btn-success')
-                        .html('<i class="fas fa-arrow-up"></i> Increase Mode');
-                    if (typeof table.hideColumn === 'function') {
-                        table.hideColumn(TM_SELECT_FIELD);
-                    }
-                    selectedSkus.clear();
-                    $('#tm-select-all-checkbox').prop('checked', false);
-                }
-                updateSelectedCount();
-                table.redraw(true);
-                tmResyncSelectColumn();
-                updateTmSelectAllCheckbox();
-            });
+            syncTmPriceModeUi();
 
             $('#tm-discount-type-select').on('change', function() {
                 const t = $(this).val();

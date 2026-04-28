@@ -411,12 +411,22 @@ class TiendamiaPricingController extends Controller
 
     /**
      * Tabulator JSON: tiendamia_products joined to product_master + shopify_skus (image, INV, OV L30).
+     * Listing **price** is always from **tiendamia_price_uploads** (offer_sku = product sku); if absent, 0 — not tiendamia_products.price.
      * SKU normalization matches AliExpress pricing (NBSP → space, trim, uppercase).
      */
     public function getTabulatorData()
     {
         try {
             $normalizeSku = static fn ($value) => self::normalizeTiendamiaSku((string) $value);
+
+            $uploadPriceByNorm = [];
+            foreach (TiendamiaPriceUpload::query()
+                ->whereNotNull('offer_sku')
+                ->where('offer_sku', '!=', '')
+                ->orderBy('id')
+                ->cursor() as $u) {
+                $uploadPriceByNorm[$normalizeSku(trim((string) $u->offer_sku))] = $u->price !== null ? (float) $u->price : 0.0;
+            }
 
             $productMastersBySku = ProductMaster::query()
                 ->whereNotNull('sku')
@@ -485,7 +495,7 @@ class TiendamiaPricingController extends Controller
 
                 $parent = $productMaster ? trim((string) ($productMaster->parent ?? '')) : '';
                 $tmStock = (int) ($tp->stock ?? 0);
-                $price = (float) ($tp->price ?? 0);
+                $price = (float) ($uploadPriceByNorm[$normalizedSku] ?? 0.0);
                 $isMissing = ! $productMaster || $price <= 0;
 
                 if ($isMissing) {
