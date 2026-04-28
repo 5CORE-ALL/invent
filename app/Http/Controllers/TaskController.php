@@ -1904,7 +1904,12 @@ class TaskController extends Controller
         }
         $scheduleInfo .= ' at ' . ($validated['schedule_time'] ?? 'scheduled time');
 
-        return redirect()->route('tasks.automated')->with('success', 'Automated task scheduled! Will execute: ' . $scheduleInfo);
+        $successMessage = 'Automated task scheduled! Will execute: ' . $scheduleInfo;
+        if ($request->input('after_create') === 'another') {
+            return redirect()->route('tasks.automatedCreate')->with('success', $successMessage);
+        }
+
+        return redirect()->route('tasks.automated')->with('success', $successMessage);
     }
 
     public function automatedEdit($id)
