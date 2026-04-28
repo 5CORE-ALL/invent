@@ -484,23 +484,15 @@
             return Math.ceil(price) - 0.01;
         }
 
-        /** SKU rows on the current pagination page only (not the whole filtered dataset). */
-        function wfVisibleSkuRows() {
+        /**
+         * All SKU rows matching current filters, across every pagination page.
+         * Tabulator: getRows("active") = filtered dataset (not just the visible page).
+         */
+        function wfAllFilteredSkuRows() {
             if (!table) return [];
             try {
-                let rows = typeof table.getRows === 'function' ? table.getRows(true) : [];
-                if (!Array.isArray(rows)) rows = [];
-                const allFiltered = typeof table.getRows === 'function' ? table.getRows() : [];
-                const pageSize = typeof table.getPageSize === 'function' ? table.getPageSize() : null;
-                const page = typeof table.getPage === 'function' ? table.getPage() : null;
-                if (
-                    pageSize && page &&
-                    rows.length === allFiltered.length &&
-                    allFiltered.length > pageSize
-                ) {
-                    const start = (page - 1) * pageSize;
-                    rows = allFiltered.slice(start, start + pageSize);
-                }
+                const rows = typeof table.getRows === 'function' ? table.getRows('active') : [];
+                if (!Array.isArray(rows)) return [];
                 return rows.filter(function(row) {
                     try {
                         return row && typeof row.getData === 'function' && !row.getData().is_parent;
@@ -513,10 +505,22 @@
             }
         }
 
+        /** First Row component for a SKU in the active (filtered) dataset, any page. */
+        function wfFindActiveSkuRow(sku) {
+            if (!table || sku == null || sku === '') return null;
+            const want = String(sku);
+            const rows = wfAllFilteredSkuRows();
+            for (let i = 0; i < rows.length; i++) {
+                const d = rows[i].getData();
+                if (d && String(d.sku) === want) return rows[i];
+            }
+            return null;
+        }
+
         function wfSyncSelectAllHeaderCheckbox() {
             const el = document.getElementById('wf-select-all');
             if (!el || !table) return;
-            const skuRows = wfVisibleSkuRows();
+            const skuRows = wfAllFilteredSkuRows();
             if (!skuRows.length) {
                 el.checked = false;
                 el.indeterminate = false;
@@ -604,7 +608,7 @@
                 const newSprice = wfRoundToRetailPrice(Math.max(0.99, discountVal));
                 const updates = [];
                 const limitToSelection = wfSelectedSkus.size > 0;
-                table.getRows().forEach(function(row) {
+                table.getRows('active').forEach(function(row) {
                     const d = row.getData();
                     if (d.is_parent) return;
                     if (limitToSelection && !wfSelectedSkus.has(d.sku)) return;
@@ -624,9 +628,8 @@
 
             const updates = [];
             wfSelectedSkus.forEach(function(sku) {
-                const rows = table.searchRows('sku', '=', sku);
-                if (!rows.length) return;
-                const row = rows[0];
+                const row = wfFindActiveSkuRow(sku);
+                if (!row) return;
                 const rowData = row.getData();
                 const currentPrice = parseFloat(rowData.price) || 0;
                 if (currentPrice <= 0) return;
@@ -672,7 +675,7 @@
                     : 'Clear SPRICE for ALL SKU rows?';
                 if (!confirm(msg)) return;
                 const updates = [];
-                table.getRows().forEach(function(row) {
+                table.getRows('active').forEach(function(row) {
                     const d = row.getData();
                     if (d.is_parent) return;
                     if (limitToSelection && !wfSelectedSkus.has(d.sku)) return;
@@ -685,7 +688,7 @@
             if (!wfSelectedSkus.size) return;
             if (!confirm('Clear SPRICE for ' + wfSelectedSkus.size + ' SKU(s)?')) return;
             const updates = [];
-            table.getRows().forEach(function(row) {
+            table.getRows('active').forEach(function(row) {
                 const d = row.getData();
                 if (wfSelectedSkus.has(d.sku) && !d.is_parent) {
                     row.update({ sprice: 0, sgpft: 0, sroi: 0 });
@@ -986,7 +989,7 @@
                         }
                     },
                     {
-                        title: "<input type=\"checkbox\" id=\"wf-select-all\" title=\"Select all SKUs on this page only\">",
+                        title: "<input type=\"checkbox\" id=\"wf-select-all\" title=\"Select / clear all filtered SKUs (all pages)\">",
                         field: '_wf_select',
                         hozAlign: 'center',
                         headerSort: false,
@@ -1365,7 +1368,7 @@
 
             $(document).on('change', '#wf-select-all', function() {
                 const checked = $(this).prop('checked');
-                const skuRows = wfVisibleSkuRows();
+                const skuRows = wfAllFilteredSkuRows();
                 skuRows.forEach(function(row) {
                     const d = row.getData();
                     const sku = d.sku != null ? String(d.sku) : '';
@@ -1500,7 +1503,7 @@
                 const sku = $el.data('sku');
                 const parent = $el.data('parent');
                 if (!sku || !table) return;
-                const rows = table.getRows().filter(function(r) {
+                const rows = table.getRows('active').filter(function(r) {
                     const d = r.getData();
                     return !d.is_parent && String(d.sku) === String(sku);
                 });
