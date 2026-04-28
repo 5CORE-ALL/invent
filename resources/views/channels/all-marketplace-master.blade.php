@@ -349,7 +349,7 @@
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             views: <span id="total-views-badge">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="CVR = Orders / views">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of L30 Orders) ÷ (sum of Total Views) × 100. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or order windows differ by channel (e.g. Amazon 32-day orders vs views from live tabulator).">
                             CVR: <span id="cvr-pct-badge">0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
@@ -1240,7 +1240,7 @@
                     {
                         title: "L7 vs ÷30",
                         field: "L7 vs 30 pace %",
-                        headerTooltip: "30-divide rule: daily pace from L30 = L30÷30. Expected L7 = that × 7. This column is (L7 − expected) ÷ expected × 100. Green = ahead of L30 pace (increment), red = behind (reduce).",
+                        headerTooltip: "Compares actual L7 Sales to the pace implied by this row’s L30 Sales — not the same as Growth or “sales up/down” in general. Expected L7 = (L30 Sales ÷ N days in that channel’s rolling window) × 7; column is (L7 − expected) ÷ expected × 100. Amazon B2C uses N = same rolling length as Amazon Daily Sales (32 Pacific days). Green = last week ahead of that pace; red = behind it (e.g. strong earlier days in L30 pulled the average up while last week was softer).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 88,
@@ -1258,7 +1258,7 @@
                             const color = pos ? '#198754' : '#dc3545';
                             const arrow = pos ? '↑' : '↓';
                             const sign = pos ? '+' : '';
-                            return `<span style="font-weight:600;color:${color};" title="vs (L30÷30)×7">${arrow} ${sign}${n.toFixed(1)}%</span>`;
+                            return `<span style="font-weight:600;color:${color};" title="vs daily pace from this row’s L30 Sales × 7 — see column tooltip">${arrow} ${sign}${n.toFixed(1)}%</span>`;
                         },
                         bottomCalc: function(values, data) {
                             let sumL30 = 0;
@@ -1267,6 +1267,7 @@
                                 sumL30 += parseNumber(row['L30 Sales'] || 0);
                                 sumL7 += parseNumber(row['L7 Sales'] || 0);
                             });
+                            // Aggregate footer: approximate (rows use mixed N; Amazon is 32 vs 30)
                             const expected = (sumL30 / 30) * 7;
                             if (expected <= 0) return '—';
                             return ((sumL7 - expected) / expected) * 100;
@@ -1348,6 +1349,7 @@
                     {
                         title: "CVR",
                         field: "CVR",
+                        headerTooltip: "Per channel: L30 Orders ÷ Total Views. Total Views come from listing/Map snapshots (traffic to offers), not the same as ad clicks. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks). Big view updates can lower this % without &quot;true&quot; conversion collapsing.",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
                             const ordersA = parseNumber(aRow.getData()['L30 Orders'] || 0);
@@ -3115,7 +3117,7 @@
                 $('#avg-groi').text(Math.round(avgGroi) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
-                // CVR = Orders / views (overall)
+                // Listing CVR (overall): Σ L30 Orders / Σ Total Views — not ad conversion; see badge title
                 const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
                 $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)

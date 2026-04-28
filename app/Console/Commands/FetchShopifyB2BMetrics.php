@@ -32,7 +32,10 @@ class FetchShopifyB2BMetrics extends Command
 
     private $shopifyStoreUrl;
     private $shopifyApiKey;
+    /** Bearer token (custom app) or fallback secret when API key is set but PASSWORD is empty */
     private $shopifyAccessToken;
+    /** Admin API password / secret for HTTP Basic when API key is present */
+    private $shopifyBasicSecret = '';
     private $useBasicAuth = false;
     private $totalFetched = 0;
     private $totalInserted = 0;
@@ -51,17 +54,29 @@ class FetchShopifyB2BMetrics extends Command
         $this->shopifyStoreUrl = $this->normalizeStoreUrl(config('services.shopify_b5c.domain'));
         $this->shopifyApiKey = config('services.shopify_b5c.api_key');
         $this->shopifyAccessToken = config('services.shopify_b5c.access_token');
+        $password = config('services.shopify_b5c.password');
 
-        if (empty($this->shopifyStoreUrl) || empty($this->shopifyAccessToken)) {
-            $this->error('Missing Shopify B2B API credentials in .env file');
-            $this->line('Required: BUSINESS_5CORE_SHOPIFY_DOMAIN, BUSINESS_5CORE_SHOPIFY_ACCESS_TOKEN');
-            $this->line('Optional for Basic auth: BUSINESS_5CORE_SHOPIFY_API_KEY');
+        if (empty($this->shopifyStoreUrl)) {
+            $this->error('Missing BUSINESS_5CORE_SHOPIFY_DOMAIN in .env');
             return 1;
         }
 
         $this->useBasicAuth = !empty($this->shopifyApiKey);
+        if ($this->useBasicAuth) {
+            // Legacy private app: Basic auth uses API key + Admin API password (often shpss_… / shpat_…)
+            $this->shopifyBasicSecret = trim((string) ($password ?: $this->shopifyAccessToken));
+            if ($this->shopifyBasicSecret === '') {
+                $this->error('With BUSINESS_5CORE_SHOPIFY_API_KEY set, provide BUSINESS_5CORE_SHOPIFY_PASSWORD (or ACCESS_TOKEN as the Admin API secret).');
+                return 1;
+            }
+        } elseif (trim((string) $this->shopifyAccessToken) === '') {
+            $this->error('Missing BUSINESS_5CORE_SHOPIFY_ACCESS_TOKEN in .env (or unset API key and use X-Shopify-Access-Token only).');
+            $this->line('Optional for Basic auth: BUSINESS_5CORE_SHOPIFY_API_KEY + BUSINESS_5CORE_SHOPIFY_PASSWORD');
+            return 1;
+        }
+
         $this->info("Store URL: {$this->shopifyStoreUrl}");
-        $this->info("Auth: " . ($this->useBasicAuth ? 'Basic (API key + token)' : 'Access token'));
+        $this->info("Auth: " . ($this->useBasicAuth ? 'Basic (API key + Admin API password)' : 'X-Shopify-Access-Token'));
         if (!$this->useBasicAuth) {
             $this->info("Access Token: " . substr($this->shopifyAccessToken, 0, 15) . "...");
         }
@@ -135,7 +150,7 @@ class FetchShopifyB2BMetrics extends Command
     {
         $client = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(30);
         if ($this->useBasicAuth) {
-            return $client->withBasicAuth($this->shopifyApiKey, $this->shopifyAccessToken);
+            return $client->withBasicAuth($this->shopifyApiKey, $this->shopifyBasicSecret);
         }
         return $client->withHeaders(['X-Shopify-Access-Token' => $this->shopifyAccessToken]);
     }

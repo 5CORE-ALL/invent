@@ -16,14 +16,24 @@
         max-width: 11rem;
         text-align: left;
     }
-    .topbar-world-clocks .wc-label {
-        font-size: 0.55rem;
-        font-weight: 600;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: #5c6b7a;
-        line-height: 1.1;
+    .topbar-world-clocks .wc-flag-row {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        line-height: 1.15;
         margin-bottom: 0;
+    }
+    .topbar-world-clocks .wc-code {
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #5c6b7a;
+        font-variant-numeric: tabular-nums;
+    }
+    .topbar-world-clocks .wc-flag-emoji {
+        font-size: 1.125rem;
+        line-height: 1;
+        font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', sans-serif;
     }
     .topbar-world-clocks .wc-time {
         font-size: clamp(0.8rem, 1.5vw, 1rem);
@@ -49,7 +59,7 @@
         background-color: rgba(0, 0, 0, 0.08);
         margin: 0 0.15rem;
     }
-    html[data-bs-theme="dark"] .topbar-world-clocks .wc-label,
+    html[data-bs-theme="dark"] .topbar-world-clocks .wc-code,
     html[data-bs-theme="dark"] .topbar-world-clocks .wc-meta {
         color: rgba(255, 255, 255, 0.55);
     }
@@ -62,25 +72,33 @@
 </style>
 <div class="topbar-world-clocks d-none d-lg-flex" aria-label="Office time zones">
     <div class="wc-zone">
-        <div class="wc-label">California</div>
+        <div class="wc-flag-row" role="img" aria-label="US, United States, California (Pacific)">
+            <span class="wc-code">US</span><span class="wc-flag-emoji" aria-hidden="true">&#x1F1FA;&#x1F1F8;</span>
+        </div>
         <div class="wc-time" id="wc-ca-time">—</div>
         <div class="wc-meta" id="wc-ca-meta"></div>
     </div>
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
-        <div class="wc-label">India</div>
+        <div class="wc-flag-row" role="img" aria-label="IN, India">
+            <span class="wc-code">IN</span><span class="wc-flag-emoji" aria-hidden="true">&#x1F1EE;&#x1F1F3;</span>
+        </div>
         <div class="wc-time" id="wc-in-time">—</div>
         <div class="wc-meta" id="wc-in-meta"></div>
     </div>
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
-        <div class="wc-label">Ohio (Eastern)</div>
+        <div class="wc-flag-row" role="img" aria-label="US, United States, Ohio (Eastern)">
+            <span class="wc-code">US</span><span class="wc-flag-emoji" aria-hidden="true">&#x1F1FA;&#x1F1F8;</span>
+        </div>
         <div class="wc-time" id="wc-oh-time">—</div>
         <div class="wc-meta" id="wc-oh-meta"></div>
     </div>
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
-        <div class="wc-label">China</div>
+        <div class="wc-flag-row" role="img" aria-label="CN, China">
+            <span class="wc-code">CN</span><span class="wc-flag-emoji" aria-hidden="true">&#x1F1E8;&#x1F1F3;</span>
+        </div>
         <div class="wc-time" id="wc-cn-time">—</div>
         <div class="wc-meta" id="wc-cn-meta"></div>
     </div>

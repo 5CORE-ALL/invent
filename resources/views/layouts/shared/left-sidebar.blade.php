@@ -3247,19 +3247,26 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Select all submenu links (both original sidebar and cloned flyout)
-        document.querySelectorAll('.side-nav-second-level a, .side-nav-third-level a').forEach(function(link) {
-            link.setAttribute('target', '_blank'); // open in new tab
-            link.setAttribute('rel', 'noopener noreferrer'); // security best practice
-        });
-
-        // Also handle links dynamically cloned into flyout (from the JS flyout script)
-        document.body.addEventListener('mouseenter', function(e) {
-            if (e.target.matches('.side-nav-second-level a, .side-nav-third-level a')) {
-                e.target.setAttribute('target', '_blank');
-                e.target.setAttribute('rel', 'noopener noreferrer');
+        function applySidebarTargetBlank(root) {
+            if (!root) {
+                return;
             }
-        }, true);
+            root.querySelectorAll('a[href]').forEach(function(a) {
+                if (a.getAttribute('data-bs-toggle') === 'collapse') {
+                    return;
+                }
+                var h = (a.getAttribute('href') || '').trim();
+                if (!h || h === '#' || /^javascript:/i.test(h)) {
+                    return;
+                }
+                if (h.charAt(0) === '#') {
+                    return;
+                }
+                a.setAttribute('target', '_blank');
+                a.setAttribute('rel', 'noopener noreferrer');
+            });
+        }
+        applySidebarTargetBlank(document.getElementById('leftside-menu-container'));
     });
 </script>
 

@@ -2738,12 +2738,20 @@ class ChannelMasterController extends Controller
             $row['Y Sales'] = round($yesterdaySummaries[$channelLookup] ?? 0, 2);
             $row['L7 Sales'] = round($l7Summaries[$channelLookup] ?? 0, 2);
 
-            // L7 vs "30 divide" pace: expected L7 = (L30 ÷ 30) × 7; % = (L7 − expected) / expected × 100
+            // L7 vs pace: expected L7 = (trailing sales ÷ N days) × 7; % = (L7 − expected) / expected × 100.
+            // N must match the rolling window used for this row's L30 Sales. Amazon B2C uses the same
+            // day count as Amazon Daily Sales (DAILY_SALES_WINDOW_DAYS = 32), not 30 — dividing by 30 skewed red.
             // Reverb: L30 Sales matches pricing full-table total; use rolling L30 for pace only.
             $paceBase = $row['reverb_pace_l30_sales'] ?? $row['L30 Sales'] ?? 0;
             $l30ForPace = (float) str_replace(['$', ',', '%'], '', (string) $paceBase);
             $l7ForPace = (float) ($row['L7 Sales'] ?? 0);
-            $expectedL7FromL30 = ($l30ForPace / 30.0) * 7.0;
+            $paceDenominatorDays = 30.0;
+            if ($channelLookup === 'amazon') {
+                $paceDenominatorDays = (float) AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
+            }
+            $expectedL7FromL30 = ($paceDenominatorDays > 0.0)
+                ? ($l30ForPace / $paceDenominatorDays) * 7.0
+                : 0.0;
             $row['L7 vs 30 pace %'] = ($expectedL7FromL30 > 0)
                 ? round((($l7ForPace - $expectedL7FromL30) / $expectedL7FromL30) * 100, 2)
                 : null;
@@ -10775,7 +10783,8 @@ class ChannelMasterController extends Controller
 
             // For single-channel: show exact DB values (no scaling) so graph matches table data.
             // For "all" channels: scale to match badge total if needed.
-            if (!empty($chartData) && $isAll) {
+            // Never scale listing CVR: it is a ratio (Σ orders / Σ views); uniform scaling would distort history.
+            if (!empty($chartData) && $isAll && $metric !== 'cvr') {
                 $tableRef = $this->getAllChannelsTableReference($metric);
                 if ($tableRef !== null && $tableRef != 0) {
                     $chartLatest = (float) end($chartData)['value'];
@@ -10966,6 +10975,11 @@ class ChannelMasterController extends Controller
      */
     private function getAllChannelsTableReference(string $metric): ?float
     {
+        // Listing CVR = Σ orders / Σ views — not representable from MDM sums; chart uses raw snapshots. No scale ref.
+        if ($metric === 'cvr') {
+            return null;
+        }
+
         // Metrics that are averaged (percentages) — cannot simply sum
         $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr'];
         if (in_array($metric, $avgMetrics)) {

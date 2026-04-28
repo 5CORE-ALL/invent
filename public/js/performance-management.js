@@ -1316,7 +1316,7 @@ async function viewReview(reviewId) {
                             <th>Category</th>
                             <th>Question</th>
                             <th>Rating</th>
-                            <th>Comment</th>
+                            <th>Comments/Remarks</th>
                         </tr>
                     </thead>
                     <tbody>
