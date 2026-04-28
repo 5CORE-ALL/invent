@@ -2689,7 +2689,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/videos-master', fn () => view('videos-master'))->name('videos.master');
     Route::post('/videos-master/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.master.save');
     Route::get('/videos-for-ads', [VideosForAdsController::class, 'index'])->name('videos.for.ads');
-    Route::post('/videos-for-ads/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.for.ads.save');
+    Route::get('/videos-for-ads/data', [VideosForAdsController::class, 'getData'])->name('videos.for.ads.data');
+    Route::post('/videos-for-ads/store', [VideosForAdsController::class, 'store'])->name('videos.for.ads.store');
+    Route::delete('/videos-for-ads/{id}', [VideosForAdsController::class, 'destroy'])->name('videos.for.ads.destroy');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
     Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');

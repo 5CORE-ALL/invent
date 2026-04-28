@@ -2,141 +2,160 @@
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
-    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     <style>
-        .table-responsive {
+        .table-wrapper {
             position: relative;
             border: 1px solid #e9ecef;
             border-radius: 10px;
-            max-height: 600px;
-            overflow-y: auto;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-            background-color: white;
+            max-height: 620px;
+            overflow: auto;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            background: #fff;
         }
 
-        .table-responsive thead th {
+        .table-wrapper table {
+            margin-bottom: 0;
+        }
+
+        .table-wrapper thead th {
             position: sticky;
             top: 0;
             background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
-            color: white;
+            color: #fff;
             z-index: 10;
-            padding: 15px 18px;
+            padding: 14px 14px 8px;
             font-weight: 600;
             border-bottom: none;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-            font-size: 13px;
-            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            font-size: 12px;
+            letter-spacing: 0.4px;
             text-transform: uppercase;
-            transition: all 0.2s ease;
+            white-space: nowrap;
+            vertical-align: top;
         }
 
-        .table-responsive thead th:hover {
+        .table-wrapper thead th:hover {
             background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%) !important;
         }
 
-        .table-responsive thead input,
-        .table-responsive thead select {
-            background-color: rgba(255, 255, 255, 0.9);
+        .th-filter input,
+        .th-filter select {
+            background: rgba(255,255,255,0.92);
             border: none;
             border-radius: 4px;
             color: #333;
-            padding: 6px 10px;
-            margin-top: 8px;
-            font-size: 12px;
+            padding: 5px 8px;
+            margin-top: 6px;
+            font-size: 11px;
             width: 100%;
-            transition: all 0.2s;
+            min-width: 90px;
         }
 
-        .table-responsive thead input:focus,
-        .table-responsive thead select:focus {
-            background-color: white;
-            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.3);
+        .th-filter input:focus,
+        .th-filter select:focus {
+            background: #fff;
+            box-shadow: 0 0 0 2px rgba(26,86,183,0.3);
             outline: none;
         }
 
-        .table-responsive tbody td {
-            padding: 12px 18px;
+        .table-wrapper tbody td {
+            padding: 11px 14px;
             vertical-align: middle;
             border-bottom: 1px solid #edf2f9;
             font-size: 13px;
             color: #495057;
         }
 
-        .table-responsive tbody tr:nth-child(even) {
-            background-color: #f8fafc;
+        .table-wrapper tbody tr:nth-child(even) { background: #f8fafc; }
+        .table-wrapper tbody tr:hover           { background: #e8f0fe; }
+
+        .badge-count {
+            font-size: 10px;
+            font-weight: 700;
+            color: #ff6b6b;
+            vertical-align: middle;
         }
 
-        .table-responsive tbody tr:hover {
-            background-color: #e8f0fe;
+        .missing-label {
+            font-size: 10px;
+            color: rgba(255,255,255,0.6);
+            display: block;
+            margin-top: 2px;
         }
 
         .action-btn {
-            padding: 6px 12px;
+            padding: 5px 11px;
             border: none;
             border-radius: 4px;
-            font-size: 13px;
+            font-size: 12px;
             cursor: pointer;
             transition: all 0.2s;
-            margin: 0 2px;
         }
 
         .edit-btn {
             background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
-            color: white;
+            color: #fff;
         }
 
-        .edit-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
+        .edit-btn:hover  { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(255,193,7,.35); }
+
+        .del-btn {
+            background: linear-gradient(135deg, #ff4d4d 0%, #c0392b 100%);
+            color: #fff;
         }
 
-        #rainbow-loader {
+        .del-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(255,77,77,.35); }
+
+        #loader {
             display: none;
             text-align: center;
             padding: 40px;
         }
 
-        .rainbow-loader .loading-text {
-            margin-top: 20px;
-            font-weight: bold;
-            color: #2c6ed5;
-        }
-
         .modal-header-gradient {
             background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%);
             border-bottom: 4px solid #4D55E6;
-            color: white;
+            color: #fff;
         }
 
         .video-link-icon {
             color: #2c6ed5;
-            font-size: 20px;
+            font-size: 19px;
             text-decoration: none;
-            transition: all 0.3s ease;
+            transition: all .3s ease;
             display: inline-block;
         }
 
-        .video-link-icon:hover {
-            color: #1a56b7;
-            transform: scale(1.2);
-        }
+        .video-link-icon:hover { color: #1a56b7; transform: scale(1.2); }
 
-        .video-link-icon i {
-            vertical-align: middle;
-        }
-
-        .text-cell-value {
-            max-width: 140px;
+        .cell-text {
+            max-width: 130px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             display: inline-block;
             font-size: 12px;
+            vertical-align: middle;
+        }
+
+        .sku-badge {
+            background: #e8f0fe;
+            color: #1a56b7;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        #total-count {
+            font-size: 13px;
+            color: #6c757d;
         }
     </style>
 @endsection
@@ -146,242 +165,310 @@
 
     @include('layouts.shared/page-title', [
         'page_title' => 'Videos for Ads',
-        'sub_title' => 'Manage Product Ad Videos',
+        'sub_title'  => 'Manage Product Ad Videos',
     ])
 
     <div class="row">
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="mb-3 d-flex justify-content-between align-items-center">
-                        <div>
-                            <button id="addVideoBtn" class="btn btn-success">
-                                <i class="fas fa-plus"></i> Add Videos
+
+                    {{-- Toolbar --}}
+                    <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button id="addBtn" class="btn btn-success">
+                                <i class="fas fa-plus"></i> Add Video
                             </button>
-                            <button id="exportBtn" class="btn btn-primary ms-2">
+                            <button id="exportBtn" class="btn btn-primary">
                                 <i class="fas fa-download"></i> Export
                             </button>
-                            <button id="importBtn" class="btn btn-info ms-2">
-                                <i class="fas fa-upload"></i> Import
-                            </button>
-                            <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
                         </div>
+                        <span id="total-count"></span>
                     </div>
 
-                    <div class="table-responsive">
-                        <table id="videos-for-ads-table" class="table dt-responsive nowrap w-100">
+                    {{-- Table --}}
+                    <div class="table-wrapper">
+                        <table class="table w-100" id="ads-table">
                             <thead>
                                 <tr>
-                                    <th>Images</th>
-                                    <th>
-                                        <div style="display: flex; align-items: center; gap: 10px;">
-                                            <span>Parent</span>
-                                            <span id="parentCount">(0)</span>
+                                    <th style="min-width:50px;">#</th>
+                                    <th style="min-width:130px;">
+                                        SKU <span id="skuCount" class="badge-count">(0)</span>
+                                        <div class="th-filter">
+                                            <input type="text" id="skuSearch" placeholder="Search SKU">
                                         </div>
-                                        <input type="text" id="parentSearch" class="form-control-sm" placeholder="Search Parent">
                                     </th>
-                                    <th>
-                                        <div style="display: flex; align-items: center; gap: 10px;">
-                                            <span>SKU</span>
-                                            <span id="skuCount">(0)</span>
+                                    <th style="min-width:140px;">
+                                        Topic / Story
+                                        <span id="mc_ads_topic_story" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_topic_story">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
                                         </div>
-                                        <input type="text" id="skuSearch" class="form-control-sm" placeholder="Search SKU">
                                     </th>
-                                    <th>
-                                        <div>Shopify Inv</div>
+                                    <th style="min-width:140px;">
+                                        What
+                                        <span id="mc_ads_what" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_what">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>Topic / Story <span id="missingCount_ads_topic_story" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_topic_story" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
+                                    <th style="min-width:150px;">
+                                        Why (Purpose)
+                                        <span id="mc_ads_why_purpose" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_why_purpose">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>What <span id="missingCount_ads_what" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_what" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
+                                    <th style="min-width:140px;">
+                                        Audience
+                                        <span id="mc_ads_audience" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_audience">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>Why (Purpose) <span id="missingCount_ads_why_purpose" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_why_purpose" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
+                                    <th style="min-width:160px;">
+                                        Benefit to Audience
+                                        <span id="mc_ads_benefit_audience" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_benefit_audience">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>Audience <span id="missingCount_ads_audience" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_audience" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
+                                    <th style="min-width:130px;">
+                                        Location
+                                        <span id="mc_ads_location" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_location">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>Benefit to Audience <span id="missingCount_ads_benefit_audience" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_benefit_audience" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
+                                    <th style="min-width:130px;">
+                                        Language
+                                        <span id="mc_ads_language" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_language">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>Location <span id="missingCount_ads_location" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_location" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
+                                    <th style="min-width:150px;">
+                                        Script Link
+                                        <span id="mc_ads_script_link" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_script_link">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>Language <span id="missingCount_ads_language" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_language" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
+                                    <th style="min-width:160px;">
+                                        Video EN Link
+                                        <span id="mc_ads_video_en_link" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_video_en_link">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>Script Link <span id="missingCount_ads_script_link" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_script_link" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
+                                    <th style="min-width:160px;">
+                                        Video ES Link
+                                        <span id="mc_ads_video_es_link" class="badge-count">(0)</span>
+                                        <span class="missing-label">Missing</span>
+                                        <div class="th-filter">
+                                            <select id="f_ads_video_es_link">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing</option>
+                                            </select>
+                                        </div>
                                     </th>
-                                    <th>
-                                        <div>Video EN Link <span id="missingCount_ads_video_en_link" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_video_en_link" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>
-                                        <div>Video ES Link <span id="missingCount_ads_video_es_link" class="text-danger" style="font-weight:bold;">(0)</span></div>
-                                        <div class="small text-white-50">Status</div>
-                                        <select id="filter_ads_video_es_link" class="form-control form-control-sm mt-1" style="font-size:11px;">
-                                            <option value="all">All Data</option>
-                                            <option value="missing">Missing Data</option>
-                                        </select>
-                                    </th>
-                                    <th>Action</th>
+                                    <th style="min-width:120px;">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
                         </table>
                     </div>
 
-                    <div id="rainbow-loader" class="rainbow-loader">
+                    <div id="loader">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <div class="loading-text">Loading Videos Data...</div>
+                        <div class="mt-2 fw-bold text-primary">Loading...</div>
                     </div>
+
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Add/Edit Videos for Ads Modal -->
-    <div class="modal fade" id="videoModal" tabindex="-1" aria-labelledby="videoModalLabel" aria-hidden="true">
+    {{-- Add / Edit Modal --}}
+    <div class="modal fade" id="videoModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title" id="videoModalLabel">
-                        <i class="fas fa-video me-2"></i><span id="modalTitle">Add Videos for Ads</span>
+                    <h5 class="modal-title">
+                        <i class="fas fa-video me-2"></i>
+                        <span id="modalTitle">Add Video for Ads</span>
                     </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <form id="videoForm">
-                        <input type="hidden" id="editSku" name="sku">
+                    <form id="videoForm" novalidate>
+                        <input type="hidden" id="editId" name="id">
 
-                        <div class="mb-3">
-                            <label for="selectSku" class="form-label">Select SKU <span class="text-danger">*</span></label>
-                            <select class="form-select" id="selectSku" name="sku" required>
+                        <div class="mb-3" id="skuSelectWrap">
+                            <label class="form-label fw-semibold">SKU <span class="text-danger">*</span></label>
+                            <select class="form-select" id="f_sku" name="sku" required>
                                 <option value="">Choose SKU...</option>
                             </select>
+                            <div class="invalid-feedback">Please select a SKU.</div>
+                        </div>
+                        <div class="mb-3 d-none" id="skuDisplayWrap">
+                            <label class="form-label fw-semibold">SKU</label>
+                            <div id="skuDisplayBadge" class="sku-badge d-inline-block px-3 py-2" style="font-size:14px;"></div>
                         </div>
 
-                        <div class="mb-3">
-                            <label for="ads_topic_story" class="form-label">Topic / Story</label>
-                            <input type="text" class="form-control" id="ads_topic_story" name="ads_topic_story" placeholder="Enter topic or story...">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Topic / Story</label>
+                                <input type="text" class="form-control" id="f_ads_topic_story_val"
+                                       name="ads_topic_story" placeholder="Enter topic or story...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">What</label>
+                                <input type="text" class="form-control" id="f_ads_what_val"
+                                       name="ads_what" placeholder="What is the video about?">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Why (Purpose)</label>
+                                <input type="text" class="form-control" id="f_ads_why_purpose_val"
+                                       name="ads_why_purpose" placeholder="Purpose of the video...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Audience</label>
+                                <input type="text" class="form-control" id="f_ads_audience_val"
+                                       name="ads_audience" placeholder="Target audience...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Benefit to Audience</label>
+                                <input type="text" class="form-control" id="f_ads_benefit_audience_val"
+                                       name="ads_benefit_audience" placeholder="Audience benefit...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Location</label>
+                                <input type="text" class="form-control" id="f_ads_location_val"
+                                       name="ads_location" placeholder="Shooting location...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Language</label>
+                                <input type="text" class="form-control" id="f_ads_language_val"
+                                       name="ads_language" placeholder="e.g. English, Spanish...">
+                            </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label for="ads_what" class="form-label">What</label>
-                            <input type="text" class="form-control" id="ads_what" name="ads_what" placeholder="What is the video about?">
+                        <hr class="my-3">
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Script Link</label>
+                                <div class="input-group">
+                                    <input type="url" class="form-control" id="f_ads_script_link_val"
+                                           name="ads_script_link" placeholder="https://">
+                                    <select class="form-select" id="f_ads_script_link_status_val"
+                                            name="ads_script_link_status" style="max-width:160px;">
+                                        <option value="">-- Status --</option>
+                                        <option value="N/R">N/R</option>
+                                        <option value="Done/Uploaded">Done/Uploaded</option>
+                                        <option value="Assigned">Assigned</option>
+                                        <option value="In Progress">In Progress</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Video EN Link</label>
+                                <div class="input-group">
+                                    <input type="url" class="form-control" id="f_ads_video_en_link_val"
+                                           name="ads_video_en_link" placeholder="https://">
+                                    <select class="form-select" id="f_ads_video_en_link_status_val"
+                                            name="ads_video_en_link_status" style="max-width:160px;">
+                                        <option value="">-- Status --</option>
+                                        <option value="N/R">N/R</option>
+                                        <option value="Done/Uploaded">Done/Uploaded</option>
+                                        <option value="Assigned">Assigned</option>
+                                        <option value="In Progress">In Progress</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Video ES Link</label>
+                                <div class="input-group">
+                                    <input type="url" class="form-control" id="f_ads_video_es_link_val"
+                                           name="ads_video_es_link" placeholder="https://">
+                                    <select class="form-select" id="f_ads_video_es_link_status_val"
+                                            name="ads_video_es_link_status" style="max-width:160px;">
+                                        <option value="">-- Status --</option>
+                                        <option value="N/R">N/R</option>
+                                        <option value="Done/Uploaded">Done/Uploaded</option>
+                                        <option value="Assigned">Assigned</option>
+                                        <option value="In Progress">In Progress</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label for="ads_why_purpose" class="form-label">Why (Purpose)</label>
-                            <input type="text" class="form-control" id="ads_why_purpose" name="ads_why_purpose" placeholder="Purpose of the video...">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="ads_audience" class="form-label">Audience</label>
-                            <input type="text" class="form-control" id="ads_audience" name="ads_audience" placeholder="Target audience...">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="ads_benefit_audience" class="form-label">Benefit to Audience</label>
-                            <input type="text" class="form-control" id="ads_benefit_audience" name="ads_benefit_audience" placeholder="Benefit to the audience...">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="ads_location" class="form-label">Location</label>
-                            <input type="text" class="form-control" id="ads_location" name="ads_location" placeholder="Shooting location...">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="ads_language" class="form-label">Language</label>
-                            <input type="text" class="form-control" id="ads_language" name="ads_language" placeholder="e.g. English, Spanish...">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="ads_script_link" class="form-label">Script Link</label>
-                            <input type="url" class="form-control" id="ads_script_link" name="ads_script_link" placeholder="https://">
-                            <select class="form-select form-select-sm mt-1" id="ads_script_link_status" name="ads_script_link_status">
-                                <option value="">-- Status --</option>
-                                <option value="N/R">N/R</option>
-                                <option value="Done/Uploaded">Done/Uploaded</option>
-                                <option value="Assigned">Assigned</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="ads_video_en_link" class="form-label">Video EN Link</label>
-                            <input type="url" class="form-control" id="ads_video_en_link" name="ads_video_en_link" placeholder="https://">
-                            <select class="form-select form-select-sm mt-1" id="ads_video_en_link_status" name="ads_video_en_link_status">
-                                <option value="">-- Status --</option>
-                                <option value="N/R">N/R</option>
-                                <option value="Done/Uploaded">Done/Uploaded</option>
-                                <option value="Assigned">Assigned</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="ads_video_es_link" class="form-label">Video ES Link</label>
-                            <input type="url" class="form-control" id="ads_video_es_link" name="ads_video_es_link" placeholder="https://">
-                            <select class="form-select form-select-sm mt-1" id="ads_video_es_link_status" name="ads_video_es_link_status">
-                                <option value="">-- Status --</option>
-                                <option value="N/R">N/R</option>
-                                <option value="Done/Uploaded">Done/Uploaded</option>
-                                <option value="Assigned">Assigned</option>
-                            </select>
-                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="saveVideoBtn">
+                    <button type="button" class="btn btn-primary" id="saveBtn">
                         <i class="fas fa-save"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Delete Confirm Modal --}}
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h6 class="modal-title"><i class="fas fa-trash me-2"></i>Confirm Delete</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">Delete record for SKU <strong id="deleteSku"></strong>?</p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger btn-sm" id="confirmDeleteBtn">
+                        <i class="fas fa-trash"></i> Delete
                     </button>
                 </div>
             </div>
@@ -394,15 +481,14 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         @verbatim
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        let tableData = [];
-        let videoModal;
+        const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-        /**
-         * type: 'text'  → plain text input in modal, text value in table cell
-         * type: 'link'  → URL input + status dropdown in modal, link icon + status dropdown in table
-         */
-        const adFields = [
+        let allData      = [];
+        let deleteId     = null;
+        let videoModal, deleteModal;
+
+        // Field definitions: type 'text' = plain text, type 'link' = URL + status
+        const fields = [
             { key: 'ads_topic_story',      label: 'Topic / Story',       type: 'text' },
             { key: 'ads_what',             label: 'What',                type: 'text' },
             { key: 'ads_why_purpose',      label: 'Why (Purpose)',       type: 'text' },
@@ -415,397 +501,365 @@
             { key: 'ads_video_es_link',    label: 'Video ES Link',       type: 'link' },
         ];
 
-        const statusValues = ['', 'N/R', 'Done/Uploaded', 'Assigned'];
-        const statusLabels = ['--', 'N/R', 'Done/Uploaded', 'Assigned'];
+        const statusOpts = ['', 'N/R', 'Done/Uploaded', 'Assigned', 'In Progress'];
+        const statusLbls = ['--', 'N/R', 'Done/Uploaded', 'Assigned', 'In Progress'];
 
-        document.addEventListener('DOMContentLoaded', function() {
-            videoModal = new bootstrap.Modal(document.getElementById('videoModal'));
-            loadVideoData();
-            setupSearchHandlers();
-            setupButtonHandlers();
-            setupStatusDropdownHandlers();
+        /* ── Bootstrap ─────────────────────────────────────────── */
+        document.addEventListener('DOMContentLoaded', () => {
+            videoModal  = new bootstrap.Modal(document.getElementById('videoModal'));
+            deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+
+            loadData();
+            bindToolbar();
+            bindFilters();
+            bindTableEvents();
         });
 
-        function setupButtonHandlers() {
-            document.getElementById('addVideoBtn').addEventListener('click', () => openModal('add'));
-            document.getElementById('exportBtn').addEventListener('click', exportToExcel);
-            document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
-            document.getElementById('importFile').addEventListener('change', function(e) {
-                if (e.target.files[0]) importFromExcel(e.target.files[0]);
-            });
-            document.getElementById('saveVideoBtn').addEventListener('click', saveVideoFromModal);
+        /* ── Toolbar ────────────────────────────────────────────── */
+        function bindToolbar() {
+            document.getElementById('addBtn').addEventListener('click', () => openModal('add'));
+            document.getElementById('exportBtn').addEventListener('click', exportExcel);
+            document.getElementById('saveBtn').addEventListener('click', saveRecord);
+            document.getElementById('confirmDeleteBtn').addEventListener('click', deleteRecord);
         }
 
-        function setupStatusDropdownHandlers() {
+        /* ── Table delegation (inline status dropdowns) ─────────── */
+        function bindTableEvents() {
             document.getElementById('table-body').addEventListener('change', function(e) {
-                if (!e.target.classList.contains('video-status-select')) return;
-                const sku   = e.target.getAttribute('data-sku');
-                const field = e.target.getAttribute('data-field');
-                const item  = tableData.find(d => d.SKU === sku);
-                if (!item) return;
-                item[field + '_status'] = e.target.value;
-                fetch('/videos-for-ads/save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify(buildPayload(sku, item))
-                })
+                if (!e.target.classList.contains('inline-status')) return;
+                const id    = e.target.dataset.id;
+                const field = e.target.dataset.field;
+                const row   = allData.find(r => r.id == id);
+                if (!row) return;
+                row[field + '_status'] = e.target.value;
+                patchRecord(row);
+            });
+        }
+
+        /* ── Filters ────────────────────────────────────────────── */
+        function bindFilters() {
+            document.getElementById('skuSearch').addEventListener('input', applyFilters);
+            fields.forEach(f => {
+                document.getElementById('f_' + f.key).addEventListener('change', applyFilters);
+            });
+        }
+
+        /* ── Load ───────────────────────────────────────────────── */
+        function loadData() {
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('table-body').innerHTML = '';
+
+            fetch('/videos-for-ads/data')
                 .then(r => r.json())
-                .then(d => { if (!d.success) alert(d.message || 'Failed to save status'); })
-                .catch(err => alert('Error saving status: ' + err.message));
-            });
-        }
-
-        function buildPayload(sku, item) {
-            const payload = { sku };
-            adFields.forEach(f => {
-                payload[f.key] = item[f.key] || '';
-                if (f.type === 'link') payload[f.key + '_status'] = item[f.key + '_status'] || '';
-            });
-            return payload;
-        }
-
-        function loadVideoData() {
-            document.getElementById('rainbow-loader').style.display = 'block';
-            fetch('/product-master-data-view')
-                .then(r => { if (!r.ok) throw new Error('Network response was not ok'); return r.json(); })
-                .then(response => {
-                    const data = response.data ? response.data : response;
-                    if (data && Array.isArray(data)) {
-                        tableData = data;
-                        renderTable(tableData);
-                        updateCounts();
-                    } else {
-                        showError('Invalid data format received from server');
-                    }
-                    document.getElementById('rainbow-loader').style.display = 'none';
+                .then(resp => {
+                    allData = resp.data || [];
+                    applyFilters();
+                    updateCounts();
                 })
-                .catch(error => {
-                    showError('Failed to load product data: ' + error.message);
-                    document.getElementById('rainbow-loader').style.display = 'none';
-                });
+                .catch(e => alert('Failed to load data: ' + e.message))
+                .finally(() => document.getElementById('loader').style.display = 'none');
+        }
+
+        /* ── Render ─────────────────────────────────────────────── */
+        function applyFilters() {
+            const skuQ = document.getElementById('skuSearch').value.toLowerCase();
+            const filterVals = {};
+            fields.forEach(f => { filterVals[f.key] = document.getElementById('f_' + f.key).value; });
+
+            const filtered = allData.filter(row => {
+                if (skuQ && !row.sku.toLowerCase().includes(skuQ)) return false;
+                for (const f of fields) {
+                    if (filterVals[f.key] === 'missing' && !isEmpty(row[f.key])) return false;
+                }
+                return true;
+            });
+
+            renderTable(filtered);
         }
 
         function renderTable(data) {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
 
-            const filteredData = data.filter(item => !(item.SKU && item.SKU.toUpperCase().includes('PARENT')));
-
-            if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="15" class="text-center">No products found</td></tr>';
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">No records found</td></tr>';
+                document.getElementById('total-count').textContent = '0 records';
                 return;
             }
 
-            filteredData.forEach(item => {
-                const row = document.createElement('tr');
+            document.getElementById('total-count').textContent = data.length + ' record' + (data.length !== 1 ? 's' : '');
 
-                // Image
-                const imageCell = document.createElement('td');
-                imageCell.innerHTML = item.image_path
-                    ? '<img src="' + item.image_path + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">'
-                    : '-';
-                row.appendChild(imageCell);
+            data.forEach((row, idx) => {
+                const tr = document.createElement('tr');
 
-                // Parent
-                const parentCell = document.createElement('td');
-                parentCell.textContent = escapeHtml(item.Parent) || '-';
-                row.appendChild(parentCell);
+                // #
+                td(tr, idx + 1, 'text-center text-muted');
 
                 // SKU
-                const skuCell = document.createElement('td');
-                skuCell.textContent = escapeHtml(item.SKU) || '-';
-                row.appendChild(skuCell);
+                const skuTd = document.createElement('td');
+                skuTd.innerHTML = '<span class="sku-badge">' + esc(row.sku) + '</span>';
+                tr.appendChild(skuTd);
 
-                // Shopify Inv
-                const invCell = document.createElement('td');
-                const invVal = item.shopify_inv;
-                invCell.textContent = (invVal !== null && invVal !== undefined && invVal !== '') ? Number(invVal) : '-';
-                invCell.style.textAlign = 'right';
-                row.appendChild(invCell);
+                // Text fields
+                fields.filter(f => f.type === 'text').forEach(f => {
+                    const cell = document.createElement('td');
+                    if (row[f.key]) {
+                        cell.innerHTML = '<span class="cell-text" title="' + esc(row[f.key]) + '">' + esc(row[f.key]) + '</span>';
+                    } else {
+                        cell.innerHTML = '<span class="text-muted" style="font-size:12px;">—</span>';
+                    }
+                    tr.appendChild(cell);
+                });
 
-                // Dynamic fields
-                adFields.forEach(f => {
+                // Link fields
+                fields.filter(f => f.type === 'link').forEach(f => {
                     const cell = document.createElement('td');
                     cell.style.textAlign = 'center';
-                    cell.style.verticalAlign = 'middle';
-
-                    if (f.type === 'text') {
-                        const val = item[f.key] || '';
-                        cell.innerHTML = val
-                            ? '<span class="text-cell-value" title="' + escapeHtml(val) + '">' + escapeHtml(val) + '</span>'
-                            : '<span class="text-muted">-</span>';
-                    } else {
-                        // link type: icon + status dropdown
-                        const statusVal = item[f.key + '_status'] || '';
-                        const linkHtml = item[f.key]
-                            ? '<a href="' + escapeHtml(item[f.key]) + '" target="_blank" class="video-link-icon" title="' + escapeHtml(item[f.key]) + '"><i class="fas fa-play-circle"></i></a>'
-                            : '<span class="text-muted">-</span>';
-                        const optionsHtml = statusValues.map((v, i) =>
-                            '<option value="' + escapeHtml(v) + '"' + (v === statusVal ? ' selected' : '') + '>' + escapeHtml(statusLabels[i]) + '</option>'
-                        ).join('');
-                        cell.innerHTML = '<div class="d-flex flex-column align-items-center gap-1">' +
-                            '<div>' + linkHtml + '</div>' +
-                            '<select class="form-select form-select-sm video-status-select" style="font-size:11px;min-width:100px;" data-sku="' + escapeHtml(item.SKU) + '" data-field="' + f.key + '">' +
-                            optionsHtml + '</select></div>';
-                    }
-
-                    row.appendChild(cell);
+                    const statusVal = row[f.key + '_status'] || '';
+                    const linkHtml  = row[f.key]
+                        ? '<a href="' + esc(row[f.key]) + '" target="_blank" class="video-link-icon" title="' + esc(row[f.key]) + '"><i class="fas fa-play-circle"></i></a>'
+                        : '<span class="text-muted" style="font-size:12px;">—</span>';
+                    const opts = statusOpts.map((v, i) =>
+                        '<option value="' + esc(v) + '"' + (v === statusVal ? ' selected' : '') + '>' + esc(statusLbls[i]) + '</option>'
+                    ).join('');
+                    cell.innerHTML =
+                        '<div class="d-flex flex-column align-items-center gap-1">' +
+                            linkHtml +
+                            '<select class="form-select form-select-sm inline-status mt-1" style="font-size:11px;min-width:105px;" ' +
+                                'data-id="' + row.id + '" data-field="' + f.key + '">' +
+                            opts + '</select>' +
+                        '</div>';
+                    tr.appendChild(cell);
                 });
 
                 // Action
-                const actionCell = document.createElement('td');
-                actionCell.innerHTML = '<button class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '"><i class="fas fa-edit"></i> Edit</button>';
-                row.appendChild(actionCell);
+                const actTd = document.createElement('td');
+                actTd.style.whiteSpace = 'nowrap';
+                actTd.innerHTML =
+                    '<button class="action-btn edit-btn me-1" data-id="' + row.id + '"><i class="fas fa-edit"></i> Edit</button>' +
+                    '<button class="action-btn del-btn"  data-id="' + row.id + '" data-sku="' + esc(row.sku) + '"><i class="fas fa-trash"></i></button>';
+                tr.appendChild(actTd);
 
-                tbody.appendChild(row);
-            });
+                actTd.querySelector('.edit-btn').addEventListener('click', () => openModal('edit', row.id));
+                actTd.querySelector('.del-btn').addEventListener('click', () => openDeleteConfirm(row.id, row.sku));
 
-            setupEditButtons();
-        }
-
-        function setupEditButtons() {
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    openModal('edit', this.getAttribute('data-sku'));
-                });
+                tbody.appendChild(tr);
             });
         }
 
-        function openModal(mode, sku = null) {
-            const selectSku = document.getElementById('selectSku');
-            const editSku   = document.getElementById('editSku');
+        function td(tr, val, cls = '') {
+            const c = document.createElement('td');
+            if (cls) c.className = cls;
+            c.textContent = val ?? '—';
+            tr.appendChild(c);
+        }
+
+        /* ── Counts ─────────────────────────────────────────────── */
+        function updateCounts() {
+            document.getElementById('skuCount').textContent = '(' + allData.length + ')';
+            fields.forEach(f => {
+                const missing = allData.filter(r => isEmpty(r[f.key])).length;
+                document.getElementById('mc_' + f.key).textContent = '(' + missing + ')';
+            });
+        }
+
+        /* ── Modal open ─────────────────────────────────────────── */
+        function openModal(mode, id = null) {
             document.getElementById('videoForm').reset();
+            document.getElementById('editId').value = '';
+
+            const skuSelect      = document.getElementById('f_sku');
+            const skuSelectWrap  = document.getElementById('skuSelectWrap');
+            const skuDisplayWrap = document.getElementById('skuDisplayWrap');
+            const skuBadge       = document.getElementById('skuDisplayBadge');
+
+            if ($(skuSelect).hasClass('select2-hidden-accessible')) {
+                $(skuSelect).select2('destroy');
+            }
 
             if (mode === 'add') {
-                document.getElementById('modalTitle').textContent = 'Add Videos for Ads';
-                selectSku.style.display = 'block';
-                selectSku.required = true;
-                editSku.value = '';
+                document.getElementById('modalTitle').textContent = 'Add Video for Ads';
+                skuSelectWrap.classList.remove('d-none');
+                skuDisplayWrap.classList.add('d-none');
 
-                if ($(selectSku).hasClass('select2-hidden-accessible')) $(selectSku).select2('destroy');
+                skuSelect.innerHTML = '<option value="">Loading SKUs...</option>';
 
-                selectSku.innerHTML = '<option value="">Choose SKU...</option>';
-                tableData.forEach(item => {
-                    if (item.SKU && !item.SKU.toUpperCase().includes('PARENT')) {
-                        selectSku.innerHTML += '<option value="' + escapeHtml(item.SKU) + '">' + escapeHtml(item.SKU) + '</option>';
-                    }
-                });
-                $(selectSku).select2({
-                    theme: 'bootstrap-5',
-                    placeholder: 'Choose SKU...',
-                    allowClear: true,
-                    width: '100%',
-                    dropdownParent: $('#videoModal')
-                });
-
-            } else if (mode === 'edit' && sku) {
-                document.getElementById('modalTitle').textContent = 'Edit Videos for Ads';
-                selectSku.style.display = 'none';
-                selectSku.required = false;
-                editSku.value = sku;
-
-                if ($(selectSku).hasClass('select2-hidden-accessible')) $(selectSku).select2('destroy');
-
-                const item = tableData.find(d => d.SKU === sku);
-                if (item) {
-                    adFields.forEach(f => {
-                        const el = document.getElementById(f.key);
-                        if (el) el.value = item[f.key] || '';
-                        if (f.type === 'link') {
-                            const statusEl = document.getElementById(f.key + '_status');
-                            if (statusEl) statusEl.value = item[f.key + '_status'] || '';
-                        }
+                fetch('/product-master-data-view')
+                    .then(r => r.json())
+                    .then(resp => {
+                        const data = resp.data ? resp.data : resp;
+                        const alreadySaved = new Set(allData.map(r => r.sku));
+                        skuSelect.innerHTML = '<option value="">Choose SKU...</option>';
+                        (Array.isArray(data) ? data : []).forEach(item => {
+                            if (item.SKU && !item.SKU.toUpperCase().includes('PARENT') && !alreadySaved.has(item.SKU)) {
+                                const opt = document.createElement('option');
+                                opt.value       = item.SKU;
+                                opt.textContent = item.SKU;
+                                skuSelect.appendChild(opt);
+                            }
+                        });
+                        $(skuSelect).select2({
+                            theme: 'bootstrap-5',
+                            placeholder: 'Search & choose SKU...',
+                            allowClear: true,
+                            width: '100%',
+                            dropdownParent: $('#videoModal')
+                        });
+                    })
+                    .catch(() => {
+                        skuSelect.innerHTML = '<option value="">Failed to load SKUs</option>';
                     });
-                }
+
+            } else {
+                const row = allData.find(r => r.id == id);
+                if (!row) return;
+
+                document.getElementById('modalTitle').textContent = 'Edit — ' + row.sku;
+                document.getElementById('editId').value = row.id;
+
+                skuSelectWrap.classList.add('d-none');
+                skuDisplayWrap.classList.remove('d-none');
+                skuBadge.textContent = row.sku;
+
+                fields.filter(f => f.type === 'text').forEach(f => {
+                    const el = document.getElementById('f_' + f.key + '_val');
+                    if (el) el.value = row[f.key] || '';
+                });
+                fields.filter(f => f.type === 'link').forEach(f => {
+                    const url = document.getElementById('f_' + f.key + '_val');
+                    const sts = document.getElementById('f_' + f.key + '_status_val');
+                    if (url) url.value = row[f.key] || '';
+                    if (sts) sts.value = row[f.key + '_status'] || '';
+                });
             }
 
             document.getElementById('videoModal').addEventListener('hidden.bs.modal', function() {
-                if ($(selectSku).hasClass('select2-hidden-accessible')) $(selectSku).select2('destroy');
+                if ($(skuSelect).hasClass('select2-hidden-accessible')) $(skuSelect).select2('destroy');
             }, { once: true });
 
             videoModal.show();
         }
 
-        function saveVideoFromModal() {
-            const selectSku = document.getElementById('selectSku');
-            const editSku   = document.getElementById('editSku');
-            const sku = editSku.value || ($(selectSku).hasClass('select2-hidden-accessible') ? $(selectSku).val() : selectSku.value);
+        /* ── Save ───────────────────────────────────────────────── */
+        function saveRecord() {
+            const editId   = document.getElementById('editId').value;
+            const skuEl    = document.getElementById('f_sku');
+            const skuBadge = document.getElementById('skuDisplayBadge');
 
-            if (!sku) { alert('Please select a SKU'); return; }
+            // In edit mode use the badge text; in add mode use Select2 value
+            const sku = editId
+                ? skuBadge.textContent.trim()
+                : ($(skuEl).hasClass('select2-hidden-accessible') ? $(skuEl).val() : skuEl.value);
 
-            const item = tableData.find(d => d.SKU === sku) || {};
-            adFields.forEach(f => {
-                const el = document.getElementById(f.key);
-                if (el) item[f.key] = el.value;
-                if (f.type === 'link') {
-                    const statusEl = document.getElementById(f.key + '_status');
-                    if (statusEl) item[f.key + '_status'] = statusEl.value;
-                }
+            if (!sku) {
+                skuEl.classList.add('is-invalid');
+                return;
+            }
+            skuEl.classList.remove('is-invalid');
+
+            const payload = { sku };
+            fields.filter(f => f.type === 'text').forEach(f => {
+                payload[f.key] = document.getElementById('f_' + f.key + '_val').value;
+            });
+            fields.filter(f => f.type === 'link').forEach(f => {
+                payload[f.key]            = document.getElementById('f_' + f.key + '_val').value;
+                payload[f.key + '_status'] = document.getElementById('f_' + f.key + '_status_val').value;
             });
 
-            const saveBtn = document.getElementById('saveVideoBtn');
-            saveBtn.disabled = true;
-            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            const btn = document.getElementById('saveBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 
-            fetch('/videos-for-ads/save', {
+            fetch('/videos-for-ads/store', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                body: JSON.stringify(buildPayload(sku, item))
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+                body: JSON.stringify(payload)
             })
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
                     videoModal.hide();
-                    loadVideoData();
-                    alert('Videos saved successfully!');
+                    loadData();
                 } else {
-                    alert(data.message || 'Failed to save videos');
+                    alert(data.message || 'Failed to save');
                 }
             })
-            .catch(error => alert('Error saving videos: ' + error.message))
+            .catch(e => alert('Error: ' + e.message))
             .finally(() => {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save"></i> Save';
             });
         }
 
-        function exportToExcel() {
-            const exportData = tableData
-                .filter(item => item.SKU && !item.SKU.toUpperCase().includes('PARENT'))
-                .map(item => {
-                    const row = {
-                        'Parent': item.Parent || '',
-                        'SKU': item.SKU || '',
-                        'Shopify Inv': (item.shopify_inv !== null && item.shopify_inv !== undefined && item.shopify_inv !== '') ? Number(item.shopify_inv) : ''
-                    };
-                    adFields.forEach(f => {
-                        row[f.label] = item[f.key] || '';
-                        if (f.type === 'link') row[f.label + ' Status'] = item[f.key + '_status'] || '';
-                    });
-                    return row;
-                });
+        /* ── Inline status patch ────────────────────────────────── */
+        function patchRecord(row) {
+            const payload = { sku: row.sku };
+            fields.forEach(f => {
+                payload[f.key] = row[f.key] || '';
+                if (f.type === 'link') payload[f.key + '_status'] = row[f.key + '_status'] || '';
+            });
+            fetch('/videos-for-ads/store', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(d => { if (!d.success) alert(d.message || 'Failed to save status'); })
+            .catch(e => alert('Error: ' + e.message));
+        }
 
-            const ws = XLSX.utils.json_to_sheet(exportData);
+        /* ── Delete ─────────────────────────────────────────────── */
+        function openDeleteConfirm(id, sku) {
+            deleteId = id;
+            document.getElementById('deleteSku').textContent = sku;
+            deleteModal.show();
+        }
+
+        function deleteRecord() {
+            if (!deleteId) return;
+            const btn = document.getElementById('confirmDeleteBtn');
+            btn.disabled = true;
+
+            fetch('/videos-for-ads/' + deleteId, {
+                method: 'DELETE',
+                headers: { 'X-CSRF-TOKEN': csrf }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    deleteModal.hide();
+                    loadData();
+                } else {
+                    alert(data.message || 'Failed to delete');
+                }
+            })
+            .catch(e => alert('Error: ' + e.message))
+            .finally(() => { btn.disabled = false; deleteId = null; });
+        }
+
+        /* ── Export ─────────────────────────────────────────────── */
+        function exportExcel() {
+            const rows = allData.map(row => {
+                const r = { SKU: row.sku };
+                fields.forEach(f => {
+                    r[f.label] = row[f.key] || '';
+                    if (f.type === 'link') r[f.label + ' Status'] = row[f.key + '_status'] || '';
+                });
+                return r;
+            });
+            const ws = XLSX.utils.json_to_sheet(rows);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Videos for Ads');
             XLSX.writeFile(wb, 'videos_for_ads_' + new Date().toISOString().split('T')[0] + '.xlsx');
         }
 
-        function importFromExcel(file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-                    if (jsonData.length === 0) { alert('No data found in the file'); return; }
-                    processImportedData(jsonData);
-                } catch (error) {
-                    alert('Error reading file: ' + error.message);
-                }
-            };
-            reader.readAsArrayBuffer(file);
-            document.getElementById('importFile').value = '';
+        /* ── Helpers ────────────────────────────────────────────── */
+        function isEmpty(v) { return v === null || v === undefined || v === '' || (typeof v === 'string' && !v.trim()); }
+
+        function esc(t) {
+            if (!t) return '';
+            return String(t).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
         }
-
-        function processImportedData(jsonData) {
-            let successCount = 0, errorCount = 0;
-            const errors = [];
-
-            const savePromises = jsonData.map((row, index) => {
-                const sku = row['SKU'] || row['sku'];
-                if (!sku) { errorCount++; return Promise.resolve(); }
-
-                const item = {};
-                adFields.forEach(f => {
-                    item[f.key] = row[f.label] || '';
-                    if (f.type === 'link') item[f.key + '_status'] = row[f.label + ' Status'] || '';
-                });
-
-                return fetch('/videos-for-ads/save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify(buildPayload(sku, item))
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) { successCount++; }
-                    else { errorCount++; if (errors.length < 10) errors.push('Row ' + (index + 2) + ' (' + sku + '): ' + (data.message || 'Unknown error')); }
-                })
-                .catch(err => { errorCount++; if (errors.length < 10) errors.push('Row ' + (index + 2) + ' (' + sku + '): ' + err.message); });
-            });
-
-            Promise.all(savePromises).then(() => {
-                let message = 'Import completed!\n\nSuccess: ' + successCount + '\nErrors: ' + errorCount;
-                if (errors.length > 0) message += '\n\nFirst errors:\n' + errors.join('\n');
-                alert(message);
-                if (successCount > 0) loadVideoData();
-            });
-        }
-
-        function applyFilters() {
-            const parentFilter = document.getElementById('parentSearch').value.toLowerCase();
-            const skuFilter    = document.getElementById('skuSearch').value.toLowerCase();
-
-            const filterMap = {};
-            adFields.forEach(f => {
-                filterMap[f.key] = document.getElementById('filter_' + f.key).value;
-            });
-
-            const filteredData = tableData.filter(item => {
-                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) return false;
-                if (parentFilter && !(item.Parent && item.Parent.toLowerCase().includes(parentFilter))) return false;
-                if (skuFilter    && !(item.SKU   && item.SKU.toLowerCase().includes(skuFilter)))    return false;
-                for (const [key, val] of Object.entries(filterMap)) {
-                    if (val === 'missing' && !isMissing(item[key])) return false;
-                }
-                return true;
-            });
-
-            renderTable(filteredData);
-        }
-
-        function setupSearchHandlers() {
-            document.getElementById('parentSearch').addEventListener('input', applyFilters);
-            document.getElementById('skuSearch').addEventListener('input', applyFilters);
-            adFields.forEach(f => {
-                document.getElementById('filter_' + f.key).addEventListener('change', applyFilters);
-            });
-        }
-
-        function isMissing(value) {
-            return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
-        }
-
-        function updateCounts() {
-            const parentSet = new Set();
-            let skuCount = 0;
-            const missingCounts = {};
-            adFields.forEach(f => { missingCounts[f.key] = 0; });
-
-            tableData.forEach(item => {
-                if (item.Parent) parentSet.add(item.Parent);
-                if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
-                    skuCount++;
-                    adFields.forEach(f => { if (isMissing(item[f.key])) missingCounts[f.key]++; });
-                }
-            });
-
-            document.getElementById('parentCount').textContent = '(' + parentSet.size + ')';
-            document.getElementById('skuCount').textContent    = '(' + skuCount + ')';
-            adFields.forEach(f => {
-                document.getElementById('missingCount_' + f.key).textContent = '(' + missingCounts[f.key] + ')';
-            });
-        }
-
-        function escapeHtml(text) {
-            if (!text) return '';
-            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-            return String(text).replace(/[&<>"']/g, m => map[m]);
-        }
-
-        function showError(message) { alert(message); }
         @endverbatim
     </script>
 @endsection
