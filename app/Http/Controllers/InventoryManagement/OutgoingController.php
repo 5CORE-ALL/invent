@@ -625,7 +625,7 @@ class OutgoingController extends Controller
             ->map(function ($h) {
                 return [
                     'field' => $h->field,
-                    'field_label' => $h->field === 'reason' ? 'Reason' : ($h->field === 'channel' ? 'Channel' : ($h->field === 'order_id' ? 'Order Id' : ($h->field === 'comment' ? 'Comments/Remarks' : 'Comment'))),
+                    'field_label' => $h->field === 'reason' ? 'Reason' : ($h->field === 'channel' ? 'Channel' : ($h->field === 'order_id' ? 'Order Id' : 'Comments/Remarks')),
                     'old_value' => $h->old_value,
                     'new_value' => $h->new_value,
                     'updated_by' => $h->updated_by,

@@ -104,7 +104,7 @@
         
         <!-- Header: compact actions + close -->
         <div class="position-relative d-flex align-items-center flex-wrap gap-2"
-             style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 42px 8px 12px;">
+             style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 63px 12px 18px;">
             <button type="submit"
                     form="quick-task-form"
                     id="quick-task-header-submit"
@@ -121,35 +121,35 @@
                     id="close-task-form-btn"
                     class="btn-close btn-close-white position-absolute"
                     style="top: 50%;
-                           right: 10px;
+                           right: 15px;
                            transform: translateY(-50%);"
                     aria-label="Close">
             </button>
         </div>
         
         <!-- Form body with padding -->
-        <div style="padding: 8px;">
-        <div id="quick-task-success-alert" class="alert alert-success py-1 px-2 mb-2 d-none" style="font-size: 10px; line-height: 1.35;" role="status" aria-live="polite"></div>
+        <div style="padding: 12px;">
+        <div id="quick-task-success-alert" class="alert alert-success py-1 px-2 mb-2 d-none" style="font-size: 15px; line-height: 1.35;" role="status" aria-live="polite"></div>
 
         <form id="quick-task-form" action="{{ route('tasks.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
             
-            <div style="margin-bottom: 6px;">
-                <label for="quick_group" class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Group</label>
-                <input type="text" class="form-control" id="quick_group" name="group" placeholder="Group" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+            <div style="margin-bottom: 9px;">
+                <label for="quick_group" class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Group</label>
+                <input type="text" class="form-control" id="quick_group" name="group" placeholder="Group" style="font-size: 15px; padding: 5px 9px; height: 39px;">
             </div>
             
-            <div style="margin-bottom: 6px;">
-                <label for="quick_title" class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Task <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" id="quick_title" name="title" placeholder="Enter Task" required style="font-size: 10px; padding: 3px 6px; height: 26px;">
+            <div style="margin-bottom: 9px;">
+                <label for="quick_title" class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Task <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="quick_title" name="title" placeholder="Enter Task" required style="font-size: 15px; padding: 5px 9px; height: 39px;">
             </div>
             
             @php
                 $quickTaskUsers = \App\Models\User::where('is_active', true)->select('id', 'name')->orderBy('name')->get();
             @endphp
             <script type="application/json" id="quick-assignee-users-data">{!! json_encode($quickTaskUsers->map(fn ($u) => ['id' => (int) $u->id, 'name' => $u->name])->values()) !!}</script>
-            <div style="margin-bottom: 6px;">
-                <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Assignee(s)</label>
+            <div style="margin-bottom: 9px;">
+                <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Assignee(s)</label>
                 <div class="quick-assignee-ms position-relative" id="quick_assignee_ms" title="Select one or more people; one shared task is created with all assignees">
                     <button type="button" class="quick-assignee-ms-trigger" id="quick_assignee_ms_trigger" aria-haspopup="listbox" aria-expanded="false">
                         <span class="quick-assignee-ms-label text-truncate">Select assignees</span>
@@ -161,12 +161,12 @@
                     </div>
                     <div id="quick_assignee_hidden_wrap" class="quick-assignee-hidden-wrap"></div>
                 </div>
-                <small class="text-muted" style="font-size: 8px; display: block; margin-top: 2px;">One task; all selected users are assignees.</small>
+                <small class="text-muted" style="font-size: 12px; display: block; margin-top: 3px;">One task; all selected users are assignees.</small>
             </div>
             
-            <div style="margin-bottom: 6px;">
-                <label for="quick_etc_minutes" class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">ETC <span class="text-danger">*</span></label>
-                <input type="number" class="form-control" id="quick_etc_minutes" name="etc_minutes" placeholder="10" value="10" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+            <div style="margin-bottom: 9px;">
+                <label for="quick_etc_minutes" class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">ETC <span class="text-danger">*</span></label>
+                <input type="number" class="form-control" id="quick_etc_minutes" name="etc_minutes" placeholder="10" value="10" style="font-size: 15px; padding: 5px 9px; height: 39px;">
             </div>
 
             <!-- Hidden Fields with Defaults -->
@@ -175,59 +175,59 @@
             <input type="hidden" name="tid" value="{{ now()->format('Y-m-d\TH:i') }}">
 
             <!-- More Fields Toggle -->
-            <button type="button" class="btn btn-outline-secondary w-100" id="toggle-quick-more-fields" style="font-size: 8px; padding: 2px 4px; height: 22px; margin-bottom: 6px;">
-                <i class="mdi mdi-chevron-down" id="quick-toggle-icon" style="font-size: 9px;"></i> More
+            <button type="button" class="btn btn-outline-secondary w-100" id="toggle-quick-more-fields" style="font-size: 12px; padding: 3px 6px; height: 33px; margin-bottom: 9px;">
+                <i class="mdi mdi-chevron-down" id="quick-toggle-icon" style="font-size: 13.5px;"></i> More
             </button>
 
             <!-- Additional Fields -->
             <div id="quick-additional-fields" style="display: none;">
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Priority</label>
-                    <select class="form-select" name="priority_override" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Priority</label>
+                    <select class="form-select" name="priority_override" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                         <option value="normal" selected>Normal</option>
                         <option value="high">High</option>
                         <option value="low">Low</option>
                     </select>
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">TID</label>
-                    <input type="datetime-local" class="form-control" name="tid_override" value="{{ now()->format('Y-m-d\TH:i') }}" style="font-size: 9px; padding: 2px 4px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">TID</label>
+                    <input type="datetime-local" class="form-control" name="tid_override" value="{{ now()->format('Y-m-d\TH:i') }}" style="font-size: 13.5px; padding: 3px 6px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">L1</label>
-                    <input type="text" class="form-control" name="l1" placeholder="L1" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">L1</label>
+                    <input type="text" class="form-control" name="l1" placeholder="L1" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">L2</label>
-                    <input type="text" class="form-control" name="l2" placeholder="L2" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">L2</label>
+                    <input type="text" class="form-control" name="l2" placeholder="L2" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Training</label>
-                    <input type="text" class="form-control" name="training_link" placeholder="Training" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Training</label>
+                    <input type="text" class="form-control" name="training_link" placeholder="Training" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Video</label>
-                    <input type="text" class="form-control" name="video_link" placeholder="Video" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Video</label>
+                    <input type="text" class="form-control" name="video_link" placeholder="Video" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Form</label>
-                    <input type="text" class="form-control" name="form_link" placeholder="Form" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Form</label>
+                    <input type="text" class="form-control" name="form_link" placeholder="Form" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Report</label>
-                    <input type="text" class="form-control" name="form_report_link" placeholder="Report" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Report</label>
+                    <input type="text" class="form-control" name="form_report_link" placeholder="Report" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Checklist</label>
-                    <input type="text" class="form-control" name="checklist_link" placeholder="Checklist" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Checklist</label>
+                    <input type="text" class="form-control" name="checklist_link" placeholder="Checklist" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">PL</label>
-                    <input type="text" class="form-control" name="pl" placeholder="PL" style="font-size: 10px; padding: 3px 6px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">PL</label>
+                    <input type="text" class="form-control" name="pl" placeholder="PL" style="font-size: 15px; padding: 5px 9px; height: 39px;">
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <label class="form-label" style="font-size: 9px; font-weight: 600; margin-bottom: 1px; display: block;">Image</label>
-                    <input type="file" class="form-control" name="image" accept="image/*" style="font-size: 9px; padding: 2px 4px; height: 26px;">
+                <div style="margin-bottom: 9px;">
+                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Image</label>
+                    <input type="file" class="form-control" name="image" accept="image/*" style="font-size: 13.5px; padding: 3px 6px; height: 39px;">
                 </div>
             </div>
         </form>
@@ -246,11 +246,11 @@
 
     <style>
         .quick-task-header-primary-btn {
-            font-size: 11px;
+            font-size: 16.5px;
             font-weight: 600;
         }
         #quick-task-save-create-more-btn {
-            font-size: 11px;
+            font-size: 16.5px;
             font-weight: 600;
         }
 
@@ -292,11 +292,11 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 6px;
+            gap: 9px;
             width: 100%;
-            height: 26px;
-            padding: 3px 8px 3px 6px;
-            font-size: 10px;
+            height: 39px;
+            padding: 5px 12px 5px 9px;
+            font-size: 15px;
             line-height: 1.2;
             text-align: left;
             color: #212529;
@@ -325,7 +325,7 @@
         }
         .quick-assignee-ms-chevron {
             flex-shrink: 0;
-            font-size: 16px;
+            font-size: 24px;
             line-height: 1;
             opacity: 0.65;
             transition: transform 0.15s ease;
@@ -333,7 +333,7 @@
         .quick-assignee-ms-panel {
             position: fixed;
             z-index: 1080;
-            max-height: 220px;
+            max-height: 330px;
             display: none;
             flex-direction: column;
             background: #fff;
@@ -346,8 +346,8 @@
             display: flex;
         }
         .quick-assignee-ms-search {
-            font-size: 10px !important;
-            padding: 4px 8px !important;
+            font-size: 15px !important;
+            padding: 6px 12px !important;
             border-radius: 0 !important;
             border-left: none !important;
             border-right: none !important;
@@ -355,15 +355,15 @@
         }
         .quick-assignee-ms-list {
             overflow-y: auto;
-            max-height: 176px;
-            padding: 4px 0;
+            max-height: 264px;
+            padding: 6px 0;
         }
         .quick-assignee-ms-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 5px 10px;
-            font-size: 10px;
+            gap: 12px;
+            padding: 8px 15px;
+            font-size: 15px;
             line-height: 1.3;
             cursor: pointer;
             user-select: none;
@@ -380,15 +380,15 @@
             display: none;
         }
         .quick-assignee-ms-box {
-            width: 14px;
-            height: 14px;
+            width: 21px;
+            height: 21px;
             border: 1px solid #adb5bd;
-            border-radius: 2px;
+            border-radius: 3px;
             flex-shrink: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 10px;
+            font-size: 15px;
             line-height: 1;
             color: transparent;
         }
@@ -417,52 +417,52 @@
             }
 
             #quick-task-form .form-label {
-                font-size: 12px !important;
-                margin-bottom: 4px !important;
+                font-size: 18px !important;
+                margin-bottom: 6px !important;
             }
 
             #quick-task-form .form-control,
             #quick-task-form .form-select {
-                font-size: 14px !important;
-                padding: 8px 10px !important;
-                height: 40px !important;
+                font-size: 21px !important;
+                padding: 12px 15px !important;
+                height: 60px !important;
             }
 
             .quick-assignee-ms-trigger {
-                height: 40px !important;
-                font-size: 14px !important;
-                padding: 8px 10px !important;
+                height: 60px !important;
+                font-size: 21px !important;
+                padding: 12px 15px !important;
             }
             .quick-assignee-ms-search {
-                font-size: 14px !important;
-                padding: 8px 10px !important;
+                font-size: 21px !important;
+                padding: 12px 15px !important;
             }
             .quick-assignee-ms-item {
-                font-size: 14px !important;
-                padding: 8px 12px !important;
+                font-size: 21px !important;
+                padding: 12px 18px !important;
             }
             .quick-assignee-ms-panel {
-                max-height: 280px;
+                max-height: 420px;
             }
             .quick-assignee-ms-list {
-                max-height: 220px;
+                max-height: 330px;
             }
 
             #quick-task-form input[type="file"] {
                 height: auto !important;
-                min-height: 40px;
+                min-height: 60px;
             }
 
             #toggle-quick-more-fields {
-                font-size: 12px !important;
-                height: 36px !important;
-                padding: 6px 10px !important;
+                font-size: 18px !important;
+                height: 54px !important;
+                padding: 9px 15px !important;
             }
 
             .quick-task-header-primary-btn,
             #quick-task-save-create-more-btn {
-                font-size: 13px;
-                padding: 6px 10px;
+                font-size: 19.5px;
+                padding: 9px 15px;
             }
         }
 
@@ -519,14 +519,14 @@
                 if (!$btn.length || !$panel.length || !$panel.hasClass('is-open')) return;
                 var r = $btn[0].getBoundingClientRect();
                 var spaceBelow = window.innerHeight - r.bottom - 8;
-                var maxH = Math.min(220, Math.max(120, spaceBelow));
+                var maxH = Math.min(330, Math.max(180, spaceBelow));
                 $panel.css({
-                    top: (r.bottom + 2) + 'px',
+                    top: (r.bottom + 3) + 'px',
                     left: r.left + 'px',
                     width: r.width + 'px',
                     maxHeight: maxH + 'px'
                 });
-                $panel.find('.quick-assignee-ms-list').css('max-height', Math.max(80, maxH - 44) + 'px');
+                $panel.find('.quick-assignee-ms-list').css('max-height', Math.max(120, maxH - 66) + 'px');
             }
 
             function openQuickAssigneePanel() {

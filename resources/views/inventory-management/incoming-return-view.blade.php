@@ -11,6 +11,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
     <style>
@@ -122,6 +123,11 @@
 
         .incoming-reason-mic-btn.is-listening .fa-microphone {
             color: #dc3545 !important;
+        }
+
+        /* Select2 in modal (must sit above modal backdrop) */
+        #addWarehouseModal .select2-container {
+            z-index: 2000;
         }
 
         /* Toolbar: one row — shared control height (button = badges = filter = search) */
@@ -591,6 +597,15 @@
                             </span>
                         </div>
 
+                        <div class="incoming-toolbar-wh flex-shrink-0" style="min-width: 160px;">
+                            <label for="filterChannelMain" class="form-label small mb-0">Channel</label>
+                            <select id="filterChannelMain" class="form-select form-select-sm incoming-return-channel-filter">
+                                <option value="">All channels</option>
+                                @foreach($channels ?? [] as $ch)
+                                    <option value="{{ $ch }}">{{ $ch }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <div class="incoming-toolbar-wh">
                             <label for="filterWarehouseMain_btn" class="visually-hidden">Warehouse filter</label>
                             <div class="incoming-wh-dd-wrap position-relative">
@@ -631,7 +646,7 @@
                     <!-- Incoming Modal (full-screen on small viewports) -->
                     <div class="modal fade" id="addWarehouseModal" tabindex="-1" aria-labelledby="incomingModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-fullscreen-sm-down modal-xl modal-dialog-scrollable incoming-return-modal-dialog">
-                            <form id="incomingReturnForm" enctype="multipart/form-data">
+                            <form id="incomingReturnForm" enctype="multipart/form-data" novalidate>
                                 @csrf
                                 <input type="hidden" name="returns" id="returns" value="returns">
                                 <div class="modal-content incoming-mobile">
@@ -647,117 +662,170 @@
                                         </div>
                                         <div id="incoming-errors" class="mb-2 text-danger"></div>
 
-                                        <div class="mb-3">
-                                            <label for="sku" class="form-label fw-bold">SKU</label>
-                                            <div class="d-flex flex-column flex-sm-row gap-2">
-                                                <div class="incoming-sku-input-wrap flex-grow-1 position-relative">
-                                                    <input type="text" class="form-control w-100" id="sku" name="sku" required autocomplete="off" placeholder="Scan or type SKU" inputmode="text">
-                                                    <div id="sku-suggest-list" class="incoming-sku-suggest list-group position-absolute w-100 d-none" style="z-index: 1060; max-height: 240px; overflow-y: auto;" role="listbox" aria-label="SKU suggestions"></div>
+                                        <div class="incoming-return-wizard mb-2">
+                                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 pb-2 border-bottom incoming-return-step-progress">
+                                                <span class="small fw-semibold text-secondary" id="incoming-step-label">Step 1 of 3 — Identify</span>
+                                                <div class="d-flex align-items-center gap-1" aria-hidden="true">
+                                                    <span class="incoming-step-dot rounded-circle bg-primary" data-step-dot="1" style="width:10px;height:10px;"></span>
+                                                    <span class="incoming-step-dot rounded-circle bg-secondary opacity-50" data-step-dot="2" style="width:10px;height:10px;"></span>
+                                                    <span class="incoming-step-dot rounded-circle bg-secondary opacity-50" data-step-dot="3" style="width:10px;height:10px;"></span>
                                                 </div>
-                                                <button type="button" class="btn btn-outline-primary btn-touch" id="btnScanBarcode">
-                                                    <i class="fas fa-barcode me-1"></i> Scan Barcode
-                                                </button>
                                             </div>
-                                            <div id="sku-product-hint" class="incoming-product-hint mt-2 d-none"></div>
-                                        </div>
 
-                                        <div class="row g-3 mb-3">
-                                            <div class="col-12 col-md-6">
-                                                <label for="qty" class="form-label fw-bold">Quantity</label>
-                                                <input type="number" class="form-control" id="qty" name="qty" value="1" required min="1" step="1" inputmode="numeric">
+                                            <div class="incoming-return-step" data-incoming-step="1">
+                                                <div class="mb-3">
+                                                    <label for="sku" class="form-label fw-bold">SKU</label>
+                                                    <div class="d-flex flex-column flex-sm-row gap-2">
+                                                        <div class="incoming-sku-input-wrap flex-grow-1 position-relative">
+                                                            <input type="text" class="form-control w-100" id="sku" name="sku" autocomplete="off" placeholder="Scan or type SKU" inputmode="text">
+                                                            <div id="sku-suggest-list" class="incoming-sku-suggest list-group position-absolute w-100 d-none" style="z-index: 1060; max-height: 240px; overflow-y: auto;" role="listbox" aria-label="SKU suggestions"></div>
+                                                        </div>
+                                                        <button type="button" class="btn btn-outline-primary btn-touch" id="btnScanBarcode">
+                                                            <i class="fas fa-barcode me-1"></i> Scan Barcode
+                                                        </button>
+                                                    </div>
+                                                    <div id="sku-product-hint" class="incoming-product-hint mt-2 d-none"></div>
+                                                </div>
+
+                                                <div class="row g-3 mb-0">
+                                                    <div class="col-12 col-md-6">
+                                                        <label for="qty" class="form-label fw-bold">Quantity</label>
+                                                        <input type="number" class="form-control" id="qty" name="qty" value="1" min="1" step="1" inputmode="numeric">
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <label for="warehouse_id_btn" class="form-label fw-bold">Warehouse</label>
+                                                        <div class="incoming-wh-dd-wrap position-relative">
+                                                            <select class="d-none incoming-wh-dd-native" id="warehouse_id" name="warehouse_id" aria-hidden="true" tabindex="-1">
+                                                                <option selected disabled value="">Select Warehouse</option>
+                                                                @foreach($warehouses as $warehouse)
+                                                                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                                                @endforeach
+                                                            </select>
+                                                            <button type="button" id="warehouse_id_btn" class="form-select incoming-wh-dd-trigger w-100 text-start d-flex align-items-center btn-touch" aria-haspopup="listbox" aria-expanded="false">
+                                                                <span class="incoming-wh-dd-trigger-inner d-flex align-items-center min-w-0 flex-grow-1"></span>
+                                                            </button>
+                                                            <div class="incoming-wh-dd-panel list-group position-absolute top-100 start-0 end-0 d-none bg-white border rounded shadow-sm mt-1 py-1" role="listbox"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="d-flex flex-wrap gap-2 justify-content-end mt-3 pt-3 border-top">
+                                                    <button type="button" class="btn btn-primary btn-touch" id="incoming-wizard-step1-next">Next</button>
+                                                </div>
                                             </div>
-                                            <div class="col-12 col-md-6">
-                                                <label for="warehouse_id_btn" class="form-label fw-bold">Warehouse</label>
-                                                <div class="incoming-wh-dd-wrap position-relative">
-                                                    <select class="d-none incoming-wh-dd-native" id="warehouse_id" name="warehouse_id" required aria-hidden="true" tabindex="-1">
-                                                        <option selected disabled value="">Select Warehouse</option>
-                                                        @foreach($warehouses as $warehouse)
-                                                            <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+
+                                            <div class="incoming-return-step d-none" data-incoming-step="2">
+                                                <div class="mb-3">
+                                                    <label for="reason" class="form-label fw-bold">Condition / Remarks</label>
+                                                    <div class="position-relative incoming-reason-stt-wrap">
+                                                        <textarea class="form-control incoming-reason-with-mic" id="reason" name="reason" rows="4" maxlength="10000" style="min-height: 100px;" placeholder="Describe the item condition, return notes, visible damage, packaging, etc."></textarea>
+                                                        <button type="button" class="btn btn-link incoming-reason-mic-btn position-absolute top-0 end-0 mt-1 me-1 p-2" id="btnReasonSpeechToText" title="Speech to text (click to start/stop)" aria-label="Speech to text" aria-pressed="false">
+                                                            <i class="fas fa-microphone fa-lg text-primary" aria-hidden="true"></i>
+                                                        </button>
+                                                    </div>
+                                                    <small id="reasonSpeechHint" class="text-muted d-none">Speech-to-text uses your browser (Chrome, Edge, or Safari). Grant microphone access if prompted. Text is saved when you submit the form.</small>
+                                                </div>
+
+                                                <div class="d-flex flex-wrap gap-2 align-items-center mt-3 pt-3 border-top">
+                                                    <button type="button" class="btn btn-outline-secondary btn-touch" id="incoming-wizard-step2-back">← Back</button>
+                                                    <button type="button" class="btn btn-outline-success btn-touch ms-auto" id="incoming-wizard-skip-options">Skip options &amp; save</button>
+                                                    <button type="button" class="btn btn-primary btn-touch" id="incoming-wizard-step2-next">Options →</button>
+                                                </div>
+                                            </div>
+
+                                            <div class="incoming-return-step d-none" data-incoming-step="3">
+                                                <p class="small text-muted mb-3">Step 3 — Options (all optional). Add pallet, order id, channel, voice, or photos, or save without them.</p>
+
+                                                <div class="mb-3">
+                                                    <label for="pallet" class="form-label fw-bold">Pallet <span class="text-muted fw-normal">(optional)</span></label>
+                                                    <input type="text" class="form-control" id="pallet" name="pallet" maxlength="255" placeholder="Pallet ID or name" autocomplete="off">
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="order_id" class="form-label fw-bold">Order Id <span class="text-muted fw-normal">(optional)</span></label>
+                                                    <input type="text" class="form-control" id="order_id" name="order_id" maxlength="255" placeholder="." autocomplete="off">
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="return_channel" class="form-label fw-bold">Channel <span class="text-muted fw-normal">(optional)</span></label>
+                                                    <select name="return_channel" id="return_channel" class="form-select">
+                                                        <option value=""></option>
+                                                        @foreach($channels ?? [] as $ch)
+                                                            <option value="{{ $ch }}">{{ $ch }}</option>
                                                         @endforeach
                                                     </select>
-                                                    <button type="button" id="warehouse_id_btn" class="form-select incoming-wh-dd-trigger w-100 text-start d-flex align-items-center btn-touch" aria-haspopup="listbox" aria-expanded="false">
-                                                        <span class="incoming-wh-dd-trigger-inner d-flex align-items-center min-w-0 flex-grow-1"></span>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <span class="form-label fw-bold d-block">Voice Note <span class="text-muted fw-normal">(optional)</span></span>
+                                                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                                                        <button type="button" class="btn btn-danger btn-touch" id="btnVoiceRecord" aria-pressed="false">
+                                                            <i class="fas fa-microphone me-1"></i>Record
+                                                        </button>
+                                                        <button type="button" class="btn btn-secondary btn-touch d-none" id="btnVoiceStop">
+                                                            <i class="fas fa-stop me-1"></i>Stop
+                                                        </button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-touch d-none" id="btnVoiceClear">
+                                                            <i class="fas fa-trash-alt me-1"></i>Clear
+                                                        </button>
+                                                        <span id="voiceRecordStatus" class="small text-muted"></span>
+                                                    </div>
+                                                    <audio id="voiceNotePlayback" class="w-100 d-none" controls preload="metadata" style="max-height: 48px;"></audio>
+                                                    <small class="text-muted d-block">Microphone works in modern browsers over HTTPS. One clip per save (max ~15 MB).</small>
+                                                </div>
+
+                                                <div class="row g-3 mb-3">
+                                                    <div class="col-12 col-md-4">
+                                                        <label class="form-label fw-bold">Photo 1 <span class="text-muted fw-normal">(optional)</span></label>
+                                                        <div class="d-flex flex-column gap-2">
+                                                            <input type="file" id="incoming-photo-input" class="d-none" accept="image/*" capture="environment" multiple>
+                                                            <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos">
+                                                                <i class="fas fa-camera me-2"></i>Add Photos
+                                                            </button>
+                                                        </div>
+                                                        <div id="incoming-photo-thumbs" class="mt-2"></div>
+                                                    </div>
+                                                    <div class="col-12 col-md-4">
+                                                        <label class="form-label fw-bold">Photo 2 <span class="text-muted fw-normal">(optional)</span></label>
+                                                        <div class="d-flex flex-column gap-2">
+                                                            <input type="file" id="incoming-photo-input-2" class="d-none" accept="image/*" capture="environment" multiple>
+                                                            <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos2">
+                                                                <i class="fas fa-camera me-2"></i>Add Photos
+                                                            </button>
+                                                        </div>
+                                                        <div id="incoming-photo-thumbs-2" class="mt-2"></div>
+                                                    </div>
+                                                    <div class="col-12 col-md-4">
+                                                        <label class="form-label fw-bold">Photo 3 <span class="text-muted fw-normal">(optional)</span></label>
+                                                        <div class="d-flex flex-column gap-2">
+                                                            <input type="file" id="incoming-photo-input-3" class="d-none" accept="image/*" capture="environment" multiple>
+                                                            <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos3">
+                                                                <i class="fas fa-camera me-2"></i>Add Photos
+                                                            </button>
+                                                        </div>
+                                                        <div id="incoming-photo-thumbs-3" class="mt-2"></div>
+                                                    </div>
+                                                </div>
+                                                <small class="text-muted d-block mb-3">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery.</small>
+
+                                                <p class="small text-muted mb-0">
+                                                    <i class="fas fa-clock me-1"></i>Date and time are saved automatically when you submit.
+                                                </p>
+
+                                                <div class="d-flex flex-wrap gap-2 align-items-center mt-3 pt-3 border-top">
+                                                    <button type="button" class="btn btn-outline-secondary btn-touch" id="incoming-wizard-step3-back">← Back</button>
+                                                    <button type="submit" class="btn btn-success btn-touch ms-auto" id="incomingSubmitBtn">
+                                                        <i class="fas fa-save me-1"></i> Save Incoming Return
                                                     </button>
-                                                    <div class="incoming-wh-dd-panel list-group position-absolute top-100 start-0 end-0 d-none bg-white border rounded shadow-sm mt-1 py-1" role="listbox"></div>
                                                 </div>
                                             </div>
                                         </div>
-
-                                        <div class="mb-3">
-                                            <label for="reason" class="form-label fw-bold">Condition / Remarks</label>
-                                            <div class="position-relative incoming-reason-stt-wrap">
-                                                <textarea class="form-control incoming-reason-with-mic" id="reason" name="reason" rows="4" required maxlength="10000" style="min-height: 100px;" placeholder="Describe the item condition, return notes, visible damage, packaging, etc."></textarea>
-                                                <button type="button" class="btn btn-link incoming-reason-mic-btn position-absolute top-0 end-0 mt-1 me-1 p-2" id="btnReasonSpeechToText" title="Speech to text (click to start/stop)" aria-label="Speech to text" aria-pressed="false">
-                                                    <i class="fas fa-microphone fa-lg text-primary" aria-hidden="true"></i>
-                                                </button>
-                                            </div>
-                                            <small id="reasonSpeechHint" class="text-muted d-none">Speech-to-text uses your browser (Chrome, Edge, or Safari). Grant microphone access if prompted. Text is saved when you submit the form.</small>
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <span class="form-label fw-bold d-block">Voice Note <span class="text-muted fw-normal">(optional)</span></span>
-                                            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                                                <button type="button" class="btn btn-danger btn-touch" id="btnVoiceRecord" aria-pressed="false">
-                                                    <i class="fas fa-microphone me-1"></i>Record
-                                                </button>
-                                                <button type="button" class="btn btn-secondary btn-touch d-none" id="btnVoiceStop">
-                                                    <i class="fas fa-stop me-1"></i>Stop
-                                                </button>
-                                                <button type="button" class="btn btn-outline-secondary btn-touch d-none" id="btnVoiceClear">
-                                                    <i class="fas fa-trash-alt me-1"></i>Clear
-                                                </button>
-                                                <span id="voiceRecordStatus" class="small text-muted"></span>
-                                            </div>
-                                            <audio id="voiceNotePlayback" class="w-100 d-none" controls preload="metadata" style="max-height: 48px;"></audio>
-                                            <small class="text-muted d-block">Microphone works in modern browsers over HTTPS. One clip per save (max ~15 MB).</small>
-                                        </div>
-
-                                        <div class="row g-3 mb-3">
-                                            <div class="col-12 col-md-4">
-                                                <label class="form-label fw-bold">Photo 1 <span class="text-muted fw-normal">(optional)</span></label>
-                                                <div class="d-flex flex-column gap-2">
-                                                    <input type="file" id="incoming-photo-input" class="d-none" accept="image/*" capture="environment" multiple>
-                                                    <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos">
-                                                        <i class="fas fa-camera me-2"></i>Add Photos
-                                                    </button>
-                                                </div>
-                                                <div id="incoming-photo-thumbs" class="mt-2"></div>
-                                            </div>
-                                            <div class="col-12 col-md-4">
-                                                <label class="form-label fw-bold">Photo 2 <span class="text-muted fw-normal">(optional)</span></label>
-                                                <div class="d-flex flex-column gap-2">
-                                                    <input type="file" id="incoming-photo-input-2" class="d-none" accept="image/*" capture="environment" multiple>
-                                                    <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos2">
-                                                        <i class="fas fa-camera me-2"></i>Add Photos
-                                                    </button>
-                                                </div>
-                                                <div id="incoming-photo-thumbs-2" class="mt-2"></div>
-                                            </div>
-                                            <div class="col-12 col-md-4">
-                                                <label class="form-label fw-bold">Photo 3 <span class="text-muted fw-normal">(optional)</span></label>
-                                                <div class="d-flex flex-column gap-2">
-                                                    <input type="file" id="incoming-photo-input-3" class="d-none" accept="image/*" capture="environment" multiple>
-                                                    <button type="button" class="btn btn-outline-secondary btn-touch w-100" id="btnAddPhotos3">
-                                                        <i class="fas fa-camera me-2"></i>Add Photos
-                                                    </button>
-                                                </div>
-                                                <div id="incoming-photo-thumbs-3" class="mt-2"></div>
-                                            </div>
-                                        </div>
-                                        <small class="text-muted d-block mb-3">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery.</small>
-
-                                        <p class="small text-muted mb-0">
-                                            <i class="fas fa-clock me-1"></i>Date and time are saved automatically when you submit.
-                                        </p>
                                     </div>
 
                                     <input type="hidden" name="type" value="incoming_return">
 
                                     <div class="modal-footer flex-column flex-sm-row gap-2">
                                         <button type="button" class="btn btn-secondary btn-touch w-100 w-sm-auto" data-bs-dismiss="modal">Cancel</button>
-                                        <button type="submit" class="btn btn-success btn-touch w-100 w-sm-auto" id="incomingSubmitBtn">
-                                            <i class="fas fa-save me-1"></i> Save Incoming Return
-                                        </button>
                                     </div>
                                 </div>
                             </form>
@@ -933,6 +1001,8 @@
                                     <th>SKU</th>
                                     <th>QUANTITY</th>
                                     <th>WAREHOUSE</th>
+                                    <th>CHANNEL</th>
+                                    <th>ORDER ID</th>
                                     <th>CONDITION / REMARKS</th>
                                     <th>LOSS $</th>
                                     <th>RESTOCK $</th>
@@ -990,6 +1060,7 @@
 @section('script')
     <!-- Load jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 
 
@@ -1824,6 +1895,130 @@
                     bsScanModal.show();
                 });
 
+                /** Wizard: Step 1 Identify → Step 2 Condition/remarks → Step 3 Options (pallet, voice, photos; all optional) */
+                let incomingReturnWizardStep = 1;
+                function setIncomingReturnWizardStep(step) {
+                    incomingReturnWizardStep = Math.min(3, Math.max(1, parseInt(step, 10) || 1));
+                    document.querySelectorAll('.incoming-return-step[data-incoming-step]').forEach(function (el) {
+                        const s = el.getAttribute('data-incoming-step');
+                        el.classList.toggle('d-none', s !== String(incomingReturnWizardStep));
+                    });
+                    const labels = {
+                        1: 'Step 1 of 3 — Identify',
+                        2: 'Step 2 of 3 — Condition / remarks',
+                        3: 'Step 3 of 3 — Options (optional)',
+                    };
+                    const $label = $('#incoming-step-label');
+                    if ($label.length) {
+                        $label.text(labels[incomingReturnWizardStep] || labels[1]);
+                    }
+                    document.querySelectorAll('.incoming-step-dot[data-step-dot]').forEach(function (dot) {
+                        const n = parseInt(dot.getAttribute('data-step-dot'), 10);
+                        const on = n <= incomingReturnWizardStep;
+                        dot.classList.toggle('bg-primary', on);
+                        dot.classList.toggle('bg-secondary', !on);
+                        dot.classList.toggle('opacity-50', !on);
+                    });
+                    if (typeof syncIncomingReturnChannelModalSelect2 === 'function') {
+                        requestAnimationFrame(function () {
+                            syncIncomingReturnChannelModalSelect2();
+                        });
+                    }
+                }
+
+                function clearIncomingReturnFieldErrors() {
+                    $('.error-message').remove();
+                    $('#incomingReturnForm input, #incomingReturnForm select, #incomingReturnForm textarea').removeClass('is-invalid');
+                }
+
+                function validateIncomingReturnStep1() {
+                    clearIncomingReturnFieldErrors();
+                    let hasError = false;
+                    [
+                        { id: '#sku', name: 'SKU' },
+                        { id: '#qty', name: 'Quantity' },
+                        { id: '#warehouse_id', name: 'Warehouse' },
+                    ].forEach(function (f) {
+                        const el = $(f.id);
+                        const v = (el.val() || '').trim();
+                        if (!v || v === 'Select Warehouse') {
+                            hasError = true;
+                            el.addClass('is-invalid');
+                            el.after('<div class="text-danger error-message">' + f.name + ' is required.</div>');
+                        }
+                    });
+                    return !hasError;
+                }
+
+                function validateIncomingReturnReasonOnly() {
+                    clearIncomingReturnFieldErrors();
+                    const el = $('#reason');
+                    const v = (el.val() || '').trim();
+                    if (!v) {
+                        el.addClass('is-invalid');
+                        el.after('<div class="text-danger error-message">Condition / Remarks is required.</div>');
+                        return false;
+                    }
+                    return true;
+                }
+
+                function validateIncomingReturnAllCore() {
+                    clearIncomingReturnFieldErrors();
+                    let hasError = false;
+                    [
+                        { id: '#sku', name: 'SKU' },
+                        { id: '#qty', name: 'Quantity' },
+                        { id: '#warehouse_id', name: 'Warehouse' },
+                        { id: '#reason', name: 'Condition / Remarks' },
+                    ].forEach(function (f) {
+                        const el = $(f.id);
+                        const v = (el.val() || '').trim();
+                        if (!v || v === 'Select Warehouse') {
+                            hasError = true;
+                            el.addClass('is-invalid');
+                            el.after('<div class="text-danger error-message">' + f.name + ' is required.</div>');
+                        }
+                    });
+                    return !hasError;
+                }
+
+                function focusIncomingReturnWizardOnValidationFailure() {
+                    const skuOk = ($('#sku').val() || '').trim();
+                    const wh = ($('#warehouse_id').val() || '').trim();
+                    const qty = ($('#qty').val() || '').trim();
+                    if (!skuOk || !qty || !wh || wh === 'Select Warehouse') {
+                        setIncomingReturnWizardStep(1);
+                        return;
+                    }
+                    setIncomingReturnWizardStep(2);
+                }
+
+                $('#incoming-wizard-step1-next').on('click', function () {
+                    if (!validateIncomingReturnStep1()) {
+                        return;
+                    }
+                    setIncomingReturnWizardStep(2);
+                });
+                $('#incoming-wizard-step2-back').on('click', function () {
+                    setIncomingReturnWizardStep(1);
+                });
+                $('#incoming-wizard-step2-next').on('click', function () {
+                    if (!validateIncomingReturnReasonOnly()) {
+                        return;
+                    }
+                    setIncomingReturnWizardStep(3);
+                });
+                $('#incoming-wizard-skip-options').on('click', function () {
+                    if (validateIncomingReturnAllCore()) {
+                        $('#incomingReturnForm').trigger('submit');
+                        return;
+                    }
+                    focusIncomingReturnWizardOnValidationFailure();
+                });
+                $('#incoming-wizard-step3-back').on('click', function () {
+                    setIncomingReturnWizardStep(2);
+                });
+
                 // Prevent duplicate form submissions
                 let isSubmitting = false;
 
@@ -1840,28 +2035,10 @@
                         return false;
                     }
 
-                    $('.error-message').remove();
-                    $('#incomingReturnForm input, #incomingReturnForm select, #incomingReturnForm textarea').removeClass('is-invalid');
-
-                    let hasError = false;
-                    const fields = [
-                        { id: '#sku', name: 'SKU' },
-                        { id: '#qty', name: 'Quantity' },
-                        { id: '#warehouse_id', name: 'Warehouse' },
-                        { id: '#reason', name: 'Condition / Remarks' },
-                    ];
-
-                    fields.forEach(function (f) {
-                        const el = $(f.id);
-                        const v = (el.val() || '').trim();
-                        if (!v || v === 'Select Warehouse') {
-                            hasError = true;
-                            el.addClass('is-invalid');
-                            el.after('<div class="text-danger error-message">' + f.name + ' is required.</div>');
-                        }
-                    });
-
-                    if (hasError) return;
+                    if (!validateIncomingReturnAllCore()) {
+                        focusIncomingReturnWizardOnValidationFailure();
+                        return false;
+                    }
 
                     isSubmitting = true;
                     const submitBtn = $(this).find('button[type="submit"]');
@@ -1930,6 +2107,9 @@
                             $('#incoming-errors').html('');
                             $('#addWarehouseModal').modal('hide');
                             $('#incomingReturnForm')[0].reset();
+                            if ($('#return_channel').length) {
+                                $('#return_channel').val(null).trigger('change');
+                            }
                             $('#returns').val('returns');
                             if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
                             hideSkuSuggestions();
@@ -1937,6 +2117,9 @@
                             clearIncomingPhotos();
                             clearIncomingVoiceNote();
                             stopIncomingReasonSpeech();
+                            if (typeof setIncomingReturnWizardStep === 'function') {
+                                setIncomingReturnWizardStep(1);
+                            }
 
                             submitBtn.prop('disabled', false).html(originalBtnText);
                             isSubmitting = false;
@@ -1979,6 +2162,9 @@
 
                 $(document).on('click', '#openAddWarehouseModal', function () {
                     $('#incomingReturnForm')[0].reset();
+                    if ($('#return_channel').length) {
+                        $('#return_channel').val(null).trigger('change');
+                    }
                     $('#returns').val('returns');
                     if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
                     hideSkuSuggestions();
@@ -1994,6 +2180,9 @@
                     const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
                     submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return');
                     updateOfflineBanner();
+                    if (typeof setIncomingReturnWizardStep === 'function') {
+                        setIncomingReturnWizardStep(1);
+                    }
                     $('#addWarehouseModal').modal('show');
                 });
 
@@ -2006,10 +2195,69 @@
                     const submitBtn = $('#incomingReturnForm').find('button[type="submit"]');
                     submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming Return');
                     $('#incoming-errors').html('');
+                    if (typeof setIncomingReturnWizardStep === 'function') {
+                        setIncomingReturnWizardStep(1);
+                    }
                 });
 
             });
 
+            /**
+             * Channel Select2 must run after layout Vite `main.js` (it patches jQuery.fn.select2).
+             * Modal channel is initialized only when step 3 is visible (hidden steps break width/search).
+             */
+            function initIncomingReturnChannelSelect2() {
+                var $jq = window.jQuery;
+                if (!$jq || typeof $jq.fn.select2 !== 'function') {
+                    return;
+                }
+                var $filter = $jq('#filterChannelMain');
+                if ($filter.length) {
+                    try {
+                        if ($filter.data('select2')) {
+                            $filter.select2('destroy');
+                        }
+                    } catch (e) { /* ignore */ }
+                    $filter.select2({
+                        placeholder: 'All channels',
+                        allowClear: true,
+                        width: '100%'
+                    });
+                }
+                syncIncomingReturnChannelModalSelect2();
+            }
+
+            function syncIncomingReturnChannelModalSelect2() {
+                var $jq = window.jQuery;
+                if (!$jq || typeof $jq.fn.select2 !== 'function') {
+                    return;
+                }
+                var $ch = $jq('#return_channel');
+                if (!$ch.length) {
+                    return;
+                }
+                var step3 = document.querySelector('.incoming-return-step[data-incoming-step="3"]');
+                var step3Visible = step3 && !step3.classList.contains('d-none');
+                if (!step3Visible) {
+                    try {
+                        if ($ch.data('select2')) {
+                            $ch.select2('destroy');
+                        }
+                    } catch (e) { /* ignore */ }
+                    return;
+                }
+                try {
+                    if ($ch.data('select2')) {
+                        $ch.select2('destroy');
+                    }
+                } catch (e) { /* ignore */ }
+                $ch.select2({
+                    dropdownParent: $jq('#addWarehouseModal'),
+                    placeholder: 'Search or select channel',
+                    allowClear: true,
+                    width: '100%'
+                });
+            }
 
             function warehouseThemeKeyFromName(name) {
                 const raw = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\u00a0/g, ' ');
@@ -2055,13 +2303,29 @@
             function applyMainTableFilters() {
                 syncWarehouseFilterSelectTheme('filterWarehouseMain');
                 const whEl = document.getElementById('filterWarehouseMain');
+                const chEl = document.getElementById('filterChannelMain');
                 const searchEl = document.getElementById('customSearch');
                 const wh = whEl ? String(whEl.value || '') : '';
+                const channelFilter = chEl ? String(chEl.value || '').trim() : '';
                 const searchTerm = searchEl ? String(searchEl.value || '').toLowerCase().trim() : '';
 
                 let rows = tableData.slice();
                 if (wh !== '') {
                     rows = rows.filter(item => String(item.warehouse_id ?? '') === wh);
+                }
+                if (channelFilter !== '') {
+                    rows = rows.filter(function (item) {
+                        const v = String(item.return_channel || '').trim();
+                        if (!v) {
+                            return false;
+                        }
+                        if (v === channelFilter) {
+                            return true;
+                        }
+                        return v.split('|').some(function (part) {
+                            return String(part).trim() === channelFilter;
+                        });
+                    });
                 }
                 if (searchTerm) {
                     rows = rows.filter(item =>
@@ -2204,7 +2468,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="14" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="16" class="text-center">No records found</td></tr>';
                     updateIncomingFinancialSums([]);
                     return;
                 }
@@ -2232,6 +2496,8 @@
                         <td>${escapeHtml(String(item.sku ?? '-'))}</td>
                         <td>${escapeHtml(String(item.verified_stock ?? '-'))}</td>
                         <td class="${incomingWarehouseCellClass(whName)}">${escapeHtml(whLabel)}</td>
+                        <td class="small">${escapeHtml(String(item.return_channel != null && String(item.return_channel).trim() !== '' ? item.return_channel : '—'))}</td>
+                        <td class="small">${escapeHtml(String(item.order_id != null && String(item.order_id).trim() !== '' ? item.order_id : '—'))}</td>
                         <td>${escapeHtml(String(item.reason ?? '-'))}</td>
                         ${lossCell}
                         ${restockCell}
@@ -2253,11 +2519,15 @@
                 const searchInput = document.getElementById('customSearch');
                 const clearButton = document.getElementById('clearSearch');
                 const whSel = document.getElementById('filterWarehouseMain');
+                const chSel = document.getElementById('filterChannelMain');
                 if (!searchInput || !clearButton || !whSel) return;
 
                 $(searchInput).off('.incomingReturnMain');
                 $(clearButton).off('.incomingReturnMain');
                 $(whSel).off('.incomingReturnMain');
+                if (chSel) {
+                    $(chSel).off('.incomingReturnMain');
+                }
 
                 $(searchInput).on('input.incomingReturnMain', debounce(function () {
                     applyMainTableFilters();
@@ -2271,6 +2541,11 @@
                 $(whSel).on('change.incomingReturnMain', function () {
                     applyMainTableFilters();
                 });
+                if (chSel) {
+                    $(chSel).on('change.incomingReturnMain select2:select.incomingReturnMain select2:clear.incomingReturnMain', function () {
+                        applyMainTableFilters();
+                    });
+                }
             }
 
             function setupAddWarehouseModal() {
@@ -2489,6 +2764,9 @@
 
             function resetProductForm() {
                 document.getElementById('incomingReturnForm').reset();
+                if (typeof $ !== 'undefined' && $('#return_channel').length) {
+                    $('#return_channel').val(null).trigger('change');
+                }
                 if (typeof incomingWhDdSyncAll === 'function') incomingWhDdSyncAll();
 
                 document.querySelectorAll('.is-invalid').forEach(el => {
@@ -2879,6 +3157,12 @@
             });
 
             initializeTable();
+
+            window.addEventListener('load', function () {
+                if (typeof initIncomingReturnChannelSelect2 === 'function') {
+                    initIncomingReturnChannelSelect2();
+                }
+            });
         });
     </script>
 
