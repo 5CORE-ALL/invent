@@ -156,7 +156,7 @@
                         </div>
 
                         <div class="mb-2 mt-3">
-                            <label class="form-label">Comments</label>
+                            <label class="form-label">Comments/Remarks</label>
                             <textarea class="form-control" name="comments" id="dar_comments" rows="3" placeholder="Optional notes"></textarea>
                         </div>
                         <div class="small text-muted">

@@ -991,13 +991,17 @@
             }
 
             function loadData() {
-                var params = {
-                    reason: $('#filterReason').val() || undefined,
-                    person: $('#filterPerson').val() || undefined,
-                    channel: $('#filterChannel').val() || undefined,
-                    start_date: $('#filterStartDate').val() || undefined,
-                    end_date: $('#filterEndDate').val() || undefined
-                };
+                var params = {};
+                var r = ($('#filterReason').val() || '').trim();
+                var p = ($('#filterPerson').val() || '').trim();
+                var c = ($('#filterChannel').val() || '').trim();
+                var sd = ($('#filterStartDate').val() || '').trim();
+                var ed = ($('#filterEndDate').val() || '').trim();
+                if (r) { params.reason = r; }
+                if (p) { params.person = p; }
+                if (c) { params.channel = c; }
+                if (sd) { params.start_date = sd; }
+                if (ed) { params.end_date = ed; }
                 $.ajax({
                     url: '/outgoing-data-list',
                     method: 'GET',
@@ -1039,9 +1043,16 @@
                                 seen[c] = true;
                             });
                         }
-                        $('#filterChannel').val(keepChannel);
-                        renderTable(tableData);
-                        setupSearch();
+                        outgoingRestoringFiltersFromLoad = true;
+                        try {
+                            $('#filterChannel').val(keepChannel);
+                            if ($('#filterChannel').data('select2')) {
+                                $('#filterChannel').trigger('change');
+                            }
+                        } finally {
+                            outgoingRestoringFiltersFromLoad = false;
+                        }
+                        reapplyOutgoingClientSearch();
                         updateFilterSummary();
                         $('#selectedRowsValue').text('$0');
                         $('#rainbow-loader').hide();
@@ -1054,17 +1065,27 @@
             }
 
             var filterApplyTimeout = null;
+            var outgoingRestoringFiltersFromLoad = false;
             function scheduleFilterReload() {
+                if (outgoingRestoringFiltersFromLoad) {
+                    return;
+                }
                 if (filterApplyTimeout) clearTimeout(filterApplyTimeout);
                 filterApplyTimeout = setTimeout(function() {
                     filterApplyTimeout = null;
                     loadData();
                 }, 300);
             }
-            $(document).on('change', '#filterReason, #filterPerson, #filterChannel, #filterStartDate, #filterEndDate', function() {
+            function onOutgoingFilterControlChange() {
+                if (outgoingRestoringFiltersFromLoad) {
+                    return;
+                }
                 updateFilterSummary();
                 scheduleFilterReload();
-            });
+            }
+            $(document).on('change', '#filterReason, #filterPerson, #filterStartDate, #filterEndDate', onOutgoingFilterControlChange);
+            // Native change + Select2 events (Select2 may not always emit a normal change in all cases)
+            $(document).on('change select2:select select2:clear', '#filterChannel', onOutgoingFilterControlChange);
 
             $(document).on('click', '#clearFilter', function() {
                 $('#filterReason').val('');
@@ -1387,31 +1408,44 @@
             // });
 
 
+            let outgoingSearchListenersBound = false;
+            function reapplyOutgoingClientSearch() {
+                const searchInput = document.getElementById('customSearch');
+                if (!searchInput) {
+                    renderTable(tableData);
+                    return;
+                }
+                const searchTerm = (searchInput.value || '').toLowerCase().trim();
+                if (!searchTerm) {
+                    renderTable(tableData);
+                    return;
+                }
+                const filteredData = tableData.filter(item =>
+                    Object.values(item).some(value =>
+                        String(value).toLowerCase().includes(searchTerm)
+                    )
+                );
+                renderTable(filteredData);
+            }
             function setupSearch() {
+                if (outgoingSearchListenersBound) {
+                    return;
+                }
+                outgoingSearchListenersBound = true;
                 const searchInput = document.getElementById('customSearch');
                 const clearButton = document.getElementById('clearSearch');
-
+                if (!searchInput) {
+                    return;
+                }
                 searchInput.addEventListener('input', debounce(function() {
-                    const searchTerm = this.value.toLowerCase().trim();
-
-                    if (!searchTerm) {
-                        renderTable(tableData);
-                        return;
-                    }
-
-                    const filteredData = tableData.filter(item =>
-                        Object.values(item).some(value =>
-                            String(value).toLowerCase().includes(searchTerm)
-                        )
-                    );
-
-                    renderTable(filteredData);
+                    reapplyOutgoingClientSearch();
                 }, 300));
-
-                clearButton.addEventListener('click', function() {
-                    searchInput.value = '';
-                    renderTable(tableData);
-                });
+                if (clearButton) {
+                    clearButton.addEventListener('click', function() {
+                        searchInput.value = '';
+                        renderTable(tableData);
+                    });
+                }
             }
 
             function setupSorting() {

@@ -114,6 +114,7 @@ return [
     'shopify_b5c' => [
         'domain' => env('BUSINESS_5CORE_SHOPIFY_DOMAIN'),
         'api_key' => env('BUSINESS_5CORE_SHOPIFY_API_KEY'),
+        'password' => env('BUSINESS_5CORE_SHOPIFY_PASSWORD'),
         'access_token' => env('BUSINESS_5CORE_SHOPIFY_ACCESS_TOKEN'),
     ],
 

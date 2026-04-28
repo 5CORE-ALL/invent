@@ -26,6 +26,8 @@ class Inventory extends Model
         'restock_fee_usd',
         'reason',
         'returns',
+        'pallet',
+        'order_id',
         'is_approved',
         'approved_by',
         'is_ra_checked',

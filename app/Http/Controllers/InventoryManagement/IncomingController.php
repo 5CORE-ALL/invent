@@ -17,6 +17,8 @@ use App\Models\IncomingData;
 use App\Models\IncomingOrder;
 use App\Models\IncomingReason;
 use App\Models\AmazonDatasheet;
+use App\Models\ChannelMaster;
+use App\Models\IncomingReturnChannel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Collection;
@@ -617,6 +619,9 @@ class IncomingController extends Controller
                 'images' => 'nullable|array|max:20',
                 'images.*' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:10240',
                 'voice_note' => 'nullable|file|max:15360|mimetypes:audio/webm,video/webm,audio/ogg,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav',
+                'pallet' => 'nullable|string|max:255',
+                'order_id' => 'nullable|string|max:255',
+                'return_channel' => 'nullable|string|max:255',
             ]);
 
             if ($inventoryType === 'incoming_return') {
@@ -1145,11 +1150,33 @@ class IncomingController extends Controller
                             $update['restock_fee_usd'] = (float) round($newRestockUsd, 0);
                         }
 
+                        if ($inventoryType === 'incoming_return' && Schema::hasColumn('inventories', 'pallet')) {
+                            $newPallet = trim((string) ($validated['pallet'] ?? ''));
+                            if ($newPallet !== '') {
+                                $palletParts = $matches->pluck('pallet')->map(fn ($x) => trim((string) $x))->filter()->unique()->values()->all();
+                                $palletParts[] = $newPallet;
+                                $update['pallet'] = implode(' | ', array_unique($palletParts));
+                            }
+                        }
+
+                        if ($inventoryType === 'incoming_return' && Schema::hasColumn('inventories', 'order_id')) {
+                            $newOrderId = trim((string) ($validated['order_id'] ?? ''));
+                            if ($newOrderId !== '') {
+                                $orderParts = $matches->pluck('order_id')->map(fn ($x) => trim((string) $x))->filter()->unique()->values()->all();
+                                $orderParts[] = $newOrderId;
+                                $update['order_id'] = implode(' | ', array_unique($orderParts));
+                            }
+                        }
+
                         DB::table('inventories')->where('id', $keep->id)->update($update);
 
                         $otherIds = $matches->pluck('id')->skip(1)->values()->all();
                         if ($otherIds !== []) {
                             DB::table('inventories')->whereIn('id', $otherIds)->delete();
+                        }
+
+                        if ($inventoryType === 'incoming_return' && Schema::hasTable('incoming_return_channels')) {
+                            $this->syncIncomingReturnChannelRow((int) $keep->id, $validated['return_channel'] ?? null);
                         }
 
                         DB::commit();
@@ -1208,7 +1235,25 @@ class IncomingController extends Controller
                     $insert['returns'] = $returnsForRow;
                 }
 
-                DB::table('inventories')->insert($insert);
+                if ($inventoryType === 'incoming_return' && Schema::hasColumn('inventories', 'pallet')) {
+                    $palletVal = trim((string) ($validated['pallet'] ?? ''));
+                    if ($palletVal !== '') {
+                        $insert['pallet'] = $palletVal;
+                    }
+                }
+
+                if ($inventoryType === 'incoming_return' && Schema::hasColumn('inventories', 'order_id')) {
+                    $orderIdVal = trim((string) ($validated['order_id'] ?? ''));
+                    if ($orderIdVal !== '') {
+                        $insert['order_id'] = $orderIdVal;
+                    }
+                }
+
+                $newInventoryId = (int) DB::table('inventories')->insertGetId($insert);
+
+                if ($inventoryType === 'incoming_return' && Schema::hasTable('incoming_return_channels')) {
+                    $this->syncIncomingReturnChannelRow($newInventoryId, $validated['return_channel'] ?? null);
+                }
 
                 DB::commit();
 
@@ -1361,12 +1406,21 @@ class IncomingController extends Controller
             ->latest()
             ->get();
 
+        $returnChannelByInventoryId = collect();
+        if (Schema::hasTable('incoming_return_channels') && $returnItems->isNotEmpty()) {
+            $returnChannelByInventoryId = IncomingReturnChannel::query()
+                ->whereIn('inventory_id', $returnItems->pluck('id')->unique()->all())
+                ->pluck('channel', 'inventory_id');
+        }
+
         $allSkus = $incomingItems->pluck('sku')->merge($returnItems->pluck('sku'))->filter(fn ($s) => trim((string) $s) !== '');
         $amazonByUpper = $this->batchAmazonSellPriceRowsByUpperSku($allSkus);
 
         [$pmIn, $shopIn] = $this->batchProductMasterAndShopifyBySkuKeys($incomingItems->pluck('sku'));
 
-        $incomingRows = $incomingItems->map(function ($item) use ($pmIn, $shopIn, $hasFinancialCols, $amazonByUpper, $hasReturnsCol) {
+        $hasOrderIdCol = Schema::hasColumn('inventories', 'order_id');
+
+        $incomingRows = $incomingItems->map(function ($item) use ($pmIn, $shopIn, $hasFinancialCols, $amazonByUpper, $hasReturnsCol, $hasOrderIdCol) {
             $k = strtolower(trim((string) ($item->sku ?? '')));
             $pm = $pmIn->get($k);
             $shop = $shopIn->get($k);
@@ -1388,6 +1442,8 @@ class IncomingController extends Controller
                 'sku' => $item->sku,
                 'verified_stock' => $item->verified_stock,
                 'reason' => $item->reason,
+                'return_channel' => null,
+                'order_id' => $hasOrderIdCol ? ($item->order_id ?? null) : null,
                 'returns' => $hasReturnsCol ? ($item->returns ?? null) : null,
                 'warehouse_id' => $item->warehouse_id,
                 'warehouse_name' => $item->warehouse->name ?? '',
@@ -1415,7 +1471,7 @@ class IncomingController extends Controller
 
         $sortedGroups = $grouped->sortByDesc(fn ($group) => $group->max('id'));
 
-        $returnRows = $sortedGroups->values()->map(function ($group) use ($pmRet, $shopRet, $hasFinancialCols, $amazonByUpper, $hasReturnsCol) {
+        $returnRows = $sortedGroups->values()->map(function ($group) use ($pmRet, $shopRet, $hasFinancialCols, $amazonByUpper, $hasReturnsCol, $returnChannelByInventoryId, $hasOrderIdCol) {
             $rep = $group->sortByDesc('id')->values()->first();
             $sumQty = $group->sum(fn ($i) => (float) ($i->verified_stock ?? 0));
             $k = strtolower(trim((string) ($rep->sku ?? '')));
@@ -1440,10 +1496,26 @@ class IncomingController extends Controller
                 : null;
             $usd = $this->packIncomingReturnFinancialsFromAmazon($unit, $sumQty, $restockSum, $hasFinancialCols);
 
+            $channelLabels = $group->pluck('id')
+                ->map(fn ($rid) => $returnChannelByInventoryId->get($rid))
+                ->map(fn ($c) => trim((string) $c))
+                ->filter()
+                ->unique()
+                ->values();
+            $channelDisplay = $channelLabels->isNotEmpty() ? $channelLabels->implode(' | ') : null;
+
+            $orderIdDisplay = null;
+            if ($hasOrderIdCol) {
+                $orderIdParts = $group->pluck('order_id')->map(fn ($x) => trim((string) $x))->filter()->unique()->values()->all();
+                $orderIdDisplay = $orderIdParts !== [] ? implode(' | ', $orderIdParts) : null;
+            }
+
             return array_merge([
                 'sku' => $rep->sku,
                 'verified_stock' => $sumQty,
                 'reason' => implode(' | ', $reasonParts),
+                'return_channel' => $channelDisplay,
+                'order_id' => $orderIdDisplay,
                 'returns' => $returnsMerged !== '' ? $returnsMerged : null,
                 'warehouse_id' => $rep->warehouse_id,
                 'warehouse_name' => $rep->warehouse->name ?? '',
@@ -1760,8 +1832,34 @@ class IncomingController extends Controller
             ->orderBy('name')
             ->get();
 
+        $channels = ChannelMaster::where('status', 'Active')
+            ->orderBy('channel')
+            ->pluck('channel')
+            ->values()
+            ->all();
+
         // incoming-return-view: Condition/Remarks can be filled with the browser speech-to-text control; still posted as `reason`.
-        return view('inventory-management.incoming-return-view', compact('warehouses'));
+        return view('inventory-management.incoming-return-view', compact('warehouses', 'channels'));
+    }
+
+    /**
+     * Store channel for an incoming return on a separate table (not on inventories).
+     */
+    protected function syncIncomingReturnChannelRow(int $inventoryId, mixed $channel): void
+    {
+        if (! Schema::hasTable('incoming_return_channels')) {
+            return;
+        }
+        $ch = trim((string) ($channel ?? ''));
+        if ($ch === '') {
+            IncomingReturnChannel::where('inventory_id', $inventoryId)->delete();
+
+            return;
+        }
+        IncomingReturnChannel::updateOrCreate(
+            ['inventory_id' => $inventoryId],
+            ['channel' => $ch]
+        );
     }
 
     public function listReturnHistory()
