@@ -11,10 +11,9 @@ use App\Http\Controllers\AdvertisementMaster\MetaParent\ProductWiseMetaParentCon
 use App\Http\Controllers\AdvertisementMaster\Prod_Target_Advt\ProdTargetAmazonController;
 use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayController;
 use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingController;
-use App\Http\Controllers\ArrivedContainerController;
-use App\Http\Controllers\ChannelTabulatorColumnController;
-use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\AmazonAdsController;
+use App\Http\Controllers\ArrivedContainerController;
+use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
 use App\Http\Controllers\Campaigns\AmazonCampaignReportsController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
@@ -43,6 +42,7 @@ use App\Http\Controllers\Campaigns\EbayOverUtilizedBgtController;
 use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
+use App\Http\Controllers\Campaigns\GoogleAdsCampaignsRawController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
@@ -65,6 +65,7 @@ use App\Http\Controllers\Channels\ReturnController;
 use App\Http\Controllers\Channels\SetupAccountChannelController;
 use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
+use App\Http\Controllers\ChannelTabulatorColumnController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
 use App\Http\Controllers\CustomerCare\ShippingController;
@@ -842,7 +843,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
-            'what_happened' => 'nullable|string|max:50',
+            'what_happened' => 'nullable|string|max:100',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
             'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
@@ -1008,7 +1009,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
-            'what_happened' => 'nullable|string|max:50',
+            'what_happened' => 'nullable|string|max:100',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
             'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
@@ -1634,7 +1635,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
-            'what_happened' => 'nullable|string|max:50',
+            'what_happened' => 'nullable|string|max:100',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
             'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
@@ -1787,7 +1788,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
-            'what_happened' => 'nullable|string|max:50',
+            'what_happened' => 'nullable|string|max:100',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
             'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
@@ -4622,6 +4623,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/running/ads/data', 'getWalmartRunningAdsData');
         Route::get('/adv-walmart/ad-running/save-data', 'getAdvWalmartRunningSaveData')->name('adv-walmart.ad-running.save-data');
     });
+    Route::controller(GoogleAdsCampaignsRawController::class)->group(function () {
+        Route::get('/google/shopping/campaigns-raw', 'index')->name('google.ads.campaigns.raw');
+        Route::get('/google/shopping/campaigns-raw/data', 'data')->name('google.ads.campaigns.raw.data');
+        Route::get('/google/shopping/campaigns-raw/rule', 'getRawRule')->name('google.ads.campaigns.raw.rule');
+        Route::post('/google/shopping/campaigns-raw/rule', 'saveRawRule')->name('google.ads.campaigns.raw.rule.save');
+        Route::post('/google/shopping/campaigns-raw/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.ads.campaigns.raw.push.sbgt');
+        Route::post('/google/shopping/campaigns-raw/push-sbid', 'pushSbidShopping')->name('google.ads.campaigns.raw.push.sbid');
+        Route::post('/google/shopping/campaigns-raw/u7-distribution', 'u7Distribution')->name('google.ads.campaigns.raw.u7.distribution');
+        Route::post('/google/shopping/campaigns-raw/u7-distribution-history', 'u7DistributionHistory')->name('google.ads.campaigns.raw.u7.history');
+    });
+
     Route::controller(GoogleAdsController::class)->group(function () {
         Route::get('/google/shopping', 'index')->name('google.shopping');
         Route::get('/google/shopping/running', 'googleShoppingAdsRunning')->name('google.shopping.running');

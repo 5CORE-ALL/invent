@@ -6724,8 +6724,10 @@
                         });
                         renderTable();
 
+                        // Use apply-amazon-price (not update-amazon-price) so SPRICE is pushed to Amazon *and*
+                        // Shopify B2C via CvrMasterController, matching amazon_tabulator_view / pricing CVR.
                         $.ajax({
-                            url: '/update-amazon-price',
+                            url: '/apply-amazon-price',
                             type: 'POST',
                             data: {
                                 _token: $('meta[name="csrf-token"]').attr('content'),
@@ -6733,10 +6735,10 @@
                                 price: sprice
                             },
                             success: function(resp) {
-                                console.log('Amazon price update response:', resp);
+                                console.log('Amazon + Shopify price push response:', resp);
                             },
                             error: function(err) {
-                                console.error('Error updating Amazon price:', err
+                                console.error('Error pushing Amazon/Shopify price:', err
                                     .responseText);
                             }
                         });

@@ -201,7 +201,7 @@
                                     <th class="orders-hold-col-parent">Parent</th>
                                     <th class="orders-hold-col-mp">MKT1</th>
                                     <th class="orders-hold-col-mp">MKT2</th>
-                                    <th class="orders-hold-col-what">What?</th>
+                                    <th class="orders-hold-col-what">Issue?</th>
                                     <th class="orders-hold-col-action">Action</th>
                                     <th class="orders-hold-col-action">Replacement Tracking</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
@@ -238,7 +238,7 @@
                                     <th class="orders-hold-col-parent">Parent</th>
                                     <th class="orders-hold-col-mp">MKT1</th>
                                     <th class="orders-hold-col-mp">MKT2</th>
-                                    <th class="orders-hold-col-what">What?</th>
+                                    <th class="orders-hold-col-what">Issue?</th>
                                     <th class="orders-hold-col-action">Action</th>
                                     <th class="orders-hold-col-action">Replacement Tracking</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
@@ -356,7 +356,7 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="hold_issue_what_happened" class="form-label">What?</label>
+                                <label for="hold_issue_what_happened" class="form-label">Issue?</label>
                                 <select class="form-select" id="hold_issue_what_happened" name="what_happened">
                                     <option value="">Select</option>
                                     <option value="0 Stock">0 Stock</option>
@@ -1103,7 +1103,7 @@
                 }
 
                 const activeHeaders = ['#', 'SKU', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
-                    'What?', 'Action', 'Action Remark', 'Replacement Tracking',
+                    'Issue?', 'Action', 'Action Remark', 'Replacement Tracking',
                     'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark', 'Created By', 'Created At'];
                 const activeData = holdIssueRows.map(r => [

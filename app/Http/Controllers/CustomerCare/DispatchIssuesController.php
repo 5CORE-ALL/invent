@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class DispatchIssuesController extends IssueBoardControllerBase
@@ -52,34 +53,183 @@ class DispatchIssuesController extends IssueBoardControllerBase
     protected function extraValidationRules(): array
     {
         return [
-            'order_number'  => 'nullable|string|max:255',
-            'refund_amount' => 'nullable|numeric|min:0',
-            'total_loss'    => 'nullable|numeric',
+            'order_number'      => 'nullable|string|max:255',
+            'refund_amount'    => 'nullable|numeric|min:0',
+            'total_loss'       => 'nullable|numeric',
+            'tracking_number'  => 'nullable|string|max:50',
+            'issue_link'       => 'nullable|string|max:500',
         ];
     }
 
     protected function buildExtraPayload(array $validated): array
     {
+        $tn = isset($validated['tracking_number']) ? trim((string) $validated['tracking_number']) : '';
+        $il = isset($validated['issue_link']) ? trim((string) $validated['issue_link']) : '';
+
         return [
-            'order_number'  => isset($validated['order_number'])  ? trim((string) $validated['order_number'])  : null,
-            'refund_amount' => isset($validated['refund_amount'])  ? (float) $validated['refund_amount']         : null,
-            'total_loss'    => isset($validated['total_loss'])     ? (float) $validated['total_loss']            : null,
+            'order_number'     => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
+            'refund_amount'    => isset($validated['refund_amount']) ? (float) $validated['refund_amount'] : null,
+            'total_loss'       => isset($validated['total_loss']) ? (float) $validated['total_loss'] : null,
+            'tracking_number'  => $tn !== '' ? $tn : null,
+            'issue_link'       => $il !== '' ? $il : null,
         ];
     }
 
     protected function extraRowFields(object $row): array
     {
-        return [
-            'order_number'  => $row->order_number  ?? null,
-            'refund_amount' => $row->refund_amount  !== null ? (float) $row->refund_amount : null,
-            'total_loss'    => $row->total_loss     !== null ? (float) $row->total_loss    : null,
-            'group_id'      => $row->group_id       ?? null,
-        ] + $this->dispatchClaimCarrierRowSlice($row, $this->issuesTable());
+        return array_merge(
+            $this->dispatchImageSliceIfPresent($row, $this->issuesTable()),
+            [
+                'order_number'      => $row->order_number ?? null,
+                'refund_amount'     => $row->refund_amount !== null ? (float) $row->refund_amount : null,
+                'total_loss'        => $row->total_loss !== null ? (float) $row->total_loss : null,
+                'tracking_number'   => $row->tracking_number ?? null,
+                'issue_link'        => $row->issue_link ?? null,
+                'group_id'          => $row->group_id ?? null,
+            ],
+            $this->dispatchClaimCarrierRowSlice($row, $this->issuesTable())
+        );
     }
 
     protected function extraHistoryRowFields(object $row): array
     {
-        return $this->dispatchClaimCarrierRowSlice($row, $this->historyTable());
+        return array_merge(
+            $this->dispatchImageSliceIfPresent($row, $this->historyTable()),
+            [
+                'tracking_number' => $row->tracking_number ?? null,
+                'issue_link'      => $row->issue_link ?? null,
+            ],
+            $this->dispatchClaimCarrierRowSlice($row, $this->historyTable())
+        );
+    }
+
+    protected function validateIssueAttachments(Request $request): void
+    {
+        $request->validate([
+            'image_1' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp|max:10240',
+            'image_2' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp|max:10240',
+        ]);
+    }
+
+    protected function afterIssueInsert(int $issueId, Request $request): void
+    {
+        $paths = $this->persistDispatchImagesToDir($request, 'issues/'.$issueId, null);
+        if ($paths === []) {
+            return;
+        }
+
+        DB::table($this->issuesTable())->where('id', $issueId)->update($paths);
+        $hid = DB::table($this->historyTable())
+            ->where('orders_on_hold_issue_id', $issueId)
+            ->where('event_type', 'created')
+            ->orderByDesc('id')
+            ->value('id');
+        if ($hid) {
+            DB::table($this->historyTable())->where('id', $hid)->update($paths);
+        }
+    }
+
+    protected function afterIssueUpdate(int $issueId, Request $request, object $existingIssueRow): void
+    {
+        $paths = $this->persistDispatchImagesToDir($request, 'issues/'.$issueId, $existingIssueRow);
+        if ($paths === []) {
+            return;
+        }
+
+        DB::table($this->issuesTable())->where('id', $issueId)->update($paths);
+        $hid = DB::table($this->historyTable())->where('orders_on_hold_issue_id', $issueId)->orderByDesc('id')->value('id');
+        if ($hid) {
+            DB::table($this->historyTable())->where('id', $hid)->update($paths);
+        }
+    }
+
+    /**
+     * @return array<string, string|null>
+     */
+    private function dispatchImageSliceIfPresent(object $row, string $table): array
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'image_1_path')) {
+            return [];
+        }
+
+        $p1 = $row->image_1_path ?? null;
+        $p2 = $row->image_2_path ?? null;
+
+        return [
+            'image_1_path' => $p1,
+            'image_2_path' => $p2,
+            'image_1_url'  => $this->publicIssueImageUrl($p1),
+            'image_2_url'  => $this->publicIssueImageUrl($p2),
+        ];
+    }
+
+    private function publicIssueImageUrl(?string $path): ?string
+    {
+        if ($path === null || trim((string) $path) === '') {
+            return null;
+        }
+
+        $path = str_replace('\\', '/', trim((string) $path));
+        $path = ltrim($path, '/');
+
+        // Use the current request’s root URL so <img src> works when APP_URL
+        // does not match the browser host (e.g. localhost vs 127.0.0.1) or when
+        // the app is served from a subpath.
+        if (app()->bound('request') && request() && ! app()->runningInConsole()) {
+            return rtrim(request()->root(), '/') . '/storage/' . $path;
+        }
+
+        return Storage::disk('public')->url($path);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function persistDispatchImagesToDir(Request $request, string $relativeDir, ?object $existingRow): array
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'image_1_path')) {
+            return [];
+        }
+
+        $disk = 'public';
+        $prefix = 'customer-care/dispatch-issues/'.$relativeDir;
+        $out = [];
+
+        foreach ([
+            'image_1' => 'image_1_path',
+            'image_2' => 'image_2_path',
+        ] as $field => $column) {
+            if (! $request->hasFile($field)) {
+                continue;
+            }
+            $old = $existingRow ? ($existingRow->{$column} ?? null) : null;
+            if (is_string($old) && $old !== '' && Storage::disk($disk)->exists($old)) {
+                Storage::disk($disk)->delete($old);
+            }
+            $out[$column] = $request->file($field)->store($prefix, $disk);
+        }
+
+        return $out;
+    }
+
+    protected function csvImportColumnMap(): array
+    {
+        return [
+            'tracking_number' => ['tracking_number', 'tracking', 'tracking number'],
+            'issue_link'      => ['issue_link', 'link', 'url'],
+        ];
+    }
+
+    protected function csvImportExtraPayload(callable $get): array
+    {
+        $v = $get('tracking_number');
+
+        $link = $get('issue_link');
+
+        return [
+            'tracking_number' => $v !== null && $v !== '' ? $v : null,
+            'issue_link'      => $link !== null && $link !== '' ? $link : null,
+        ];
     }
 
     /**
@@ -498,17 +648,21 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'total_loss'         => 'nullable|numeric',
             'marketplace_1'      => 'nullable|string|max:255',
             'marketplace_2'      => 'nullable|string|max:255',
-            'what_happened'      => 'nullable|string|max:50',
+            'what_happened'      => 'nullable|string|max:100',
             'issue_remark'       => 'nullable|string|max:255',
             'action_1'           => 'nullable|string|max:255',
-            'action_1_remark'    => 'nullable|string|max:255',
+            'action_1_remark'      => 'nullable|string|max:255',
             'replacement_tracking' => 'nullable|string|max:50',
+            'tracking_number'    => 'nullable|string|max:50',
+            'issue_link'         => 'nullable|string|max:500',
             'c_action_1'         => 'nullable|string|max:255',
             'c_action_1_remark'  => 'nullable|string|max:255',
             'issue_date'         => 'nullable|string|max:100',
             'department'         => 'required|array|min:1',
             'department.*'       => 'required|string|max:100',
         ]);
+
+        $this->validateIssueAttachments($request);
 
         $depts = CustomerCareDepartments::normalizeStringList($request->input('department', []));
         if (count($depts) === 0) {
@@ -525,7 +679,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $now       = now();
         $tz        = config('app.timezone');
 
-        $sharedPayload = [
+        $imagePaths = $this->persistDispatchImagesToDir($request, 'groups/'.$groupId, null);
+
+        $sharedPayload = array_merge([
             'group_id'             => $groupId,
             'order_number'         => $request->input('order_number') ? trim($request->input('order_number')) : null,
             'refund_amount'        => $request->input('refund_amount') !== null && $request->input('refund_amount') !== '' ? (float) $request->input('refund_amount') : null,
@@ -538,6 +694,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'action_1'             => $request->input('action_1') ? trim($request->input('action_1')) : null,
             'action_1_remark'      => $request->input('action_1_remark') ? trim($request->input('action_1_remark')) : null,
             'replacement_tracking' => $request->input('replacement_tracking') ? trim($request->input('replacement_tracking')) : null,
+            'tracking_number'      => $request->input('tracking_number') ? trim($request->input('tracking_number')) : null,
+            'issue_link'           => $request->input('issue_link') ? trim($request->input('issue_link')) : null,
             'c_action_1'           => $request->input('c_action_1') ? trim($request->input('c_action_1')) : null,
             'c_action_1_remark'    => $request->input('c_action_1_remark') ? trim($request->input('c_action_1_remark')) : null,
             'close_note'           => null,
@@ -547,7 +705,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'created_by_user_id'   => $user?->id,
             'created_at'           => $now,
             'updated_at'           => $now,
-        ];
+        ], $imagePaths);
 
         $insertedRows = [];
 

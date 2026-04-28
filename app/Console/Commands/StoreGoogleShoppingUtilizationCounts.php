@@ -2,19 +2,21 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
+use App\Http\Controllers\Campaigns\GoogleAdsDateRangeTrait;
 use App\Models\GoogleDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Support\GoogleShoppingCampaignsRawRule;
+use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Http\Controllers\Campaigns\GoogleAdsDateRangeTrait;
 
 class StoreGoogleShoppingUtilizationCounts extends Command
 {
     use GoogleAdsDateRangeTrait;
 
     protected $signature = 'google:store-shopping-utilization-counts';
+
     protected $description = 'Store daily counts of over/under utilized Google Shopping campaigns';
 
     public function handle()
@@ -33,7 +35,11 @@ class StoreGoogleShoppingUtilizationCounts extends Command
 
             // Calculate date ranges (same as controller)
             $dateRanges = $this->calculateDateRanges();
-            
+
+            $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
+            $ubOver = (float) $rawRule['sbid']['util_high'];
+            $ubUnder = (float) $rawRule['sbid']['util_low'];
+
             // Fetch SHOPPING campaigns data within L30 range
             $googleCampaigns = DB::table('google_ads_campaigns')
                 ->select(
@@ -69,11 +75,13 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                     // Remove trailing period from campaign name for matching
                     $campaignUpperCleaned = rtrim($campaignUpper, '.');
 
-                    $parts = array_map(function($part) { return rtrim(trim($part), '.'); }, explode(',', $campaignUpperCleaned));
+                    $parts = array_map(function ($part) {
+                        return rtrim(trim($part), '.');
+                    }, explode(',', $campaignUpperCleaned));
                     $skuTrimmed = strtoupper(trim($sku));
                     $exactMatch = in_array($skuTrimmed, $parts);
 
-                    if (!$exactMatch) {
+                    if (! $exactMatch) {
                         $exactMatch = $campaignUpperCleaned === $skuTrimmed;
                     }
 
@@ -122,7 +130,7 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 $ub1 = $budget > 0 ? ($spend_L1 / ($budget * 1)) * 100 : 0;
 
                 // Store campaign data (only once per campaign_id)
-                if (!isset($result[$campaignId])) {
+                if (! isset($result[$campaignId])) {
                     $result[$campaignId] = [
                         'campaign_id' => $campaignId,
                         'ub7' => $ub7,
@@ -135,7 +143,7 @@ class StoreGoogleShoppingUtilizationCounts extends Command
             // 7UB only condition
             $overUtilizedCount7ub = 0;
             $underUtilizedCount7ub = 0;
-            
+
             // 7UB + 1UB condition
             $overUtilizedCount7ub1ub = 0;
             $underUtilizedCount7ub1ub = 0;
@@ -143,18 +151,18 @@ class StoreGoogleShoppingUtilizationCounts extends Command
             foreach ($result as $campaignData) {
                 $ub7 = $campaignData['ub7'];
                 $ub1 = $campaignData['ub1'];
-                
-                // Categorize based on 7UB only condition
-                if ($ub7 > 99) {
+
+                // Categorize based on 7UB only (thresholds from persisted SBID rule)
+                if ($ub7 > $ubOver) {
                     $overUtilizedCount7ub++;
-                } elseif ($ub7 < 66) {
+                } elseif ($ub7 < $ubUnder) {
                     $underUtilizedCount7ub++;
                 }
-                
-                // Categorize based on 7UB + 1UB condition
-                if ($ub7 > 99 && $ub1 > 99) {
+
+                // Categorize based on 7UB + 1UB (same thresholds as SBID cron / raw grid)
+                if ($ub7 > $ubOver && $ub1 > $ubOver) {
                     $overUtilizedCount7ub1ub++;
-                } elseif ($ub7 < 66 && $ub1 < 66) {
+                } elseif ($ub7 < $ubUnder && $ub1 < $ubUnder) {
                     $underUtilizedCount7ub1ub++;
                 }
             }
@@ -162,7 +170,7 @@ class StoreGoogleShoppingUtilizationCounts extends Command
             // Store in google_data_view table with date as SKU
             $today = now()->format('Y-m-d');
             $tomorrow = now()->copy()->addDay()->format('Y-m-d');
-            
+
             // Data for today (with actual counts)
             $data = [
                 // 7UB only condition
@@ -171,7 +179,7 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 // 7UB + 1UB condition
                 'over_utilized_7ub_1ub' => $overUtilizedCount7ub1ub,
                 'under_utilized_7ub_1ub' => $underUtilizedCount7ub1ub,
-                'date' => $today
+                'date' => $today,
             ];
 
             // Blank data for tomorrow (all counts as 0)
@@ -182,12 +190,12 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 // 7UB + 1UB condition
                 'over_utilized_7ub_1ub' => 0,
                 'under_utilized_7ub_1ub' => 0,
-                'date' => $tomorrow
+                'date' => $tomorrow,
             ];
 
             // Use date as SKU identifier for this data
-            $skuKeyToday = 'GOOGLE_SHOPPING_UTILIZATION_' . $today;
-            $skuKeyTomorrow = 'GOOGLE_SHOPPING_UTILIZATION_' . $tomorrow;
+            $skuKeyToday = 'GOOGLE_SHOPPING_UTILIZATION_'.$today;
+            $skuKeyTomorrow = 'GOOGLE_SHOPPING_UTILIZATION_'.$tomorrow;
 
             // Insert/Update today's data
             $existingToday = GoogleDataView::where('sku', $skuKeyToday)->first();
@@ -198,7 +206,7 @@ class StoreGoogleShoppingUtilizationCounts extends Command
             } else {
                 GoogleDataView::create([
                     'sku' => $skuKeyToday,
-                    'value' => $data
+                    'value' => $data,
                 ]);
                 $this->info("Created Google Shopping utilization counts for {$today}");
             }
@@ -206,41 +214,41 @@ class StoreGoogleShoppingUtilizationCounts extends Command
             // Insert/Update tomorrow's blank data (only if it doesn't exist)
             $existingTomorrow = GoogleDataView::where('sku', $skuKeyTomorrow)->first();
 
-            if (!$existingTomorrow) {
+            if (! $existingTomorrow) {
                 GoogleDataView::create([
                     'sku' => $skuKeyTomorrow,
-                    'value' => $blankData
+                    'value' => $blankData,
                 ]);
                 $this->info("Created blank Google Shopping utilization counts for {$tomorrow}");
             } else {
                 $this->info("Tomorrow's data already exists for {$tomorrow}, skipping blank data creation");
             }
 
-            $this->info("Google Shopping Utilization Counts:");
-            $this->info("7UB Condition:");
+            $this->info('Google Shopping Utilization Counts:');
+            $this->info('7UB Condition:');
             $this->info("  Over-utilized (UB7 > 90%): {$overUtilizedCount7ub}");
             $this->info("  Under-utilized (UB7 < 70%): {$underUtilizedCount7ub}");
-            $this->info("7UB + 1UB Condition:");
+            $this->info('7UB + 1UB Condition:');
             $this->info("  Over-utilized (UB7 > 90% AND UB1 > 90%): {$overUtilizedCount7ub1ub}");
             $this->info("  Under-utilized (UB7 < 70% AND UB1 < 70%): {$underUtilizedCount7ub1ub}");
 
-            Log::info("Google Shopping Utilization Counts Stored", [
+            Log::info('Google Shopping Utilization Counts Stored', [
                 'date' => $today,
                 'over_utilized_7ub' => $overUtilizedCount7ub,
                 'under_utilized_7ub' => $underUtilizedCount7ub,
                 'over_utilized_7ub_1ub' => $overUtilizedCount7ub1ub,
-                'under_utilized_7ub_1ub' => $underUtilizedCount7ub1ub
+                'under_utilized_7ub_1ub' => $underUtilizedCount7ub1ub,
             ]);
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            $this->error("Error storing Google Shopping utilization counts: " . $e->getMessage());
-            Log::error("Error storing Google Shopping utilization counts", [
+            $this->error('Error storing Google Shopping utilization counts: '.$e->getMessage());
+            Log::error('Error storing Google Shopping utilization counts', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return Command::FAILURE;
         }
     }
 }
-

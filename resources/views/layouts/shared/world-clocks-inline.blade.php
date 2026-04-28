@@ -78,13 +78,20 @@
         <div class="wc-time" id="wc-oh-time">—</div>
         <div class="wc-meta" id="wc-oh-meta"></div>
     </div>
+    <div class="wc-divider" aria-hidden="true"></div>
+    <div class="wc-zone">
+        <div class="wc-label">China</div>
+        <div class="wc-time" id="wc-cn-time">—</div>
+        <div class="wc-meta" id="wc-cn-meta"></div>
+    </div>
 </div>
 <script>
 (function () {
     var zones = [
         { prefix: 'wc-ca', tz: 'America/Los_Angeles' },
         { prefix: 'wc-in', tz: 'Asia/Kolkata' },
-        { prefix: 'wc-oh', tz: 'America/New_York' }
+        { prefix: 'wc-oh', tz: 'America/New_York' },
+        { prefix: 'wc-cn', tz: 'Asia/Shanghai' }
     ];
     function tzAbbrev(now, timeZone) {
         var style = timeZone === 'Asia/Kolkata' ? 'longOffset' : 'short';
