@@ -88,7 +88,7 @@ class TikTokPricingController extends Controller
             'tiktokDownloadSamplePath' => '/tiktok-download-sample-csv',
             'tiktokPricingClientConfig' => [
                 'dataJson' => '/tiktok-2-data-json',
-                'badgeChart' => '/tiktok-badge-chart-data',
+                'badgeChart' => route('tiktok2.badge.chart.data'),
                 'saveSprice' => '/tiktok-2-save-sprice',
                 'columnGet' => '/tiktok-pricing-column-visibility',
                 'columnSet' => '/tiktok-pricing-column-visibility',
@@ -163,6 +163,7 @@ class TikTokPricingController extends Controller
                 'avg_roi' => 'avg_roi',
                 'missing_count' => 'missing_count',
                 'map_count' => 'map_count',
+                'nmap_count' => 'nmap_count',
                 'inv_tt_stock_count' => 'inv_tt_stock_count',
             ];
 
@@ -204,6 +205,16 @@ class TikTokPricingController extends Controller
             Log::error('Error fetching TikTok badge chart data: ' . $e->getMessage());
             return response()->json(['success' => false, 'data' => []], 500);
         }
+    }
+
+    /**
+     * Daily badge chart for TikTok 2 pricing (always uses channel tiktok2).
+     */
+    public function tiktok2BadgeChartData(Request $request)
+    {
+        $request->merge(['channel' => 'tiktok2']);
+
+        return $this->tiktokBadgeChartData($request);
     }
 
     /**

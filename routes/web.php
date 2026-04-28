@@ -2542,6 +2542,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok-2-data-json', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2DataJson'])->name('tiktok2.data.json');
     Route::get('/tiktok-distinct-campaign-count', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokDistinctCampaignCount'])->name('tiktok.distinct.campaign.count');
     Route::get('/tiktok-badge-chart-data', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokBadgeChartData'])->name('tiktok.badge.chart.data');
+    Route::get('/tiktok-2-badge-chart-data', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2BadgeChartData'])->name('tiktok2.badge.chart.data');
     Route::post('/tiktok-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTokCsv'])->name('tiktok.upload.csv');
     Route::post('/tiktok-2-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTok2Csv'])->name('tiktok2.upload.csv');
     Route::get('/tiktok-download-sample-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'downloadSampleCsv'])->name('tiktok.download.sample');

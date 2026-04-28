@@ -763,7 +763,7 @@ class SheinController extends Controller
     {
         try {
             $metric = (string) $request->input('metric', 'avg_gpft');
-            $days   = max(1, (int) $request->input('days', 30));
+            $days = max(0, (int) $request->input('days', 30));
 
             $validMetrics = [
                 'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
@@ -774,11 +774,13 @@ class SheinController extends Controller
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
             }
 
-            $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
-            $rows = \App\Models\AmazonChannelSummary::where('channel', 'shein')
-                ->where('snapshot_date', '>=', $startDate)
-                ->orderBy('snapshot_date', 'asc')
-                ->get(['snapshot_date', 'summary_data']);
+            $query = AmazonChannelSummary::where('channel', 'shein')
+                ->orderBy('snapshot_date', 'asc');
+            if ($days > 0) {
+                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $startDate);
+            }
+            $rows = $query->get(['snapshot_date', 'summary_data']);
 
             $data = [];
             foreach ($rows as $row) {
@@ -1207,6 +1209,8 @@ class SheinController extends Controller
             $rows = $this->insertSheinParentRows($rows);
             $rows = $this->sanitizeUtf8Recursive($rows);
 
+            $this->saveSheinPricingSnapshot($rows);
+
             $jsonFlags = JSON_INVALID_UTF8_SUBSTITUTE;
             if (defined('JSON_UNESCAPED_UNICODE')) {
                 $jsonFlags |= JSON_UNESCAPED_UNICODE;
@@ -1251,6 +1255,129 @@ class SheinController extends Controller
             $result[] = $this->buildSheinParentRow($currentParent, $group);
         }
         return $result;
+    }
+
+    /**
+     * N Map badge logic — same as shein_pricing_view.js aeSheinStrictNMapFromMap.
+     */
+    private function sheinStrictNMapFromMapValue(string $mapVal): bool
+    {
+        $mapVal = trim($mapVal);
+        if ($mapVal === '' || ! str_starts_with($mapVal, 'N Map|')) {
+            return false;
+        }
+        $rest = trim(substr($mapVal, strlen('N Map|')));
+        if ($rest === '' || ! is_numeric($rest)) {
+            return false;
+        }
+
+        return abs((float) $rest) > 3;
+    }
+
+    /**
+     * Persist daily summary for badge charts (matches pricing page updateSummary on child SKUs).
+     */
+    private function saveSheinPricingSnapshot(array $rows): void
+    {
+        try {
+            $today = now()->toDateString();
+            $children = collect($rows)->filter(fn ($r) => empty($r['is_parent']));
+            if ($children->isEmpty()) {
+                return;
+            }
+
+            $totalSales = 0.0;
+            $totalPft = 0.0;
+            $totalCogs = 0.0;
+            $gpftSum = 0.0;
+            $gpftCount = 0;
+            $roiSum = 0.0;
+            $roiCount = 0;
+            $totalAl30 = 0.0;
+            $zeroSold = 0;
+            $moreSold = 0;
+            $dilSum = 0.0;
+            $dilCount = 0;
+            $missingCount = 0;
+            $mapCount = 0;
+            $nmapCount = 0;
+
+            foreach ($children as $row) {
+                $isMissing = strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M';
+                $al30 = (float) ($row['al30'] ?? 0);
+                $inv = (float) ($row['inv'] ?? 0);
+                $ovL30 = (float) ($row['ov_l30'] ?? 0);
+                $profit = (float) ($row['profit'] ?? 0);
+                $lp = (float) ($row['lp'] ?? 0);
+
+                $totalCogs += $lp * $al30;
+                $totalAl30 += $al30;
+                if ($al30 === 0.0) {
+                    $zeroSold++;
+                } else {
+                    $moreSold++;
+                }
+                if ($inv > 0.0) {
+                    $dilSum += ($ovL30 / $inv) * 100;
+                    $dilCount++;
+                }
+                if ($isMissing) {
+                    $missingCount++;
+                }
+
+                $mapVal = trim((string) ($row['map'] ?? ''));
+                if (! $isMissing && $mapVal === 'Map') {
+                    $mapCount++;
+                } elseif ($this->sheinStrictNMapFromMapValue($mapVal)) {
+                    $nmapCount++;
+                }
+
+                if (! $isMissing) {
+                    $totalSales += (float) ($row['sales'] ?? 0);
+                    $totalPft += $al30 * $profit;
+
+                    $gpft = isset($row['gpft']) ? (float) $row['gpft'] : null;
+                    if ($gpft !== null && is_finite($gpft)) {
+                        $gpftSum += $gpft;
+                        $gpftCount++;
+                    }
+                    $groi = isset($row['groi']) ? (float) $row['groi'] : null;
+                    if ($groi !== null && is_finite($groi)) {
+                        $roiSum += $groi;
+                        $roiCount++;
+                    }
+                }
+            }
+
+            $totalSku = $children->count();
+            $avgGpft = $gpftCount > 0 ? $gpftSum / $gpftCount : 0.0;
+            $avgDil = $dilCount > 0 ? $dilSum / $dilCount : 0.0;
+            $avgRoi = $roiCount > 0 ? $roiSum / $roiCount : 0.0;
+
+            $summaryData = [
+                'total_sku' => $totalSku,
+                'total_sales' => round($totalSales, 2),
+                'total_pft' => round($totalPft, 2),
+                'total_cogs' => round($totalCogs, 2),
+                'total_al30' => round($totalAl30, 2),
+                'avg_gpft' => round($avgGpft, 2),
+                'avg_dil' => round($avgDil, 2),
+                'avg_roi' => round($avgRoi, 2),
+                'missing_count' => $missingCount,
+                'map_count' => $mapCount,
+                'nmap_count' => $nmapCount,
+                'zero_sold' => $zeroSold,
+                'more_sold' => $moreSold,
+                'calculated_at' => now()->toDateTimeString(),
+            ];
+
+            AmazonChannelSummary::updateOrCreate(
+                ['channel' => 'shein', 'snapshot_date' => $today],
+                ['summary_data' => $summaryData, 'notes' => 'Auto-saved Shein pricing snapshot']
+            );
+        } catch (\Exception $e) {
+            Log::error('Shein daily snapshot save failed: '.$e->getMessage());
+        }
     }
 
     private function buildSheinParentRow(string $parentName, array $childRows): array

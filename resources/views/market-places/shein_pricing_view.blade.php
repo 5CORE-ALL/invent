@@ -89,6 +89,17 @@
         .ae-sc.yellow { background:#ffc107; }
         .ae-sc.green  { background:#28a745; }
         .ae-sc.pink   { background:#e83e8c; }
+
+        /* Summary badges — horizontal scroll (eBay 2 / TikTok style) */
+        #summary-stats .d-flex.flex-wrap.gap-2 {
+            display: flex; flex-wrap: nowrap; align-items: stretch; gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+        }
+        #summary-stats .d-flex.flex-wrap.gap-2 > .badge {
+            flex: 1 1 0; min-width: 0; font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -226,20 +237,21 @@
                         </div>
                     </div>
 
-                    {{-- ── Summary badges ── --}}
+                    {{-- ── Summary badges (click chart: ae-badge-chart; hover ½s chart: ae-hover-chart; filter badges: hover-only so click = filter) ── --}}
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
                         <div class="d-flex flex-wrap gap-2">
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-total-sku-badge"    data-metric="total_sku"   style="font-weight:700;cursor:pointer;">SKU: 0</span>
-                            <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Sales: $0</span>
-                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">Sh L30: 0</span>
-                            <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">GPFT: 0%</span>
-                            <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-map-badge"         data-metric="map_count"     style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click for trend / filter">Map: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-nmap-badge"       data-metric="nmap_count"    style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click for trend / filter">N Map: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-zero-sold-badge"   data-metric="zero_sold"     style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click for trend / filter">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2 ae-badge-chart"             id="ae-more-sold-badge"   data-metric="more_sold"     style="font-weight:700;cursor:pointer;background:#28a745;color:#fff;" title="Click for trend / filter">&gt;0 Sold: 0</span>
-                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart d-none" id="ae-avg-dil-badge"     data-metric="avg_dil"     style="font-weight:700;color:#111;cursor:pointer;">DIL%: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-avg-roi-badge"    data-metric="avg_roi"     style="font-weight:700;color:#fff;cursor:pointer;">ROI: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-sku-badge" data-metric="total_sku" style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">SKU: 0</span>
+                            <span class="badge bg-primary fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">Sales: $0</span>
+                            <span class="badge bg-success fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-pft-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;color:#111;" title="Click or hover (½s) for daily trend">PFT: $0</span>
+                            <span class="badge bg-warning fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-al30-badge" data-metric="total_al30" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">Sh L30: 0</span>
+                            <span class="badge bg-info fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">GPFT: 0%</span>
+                            <span class="badge bg-danger fs-6 p-2 ae-hover-chart" id="ae-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing: 0</span>
+                            <span class="badge fs-6 p-2 ae-hover-chart" id="ae-map-badge" data-metric="map_count" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter · Hover ½s for daily trend">Map: 0</span>
+                            <span class="badge fs-6 p-2 ae-hover-chart" id="ae-nmap-badge" data-metric="nmap_count" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
+                            <span class="badge fs-6 p-2 ae-hover-chart" id="ae-zero-sold-badge" data-metric="zero_sold" style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 ae-hover-chart" id="ae-more-sold-badge" data-metric="more_sold" style="font-weight:700;cursor:pointer;background:#28a745;color:#fff;" title="Click to filter · Hover ½s for daily trend">&gt;0 Sold: 0</span>
+                            <span class="badge bg-warning fs-6 p-2 ae-badge-chart ae-hover-chart d-none" id="ae-avg-dil-badge" data-metric="avg_dil" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">DIL%: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-roi-badge" data-metric="avg_roi" style="font-weight:700;color:#fff;cursor:pointer;" title="Click or hover (½s) for daily trend">ROI: 0%</span>
                         </div>
                     </div>
 
@@ -249,16 +261,16 @@
         </div>
     </div>
 
-    {{-- Badge Trend Chart Modal – matches Amazon tabulator view UI --}}
+    {{-- Badge trend modal — eBay 3 style: wide top-aligned dialog, line chart + stats only --}}
     <div class="modal fade" id="aeBadgeChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width:80vw;width:80vw;margin:10px auto 0;">
+        <div class="modal-dialog modal-xl shadow-none modal-dialog-scrollable" style="max-width:98vw;width:98vw;margin:10px auto 0;">
             <div class="modal-content" style="border-radius:8px;overflow:hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size:13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="aeBadgeChartTitle">Shein – Badge Trend</span>
+                        <span id="aeBadgeChartTitle">Shein — Summary (Daily snapshot)</span>
                     </h6>
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 me-2">
                         <select id="aeBadgeChartRange" class="form-select form-select-sm bg-white"
                             style="width:110px;height:26px;font-size:11px;padding:1px 8px;">
                             <option value="7">7 Days</option>
@@ -266,13 +278,13 @@
                             <option value="30" selected>30 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
                         </select>
                         <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal"></button>
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <!-- Line chart + stat panel -->
-                    <div id="aeBadgeLineWrap" style="display:none;height:38vh;align-items:stretch;">
+                    <div id="aeBadgeLineWrap" style="display:none;height:38vh;flex-direction:row;align-items:stretch;">
                         <div style="flex:1;min-width:0;position:relative;">
                             <canvas id="aeBadgeLineCanvas"></canvas>
                         </div>
@@ -284,17 +296,13 @@
                             </div>
                             <div style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
                                 <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">Median</div>
-                                <div id="aeBadgeMedian"  style="font-size:13px;font-weight:700;color:#6c757d;">–</div>
+                                <div id="aeBadgeMedian" style="font-size:13px;font-weight:700;color:#6c757d;">–</div>
                             </div>
                             <div style="text-align:center;">
                                 <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">Lowest</div>
-                                <div id="aeBadgeLowest"  style="font-size:13px;font-weight:700;color:#198754;">–</div>
+                                <div id="aeBadgeLowest" style="font-size:13px;font-weight:700;color:#198754;">–</div>
                             </div>
                         </div>
-                    </div>
-                    <!-- Bar chart -->
-                    <div id="aeBadgeBarWrap" style="display:none;height:160px;margin-top:8px;">
-                        <canvas id="aeBadgeBarCanvas"></canvas>
                     </div>
                     <div id="aeBadgeLoading" class="text-center py-3" style="display:none;">
                         <div class="spinner-border spinner-border-sm text-primary"></div>
@@ -333,7 +341,6 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script>
         let table = null;
         let summaryDataCache = [];
@@ -611,7 +618,7 @@
             }
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
-            let totalSales = 0, totalAl30 = 0;
+            let totalSales = 0, totalPft = 0, totalAl30 = 0;
             let gpftSum = 0, gpftCount = 0;
             let roiSum  = 0, roiCount  = 0;
             let missingCount = 0, mapCount = 0, nmapCount = 0;
@@ -628,13 +635,14 @@
                 const ovL30  = parseFloat(row.ov_l30) || 0;
 
                 if (!isMissing) {
-                    totalSales  += parseFloat(row.sales) || 0;
+                    totalSales += parseFloat(row.sales) || 0;
+                    totalPft += al30 * (parseFloat(row.profit) || 0);
 
                     const gpft = parseFloat(row.gpft);
                     if (Number.isFinite(gpft)) { gpftSum += gpft; gpftCount++; }
 
                     const groi = parseFloat(row.groi);
-                    if (Number.isFinite(groi)) { roiSum  += groi; roiCount++; }
+                    if (Number.isFinite(groi)) { roiSum += groi; roiCount++; }
                 }
 
                 totalAl30 += al30;
@@ -651,7 +659,8 @@
             const avgRoi  = roiCount  > 0 ? roiSum  / roiCount  : 0;
 
             $('#ae-total-sku-badge').text(`SKU: ${childCount.toLocaleString()}`);
-            $('#ae-total-sales-badge').text(totalSales   > 0 ? `Sales: $${Math.round(totalSales).toLocaleString()}`       : 'Sales: –');
+            $('#ae-total-sales-badge').text(totalSales > 0 ? `Sales: $${Math.round(totalSales).toLocaleString()}` : 'Sales: –');
+            $('#ae-total-pft-badge').text(totalPft !== 0 || totalSales > 0 ? `PFT: $${Math.round(totalPft).toLocaleString()}` : 'PFT: –');
             $('#ae-total-al30-badge').text(`Sh L30: ${totalAl30.toLocaleString()}`);
             $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `GPFT: ${Math.round(avgGpft)}%`  : 'GPFT: –');
             $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
@@ -1199,131 +1208,208 @@
                 });
             });
 
-            // ── Badge Trend Chart (mirrors TikTok ttBadgeChart) ──────
+            // ── Badge trend chart (eBay 3 style: line, median line, point labels, hover ½s, Lifetime range) ──────
             let aeBadgeLineChart = null;
-            let aeBadgeBarChart  = null;
-            let aeBadgeMetric    = '';
-            let aeBadgeDays      = 30;
-            let aeBadgeAjax      = null;
+            let aeBadgeMetric = '';
+            let aeBadgeDays = 30;
+            let aeBadgeAjax = null;
 
-            const aeDollarMetrics  = ['total_sales','total_cogs'];
-            const aeCountMetrics   = ['total_sku','total_al30','missing_count','map_count','nmap_count','zero_sold','more_sold'];
-            const aePercentMetrics = ['avg_gpft','avg_roi','avg_dil'];
+            const aeDollarMetrics = ['total_sales', 'total_cogs', 'total_pft'];
+            const aePercentMetrics = ['avg_gpft', 'avg_roi', 'avg_dil'];
 
             const aeBadgeLabels = {
-                total_sales: 'Sales',         total_al30: 'Sh L30',
-                avg_gpft: 'GPFT%',            avg_roi: 'ROI%',              avg_dil: 'DIL%',
-                total_cogs: 'COGS',           missing_count: 'Missing',     map_count: 'Map',
-                nmap_count: 'N Map',         total_sku: 'SKU',             zero_sold: '0 Sold',          more_sold: '>0 Sold',
+                total_sales: 'Sales',
+                total_pft: 'PFT',
+                total_al30: 'Sh L30',
+                avg_gpft: 'GPFT %',
+                avg_roi: 'ROI %',
+                avg_dil: 'DIL %',
+                total_cogs: 'COGS',
+                missing_count: 'Missing',
+                map_count: 'Map',
+                nmap_count: 'N Map',
+                total_sku: 'SKU',
+                zero_sold: '0 Sold',
+                more_sold: '> 0 Sold',
             };
 
             function aeFormatChartVal(v) {
-                const n = Number(v) || 0;
-                if (aeDollarMetrics.includes(aeBadgeMetric))  return '$' + Math.round(n).toLocaleString('en-US');
-                if (aePercentMetrics.includes(aeBadgeMetric)) {
-                    if (aeBadgeMetric === 'avg_dil') return n.toFixed(1) + '%';
-                    return Math.round(n) + '%';
+                const n = Number(v);
+                if (aeDollarMetrics.includes(aeBadgeMetric)) {
+                    const x = Number.isFinite(n) ? n : 0;
+                    return '$' + Math.round(x).toLocaleString('en-US');
                 }
-                return Math.round(n).toLocaleString('en-US');
+                if (aePercentMetrics.includes(aeBadgeMetric)) {
+                    const x = Number.isFinite(n) ? n : 0;
+                    if (aeBadgeMetric === 'avg_dil') return x.toFixed(1) + '%';
+                    return Math.round(x) + '%';
+                }
+                return Math.round(Number.isFinite(n) ? n : 0).toLocaleString('en-US');
             }
 
-            function aeRenderCharts(points) {
+            function aeBadgeChartModalTitle() {
+                const part = aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric;
+                return 'Shein — ' + part + ' (Daily snapshot)';
+            }
+
+            function aeOpenBadgeChartModal(metricKey) {
+                aeBadgeMetric = metricKey;
+                aeBadgeDays = 30;
+                $('#aeBadgeChartRange').val('30');
+                $('#aeBadgeChartTitle').text(aeBadgeChartModalTitle());
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('aeBadgeChartModal')).show();
+                aeLoadChart();
+            }
+
+            let aeBadgeHoverTimer = null;
+            $(document).on('mouseenter', '.ae-hover-chart', function() {
+                const metric = $(this).data('metric');
+                if (!metric) return;
+                aeBadgeHoverTimer = setTimeout(function() {
+                    aeOpenBadgeChartModal(metric);
+                }, 500);
+            });
+            $(document).on('mouseleave', '.ae-hover-chart', function() {
+                if (aeBadgeHoverTimer) {
+                    clearTimeout(aeBadgeHoverTimer);
+                    aeBadgeHoverTimer = null;
+                }
+            });
+            $(document).on('mousedown', '.ae-hover-chart', function() {
+                if (aeBadgeHoverTimer) {
+                    clearTimeout(aeBadgeHoverTimer);
+                    aeBadgeHoverTimer = null;
+                }
+            });
+
+            function aeRenderLineChart(points) {
                 if (!Array.isArray(points) || !points.length) return false;
 
                 const labels = points.map(p => p.date);
                 const values = points.map(p => Number(p.value) || 0);
                 const sorted = [...values].sort((a, b) => a - b);
-                const mid    = Math.floor(sorted.length / 2);
-                const median = sorted.length % 2 ? sorted[mid] : (sorted[mid-1] + sorted[mid]) / 2;
-                const highest = sorted[sorted.length - 1];
-                const lowest  = sorted[0];
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                const dataMin = sorted[0];
+                const dataMax = sorted[sorted.length - 1];
 
-                $('#aeBadgeHighest').text(aeFormatChartVal(highest));
+                $('#aeBadgeHighest').text(aeFormatChartVal(dataMax));
                 $('#aeBadgeMedian').text(aeFormatChartVal(median));
-                $('#aeBadgeLowest').text(aeFormatChartVal(lowest));
+                $('#aeBadgeLowest').text(aeFormatChartVal(dataMin));
 
                 const lineCtx = document.getElementById('aeBadgeLineCanvas');
-                const barCtx  = document.getElementById('aeBadgeBarCanvas');
                 if (!lineCtx || typeof Chart === 'undefined') return false;
 
                 if (aeBadgeLineChart) aeBadgeLineChart.destroy();
-                if (aeBadgeBarChart)  aeBadgeBarChart.destroy();
 
-                const label = aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric;
+                const range = dataMax - dataMin || 1;
+                const pad = range * 0.1 || 1;
+                const yMin = dataMin - pad;
+                const yMax = dataMax + pad;
 
-                // Point colors: red if below median, green if above
-                const pointColors = values.map(v => v >= median ? '#28a745' : '#dc3545');
-
-                // Register datalabels plugin globally if available
-                if (typeof ChartDataLabels !== 'undefined') {
-                    Chart.register(ChartDataLabels);
-                }
-
-                // ── Line chart with value labels on each point ──────────
-                aeBadgeLineChart = new Chart(lineCtx.getContext('2d'), {
-                    type: 'line',
-                    plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : [],
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: label,
-                            data: values,
-                            borderColor: '#adb5bd',
-                            backgroundColor: 'rgba(173,181,189,0.08)',
-                            pointBackgroundColor: pointColors,
-                            pointBorderColor: pointColors,
-                            pointRadius: 5, pointHoverRadius: 7,
-                            borderWidth: 2, tension: 0.2, fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        layout: { padding: { top: 24 } },
-                        scales: {
-                            y: {
-                                min: lowest >= 0 ? 0 : undefined,
-                                ticks: { callback: v => aeFormatChartVal(v), font: { size: 11 } },
-                                grid: { color: 'rgba(0,0,0,0.05)' }
-                            },
-                            x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
-                        },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: ctx => label + ': ' + aeFormatChartVal(ctx.parsed.y) } },
-                            datalabels: typeof ChartDataLabels !== 'undefined' ? {
-                                align: 'top', anchor: 'end',
-                                font: { size: 10, weight: '600' },
-                                color: ctx => ctx.dataset.pointBackgroundColor[ctx.dataIndex],
-                                formatter: v => aeFormatChartVal(v),
-                                clip: false
-                            } : false
-                        }
-                    }
+                const dotColors = values.map(function(v, i) {
+                    if (i === 0) return '#6c757d';
+                    return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#198754' : '#6c757d');
                 });
 
-                // ── Bar chart ────────────────────────────────────────────
-                aeBadgeBarChart = new Chart(barCtx.getContext('2d'), {
-                    type: 'bar',
-                    plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : [],
+                const labelColors = values.map(function(v, i) {
+                    if (i < 7) return '#6c757d';
+                    return v < values[i - 7] ? '#dc3545' : (v > values[i - 7] ? '#198754' : '#6c757d');
+                });
+
+                const medianLinePlugin = {
+                    id: 'aeSheinMedianLine',
+                    afterDraw: function(chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const c = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        c.save();
+                        c.setLineDash([6, 4]);
+                        c.strokeStyle = '#6c757d';
+                        c.lineWidth = 1.2;
+                        c.beginPath();
+                        c.moveTo(xScale.left, yPixel);
+                        c.lineTo(xScale.right, yPixel);
+                        c.stroke();
+                        c.restore();
+                    }
+                };
+
+                const valueLabelsPlugin = {
+                    id: 'aeSheinValueLabels',
+                    afterDatasetsDraw: function(chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        if (!dataset || !meta || !meta.data) return;
+                        c.save();
+                        c.font = 'bold 9px Inter, system-ui, sans-serif';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        meta.data.forEach(function(point, i) {
+                            if (point == null || point.skip) return;
+                            const txt = aeFormatChartVal(dataset.data[i]);
+                            const offsetY = (i % 2 === 0) ? -8 : -16;
+                            const py = point.y + offsetY;
+                            c.lineJoin = 'round';
+                            c.lineWidth = 3;
+                            c.strokeStyle = 'rgba(255,255,255,0.92)';
+                            c.strokeText(txt, point.x, py);
+                            c.fillStyle = labelColors[i];
+                            c.fillText(txt, point.x, py);
+                        });
+                        c.restore();
+                    }
+                };
+
+                aeBadgeLineChart = new Chart(lineCtx.getContext('2d'), {
+                    type: 'line',
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: label,
                             data: values,
-                            backgroundColor: values.map(v => v >= median ? 'rgba(13,110,253,0.7)' : 'rgba(13,110,253,0.4)'),
-                            borderRadius: 3
+                            backgroundColor: 'rgba(0, 168, 168, 0.08)',
+                            borderColor: '#00a8a8',
+                            borderWidth: 1.5,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointBorderWidth: 1.5
                         }]
                     },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
                     options: {
-                        responsive: true, maintainAspectRatio: false,
-                        scales: {
-                            y: { ticks: { callback: v => aeFormatChartVal(v), font: { size: 10 } }, beginAtZero: false },
-                            x: { ticks: { maxRotation: 45, font: { size: 9 } } }
-                        },
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 22, left: 2, right: 2, bottom: 2 } },
                         plugins: {
                             legend: { display: false },
-                            tooltip: { callbacks: { label: ctx => label + ': ' + aeFormatChartVal(ctx.parsed.y) } },
-                            datalabels: { display: false }
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const idx = ctx.dataIndex;
+                                        const va = ctx.raw;
+                                        const parts = [(aeBadgeLabels[aeBadgeMetric] || 'Value') + ': ' + aeFormatChartVal(va)];
+                                        if (idx > 0) {
+                                            const diff = va - values[idx - 1];
+                                            parts.push('vs prior: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + aeFormatChartVal(Math.abs(diff)));
+                                        }
+                                        return parts;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: { font: { size: 9 }, callback: function(v) { return aeFormatChartVal(v); } }
+                            },
+                            x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } }
                         }
                     }
                 });
@@ -1333,7 +1419,7 @@
             function aeLoadChart() {
                 if (!aeBadgeMetric) return;
                 if (aeBadgeAjax) aeBadgeAjax.abort();
-                $('#aeBadgeNoData,#aeBadgeLineWrap,#aeBadgeBarWrap').hide();
+                $('#aeBadgeNoData,#aeBadgeLineWrap').hide();
                 $('#aeBadgeLoading').show();
 
                 aeBadgeAjax = $.ajax({
@@ -1344,9 +1430,8 @@
                         aeBadgeAjax = null;
                         $('#aeBadgeLoading').hide();
                         const pts = (res && res.success && Array.isArray(res.data)) ? res.data : [];
-                if (aeRenderCharts(pts)) {
-                            $('#aeBadgeLineWrap').css('display','flex');
-                            $('#aeBadgeBarWrap').show();
+                        if (aeRenderLineChart(pts)) {
+                            $('#aeBadgeLineWrap').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
                         } else {
                             $('#aeBadgeNoData').show();
                         }
@@ -1359,19 +1444,18 @@
                 });
             }
 
-            $(document).on('click', '.ae-badge-chart', function() {
-                aeBadgeMetric = $(this).data('metric');
-                aeBadgeDays   = 30;
-                $('#aeBadgeChartRange').val('30');
-                $('#aeBadgeChartTitle').text('Shein – ' + (aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric) + ' Trend');
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('aeBadgeChartModal')).show();
-                aeLoadChart();
+            $(document).on('click', '.ae-badge-chart', function(e) {
+                e.stopPropagation();
+                const m = $(this).data('metric');
+                if (m) aeOpenBadgeChartModal(m);
             });
 
             $(document).on('change', '#aeBadgeChartRange', function() {
-                const d = parseInt($(this).val(), 10) || 30;
+                const raw = $(this).val();
+                const d = raw === '0' ? 0 : (parseInt(raw, 10) || 30);
                 if (d === aeBadgeDays) return;
                 aeBadgeDays = d;
+                $('#aeBadgeChartTitle').text(aeBadgeChartModalTitle());
                 aeLoadChart();
             });
         });

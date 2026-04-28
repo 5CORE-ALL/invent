@@ -1140,15 +1140,22 @@
                 const dataset = chart.data.datasets[0];
                 const meta = chart.getDatasetMeta(0);
                 const c = chart.ctx;
-                if (!dataset) return;
+                if (!dataset || !meta || !meta.data) return;
                 c.save();
-                c.font = 'bold 7px Inter, system-ui, sans-serif';
+                c.font = 'bold 9px Inter, system-ui, sans-serif';
                 c.textAlign = 'center';
                 c.textBaseline = 'bottom';
                 meta.data.forEach(function(point, i) {
-                    const offsetY = (i % 2 === 0) ? -7 : -14;
+                    if (point == null || point.skip) return;
+                    const txt = ebay3FmtChartVal(dataset.data[i]);
+                    const offsetY = (i % 2 === 0) ? -8 : -16;
+                    const py = point.y + offsetY;
+                    c.lineJoin = 'round';
+                    c.lineWidth = 3;
+                    c.strokeStyle = 'rgba(255,255,255,0.92)';
+                    c.strokeText(txt, point.x, py);
                     c.fillStyle = labelColors[i];
-                    c.fillText(ebay3FmtChartVal(dataset.data[i]), point.x, point.y + offsetY);
+                    c.fillText(txt, point.x, py);
                 });
                 c.restore();
             }
@@ -1165,8 +1172,8 @@
                     borderWidth: 1.5,
                     fill: true,
                     tension: 0.3,
-                    pointRadius: 3,
-                    pointHoverRadius: 5,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
                     pointBackgroundColor: dotColors,
                     pointBorderColor: dotColors,
                     pointBorderWidth: 1.5
@@ -1176,7 +1183,7 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                layout: { padding: { top: 22, left: 2, right: 2, bottom: 2 } },
                 plugins: {
                     legend: { display: false },
                     tooltip: {

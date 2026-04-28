@@ -1047,22 +1047,24 @@ class FaireController extends Controller
     {
         try {
             $metric = (string) $request->input('metric', 'avg_gpft');
-            $days = max(1, (int) $request->input('days', 30));
+            $days = (int) $request->input('days', 30);
 
             $validMetrics = [
                 'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
-                'total_al30', 'avg_dil', 'missing_count', 'map_count',
+                'total_al30', 'avg_dil', 'missing_count', 'map_count', 'nmap_count',
                 'total_sku', 'zero_sold', 'more_sold',
             ];
             if (!in_array($metric, $validMetrics, true)) {
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
             }
 
-            $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
-            $rows = AmazonChannelSummary::where('channel', 'faire')
-                ->where('snapshot_date', '>=', $startDate)
-                ->orderBy('snapshot_date', 'asc')
-                ->get(['snapshot_date', 'summary_data']);
+            $query = AmazonChannelSummary::where('channel', 'faire')
+                ->orderBy('snapshot_date', 'asc');
+            if ($days > 0) {
+                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $startDate);
+            }
+            $rows = $query->get(['snapshot_date', 'summary_data']);
 
             $data = [];
             foreach ($rows as $row) {

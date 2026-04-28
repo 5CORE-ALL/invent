@@ -239,16 +239,16 @@
 
                     <div id="fr-summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
                         <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
-                            <span class="badge bg-primary fs-6 p-2" id="fr-total-sales-badge" style="font-weight:700;">Sales: $0</span>
-                            <span class="badge bg-warning fs-6 p-2" id="fr-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
-                            <span class="badge bg-success fs-6 p-2 d-none" id="fr-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
-                            <span class="badge bg-info fs-6 p-2" id="fr-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty).">PFt: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="fr-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2" id="fr-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L (no product master or list price ≤ 0)">Missing L: 0</span>
-                            <span class="badge fs-6 p-2" id="fr-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: |INV − Faire stock| ≤ 3">Map: 0</span>
-                            <span class="badge fs-6 p-2" id="fr-nmap-count-badge" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter: N Map rows (|INV − Faire stock| &gt; 3)">N Map: 0</span>
-                            <span class="badge fs-6 p-2" id="fr-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2" id="fr-more-sold-badge" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter: sold &gt; 0">&gt;0 Sold: 0</span>
+                            <span class="badge bg-primary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">Sales: $0</span>
+                            <span class="badge bg-warning fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-total-fqty-badge" data-metric="total_al30" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend (units)">Sold: 0</span>
+                            <span class="badge bg-success fs-6 p-2 d-none fr-badge-chart fr-hover-chart" id="fr-total-profit-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;" aria-hidden="true" title="View trend">Profit: 0</span>
+                            <span class="badge bg-info fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty). Click or hover for trend.">PFt: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-roi-badge" data-metric="avg_roi" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend">ROI: 0%</span>
+                            <span class="badge bg-danger fs-6 p-2 fr-hover-chart" id="fr-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-map-count-badge" data-metric="map_count" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Map: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-nmap-count-badge" data-metric="nmap_count" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-zero-sold-badge" data-metric="zero_sold" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 fr-hover-chart" id="fr-more-sold-badge" data-metric="more_sold" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">&gt;0 Sold: 0</span>
                         </div>
                     </div>
 
@@ -277,11 +277,65 @@
             </div>
         </div>
     </div>
+
+    <!-- Faire pricing summary — daily snapshot trend (amazon_channel_summary_data channel=faire) -->
+    <div class="modal fade" id="frMetricChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header text-white py-1 px-3" style="background-color: #b8860b;">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="frChartModalTitle">Faire — Metric trend</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="frChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="frChartContainer" style="height: 22vh; display: none; flex-direction: row; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="frMetricChart"></canvas>
+                        </div>
+                        <div id="frChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="frChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="frChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="frChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="frChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="frChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No daily snapshots yet. Load this page on separate days to build history (saved automatically with pricing data).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         let table = null;
         let summaryDataCache = [];
@@ -295,6 +349,224 @@
         let frIncreaseModeActive = false;
         let frUniformPriceModeActive = false;
         let frSelectedSkus = new Set();
+
+        const FR_BADGE_CHART_URL = '{{ url('/faire/badge-chart-data') }}';
+        const frBadgeMetricLabels = {
+            total_sales: 'Sales',
+            total_al30: 'Sold (units)',
+            total_pft: 'Profit',
+            avg_gpft: 'PFt %',
+            avg_roi: 'ROI %',
+            missing_count: 'Missing L',
+            map_count: 'Map',
+            nmap_count: 'N Map',
+            zero_sold: '0 Sold',
+            more_sold: '> 0 Sold',
+        };
+        const frBadgeDollarMetrics = ['total_sales', 'total_pft'];
+        const frBadgePctMetrics = ['avg_gpft', 'avg_roi'];
+        let frChartInstance = null;
+        let frChartAjax = null;
+        let frChartDays = 30;
+        let frChartMetricKey = '';
+
+        function frFmtChartVal(v) {
+            if (frBadgeDollarMetrics.includes(frChartMetricKey)) {
+                const n = Number(v);
+                if (Number.isFinite(n) && Math.abs(n % 1) > 1e-9) {
+                    return '$' + n.toFixed(2);
+                }
+                return '$' + Math.round(n).toLocaleString('en-US');
+            }
+            if (frBadgePctMetrics.includes(frChartMetricKey)) {
+                return Number(v).toFixed(1) + '%';
+            }
+            return Math.round(Number(v)).toLocaleString('en-US');
+        }
+
+        function frShowMetricChart(metricKey) {
+            frChartMetricKey = metricKey;
+            frChartDays = 30;
+            $('#frChartRangeSelect').val('30');
+            const label = frBadgeMetricLabels[metricKey] || metricKey;
+            $('#frChartModalTitle').text('Faire — ' + label + ' (Daily snapshot)');
+            const modalEl = document.getElementById('frMetricChartModal');
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            } else {
+                $(modalEl).modal('show');
+            }
+            frLoadMetricChart();
+        }
+
+        function frLoadMetricChart() {
+            if (frChartAjax) frChartAjax.abort();
+            $('#frChartNoData').hide();
+            $('#frChartContainer').hide();
+            $('#frChartLoading').show();
+
+            frChartAjax = $.ajax({
+                url: FR_BADGE_CHART_URL,
+                method: 'GET',
+                data: { metric: frChartMetricKey, days: frChartDays },
+                success: function(resp) {
+                    frChartAjax = null;
+                    $('#frChartLoading').hide();
+                    if (resp.success && resp.data && resp.data.length > 0) {
+                        $('#frChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                        frRenderMetricChart(resp.data);
+                    } else {
+                        $('#frChartNoData').show();
+                    }
+                },
+                error: function(xhr, status) {
+                    frChartAjax = null;
+                    if (status === 'abort') return;
+                    $('#frChartLoading').hide();
+                    $('#frChartNoData').show();
+                }
+            });
+        }
+
+        function frRenderMetricChart(data) {
+            const ctx = document.getElementById('frMetricChart').getContext('2d');
+            if (frChartInstance) frChartInstance.destroy();
+
+            const labels = data.map(function(d) { return d.date; });
+            const values = data.map(function(d) { return d.value; });
+
+            const dataMin = Math.min.apply(null, values);
+            const dataMax = Math.max.apply(null, values);
+            const sorted = values.slice().sort(function(a, b) { return a - b; });
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            const range = dataMax - dataMin || 1;
+            const yMin = Math.max(0, dataMin - range * 0.1);
+            const yMax = dataMax + range * 0.1;
+
+            document.getElementById('frChartHighest').textContent = frFmtChartVal(dataMax);
+            document.getElementById('frChartMedian').textContent = frFmtChartVal(median);
+            document.getElementById('frChartLowest').textContent = frFmtChartVal(dataMin);
+
+            const dotColors = values.map(function(v, i) {
+                if (i === 0) return '#6c757d';
+                return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#198754' : '#6c757d');
+            });
+            const labelColors = values.map(function(v, i) {
+                if (i < 7) return '#6c757d';
+                return v < values[i - 7] ? '#dc3545' : (v > values[i - 7] ? '#198754' : '#6c757d');
+            });
+
+            const medianLinePlugin = {
+                id: 'frMedianLine',
+                afterDraw: function(chart) {
+                    const yScale = chart.scales.y, xScale = chart.scales.x, c = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(median);
+                    c.save(); c.setLineDash([6, 4]); c.strokeStyle = '#6c757d'; c.lineWidth = 1.2;
+                    c.beginPath(); c.moveTo(xScale.left, yPixel); c.lineTo(xScale.right, yPixel); c.stroke(); c.restore();
+                }
+            };
+
+            const valueLabelsPlugin = {
+                id: 'frValueLabels',
+                afterDatasetsDraw: function(chart) {
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const c = chart.ctx;
+                    if (!dataset || !meta || !meta.data) return;
+                    c.save();
+                    c.font = 'bold 9px Inter, system-ui, sans-serif';
+                    c.textAlign = 'center';
+                    c.textBaseline = 'bottom';
+                    meta.data.forEach(function(point, i) {
+                        if (point == null || point.skip) return;
+                        const txt = frFmtChartVal(dataset.data[i]);
+                        const offsetY = (i % 2 === 0) ? -8 : -16;
+                        const py = point.y + offsetY;
+                        c.lineJoin = 'round';
+                        c.lineWidth = 3;
+                        c.strokeStyle = 'rgba(255,255,255,0.92)';
+                        c.strokeText(txt, point.x, py);
+                        c.fillStyle = labelColors[i];
+                        c.fillText(txt, point.x, py);
+                    });
+                    c.restore();
+                }
+            };
+
+            frChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: 'rgba(184, 134, 11, 0.1)',
+                        borderColor: '#b8860b',
+                        borderWidth: 1.5,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: dotColors,
+                        pointBorderColor: dotColors,
+                        pointBorderWidth: 1.5
+                    }]
+                },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 22, left: 2, right: 2, bottom: 2 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            titleFont: { size: 10 },
+                            bodyFont: { size: 10 },
+                            padding: 6,
+                            callbacks: {
+                                label: function(context) {
+                                    const idx = context.dataIndex;
+                                    const parts = ['Value: ' + frFmtChartVal(context.raw)];
+                                    if (idx > 0) {
+                                        const diff = context.raw - values[idx - 1];
+                                        parts.push('vs prior: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + frFmtChartVal(Math.abs(diff)));
+                                    }
+                                    return parts;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: yMin,
+                            max: yMax,
+                            ticks: { font: { size: 9 }, callback: function(v) { return frFmtChartVal(v); } }
+                        },
+                        x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } }
+                    }
+                }
+            });
+        }
+
+        let frBadgeHoverTimer = null;
+        $(document).on('click', '.fr-badge-chart', function(e) {
+            e.stopPropagation();
+            const m = $(this).data('metric');
+            if (m) frShowMetricChart(m);
+        });
+        $(document).on('mouseenter', '.fr-hover-chart', function() {
+            const metric = $(this).data('metric');
+            if (!metric) return;
+            frBadgeHoverTimer = setTimeout(function() {
+                frShowMetricChart(metric);
+            }, 500);
+        });
+        $(document).on('mouseleave', '.fr-hover-chart', function() {
+            if (frBadgeHoverTimer) { clearTimeout(frBadgeHoverTimer); frBadgeHoverTimer = null; }
+        });
+        $(document).on('mousedown', '.fr-hover-chart', function() {
+            if (frBadgeHoverTimer) { clearTimeout(frBadgeHoverTimer); frBadgeHoverTimer = null; }
+        });
 
         let frSkuColHoverBase = null;
         let frSkuColHoverActive = false;
@@ -841,6 +1113,15 @@
         }
 
         $(document).ready(function() {
+            $('#frChartRangeSelect').on('change', function() {
+                const days = parseInt($(this).val(), 10);
+                if (days === frChartDays) return;
+                frChartDays = days;
+                const label = frBadgeMetricLabels[frChartMetricKey] || frChartMetricKey;
+                $('#frChartModalTitle').text('Faire — ' + label + ' (Daily snapshot)');
+                frLoadMetricChart();
+            });
+
             table = new Tabulator('#faire-pricing-table', {
                 ajaxURL: '/faire/pricing-data',
                 ajaxResponse: function(url, params, response) {
