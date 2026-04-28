@@ -301,7 +301,7 @@
                         </div>
 
                         <div class="mb-3">
-                            <label for="video_unboxing" class="form-label">Unboxing</label>
+                            <label for="video_unboxing" class="form-label">Shoppable</label>
                             <input type="url" class="form-control" id="video_unboxing" name="video_unboxing" placeholder="https://">
                             <select class="form-select form-select-sm mt-1" id="video_unboxing_status" name="video_unboxing_status">
                                 <option value="">-- Status --</option>

@@ -192,7 +192,7 @@
                             <thead>
                                 <tr>
                                     <th style="min-width:50px;">#</th>
-                                    <th style="min-width:60px;">Images</th>
+                                    <th style="min-width:60px;">Videos</th>
                                     <th style="min-width:140px;">
                                         Parent
                                         <div class="th-filter">
