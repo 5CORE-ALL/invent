@@ -123,28 +123,31 @@
                             <div class="modal-content">
                                 <div class="modal-header">
                                     <h5 class="modal-title d-flex align-items-center gap-2 mb-0" id="tmUploadPriceModalLabel">
-                                        <i class="fas fa-dollar-sign"></i> Upload Price Data
+                                        <i class="fas fa-file-import"></i> Import prices
                                     </h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
                                     <div class="mb-3">
                                         <label for="tm-price-file" class="form-label mb-1">
-                                            <i class="fas fa-file-alt text-primary me-1"></i>Choose File
+                                            <i class="fas fa-file-alt text-primary me-1"></i>File
                                         </label>
-                                        <input type="file" class="form-control" id="tm-price-file" name="price_file">
-                                        <div class="form-text">First row = header (same columns as <code>teinda.txt</code>). Plain text: delimiter is detected automatically (<strong>TAB</strong>, <strong>comma</strong>, or <strong>semicolon</strong>). <strong>Excel</strong> <code>.xlsx</code> / <code>.xls</code> / <code>.ods</code> uses the <strong>active sheet</strong>. Columns <strong>Offer SKU</strong> and <strong>Price</strong> are required.</div>
+                                        <input type="file" class="form-control" id="tm-price-file" name="price_file" accept=".txt,.csv,.tsv,.xlsx,.xls,.ods">
+                                        <div class="form-text">
+                                            Row 1 = headers. Needs a <strong>SKU</strong> column (e.g. Offer SKU, SKU) and a <strong>Price</strong> column.
+                                            <strong>Simple CSV:</strong> two columns only — column 1 = SKU, column 2 = price. TAB / comma / semicolon auto-detected; Excel uses the active sheet. Full Mirakl / <code>teinda.txt</code> export also works.
+                                        </div>
                                     </div>
                                     <div class="tm-upload-warning mb-3">
-                                        <i class="fas fa-exclamation-triangle text-warning me-2"></i>
-                                        <strong>Warning:</strong> This will TRUNCATE (clear) the <code>tiendamia_price_uploads</code> table before uploading!
+                                        <i class="fas fa-info-circle text-warning me-2"></i>
+                                        Import replaces all rows in <code>tiendamia_price_uploads</code>. The grid shows TM price from that table when the SKU exists in your catalog (no separate catalog update on import).
                                     </div>
                                     <div id="tm-upload-price-result" class="small" role="status"></div>
                                 </div>
                                 <div class="modal-footer border-top">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                                     <button type="button" class="btn text-white" id="tm-upload-price-btn" style="background-color:#26b9bd;border-color:#26b9bd;">
-                                        <i class="fas fa-upload me-1"></i>Upload
+                                        <i class="fas fa-file-import me-1"></i>Import
                                     </button>
                                 </div>
                             </div>
@@ -232,7 +235,7 @@
                             <i class="fas fa-file-csv"></i> Export CSV
                         </button>
                         <button type="button" class="btn btn-sm text-white" data-bs-toggle="modal" data-bs-target="#tmUploadPriceModal" style="background-color:#26b9bd;border-color:#26b9bd;">
-                            <i class="fas fa-dollar-sign me-1"></i> Upload Price Data
+                            <i class="fas fa-file-import me-1"></i> Import prices
                         </button>
 
                         {{-- One button cycles: Off → Decrease → Increase → Same price → Off --}}
@@ -282,7 +285,7 @@
 @endsection
 
 @section('script-bottom')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    {{-- jQuery is already loaded in layouts/vertical head; avoid a second copy that can reset globals. --}}
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         let table = null;
@@ -303,6 +306,34 @@
             } else {
                 alert(msg);
             }
+        }
+
+        const TM_UPLOAD_PRICE_URL = @json(route('tiendamia.products.upload.price'));
+        const TM_TABULATOR_DATA_URL = @json(route('tiendamia.products.tabulator.data'));
+
+        function tmFormatPriceUploadError(j, status, rawBody) {
+            if (j && typeof j.errors === 'object' && j.errors !== null) {
+                const vals = Object.values(j.errors).flat().filter(Boolean);
+                if (vals.length) {
+                    return String(vals[0]);
+                }
+            }
+            if (j && j.message) {
+                return String(j.message);
+            }
+            if (j && j.error) {
+                return String(j.error);
+            }
+            if (status === 419) {
+                return 'Session expired (419). Refresh the page and try again.';
+            }
+            if (status >= 400 && rawBody && rawBody.length < 800) {
+                return 'HTTP ' + status + ': ' + rawBody.replace(/<[^>]+>/g, ' ').trim().slice(0, 400);
+            }
+            if (status >= 400) {
+                return 'HTTP ' + status + ' — upload failed.';
+            }
+            return 'Upload failed.';
         }
 
         function roundToRetailPrice(price) {
@@ -668,8 +699,95 @@
                 applyClientFilters();
             });
 
+            const tmUploadModalEl = document.getElementById('tmUploadPriceModal');
+            if (tmUploadModalEl) {
+                tmUploadModalEl.addEventListener('show.bs.modal', function() {
+                    $('#tm-upload-price-result').empty();
+                    $('#tm-price-file').val('');
+                });
+            }
+
+            $(document).on('click', '#tm-upload-price-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const inputEl = document.getElementById('tm-price-file');
+                const $out = $('#tm-upload-price-result');
+                const $btn = $('#tm-upload-price-btn');
+                const meta = document.querySelector('meta[name="csrf-token"]');
+                const csrf = meta ? meta.getAttribute('content') : '';
+                if (!inputEl || !inputEl.files || !inputEl.files.length) {
+                    const msg = 'Choose a file first.';
+                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': msg }));
+                    tmToast(msg, 'error');
+                    return;
+                }
+                if (!csrf) {
+                    const msg = 'Missing CSRF token. Refresh the page.';
+                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': msg }));
+                    tmToast(msg, 'error');
+                    return;
+                }
+                const fd = new FormData();
+                fd.append('price_file', inputEl.files[0]);
+                fd.append('_token', csrf);
+                $btn.prop('disabled', true);
+                $out.empty().append($('<span/>', { 'class': 'text-muted', 'text': 'Importing…' }));
+                fetch(TM_UPLOAD_PRICE_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-CSRF-TOKEN': csrf,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: fd,
+                }).then(function(r) {
+                    return r.text().then(function(text) {
+                        let j = null;
+                        if (text) {
+                            try {
+                                j = JSON.parse(text);
+                            } catch (err) {
+                                j = { success: false, error: text.slice(0, 500) };
+                            }
+                        } else {
+                            j = { success: false, error: 'Empty response (HTTP ' + r.status + ').' };
+                        }
+                        return { ok: r.ok, status: r.status, j: j, raw: text };
+                    });
+                }).then(function(res) {
+                    const j = res.j;
+                    if (!res.ok || !j.success) {
+                        const err = tmFormatPriceUploadError(j, res.status, res.raw || '');
+                        $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': err }));
+                        tmToast(err, 'error');
+                        return;
+                    }
+                    let msg = 'Imported ' + j.rows_stored + ' row(s) into tiendamia_price_uploads.';
+                    if (j.skipped_empty_offer_sku > 0) {
+                        msg += ' Skipped (empty SKU): ' + j.skipped_empty_offer_sku + '.';
+                    }
+                    tmToast(msg, 'success');
+                    if (tmUploadModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const inst = bootstrap.Modal.getInstance(tmUploadModalEl);
+                        if (inst) {
+                            inst.hide();
+                        }
+                    }
+                    if (table) {
+                        table.setData(TM_TABULATOR_DATA_URL);
+                    }
+                }).catch(function(err) {
+                    const errMsg = (err && err.message) ? String(err.message) : 'Network error.';
+                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': errMsg }));
+                    tmToast(errMsg, 'error');
+                }).finally(function() {
+                    $btn.prop('disabled', false);
+                });
+            });
+
             table = new Tabulator('#tiendamia-products-table', {
-                ajaxURL: '{{ route('tiendamia.products.tabulator.data') }}',
+                ajaxURL: TM_TABULATOR_DATA_URL,
                 ajaxResponse: function(url, params, response) {
                     if (response && response.error) {
                         console.error(response.error);
@@ -1055,65 +1173,8 @@
                 searchTimer = setTimeout(applyClientFilters, 200);
             });
 
-            const tmUploadModalEl = document.getElementById('tmUploadPriceModal');
-            if (tmUploadModalEl) {
-                tmUploadModalEl.addEventListener('show.bs.modal', function() {
-                    $('#tm-upload-price-result').empty();
-                    $('#tm-price-file').val('');
-                });
-            }
-
-            $('#tm-upload-price-btn').on('click', function() {
-                const $inp = $('#tm-price-file');
-                const $out = $('#tm-upload-price-result');
-                const $btn = $('#tm-upload-price-btn');
-                if (!$inp[0].files || !$inp[0].files.length) {
-                    $out.html('<span class="text-danger">Choose a file first.</span>');
-                    return;
-                }
-                const fd = new FormData();
-                fd.append('price_file', $inp[0].files[0]);
-                fd.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
-                $btn.prop('disabled', true);
-                $out.html('<span class="text-muted">Uploading…</span>');
-                fetch('{{ route('tiendamia.products.upload.price') }}', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: fd,
-                }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
-                    .then(function(res) {
-                        const j = res.j;
-                        if (!res.ok || !j.success) {
-                            $out.html('<span class="text-danger">' + (j.error || j.message || 'Upload failed') + '</span>');
-                            if (window.toastr) toastr.error(j.error || 'Upload failed');
-                            return;
-                        }
-                        const msg = 'Stored ' + j.rows_stored + ' rows. Updated ' + j.products_updated + ' products. ' +
-                            'Skipped (no SKU match): ' + j.skipped_no_matching_sku + ', open box: ' + j.skipped_open_box + '.';
-                        if (window.toastr) toastr.success(msg);
-                        if (tmUploadModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                            const inst = bootstrap.Modal.getInstance(tmUploadModalEl);
-                            if (inst) inst.hide();
-                        }
-                        if (j.products_updated > 0 || j.rows_stored > 0) {
-                            table.setData('{{ route('tiendamia.products.tabulator.data') }}');
-                        }
-                    })
-                    .catch(function() {
-                        $out.html('<span class="text-danger">Network error.</span>');
-                        if (window.toastr) toastr.error('Network error');
-                    })
-                    .finally(function() {
-                        $btn.prop('disabled', false);
-                    });
-            });
-
             $('#tm-refresh-btn').on('click', function() {
-                table.setData('{{ route('tiendamia.products.tabulator.data') }}');
+                table.setData(TM_TABULATOR_DATA_URL);
             });
 
             $('#tm-export-btn').on('click', function() {

@@ -12,7 +12,6 @@ use App\Models\TiendamiaProduct;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
@@ -130,6 +129,19 @@ class TiendamiaPricingController extends Controller
         $t = trim(self::scrubUtf8String((string) $value));
 
         return $t === '' ? null : $t;
+    }
+
+    /** Clip UTF-8 string to max characters for DB varchar limits (avoids "Data too long" on bulk insert). */
+    private static function clipMb(?string $value, int $maxChars): ?string
+    {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+        if (mb_strlen($value) <= $maxChars) {
+            return $value;
+        }
+
+        return mb_substr($value, 0, $maxChars);
     }
 
     /**
@@ -284,13 +296,49 @@ class TiendamiaPricingController extends Controller
             }
         }
 
+        // Simple import: allow common alternate headers (2-column CSV, other exports).
+        if (! isset($colIndex['offer sku'])) {
+            $skuSynonyms = [
+                'sku', 'shop sku', 'product sku', 'product-sku', 'product_sku', 'seller sku', 'listing sku',
+                'tm sku', 'offerid', 'offer id', 'mirakl sku',
+            ];
+            foreach ($header as $i => $name) {
+                $k = self::normalizeUploadHeaderKey($name);
+                if ($k !== '' && in_array($k, $skuSynonyms, true)) {
+                    $colIndex['offer sku'] = $i;
+                    break;
+                }
+            }
+        }
+        if (! isset($colIndex['price'])) {
+            foreach ($header as $i => $name) {
+                $k = self::normalizeUploadHeaderKey($name);
+                if ($k === 'unit price' || $k === 'sale price' || $k === 'list price' || $k === 'tm price') {
+                    $colIndex['price'] = $i;
+                    break;
+                }
+            }
+        }
+
+        // Last resort: exactly two columns — first = SKU, second = Price (unknown/generic headers).
+        if (count($header) === 2) {
+            if (! isset($colIndex['offer sku']) && ! isset($colIndex['price'])) {
+                $colIndex['offer sku'] = 0;
+                $colIndex['price'] = 1;
+            } elseif (! isset($colIndex['offer sku']) && isset($colIndex['price'])) {
+                $colIndex['offer sku'] = $colIndex['price'] === 0 ? 1 : 0;
+            } elseif (isset($colIndex['offer sku']) && ! isset($colIndex['price'])) {
+                $colIndex['price'] = $colIndex['offer sku'] === 0 ? 1 : 0;
+            }
+        }
+
         foreach (['offer sku', 'price'] as $rk) {
             if (! isset($colIndex[$rk])) {
                 $preview = self::scrubUtf8String(implode(' | ', array_slice($header, 0, min(12, count($header)))));
 
                 return [
                     'col_index' => [],
-                    'error' => 'Missing required column "'.$rk.'". First row must include Offer SKU and Price (same columns as teinda.txt). Format detected: '.$formatLabel.'. Header preview: '.$preview,
+                    'error' => 'Missing required columns (need a SKU column and a Price column). Full Mirakl export is supported; minimal CSV: two columns SKU + Price. Format: '.$formatLabel.'. Header preview: '.$preview,
                 ];
             }
         }
@@ -362,27 +410,27 @@ class TiendamiaPricingController extends Controller
                 'upload_batch_id' => $batchId,
                 'source_filename' => $sourceName,
                 'row_index' => $dataRowIndex,
-                'offer_sku' => $offerSku,
-                'product_sku' => $pick($cols, $colIndex, 'Product SKU'),
-                'category_code' => $pick($cols, $colIndex, 'Category code'),
-                'category_label' => $pick($cols, $colIndex, 'Category label'),
-                'brand' => $pick($cols, $colIndex, 'Brand'),
+                'offer_sku' => (string) self::clipMb($offerSku, 255),
+                'product_sku' => self::clipMb($pick($cols, $colIndex, 'Product SKU'), 64),
+                'category_code' => self::clipMb($pick($cols, $colIndex, 'Category code'), 32),
+                'category_label' => self::clipMb($pick($cols, $colIndex, 'Category label'), 255),
+                'brand' => self::clipMb($pick($cols, $colIndex, 'Brand'), 255),
                 'product' => $pick($cols, $colIndex, 'Product'),
-                'offer_state' => $pick($cols, $colIndex, 'Offer state'),
+                'offer_state' => self::clipMb($pick($cols, $colIndex, 'Offer state'), 64),
                 'price' => $priceVal,
                 'original_price' => $origVal,
                 'quantity' => $qty,
-                'alert_threshold' => $pick($cols, $colIndex, 'Alert threshold'),
-                'logistic_class' => $pick($cols, $colIndex, 'Logistic Class'),
-                'activated' => $pick($cols, $colIndex, 'Activated'),
-                'available_start_date' => $pick($cols, $colIndex, 'Available Start Date'),
-                'available_end_date' => $pick($cols, $colIndex, 'Available End Date'),
+                'alert_threshold' => self::clipMb($pick($cols, $colIndex, 'Alert threshold'), 64),
+                'logistic_class' => self::clipMb($pick($cols, $colIndex, 'Logistic Class'), 64),
+                'activated' => self::clipMb($pick($cols, $colIndex, 'Activated'), 16),
+                'available_start_date' => self::clipMb($pick($cols, $colIndex, 'Available Start Date'), 128),
+                'available_end_date' => self::clipMb($pick($cols, $colIndex, 'Available End Date'), 128),
                 'discount_price' => $discVal,
-                'discount_start_date' => $pick($cols, $colIndex, 'Discount Start Date'),
-                'discount_end_date' => $pick($cols, $colIndex, 'Discount End Date'),
+                'discount_start_date' => self::clipMb($pick($cols, $colIndex, 'Discount Start Date'), 128),
+                'discount_end_date' => self::clipMb($pick($cols, $colIndex, 'Discount End Date'), 128),
                 'ean' => $pick($cols, $colIndex, 'EAN'),
-                'inactivity_reason' => $pick($cols, $colIndex, 'Inactivity reason'),
-                'fulfillment_center_code' => $pick($cols, $colIndex, 'Fulfillment center code'),
+                'inactivity_reason' => self::clipMb($pick($cols, $colIndex, 'Inactivity reason'), 255),
+                'fulfillment_center_code' => self::clipMb($pick($cols, $colIndex, 'Fulfillment center code'), 64),
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -664,8 +712,8 @@ class TiendamiaPricingController extends Controller
     }
 
     /**
-     * Clears tiendamia_price_uploads, stores Mirakl-style rows (teinda.txt / CSV / TSV / .xlsx first sheet),
-     * then updates tiendamia_products (price / standard_price / discount_price when columns exist) by Offer SKU.
+     * Replaces tiendamia_price_uploads from an import file (Mirakl / teinda.txt, full spreadsheet, or simple two-column SKU+Price).
+     * Does not write to tiendamia_products — the pricing grid reads listing price from tiendamia_price_uploads by Offer SKU.
      */
     public function uploadPriceFile(Request $request)
     {
@@ -675,16 +723,18 @@ class TiendamiaPricingController extends Controller
 
         $file = $request->file('price_file');
         $path = $file->getRealPath();
-        if ($path === false || ! is_readable($path)) {
+        if ($path === false || $path === '') {
+            $path = $file->getPathname();
+        }
+        if (! is_string($path) || $path === '' || ! is_readable($path)) {
             return response()->json(['success' => false, 'error' => 'Could not read uploaded file.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
 
         $ext = strtolower((string) $file->getClientOriginalExtension());
         $batchId = (string) Str::uuid();
-        $sourceName = self::sanitizeUploadNullable($file->getClientOriginalName()) ?? 'upload';
+        $sourceName = self::clipMb(self::sanitizeUploadNullable($file->getClientOriginalName()) ?? 'upload', 255);
         $now = now()->toDateTimeString();
         $rowsToInsert = [];
-        $parsedForMerge = [];
         $skippedEmptySku = 0;
 
         if (self::looksLikeSpreadsheetPriceUpload($path, $ext)) {
@@ -699,7 +749,6 @@ class TiendamiaPricingController extends Controller
             }
             $mat = self::materializeTiendamiaPriceUploadRows($idx['col_index'], $loaded['data_rows'], $batchId, $sourceName, $now);
             $rowsToInsert = $mat['rows_to_insert'];
-            $parsedForMerge = $mat['parsed_for_merge'];
             $skippedEmptySku = $mat['skipped_empty_offer_sku'];
         } else {
             [$workPath, $useTempFile] = self::ensureUtf8UploadPath($path);
@@ -749,7 +798,6 @@ class TiendamiaPricingController extends Controller
 
                 $mat = self::materializeTiendamiaPriceUploadRows($idx['col_index'], $dataRows, $batchId, $sourceName, $now);
                 $rowsToInsert = $mat['rows_to_insert'];
-                $parsedForMerge = $mat['parsed_for_merge'];
                 $skippedEmptySku = $mat['skipped_empty_offer_sku'];
             } finally {
                 if (is_resource($handle)) {
@@ -765,10 +813,6 @@ class TiendamiaPricingController extends Controller
             return response()->json(['success' => false, 'error' => 'No data rows found after the header.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
 
-        $productsUpdated = 0;
-        $skippedOpenBox = 0;
-        $skippedNoProduct = 0;
-
         try {
             DB::beginTransaction();
 
@@ -776,42 +820,6 @@ class TiendamiaPricingController extends Controller
 
             foreach (array_chunk($rowsToInsert, 250) as $chunk) {
                 TiendamiaPriceUpload::query()->insert($chunk);
-            }
-
-            if ($parsedForMerge !== []) {
-                $byNorm = [];
-                foreach (TiendamiaProduct::query()->cursor() as $tp) {
-                    $byNorm[self::normalizeTiendamiaSku((string) $tp->sku)] = $tp;
-                }
-
-                $hasStandard = Schema::hasColumn('tiendamia_products', 'standard_price');
-                $hasDiscountCol = Schema::hasColumn('tiendamia_products', 'discount_price');
-
-                foreach ($parsedForMerge as $m) {
-                    if (self::isOpenBoxListingSku($m['offer_sku'])) {
-                        $skippedOpenBox++;
-
-                        continue;
-                    }
-                    $norm = self::normalizeTiendamiaSku($m['offer_sku']);
-                    $tp = $byNorm[$norm] ?? null;
-                    if (! $tp) {
-                        $skippedNoProduct++;
-
-                        continue;
-                    }
-
-                    $update = ['price' => $m['price']];
-                    if ($hasStandard) {
-                        $update['standard_price'] = $m['original_price'];
-                    }
-                    if ($hasDiscountCol) {
-                        $update['discount_price'] = $m['discount_price'];
-                    }
-
-                    TiendamiaProduct::query()->whereKey($tp->id)->update($update);
-                    $productsUpdated++;
-                }
             }
 
             DB::commit();
@@ -829,9 +837,6 @@ class TiendamiaPricingController extends Controller
             'success' => true,
             'upload_batch_id' => $batchId,
             'rows_stored' => count($rowsToInsert),
-            'products_updated' => $productsUpdated,
-            'skipped_no_matching_sku' => $skippedNoProduct,
-            'skipped_open_box' => $skippedOpenBox,
             'skipped_empty_offer_sku' => $skippedEmptySku,
             'upload_table_cleared' => true,
         ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
