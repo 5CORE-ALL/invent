@@ -30,6 +30,11 @@
         color: #5c6b7a;
         font-variant-numeric: tabular-nums;
     }
+    .topbar-world-clocks .wc-code.wc-place-name {
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.6rem;
+    }
     /* Raster flags: emoji regional indicators often render as letter pairs on Windows/Linux (looks like duplicate "US" next to .wc-code). */
     .topbar-world-clocks .wc-flag-img {
         width: 1.125rem;
@@ -80,8 +85,8 @@
 </style>
 <div class="topbar-world-clocks d-none d-lg-flex" aria-label="Office time zones">
     <div class="wc-zone">
-        <div class="wc-flag-row" role="img" aria-label="US, United States, California (Pacific)">
-            <span class="wc-code">US</span>
+        <div class="wc-flag-row" role="img" aria-label="California, United States (Pacific)">
+            <span class="wc-code wc-place-name">California</span>
             <img class="wc-flag-img" src="https://flagcdn.com/w40/us.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
         <div class="wc-time" id="wc-ca-time">—</div>
@@ -98,8 +103,8 @@
     </div>
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
-        <div class="wc-flag-row" role="img" aria-label="US, United States, Ohio (Eastern)">
-            <span class="wc-code">US</span>
+        <div class="wc-flag-row" role="img" aria-label="Ohio, United States (Eastern)">
+            <span class="wc-code wc-place-name">Ohio</span>
             <img class="wc-flag-img" src="https://flagcdn.com/w40/us.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
         <div class="wc-time" id="wc-oh-time">—</div>
