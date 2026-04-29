@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 class ReverbApiService
 {
@@ -335,7 +337,7 @@ class ReverbApiService
             return (string) trim($product->reverb_listing_id);
         }
 
-        $url = 'https://api.reverb.com/api/my/listings';
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
         $token = self::getReverbBearerToken();
         if (! $token) {
             Log::warning('Reverb API token not configured (REVERB_CLIENT_ID/REVERB_CLIENT_SECRET or REVERB_TOKEN)');
@@ -344,6 +346,37 @@ class ReverbApiService
         }
 
         try {
+            // Fast path: filtered search (docs: my/listings?sku=&state=all includes drafts)
+            $filteredUrl = $apiBase.'/my/listings?'.http_build_query([
+                'sku' => $normalizedSku,
+                'state' => 'all',
+                'per_page' => 50,
+            ]);
+            $filteredRes = Http::withoutVerifying()
+                ->timeout(60)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                ])
+                ->get($filteredUrl);
+
+            if ($filteredRes->successful()) {
+                $data = $filteredRes->json();
+                $listings = $data['listings'] ?? [];
+                foreach ($listings as $item) {
+                    $listingSku = isset($item['sku']) ? trim((string) $item['sku']) : null;
+                    if ($listingSku !== null && strcasecmp($listingSku, $normalizedSku) === 0) {
+                        $id = $item['id'] ?? null;
+                        if ($id !== null) {
+                            return (string) $id;
+                        }
+                    }
+                }
+            }
+
+            // Paginate all listings — must use state=all or drafts / non-live SKUs are invisible (default filter).
+            $url = $apiBase.'/my/listings?state=all&per_page=50';
             while ($url) {
                 $response = Http::withoutVerifying()
                     ->timeout(60)
@@ -824,7 +857,7 @@ class ReverbApiService
                 $photoUrls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
                 $photoUrls = array_slice($photoUrls, 0, 25);
                 if ($photoUrls !== []) {
-                    $imgRes = $this->updateListingImages($trim, $photoUrls);
+                    $imgRes = $this->updateListingImages($trim, $photoUrls, 'replace');
                     if (! ($imgRes['success'] ?? false)) {
                         return [
                             'success' => true,
@@ -860,12 +893,297 @@ class ReverbApiService
     }
 
     /**
+     * Reverb downloads each listing photo from the URL server-side. Rewrites local {@see Storage}
+     * URLs using {@see config('services.reverb.sku_image_public_base_url')} / {@see config('app.url')}
+     * (same behaviour as {@see \App\Services\Marketplaces\ReverbService}) and rejects hosts
+     * Reverb cannot reach (localhost / private LAN).
+     *
+     * @param  list<string>  $urls
+     * @return array{success: bool, urls: list<string>, message: string}
+     */
+    private function prepareReverbPhotoUrls(array $urls): array
+    {
+        $urls = array_values(array_filter(array_map('trim', $urls), fn ($s) => $s !== ''));
+        if ($urls === []) {
+            return ['success' => false, 'urls' => [], 'message' => 'At least one image URL is required.'];
+        }
+
+        $normalized = [];
+        foreach ($urls as $raw) {
+            $rel = $this->extractPublicDiskRelativePathFromUrl($raw);
+            if ($rel !== null && $rel !== '') {
+                $normalized[] = $this->absoluteUrlForPublicStoragePath($rel);
+            } else {
+                $normalized[] = $raw;
+            }
+        }
+
+        $normalized = array_values(array_unique($normalized));
+
+        foreach ($normalized as $u) {
+            $host = strtolower((string) (parse_url($u, PHP_URL_HOST) ?? ''));
+            if ($host === '') {
+                return ['success' => false, 'urls' => [], 'message' => 'Invalid image URL (missing hostname): '.mb_substr($u, 0, 120)];
+            }
+            if ($this->isHostUnreachableFromReverb($host)) {
+                return [
+                    'success' => false,
+                    'urls' => [],
+                    'message' => 'Reverb cannot fetch images from '.$host.'. Set REVERB_SKU_IMAGE_PUBLIC_BASE_URL (or APP_URL) to the public HTTPS origin where /storage/… is reachable from the internet, then run php artisan config:clear.',
+                ];
+            }
+            if (str_starts_with($u, 'http://')) {
+                Log::warning('Reverb image push: URL uses HTTP; Reverb may require HTTPS.', ['url' => mb_substr($u, 0, 200)]);
+            }
+        }
+
+        return ['success' => true, 'urls' => $normalized, 'message' => ''];
+    }
+
+    private function isHostUnreachableFromReverb(string $host): bool
+    {
+        $host = strtolower($host);
+        if (in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
+            return true;
+        }
+        if (str_ends_with($host, '.local')) {
+            return true;
+        }
+        if (preg_match('/^192\.168\.\d+\.\d+$/', $host)) {
+            return true;
+        }
+        if (preg_match('/^10\.\d+\.\d+\.\d+$/', $host)) {
+            return true;
+        }
+
+        return (bool) preg_match('/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/', $host);
+    }
+
+    private function extractPublicDiskRelativePathFromUrl(string $url): ?string
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+        if (! is_string($path) || $path === '') {
+            return null;
+        }
+        if (preg_match('#/storage/(.+)$#', $path, $m)) {
+            return rawurldecode($m[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Same URL rule as {@see \App\Services\Marketplaces\ReverbService::publicUrlForStoragePath}.
+     */
+    private function absoluteUrlForPublicStoragePath(string $relativePath): string
+    {
+        $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
+        $base = rtrim((string) (config('services.reverb.sku_image_public_base_url') ?? ''), '/');
+        if ($base !== '' && ! preg_match('#^https?://#i', $base)) {
+            $base = 'https://'.$base;
+        }
+        if ($base !== '') {
+            $segments = array_values(array_filter(explode('/', $relativePath), fn ($s) => $s !== ''));
+
+            return $base.'/storage/'.implode('/', array_map('rawurlencode', $segments));
+        }
+
+        return URL::to(Storage::disk('public')->url($relativePath));
+    }
+
+    /**
+     * Walk HAL/JSON and collect numeric image ids from any {@see images} array on the listing.
+     *
+     * @return list<string>
+     */
+    private function collectReverbListingImageIds(array $data): array
+    {
+        $ids = [];
+        $walk = function (mixed $node) use (&$walk, &$ids): void {
+            if (! is_array($node)) {
+                return;
+            }
+            foreach ($node as $key => $val) {
+                if (($key === 'images' || $key === 'photos') && is_array($val)) {
+                    foreach ($val as $img) {
+                        if (is_array($img) && isset($img['id'])) {
+                            $ids[] = (string) $img['id'];
+                        }
+                    }
+                } elseif (is_array($val)) {
+                    $walk($val);
+                }
+            }
+        };
+        $walk($data);
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function fetchListingImageIdsForDeletion(string $token, string $listingId): array
+    {
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $seg = rawurlencode(trim((string) $listingId));
+
+        foreach ([$apiBase.'/listings/'.$seg.'/images/', $apiBase.'/listings/'.$seg.'/images'] as $url) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->timeout(45)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer '.$token,
+                        'Accept' => 'application/hal+json',
+                        'Accept-Version' => '3.0',
+                    ])->get($url);
+                if ($response->successful()) {
+                    $json = $response->json();
+                    if (is_array($json)) {
+                        $ids = $this->collectReverbListingImageIds($json);
+                        if ($ids !== []) {
+                            return $ids;
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        // Fallback: full listing resource often embeds photo metadata.
+        try {
+            $url = $apiBase.'/listings/'.$seg;
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                ])->get($url);
+            if ($response->successful()) {
+                $json = $response->json();
+                if (is_array($json)) {
+                    return $this->collectReverbListingImageIds($json);
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return [];
+    }
+
+    /**
+     * DELETE /api/listings/{listing_id}/images/{image_id} with auth refresh + 429 retry.
+     */
+    private function reverbDeleteListingImageWithRetry(string $token, string $deleteUrl, int $maxRetries = 4): Response
+    {
+        $bearer = $token;
+        $last = null;
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            $last = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$bearer,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                ])
+                ->delete($deleteUrl);
+
+            if ($last->successful() || $last->status() === 404) {
+                return $last;
+            }
+            if ($last->status() === 401 && $attempt < $maxRetries - 1) {
+                self::forgetCachedReverbToken();
+                $refreshed = self::getReverbBearerToken(true);
+                if (is_string($refreshed) && $refreshed !== '') {
+                    $bearer = $refreshed;
+                    usleep(400000);
+
+                    continue;
+                }
+            }
+            if (in_array($last->status(), [429, 503], true) && $attempt < $maxRetries - 1) {
+                $waitMs = (int) (500000 * ($attempt + 1));
+                if ($last->status() === 429 && is_numeric($last->header('Retry-After'))) {
+                    $waitMs = min(2_000_000, (int) ((float) $last->header('Retry-After') * 1_000_000));
+                }
+                usleep($waitMs);
+
+                continue;
+            }
+            break;
+        }
+
+        return $last;
+    }
+
+    /**
+     * Remove every gallery image so Reverb accepts brand-new source URLs (inventory/staging hosts).
+     * {@see photo_upload_method} "override_position" only reorders URLs already on the listing.
+     */
+    private function deleteAllReverbListingImages(string $token, string $listingId): array
+    {
+        $ids = $this->fetchListingImageIdsForDeletion($token, $listingId);
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $listingSeg = rawurlencode(trim((string) $listingId));
+        $failures = [];
+
+        foreach ($ids as $imageId) {
+            $delUrl = $apiBase.'/listings/'.$listingSeg.'/images/'.rawurlencode(trim((string) $imageId));
+            $res = $this->reverbDeleteListingImageWithRetry($token, $delUrl);
+            if (! $res->successful() && $res->status() !== 404) {
+                $failures[] = $imageId.':'.$res->status();
+                Log::warning('Reverb DELETE listing image failed', [
+                    'listing_id' => $listingId,
+                    'image_id' => $imageId,
+                    'status' => $res->status(),
+                    'body' => mb_substr($res->body(), 0, 500),
+                ]);
+            }
+            usleep(120000);
+        }
+
+        if ($ids !== []) {
+            Log::info('Reverb: cleared listing images before replace', ['listing_id' => $listingId, 'deleted' => count($ids), 'failures' => count($failures)]);
+        }
+
+        return ['deleted' => count($ids), 'failures' => $failures];
+    }
+
+    /**
+     * Try payloads Reverb accepts when applying fresh photo URLs after optional gallery clear.
+     *
+     * @param  list<string>  $urls
+     */
+    private function putReverbListingPhotos(string $token, string $listingId, array $urls): Response
+    {
+        $variants = [
+            ['photos' => $urls],
+            ['photos' => $urls, 'photo_upload_method' => 'override_position'],
+        ];
+        $last = null;
+        foreach ($variants as $payload) {
+            $last = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+            if ($last->successful()) {
+                return $last;
+            }
+            Log::warning('Reverb PUT listing photos attempt failed', [
+                'listing_id' => $listingId,
+                'status' => $last->status(),
+                'body' => mb_substr($last->body(), 0, 800),
+            ]);
+        }
+
+        return $last;
+    }
+
+    /**
      * Replace listing photos (public HTTPS URLs). Reverb may require URLs it can fetch.
      *
      * @param  list<string>  $imageUrls
-     * @return array{success: bool, message: string, listing_id?: string}
+     * @return array{success: bool, message: string, listing_id?: string, normalized_urls?: list<string>}
      */
-    public function updateListingImages(string $identifier, array $imageUrls): array
+    public function updateListingImages(string $identifier, array $imageUrls, string $mode = 'replace'): array
     {
         $token = self::getReverbBearerToken();
         if (! $token) {
@@ -873,7 +1191,11 @@ class ReverbApiService
         }
 
         $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
-        $urls = array_slice($urls, 0, 25);
+        $prep = $this->prepareReverbPhotoUrls($urls);
+        if (! $prep['success']) {
+            return ['success' => false, 'message' => $prep['message']];
+        }
+        $urls = array_slice($prep['urls'], 0, 25);
         if ($urls === []) {
             return ['success' => false, 'message' => 'At least one image URL is required.'];
         }
@@ -905,25 +1227,55 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
-        $payload = [
-            'photos' => $urls,
-            'photo_upload_method' => 'override_position',
-        ];
+        $mode = strtolower(trim($mode)) === 'add' ? 'add' : 'replace';
+
+        if ($mode === 'add') {
+            $existing = $this->fetchListingImagePublicUrls($token, $listingId);
+            $norm = static function (string $u): string {
+                return rtrim(strtolower($u), '/');
+            };
+            $seen = [];
+            $merged = [];
+            foreach ($existing as $u) {
+                if (! is_string($u) || $u === '') {
+                    continue;
+                }
+                $k = $norm($u);
+                if (isset($seen[$k])) {
+                    continue;
+                }
+                $seen[$k] = true;
+                $merged[] = $u;
+            }
+            foreach ($urls as $u) {
+                $k = $norm($u);
+                if (isset($seen[$k])) {
+                    continue;
+                }
+                $seen[$k] = true;
+                $merged[] = $u;
+            }
+            $urls = array_slice($merged, 0, 25);
+        } else {
+            // Full replace: new inventory URLs are not a reorder of Reverb's existing CDN URLs — clear first.
+            $this->deleteAllReverbListingImages($token, (string) $listingId);
+        }
 
         try {
-            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+            $response = $this->putReverbListingPhotos($token, (string) $listingId, $urls);
 
             if ($response->successful()) {
                 return [
                     'success' => true,
                     'message' => 'Reverb listing images updated.',
                     'listing_id' => $listingId,
+                    'normalized_urls' => $urls,
                 ];
             }
 
             return [
                 'success' => false,
-                'message' => 'Reverb API error (HTTP '.$response->status().'): '.$response->body(),
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($response->body(), 0, 2000),
                 'listing_id' => $listingId,
             ];
         } catch (\Throwable $e) {
@@ -946,11 +1298,14 @@ class ReverbApiService
         if ($newPublicImageUrl === '') {
             return ['success' => false, 'message' => 'Image URL is empty.'];
         }
-        if (! str_starts_with($newPublicImageUrl, 'http')) {
-            return [
-                'success' => false,
-                'message' => 'Reverb needs an absolute public URL. Set APP_URL to your publicly reachable site (HTTPS).',
-            ];
+
+        $prep = $this->prepareReverbPhotoUrls([$newPublicImageUrl]);
+        if (! $prep['success']) {
+            return ['success' => false, 'message' => $prep['message']];
+        }
+        $newPublicImageUrl = $prep['urls'][0] ?? '';
+        if ($newPublicImageUrl === '') {
+            return ['success' => false, 'message' => 'Image URL is empty.'];
         }
 
         $listingId = $this->getListingIdBySku(trim($sku));
@@ -1019,13 +1374,8 @@ class ReverbApiService
             $all = array_slice($all, 0, 25);
         }
 
-        $payload = [
-            'photos' => $all,
-            'photo_upload_method' => 'override_position',
-        ];
-
         try {
-            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+            $response = $this->putReverbListingPhotos($token, (string) $listingId, $all);
             if ($response->successful()) {
                 return [
                     'success' => true,
@@ -1127,21 +1477,22 @@ class ReverbApiService
      * @param  list<string>  $images
      * @return array{success: bool, message: string, listing_id?: string}
      */
-    public function updateImages(string $identifier, array $images): array
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
     {
         $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
         if ($images === []) {
             return ['success' => false, 'message' => 'At least one image URL is required.'];
         }
 
-        $res = $this->updateListingImages($identifier, $images);
+        $res = $this->updateListingImages($identifier, $images, $mode);
         if (! ($res['success'] ?? false)) {
             return $res;
         }
 
         $trim = trim($identifier);
         $listingId = (string) ($res['listing_id'] ?? '');
-        $saved = $this->saveImageUrlsToReverbProducts($trim, $listingId, $images);
+        $toSave = isset($res['normalized_urls']) && is_array($res['normalized_urls']) ? $res['normalized_urls'] : $images;
+        $saved = $this->saveImageUrlsToReverbProducts($trim, $listingId, $toSave);
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'Reverb listing images updated.').' Metrics save failed.';
         }

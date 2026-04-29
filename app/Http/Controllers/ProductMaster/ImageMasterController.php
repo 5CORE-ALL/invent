@@ -407,7 +407,7 @@ class ImageMasterController extends Controller
                 case 'macy':
                     return app(MacysApiService::class)->updateImages($sku, $imageUrls);
                 case 'reverb':
-                    return app(ReverbApiService::class)->updateImages($sku, $imageUrls);
+                    return app(ReverbApiService::class)->updateImages($sku, $imageUrls, $mode);
                 default:
                     return [
                         'success' => false,
