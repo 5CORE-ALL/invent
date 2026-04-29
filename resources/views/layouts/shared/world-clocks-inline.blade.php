@@ -30,10 +30,15 @@
         color: #5c6b7a;
         font-variant-numeric: tabular-nums;
     }
-    .topbar-world-clocks .wc-flag-emoji {
-        font-size: 1.125rem;
-        line-height: 1;
-        font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', sans-serif;
+    /* Raster flags: emoji regional indicators often render as letter pairs on Windows/Linux (looks like duplicate "US" next to .wc-code). */
+    .topbar-world-clocks .wc-flag-img {
+        width: 1.125rem;
+        height: 0.85rem;
+        object-fit: cover;
+        display: block;
+        flex-shrink: 0;
+        border-radius: 2px;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
     }
     .topbar-world-clocks .wc-time {
         font-size: clamp(0.8rem, 1.5vw, 1rem);
@@ -69,11 +74,15 @@
     html[data-bs-theme="dark"] .topbar-world-clocks .wc-divider {
         background-color: rgba(255, 255, 255, 0.12);
     }
+    html[data-bs-theme="dark"] .topbar-world-clocks .wc-flag-img {
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+    }
 </style>
 <div class="topbar-world-clocks d-none d-lg-flex" aria-label="Office time zones">
     <div class="wc-zone">
         <div class="wc-flag-row" role="img" aria-label="US, United States, California (Pacific)">
-            <span class="wc-code">US</span><span class="wc-flag-emoji" aria-hidden="true">&#x1F1FA;&#x1F1F8;</span>
+            <span class="wc-code">US</span>
+            <img class="wc-flag-img" src="https://flagcdn.com/w40/us.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
         <div class="wc-time" id="wc-ca-time">—</div>
         <div class="wc-meta" id="wc-ca-meta"></div>
@@ -81,7 +90,8 @@
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
         <div class="wc-flag-row" role="img" aria-label="IN, India">
-            <span class="wc-code">IN</span><span class="wc-flag-emoji" aria-hidden="true">&#x1F1EE;&#x1F1F3;</span>
+            <span class="wc-code">IN</span>
+            <img class="wc-flag-img" src="https://flagcdn.com/w40/in.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
         <div class="wc-time" id="wc-in-time">—</div>
         <div class="wc-meta" id="wc-in-meta"></div>
@@ -89,7 +99,8 @@
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
         <div class="wc-flag-row" role="img" aria-label="US, United States, Ohio (Eastern)">
-            <span class="wc-code">US</span><span class="wc-flag-emoji" aria-hidden="true">&#x1F1FA;&#x1F1F8;</span>
+            <span class="wc-code">US</span>
+            <img class="wc-flag-img" src="https://flagcdn.com/w40/us.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
         <div class="wc-time" id="wc-oh-time">—</div>
         <div class="wc-meta" id="wc-oh-meta"></div>
@@ -97,7 +108,8 @@
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
         <div class="wc-flag-row" role="img" aria-label="CN, China">
-            <span class="wc-code">CN</span><span class="wc-flag-emoji" aria-hidden="true">&#x1F1E8;&#x1F1F3;</span>
+            <span class="wc-code">CN</span>
+            <img class="wc-flag-img" src="https://flagcdn.com/w40/cn.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
         <div class="wc-time" id="wc-cn-time">—</div>
         <div class="wc-meta" id="wc-cn-meta"></div>
