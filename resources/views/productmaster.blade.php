@@ -4044,20 +4044,52 @@
                             // Add header row
                             wsData.push(visibleColumns);
 
-                            // Add data rows - include all data including parent SKUs
+                            // Pre-compute per-parent totals (Inventory + OV L30) from child rows
+                            const exportParentTotals = {};
                             tableData.forEach(item => {
+                                if (item.Parent && !String(item.SKU || '').toUpperCase().includes('PARENT')) {
+                                    if (!exportParentTotals[item.Parent]) {
+                                        exportParentTotals[item.Parent] = { inv: 0, ovl30: 0 };
+                                    }
+                                    exportParentTotals[item.Parent].inv   += Number(item.shopify_inv)      || 0;
+                                    exportParentTotals[item.Parent].ovl30 += Number(item.shopify_quantity) || 0;
+                                }
+                            });
+
+                            // Add data rows - include all data including parent rows with computed totals
+                            tableData.forEach(item => {
+                                const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                                const parentTotals = isParentRow
+                                    ? (exportParentTotals[item.Parent] || { inv: 0, ovl30: 0 })
+                                    : null;
+
                                 const row = [];
                                 visibleColumns.forEach(col => {
                                     if (col === 'DIL') {
-                                        const invMissing = item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === '';
-                                        const ovlMissing = item.shopify_quantity === null || item.shopify_quantity === undefined || item.shopify_quantity === '';
                                         let dilVal = '';
-                                        if (!invMissing && !ovlMissing) {
-                                            const inv = Number(item.shopify_inv) || 0;
-                                            const ovl = Number(item.shopify_quantity) || 0;
+                                        if (isParentRow) {
+                                            const inv = parentTotals.inv;
+                                            const ovl = parentTotals.ovl30;
                                             if (inv !== 0) dilVal = `${Math.round((ovl / inv) * 100)}%`;
+                                        } else {
+                                            const invMissing = item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === '';
+                                            const ovlMissing = item.shopify_quantity === null || item.shopify_quantity === undefined || item.shopify_quantity === '';
+                                            if (!invMissing && !ovlMissing) {
+                                                const inv = Number(item.shopify_inv) || 0;
+                                                const ovl = Number(item.shopify_quantity) || 0;
+                                                if (inv !== 0) dilVal = `${Math.round((ovl / inv) * 100)}%`;
+                                            }
                                         }
                                         row.push(dilVal);
+                                        return;
+                                    }
+                                    // For parent rows use computed totals for Inventory / OV L30
+                                    if (isParentRow && col === 'Inventory') {
+                                        row.push(parentTotals.inv);
+                                        return;
+                                    }
+                                    if (isParentRow && col === 'OV L30') {
+                                        row.push(parentTotals.ovl30);
                                         return;
                                     }
                                     const colDef = columnDefs[col];
@@ -4126,32 +4158,33 @@
                             });
                             ws['!cols'] = wscols;
 
-                            // Style the header row
+                            // Style the header row and parent rows
                             const headerRange = XLSX.utils.decode_range(ws['!ref']);
-                            for (let C = headerRange.s.c; C <= headerRange.e.c; ++C) {
-                                const cell = XLSX.utils.encode_cell({
-                                    r: 0,
-                                    c: C
-                                });
-                                if (!ws[cell]) continue;
+                            for (let R = headerRange.s.r; R <= headerRange.e.r; ++R) {
+                                // wsData[0] = headers, wsData[R] = data row for row index R
+                                const isHeader = R === 0;
+                                const rowData = wsData[R];
+                                const skuColIdx = visibleColumns.indexOf('SKU');
+                                const rowSku = skuColIdx >= 0 && rowData ? String(rowData[skuColIdx] || '') : '';
+                                const isParent = !isHeader && rowSku.toUpperCase().includes('PARENT');
 
-                                // Add header style
-                                ws[cell].s = {
-                                    fill: {
-                                        fgColor: {
-                                            rgb: "2C6ED5"
-                                        }
-                                    },
-                                    font: {
-                                        bold: true,
-                                        color: {
-                                            rgb: "FFFFFF"
-                                        }
-                                    },
-                                    alignment: {
-                                        horizontal: "center"
+                                for (let C = headerRange.s.c; C <= headerRange.e.c; ++C) {
+                                    const cell = XLSX.utils.encode_cell({ r: R, c: C });
+                                    if (!ws[cell]) continue;
+
+                                    if (isHeader) {
+                                        ws[cell].s = {
+                                            fill: { fgColor: { rgb: "2C6ED5" } },
+                                            font: { bold: true, color: { rgb: "FFFFFF" } },
+                                            alignment: { horizontal: "center" }
+                                        };
+                                    } else if (isParent) {
+                                        ws[cell].s = {
+                                            fill: { fgColor: { rgb: "C7D9F8" } },
+                                            font: { bold: true, color: { rgb: "0D3B8E" } }
+                                        };
                                     }
-                                };
+                                }
                             }
 
                             // Add the worksheet to the workbook
