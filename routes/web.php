@@ -3528,7 +3528,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Wayfaire route
     Route::get('/listing-audit-wayfair', [ListingAuditWayfairController::class, 'listingAuditWayfair'])->name('listing.audit.wayfair');
     Route::get('/listing_audit_wayfair/view-data', [ListingAuditWayfairController::class, 'getViewListingAuditWayfairData']);
-    Route::post('/wayfair/save-nr', [WayfairController::class, 'saveNrToDatabase']);
+    Route::post('/wayfair/save-nr', [WayfairController::class, 'saveNrToDatabase'])->name('wayfair.save.nr');
     Route::post('/wayfair/update-listed-live', [WayfairController::class, 'updateListedLive']);
     Route::post('/listing_audit_wayfair/save-na', [ListingAuditWayfairController::class, 'saveAuditToDatabase']);
     Route::post('/wayfair-zero/reason-action/update', [WayfairZeroController::class, 'updateReasonAction']);

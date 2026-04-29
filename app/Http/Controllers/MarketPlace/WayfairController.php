@@ -145,14 +145,17 @@ class WayfairController extends Controller
                     if ($childSku && isset($nrValues[$childSku])) {
                         $val = $nrValues[$childSku];
                         if (is_array($val)) {
-                            $item->NR = $val['NR'] ?? '';
+                            $item->NR = $val['NRP'] ?? $val['NR'] ?? '';
                             $item->Listed = !empty($val['Listed']) ? (int)$val['Listed'] : false;
                             $item->Live = !empty($val['Live']) ? (int)$val['Live'] : false;
                         } else {
                             $decoded = json_decode($val, true);
-                            $item->NR = $decoded['NR'] ?? '';
-                            $item->Listed = !empty($decoded['Listed']) ? (int)$decoded['Listed'] : false;
-                            $item->Live = !empty($decoded['Live']) ? (int)$decoded['Live'] : false;
+                            if (! is_array($decoded)) {
+                                $decoded = [];
+                            }
+                            $item->NR = $decoded['NRP'] ?? $decoded['NR'] ?? '';
+                            $item->Listed = ! empty($decoded['Listed']) ? (int) $decoded['Listed'] : false;
+                            $item->Live = ! empty($decoded['Live']) ? (int) $decoded['Live'] : false;
                         }
                     }
                 }
@@ -222,20 +225,44 @@ class WayfairController extends Controller
         }
     }
 
-    // Save NR value for a SKU
+    /**
+     * Persist Wayfair NRP into wayfair_data_view.value JSON.
+     * REQ|NR → only key "NRP" (no duplicate "NR"). Other values (e.g. NRA) → key "NR" only.
+     * Matches SKU case-insensitively to avoid duplicate rows.
+     */
     public function saveNrToDatabase(Request $request)
     {
-        $sku = $request->input('sku');
+        $skuRaw = trim((string) $request->input('sku'));
         $nr = $request->input('nr');
 
-        if (!$sku || $nr === null) {
+        if ($skuRaw === '' || $nr === null || $nr === '') {
             return response()->json(['error' => 'SKU and nr are required.'], 400);
         }
 
-        $dataView = WayfairDataView::firstOrNew(['sku' => $sku]);
+        $normalized = strtoupper(str_replace("\u{00a0}", ' ', $skuRaw));
+
+        $dataView = WayfairDataView::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])
+            ->first();
+
+        if (! $dataView) {
+            $dataView = new WayfairDataView;
+            $dataView->sku = $skuRaw;
+        }
+
         $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
-        if ($nr !== null) {
-            $value["NR"] = $nr;
+        if (is_string($nr)) {
+            $u = strtoupper(trim($nr));
+            if (in_array($u, ['REQ', 'NR'], true)) {
+                $value['NRP'] = $u;
+                unset($value['NR']);
+            } else {
+                $value['NR'] = $nr;
+                unset($value['NRP']);
+            }
+        } else {
+            $value['NR'] = $nr;
+            unset($value['NRP']);
         }
         $dataView->value = $value;
         $dataView->save();
@@ -677,28 +704,6 @@ class WayfairController extends Controller
                     ->keyBy(fn ($row) => $normalizeSku($row->sku));
             }
 
-            // Same as Faire / Forecast Analysis: forecast_analysis.nr (NRP).
-            $forecastNrBySku = [];
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $faRows = DB::table('forecast_analysis')
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus->values()->all())
-                    ->get(['sku', 'parent', 'nr', 'stage']);
-                foreach ($faRows->groupBy(fn ($r) => $normalizeSku($r->sku)) as $k => $group) {
-                    $withStage = $group->first(function ($r) {
-                        return $r->stage !== null && trim((string) $r->stage) !== '';
-                    });
-                    if ($withStage) {
-                        $forecastNrBySku[$k] = $withStage;
-
-                        continue;
-                    }
-                    $withNr = $group->first(function ($r) {
-                        return $r->nr !== null && trim((string) $r->nr) !== '';
-                    });
-                    $forecastNrBySku[$k] = $withNr ?? $group->first();
-                }
-            }
-
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
             $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 100) : 100;
             $margin = $percentage / 100;
@@ -708,7 +713,11 @@ class WayfairController extends Controller
                 $sale = $salesBySku->get($normalizedSku);
                 $productMaster = $productMastersBySku->get($normalizedSku);
                 $metaRecord = $viewMetaBySku->get($normalizedSku);
-                $meta = $metaRecord ? ($metaRecord->value ?? []) : [];
+                $metaRaw = $metaRecord ? ($metaRecord->value ?? []) : [];
+                $meta = is_array($metaRaw) ? $metaRaw : (is_string($metaRaw) ? (json_decode($metaRaw, true) ?: []) : []);
+                if (! is_array($meta)) {
+                    $meta = [];
+                }
 
                 $values = [];
                 if ($productMaster) {
@@ -740,8 +749,14 @@ class WayfairController extends Controller
                 $displaySku = $productMaster
                     ? trim((string) $productMaster->sku)
                     : ($sale ? (string) $sale->sku : ($priceRow ? trim((string) $priceRow->sku) : $normalizedSku));
+
+                // NRP from wayfair_data_view.value JSON (e.g. {"NRP":"NR"} → not Missing L).
+                $nrOut = $this->wayfairNrpStatusFromMeta($meta);
+
                 // Same as AliExpress pricing: missing when no product master or no positive uploaded channel price.
-                $isMissing = ! $productMaster || $price <= 0;
+                // NRP / NR string = NR: do not treat as Missing L (excluded from badge / column).
+                $wouldBeMissing = ! $productMaster || $price <= 0;
+                $isMissing = $wouldBeMissing && strtoupper($nrOut) !== 'NR';
 
                 // Map / N Map: same ±3 tolerance as TikTok / Reverb / Best Buy (|INV − Wayfair stock| ≤ 3 → Map).
                 if ($isMissing) {
@@ -764,15 +779,6 @@ class WayfairController extends Controller
                 $sellerLink = isset($listingPayload['seller_link']) ? trim((string) $listingPayload['seller_link']) : '';
                 $buyerLink = $buyerLink !== '' ? $buyerLink : null;
                 $sellerLink = $sellerLink !== '' ? $sellerLink : null;
-
-                $faRec = $forecastNrBySku[$normalizedSku] ?? null;
-                $nrOut = '';
-                if ($faRec && $faRec->nr !== null && trim((string) $faRec->nr) !== '') {
-                    $nrOut = strtoupper(trim((string) $faRec->nr));
-                    if (! in_array($nrOut, ['REQ', 'NR', 'LATER'], true)) {
-                        $nrOut = 'REQ';
-                    }
-                }
 
                 $rows[] = [
                     'sku' => $displaySku,
@@ -1303,5 +1309,27 @@ class WayfairController extends Controller
         Cache::put($key, $visibility, now()->addDays(365));
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Read REQ | NR | empty from wayfair_data_view JSON (NRP first, then legacy string NR).
+     */
+    private function wayfairNrpStatusFromMeta(array $meta): string
+    {
+        foreach (['NRP', 'NR'] as $key) {
+            if (! isset($meta[$key])) {
+                continue;
+            }
+            $v = $meta[$key];
+            if (! is_string($v)) {
+                continue;
+            }
+            $t = strtoupper(trim($v));
+            if (in_array($t, ['REQ', 'NR'], true)) {
+                return $t;
+            }
+        }
+
+        return '';
     }
 }
