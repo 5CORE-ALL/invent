@@ -90,6 +90,7 @@ class TikTokPricingController extends Controller
                 'dataJson' => '/tiktok-2-data-json',
                 'badgeChart' => route('tiktok2.badge.chart.data'),
                 'saveSprice' => '/tiktok-2-save-sprice',
+                'saveNrp' => route('tiktok2.save.nrp'),
                 'columnGet' => '/tiktok-pricing-column-visibility',
                 'columnSet' => '/tiktok-pricing-column-visibility',
                 'distinctCampaign' => '/tiktok-distinct-campaign-count',
@@ -343,32 +344,28 @@ class TikTokPricingController extends Controller
 
         // Fetch reverb view data for SPRICE
         $reverbViewData = ReverbViewData::whereIn("sku", $skus)->get()->keyBy("sku");
-        // TikTok 1: tiktok_shop_data_views. TikTok 2: separate tiktok_two_shop_data_views (SPRICe / NR / view counts)
-        $ttShopDataBySku = $isTiktokTwo
-            ? TiktokTwoShopDataView::whereIn("sku", $skus)->get()->keyBy("sku")
-            : TiktokShopDataView::whereIn("sku", $skus)->get()->keyBy("sku");
-
-        // Forecast Analysis NRP (forecast_analysis.nr) — same source as Faire/Wayfair pricing.
-        $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
-        $forecastNrpBySku = [];
-        $pmNormSkus = $productMasterRows->keys()->map(fn ($s) => $normalizeSkuFa($s))->unique()->filter(fn ($s) => $s !== '')->values();
-        if ($pmNormSkus->isNotEmpty()) {
-            $faRows = DB::table('forecast_analysis')
-                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $pmNormSkus->all())
-                ->get(['sku', 'parent', 'nr', 'stage']);
-            foreach ($faRows->groupBy(fn ($r) => $normalizeSkuFa($r->sku)) as $k => $group) {
-                $withStage = $group->first(function ($r) {
-                    return $r->stage !== null && trim((string) $r->stage) !== '';
-                });
-                if ($withStage) {
-                    $forecastNrpBySku[$k] = $withStage;
-
-                    continue;
+        // TikTok 1 / 2 shop JSON (same merge model as eBay ebay_data_view: one row per SKU, value JSON).
+        // Key by normalized SKU so Product Master casing matches shop rows (mirrors Wayfair UPPER(TRIM) lookup).
+        $normSkuList = collect($skus)
+            ->map(fn ($s) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $s))))
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
+        $ttShopDataByNormSku = [];
+        if ($normSkuList !== []) {
+            $ttShopRows = $isTiktokTwo
+                ? TiktokTwoShopDataView::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $normSkuList)
+                    ->get()
+                : TiktokShopDataView::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $normSkuList)
+                    ->get();
+            foreach ($ttShopRows as $row) {
+                $k = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $row->sku)));
+                if ($k !== '') {
+                    $ttShopDataByNormSku[$k] = $row;
                 }
-                $withNr = $group->first(function ($r) {
-                    return $r->nr !== null && trim((string) $r->nr) !== '';
-                });
-                $forecastNrpBySku[$k] = $withNr ?? $group->first();
             }
         }
 
@@ -563,10 +560,13 @@ class TikTokPricingController extends Controller
             $processedItem["SGPFT"] = 0;
             $processedItem["SPFT"] = 0;
             $processedItem["SROI"] = 0;
+            $tiktokValArr = [];
 
-            if (isset($ttShopDataBySku[$sku])) {
-                $tiktokVal = $ttShopDataBySku[$sku]->value;
-                $tiktokValArr = is_array($tiktokVal) ? $tiktokVal : (json_decode($tiktokVal, true) ?: []);
+            $skuNorm = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
+            $ttShopRow = $ttShopDataByNormSku[$skuNorm] ?? null;
+            if ($ttShopRow) {
+                $tiktokVal = $ttShopRow->value;
+                $tiktokValArr = is_array($tiktokVal) ? $tiktokVal : (json_decode($tiktokVal ?? '{}', true) ?: []);
                 $processedItem["SPRICE"] = isset($tiktokValArr["SPRICE"]) ? floatval($tiktokValArr["SPRICE"]) : 0;
                 $processedItem["SGPFT"] = isset($tiktokValArr["SGPFT"]) ? floatval($tiktokValArr["SGPFT"]) : 0;
                 $processedItem["SPFT"] = isset($tiktokValArr["SPFT"]) ? floatval(str_replace("%", "", $tiktokValArr["SPFT"])) : 0;
@@ -604,17 +604,10 @@ class TikTokPricingController extends Controller
             if (!isset($processedItem["video_req"])) $processedItem["video_req"] = 'Not Req';
             if (!isset($processedItem["video_uploaded"])) $processedItem["video_uploaded"] = 0;
 
-            $faRecNrp = $forecastNrpBySku[$normalizeSkuFa($sku)] ?? null;
-            $nrpOut = '';
-            if ($faRecNrp && $faRecNrp->nr !== null && trim((string) $faRecNrp->nr) !== '') {
-                $nrpOut = strtoupper(trim((string) $faRecNrp->nr));
-                if (! in_array($nrpOut, ['REQ', 'NR', 'LATER'], true)) {
-                    $nrpOut = 'REQ';
-                }
-            }
-            $processedItem['nrp'] = $nrpOut;
+            // NRP (REQ / NR / LATER) from shop JSON: prefer NRP; legacy REQ|NR may live under NR (ads use RA/NRA/LATER).
+            $processedItem['nrp'] = $this->tiktokNrpStatusFromShopValue($tiktokValArr);
 
-            if (!isset($ttShopDataBySku[$sku]) && isset($reverbViewData[$sku])) {
+            if (! $ttShopRow && isset($reverbViewData[$sku])) {
                 $viewData = $reverbViewData[$sku];
                 $valuesArr = $viewData->values ?: [];
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
@@ -1206,6 +1199,94 @@ class TikTokPricingController extends Controller
     public function saveSpriceTiktokTwoUpdates(Request $request)
     {
         return $this->saveSpriceUpdatesToModel($request, TiktokTwoShopDataView::class, 'TikTok 2');
+    }
+
+    /**
+     * Persist NRP (REQ | NR | LATER) to tiktok_shop_data_views.value["NRP"] (TikTok Shop 1).
+     */
+    public function saveTiktokShopNrp(Request $request)
+    {
+        return $this->saveTiktokNrpToShopDataView($request, TiktokShopDataView::class);
+    }
+
+    /**
+     * Persist NRP (REQ | NR | LATER) to tiktok_two_shop_data_views.value["NRP"] (TikTok Shop 2).
+     */
+    public function saveTiktokTwoNrp(Request $request)
+    {
+        return $this->saveTiktokNrpToShopDataView($request, TiktokTwoShopDataView::class);
+    }
+
+    private function saveTiktokNrpToShopDataView(Request $request, string $viewModelClass)
+    {
+        // Same flow as eBay update-ebay-nr-data: JSON body { sku, field, value } or legacy { sku, nrp }.
+        $skuRaw = trim((string) $request->input('sku'));
+        $field = $request->input('field');
+        $nrp = null;
+        if ($field !== null && strtoupper(trim((string) $field)) === 'NRP' && $request->has('value')) {
+            $nrp = $request->input('value');
+        }
+        if ($nrp === null || $nrp === '') {
+            $nrp = $request->input('nrp', $request->input('value'));
+        }
+        if ($skuRaw === '' || $nrp === null || $nrp === '') {
+            return response()->json(['success' => false, 'message' => 'SKU and nrp (or field NRP + value) are required.'], 400);
+        }
+        $t = strtoupper(trim((string) $nrp));
+        if (! in_array($t, ['REQ', 'NR', 'LATER'], true)) {
+            return response()->json(['success' => false, 'message' => 'nrp must be REQ, NR, or LATER.'], 422);
+        }
+
+        $normalized = strtoupper(str_replace("\u{00a0}", ' ', $skuRaw));
+
+        $view = $viewModelClass::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])
+            ->first();
+
+        if (! $view) {
+            $view = new $viewModelClass;
+            $view->sku = $skuRaw;
+        }
+
+        $values = is_array($view->value)
+            ? $view->value
+            : (json_decode($view->value ?? '{}', true) ?: []);
+        $values['NRP'] = $t;
+        $view->value = $values;
+        $view->save();
+
+        return response()->json([
+            'success' => true,
+            'status' => 200,
+            'message' => 'Field updated successfully',
+            'updated_json' => $values,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $val
+     */
+    private function tiktokNrpStatusFromShopValue(array $val): string
+    {
+        foreach (['NRP', 'nrp'] as $key) {
+            if (! isset($val[$key]) || ! is_string($val[$key])) {
+                continue;
+            }
+            $t = strtoupper(trim($val[$key]));
+            if (in_array($t, ['REQ', 'NR', 'LATER'], true)) {
+                return $t;
+            }
+        }
+
+        // Legacy: REQ|NR sometimes stored under value["NR"] before NRP key existed (ads NR uses RA/NRA/LATER).
+        if (isset($val['NR']) && is_string($val['NR'])) {
+            $t = strtoupper(trim($val['NR']));
+            if (in_array($t, ['REQ', 'NR'], true)) {
+                return $t;
+            }
+        }
+
+        return '';
     }
 
     private function saveSpriceUpdatesToModel(Request $request, string $viewModel, string $logLabel)
