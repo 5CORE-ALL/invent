@@ -1018,8 +1018,25 @@
         /* ── Campaigns DataTable ────────────────────────────────── */
         let campaignsDT = null;
 
-        function loadCampaigns() {
+        function loadCampaigns(dtRetry) {
+            dtRetry = dtRetry || 0;
+            const $jq = window.jQuery;
+            if (!$jq || typeof $jq.fn.DataTable !== 'function') {
+                if (dtRetry < 80) {
+                    document.getElementById('campaignsLoader').style.display = 'block';
+                    document.getElementById('campaignsLoader').innerHTML =
+                        '<span class="text-muted" style="font-size:12px;"><i class="fas fa-spinner fa-spin me-1"></i>Preparing DataTables…</span>';
+                    setTimeout(function () { loadCampaigns(dtRetry + 1); }, 100);
+                    return;
+                }
+                document.getElementById('campaignsLoader').innerHTML =
+                    '<span class="text-danger" style="font-size:12px;"><i class="fas fa-exclamation-circle me-1"></i>DataTables did not load. Refresh the page.</span>';
+                return;
+            }
+
             document.getElementById('campaignsLoader').style.display = 'block';
+            document.getElementById('campaignsLoader').innerHTML =
+                '<span class="ms-2 text-muted" style="font-size:12px;">Loading campaigns…</span>';
             document.getElementById('campaignsTableWrap').classList.add('d-none');
 
             fetch('/video-for-ds/campaigns')
@@ -1058,7 +1075,7 @@
                     if (campaignsDT) {
                         campaignsDT.clear().rows.add(rows).draw();
                     } else {
-                        campaignsDT = $('#campaignsTable').DataTable({
+                        campaignsDT = $jq('#campaignsTable').DataTable({
                             data: rows,
                             pageLength: 25,
                             order: [[13, 'desc']], // sort by Spend desc
@@ -1182,6 +1199,15 @@
                 if (!resp.success) throw new Error(resp.message || 'Unknown error');
 
                 addSyncLog('✓ ' + resp.message, 'success');
+                const q = parseInt(resp.queued, 10) || 0;
+                if (q === 0) {
+                    addSyncLog('No background jobs were queued — see message above. Populate meta_campaigns / meta_ads (or run your Meta import) before syncing.', 'error');
+                    document.getElementById('syncStatusText').textContent = 'Nothing to sync — add Meta entities to the database first.';
+                    document.getElementById('syncProgressBar').classList.remove('indeterminate');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fab fa-facebook-f me-1"></i> Start Sync';
+                    return;
+                }
                 addSyncLog('Jobs are running in the background via queue worker.', 'info');
                 document.getElementById('syncStatusText').textContent =
                     resp.queued + ' job(s) queued — processing in background…';
@@ -2129,25 +2155,71 @@
     </script>
 @endsection
 
-{{-- DataTables must load AFTER Vite (head.js replaces window.jQuery); see layouts/vertical @yield('script-after-vite') --}}
+{{-- DataTables must attach to the SAME jQuery instance Vite’s head.js sets. Sync <script src> here runs BEFORE deferred Vite, so plugins were lost. Load after DOMContentLoaded instead. --}}
 @section('script-after-vite')
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
     <script>
-        (function bootFbCampaignsTable() {
-            function go() {
-                if (typeof window.jQuery === 'undefined' || typeof window.jQuery.fn.DataTable !== 'function') {
-                    return setTimeout(go, 40);
+        (function () {
+            var dtScriptUrls = [
+                'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js',
+                'https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js',
+                'https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js',
+                'https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+                'https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js'
+            ];
+            function loadScriptSequentially(index) {
+                if (index >= dtScriptUrls.length) {
+                    return Promise.resolve();
                 }
-                if (typeof window.__videoForDsLoadCampaigns === 'function') {
-                    window.__videoForDsLoadCampaigns();
-                }
+                return new Promise(function (resolve, reject) {
+                    var s = document.createElement('script');
+                    s.src = dtScriptUrls[index];
+                    s.onload = function () { loadScriptSequentially(index + 1).then(resolve).catch(reject); };
+                    s.onerror = function () { reject(new Error('Could not load ' + dtScriptUrls[index])); };
+                    document.body.appendChild(s);
+                });
             }
-            go();
+            function waitForViteJquery() {
+                return new Promise(function (resolve) {
+                    function tick() {
+                        if (typeof window.jQuery !== 'undefined' && window.jQuery.fn) {
+                            resolve();
+                            return;
+                        }
+                        setTimeout(tick, 30);
+                    }
+                    tick();
+                });
+            }
+            function boot() {
+                waitForViteJquery()
+                    .then(function () {
+                        if (typeof window.jQuery.fn.DataTable === 'function') {
+                            return Promise.resolve();
+                        }
+                        return loadScriptSequentially(0);
+                    })
+                    .then(function () {
+                        if (typeof window.jQuery.fn.DataTable !== 'function') {
+                            throw new Error('DataTables did not register on jQuery');
+                        }
+                        if (typeof window.__videoForDsLoadCampaigns === 'function') {
+                            window.__videoForDsLoadCampaigns();
+                        }
+                    })
+                    .catch(function (err) {
+                        var el = document.getElementById('campaignsLoader');
+                        if (el) {
+                            el.innerHTML = '<span class="text-danger" style="font-size:12px;"><i class="fas fa-exclamation-circle me-1"></i>' +
+                                (err && err.message ? err.message : 'Failed to load DataTables') + '</span>';
+                        }
+                    });
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', boot);
+            } else {
+                boot();
+            }
         })();
     </script>
 @endsection

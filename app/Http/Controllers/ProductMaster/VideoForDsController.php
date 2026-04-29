@@ -383,10 +383,13 @@ class VideoForDsController extends Controller
             'queued'  => $queued,
             'from'    => $dateStart,
             'to'      => $dateEnd,
-            'message' => "Queued {$queued} sync job(s) for "
-                       . Carbon::parse($dateStart)->format('M j, Y')
-                       . ' → '
-                       . Carbon::parse($dateEnd)->format('M j, Y'),
+            'message' => $queued > 0
+                ? "Queued {$queued} sync job(s) for "
+                    . Carbon::parse($dateStart)->format('M j, Y')
+                    . ' → '
+                    . Carbon::parse($dateEnd)->format('M j, Y')
+                : 'No sync jobs were queued — there are no rows in meta_ads, meta_campaigns, or meta_ad_sets with a meta_id. '
+                    . 'Populate those tables from your Meta ad account first; then run this sync to pull insights into meta_insights_daily.',
         ]);
     }
 

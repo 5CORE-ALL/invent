@@ -8,6 +8,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\ShopifySku;
 
+/**
+ * Direct Facebook Graph API samples (ads, campaigns, ad sets, insights).
+ * The FB Video Ads page (`/video-for-ds`) uses {@see \App\Http\Controllers\ProductMaster\VideoForDsController}
+ * with `meta_*` tables and {@see \App\Jobs\SyncMetaInsightsDailyJob} — not these endpoints unless you wire them.
+ */
 class FacebookAdsController extends Controller
 {
     public function getAds()
