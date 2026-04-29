@@ -224,12 +224,17 @@ class ImageMasterController extends Controller
             $remote   = $this->pushImagesToRemote($mp, $sku, $images, $mode);
             $remoteOk = (bool) ($remote['success'] ?? false);
 
+            $urlsForMetrics = $images;
+            if ($remoteOk && ! empty($remote['normalized_urls']) && is_array($remote['normalized_urls'])) {
+                $urlsForMetrics = array_values($remote['normalized_urls']);
+            }
+
             // Only persist metrics when we have actual image URLs
             $saved = false;
             if ($remoteOk && $images !== []) {
-                $saved = $this->saveImageMetricsToTable($mp, $sku, $images);
+                $saved = $this->saveImageMetricsToTable($mp, $sku, $urlsForMetrics);
                 if (in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
-                    $saved = $this->saveShopifyCatalogImages($sku, $mp, $images) || $saved;
+                    $saved = $this->saveShopifyCatalogImages($sku, $mp, $urlsForMetrics) || $saved;
                 }
             }
 
@@ -407,7 +412,7 @@ class ImageMasterController extends Controller
                 case 'macy':
                     return app(MacysApiService::class)->updateImages($sku, $imageUrls);
                 case 'reverb':
-                    return app(ReverbApiService::class)->updateImages($sku, $imageUrls);
+                    return app(ReverbApiService::class)->updateImages($sku, $imageUrls, $mode);
                 default:
                     return [
                         'success' => false,
@@ -482,7 +487,7 @@ class ImageMasterController extends Controller
             'amazon' => 'amazon_metrics',
             'temu' => 'temu_metrics',
             'macy' => 'macy_metrics',
-            'reverb' => 'reverb_metrics',
+            'reverb' => 'reverb_products', // reverb_metrics may not exist; reverb_products has image_urls + unique sku
             'shopify_main' => 'shopify_metrics',
             'shopify_pls' => 'shopify_pls_metrics',
         ];
