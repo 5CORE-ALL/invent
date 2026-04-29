@@ -2037,14 +2037,13 @@
                 </a>
                 <div class="collapse" id="sidebarTiendamia">
                     <ul class="side-nav-third-level">
-                        <li><a href="{{ url('tiendamiaAnalysis') }}">Tiendamia Analytics</a></li>
-
                         <li>
                             <a href="{{ route('zero.tiendamia') }}">Tiendamia 0 view</a>
                         </li>
 
                         <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
                         </li>
+                        <li><a href="{{ route('tiendamia.products.pricing') }}">Tiendamia Princing</a></li>
                     </ul>
                 </div>
             </li>

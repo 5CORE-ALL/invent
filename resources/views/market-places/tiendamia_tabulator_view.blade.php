@@ -1,0 +1,1186 @@
+@extends('layouts.vertical', ['title' => 'Tiendamia Princing', 'sidenav' => 'condensed'])
+
+@section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
+        .tabulator-col .tabulator-col-sorter { display: none !important; }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
+            white-space: nowrap; height: 78px; display: flex; align-items: center;
+            justify-content: center; font-size: 11px; font-weight: 600;
+        }
+        .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
+        .tabulator .tabulator-row { min-height: 50px; }
+
+        #tiendamia-products-table .tabulator-header,
+        #tiendamia-products-table .tabulator-header .tabulator-col {
+            background-color: #17a2b8 !important;
+            color: #fff !important;
+            border-color: rgba(255, 255, 255, 0.22) !important;
+        }
+        #tiendamia-products-table .tabulator-header .tabulator-col .tabulator-col-title {
+            color: #fff !important;
+        }
+        #tiendamia-products-table .tabulator-header .tabulator-col.tabulator-moving,
+        #tiendamia-products-table .tabulator-header .tabulator-col.tabulator-range-highlight {
+            background-color: #138496 !important;
+        }
+
+        .tabulator .tabulator-footer {
+            background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important;
+            padding: 10px 16px !important;
+        }
+        .tabulator .tabulator-footer .tabulator-paginator {
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+        }
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            font-size: 14px !important; font-weight: 500 !important;
+            min-width: 36px !important; height: 36px !important; line-height: 36px !important;
+            padding: 0 10px !important; border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important; background: #fff !important;
+            color: #475569 !important; cursor: pointer; transition: all 0.15s ease !important;
+            text-align: center !important;
+        }
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+            background: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #1e293b !important;
+        }
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #4361ee !important; border-color: #4361ee !important;
+            color: #fff !important; font-weight: 600 !important;
+            box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
+        }
+        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+
+        .tm-manual-dropdown { position: relative; display: inline-block; }
+        .tm-manual-dropdown .dropdown-menu {
+            position: absolute; top: 100%; left: 0; z-index: 1050;
+            display: none; min-width: 200px; padding: .5rem 0; margin: 0;
+            background: #fff; border: 1px solid #dee2e6; border-radius: .375rem;
+            box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .075);
+        }
+        .tm-manual-dropdown.show .dropdown-menu { display: block; }
+        .tm-dropdown-item {
+            display: block; width: 100%; padding: .5rem 1rem; clear: both;
+            font-weight: 400; color: #212529; text-decoration: none;
+            background: transparent; border: 0; cursor: pointer; white-space: nowrap;
+        }
+        .tm-dropdown-item:hover { background: #e9ecef; }
+        .tm-sc { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; border: 1px solid #ddd; }
+        .tm-sc.def { background: #6c757d; }
+        .tm-sc.red { background: #dc3545; }
+        .tm-sc.yellow { background: #ffc107; }
+        .tm-sc.green { background: #28a745; }
+        .tm-sc.pink { background: #e83e8c; }
+
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex; flex-wrap: nowrap; align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem); width: 100%;
+            overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 1 1 0; min-width: 0;
+            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold; box-sizing: border-box;
+            display: inline-flex; align-items: center; justify-content: center;
+            text-align: center; white-space: nowrap;
+        }
+
+        #tmUploadPriceModal .modal-header {
+            background-color: #26b9bd !important;
+            color: #fff !important;
+            border-bottom: 0;
+        }
+        #tmUploadPriceModal .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+            opacity: 0.9;
+        }
+        #tmUploadPriceModal .tm-upload-warning {
+            background-color: #fffbeb;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+        }
+    </style>
+@endsection
+
+@section('content')
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+
+                    <div class="modal fade" id="tmUploadPriceModal" tabindex="-1" aria-labelledby="tmUploadPriceModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title d-flex align-items-center gap-2 mb-0" id="tmUploadPriceModalLabel">
+                                        <i class="fas fa-file-import"></i> Import prices
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label for="tm-price-file" class="form-label mb-1">
+                                            <i class="fas fa-file-alt text-primary me-1"></i>File
+                                        </label>
+                                        <input type="file" class="form-control" id="tm-price-file" name="price_file" accept=".txt,.csv,.tsv,.xlsx,.xls,.ods">
+                                        <div class="form-text">
+                                            Row 1 = headers. Needs a <strong>SKU</strong> column (e.g. Offer SKU, SKU) and a <strong>Price</strong> column.
+                                            <strong>Simple CSV:</strong> two columns only — column 1 = SKU, column 2 = price. TAB / comma / semicolon auto-detected; Excel uses the active sheet. Full Mirakl / <code>teinda.txt</code> export also works.
+                                        </div>
+                                    </div>
+                                    <div class="tm-upload-warning mb-3">
+                                        <i class="fas fa-info-circle text-warning me-2"></i>
+                                        Import replaces all rows in <code>tiendamia_price_uploads</code>. The grid shows TM price from that table when the SKU exists in your catalog (no separate catalog update on import).
+                                    </div>
+                                    <div id="tm-upload-price-result" class="small" role="status"></div>
+                                </div>
+                                <div class="modal-footer border-top">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn text-white" id="tm-upload-price-btn" style="background-color:#26b9bd;border-color:#26b9bd;">
+                                        <i class="fas fa-file-import me-1"></i>Import
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <select id="tm-row-type-filter" class="form-select form-select-sm" style="width:120px;">
+                            <option value="all" selected>All Rows</option>
+                            <option value="parents">Parents</option>
+                            <option value="skus">SKUs</option>
+                        </select>
+
+                        <select id="tm-inv-filter" class="form-select form-select-sm" style="width:140px;">
+                            <option value="all">All Inventory</option>
+                            <option value="zero">0 Inventory</option>
+                            <option value="more" selected>More than 0</option>
+                        </select>
+
+                        <select id="tm-stock-filter" class="form-select form-select-sm" style="width:140px;">
+                            <option value="all">TM Stock</option>
+                            <option value="zero">0 TM Stock</option>
+                            <option value="more">More than 0</option>
+                        </select>
+
+                        <select id="tm-gpft-filter" class="form-select form-select-sm" style="width:130px;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0–10%</option>
+                            <option value="10-20">10–20%</option>
+                            <option value="20-30">20–30%</option>
+                            <option value="30-40">30–40%</option>
+                            <option value="40-50">40–50%</option>
+                            <option value="50plus">Above 50%</option>
+                        </select>
+
+                        <select id="tm-roi-filter" class="form-select form-select-sm" style="width:130px;">
+                            <option value="all">ROI%</option>
+                            <option value="lt40">&lt; 40%</option>
+                            <option value="40-75">40–75%</option>
+                            <option value="75-125">75–125%</option>
+                            <option value="125-175">125–175%</option>
+                            <option value="175-250">175–250%</option>
+                            <option value="gt250">&gt; 250%</option>
+                        </select>
+
+                        <select id="tm-ml30-filter" class="form-select form-select-sm" style="width:130px;" title="Excludes 0 inventory rows when filtering bands">
+                            <option value="all">ML30</option>
+                            <option value="0">0</option>
+                            <option value="0-10">1–10</option>
+                            <option value="10plus">10+</option>
+                        </select>
+
+                        <select id="tm-map-filter" class="form-select form-select-sm" style="width:120px;">
+                            <option value="all">Map</option>
+                            <option value="map">Map only</option>
+                            <option value="nmap">N Map only</option>
+                        </select>
+
+                        <div class="tm-manual-dropdown">
+                            <button class="btn btn-light btn-sm tm-dil-toggle" type="button" id="tm-dil-btn">
+                                <span class="tm-sc def"></span>DIL%
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="tm-dropdown-item tm-dil-item active" href="#" data-color="all">
+                                    <span class="tm-sc def"></span>All DIL</a></li>
+                                <li><a class="tm-dropdown-item tm-dil-item" href="#" data-color="red">
+                                    <span class="tm-sc red"></span>Red (&lt;16.7%)</a></li>
+                                <li><a class="tm-dropdown-item tm-dil-item" href="#" data-color="yellow">
+                                    <span class="tm-sc yellow"></span>Yellow (16.7–25%)</a></li>
+                                <li><a class="tm-dropdown-item tm-dil-item" href="#" data-color="green">
+                                    <span class="tm-sc green"></span>Green (25–50%)</a></li>
+                                <li><a class="tm-dropdown-item tm-dil-item" href="#" data-color="pink">
+                                    <span class="tm-sc pink"></span>Pink (50%+)</a></li>
+                            </ul>
+                        </div>
+
+                        <input type="text" id="tm-sku-search" class="form-control form-control-sm"
+                            style="max-width:220px;" placeholder="Search SKU...">
+
+                        <button type="button" id="tm-refresh-btn" class="btn btn-sm btn-outline-primary">
+                            <i class="fa fa-refresh"></i> Refresh
+                        </button>
+                        <button type="button" id="tm-export-btn" class="btn btn-sm btn-success">
+                            <i class="fas fa-file-csv"></i> Export CSV
+                        </button>
+                        <button type="button" class="btn btn-sm text-white" data-bs-toggle="modal" data-bs-target="#tmUploadPriceModal" style="background-color:#26b9bd;border-color:#26b9bd;">
+                            <i class="fas fa-file-import me-1"></i> Import prices
+                        </button>
+
+                        {{-- One button cycles: Off → Decrease → Increase → Same price → Off --}}
+                        <button type="button" id="tm-price-mode-btn" class="btn btn-sm btn-secondary"
+                            title="Click to cycle: Off → Decrease → Increase → Same price → Off">
+                            <i class="fas fa-exchange-alt"></i> Price mode
+                        </button>
+                    </div>
+
+                    <div id="tm-discount-input-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <span id="tm-selected-skus-count" class="fw-bold text-secondary"></span>
+                            <span id="tm-same-price-hint" class="small text-muted" style="display:none;">Same price: % / $ ignored — SPRICE = Price.</span>
+                            <select id="tm-discount-type-select" class="form-select form-select-sm" style="width:120px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                            <input type="number" id="tm-discount-value-input" class="form-control form-control-sm"
+                                placeholder="Enter %" step="0.01" style="width:110px;">
+                            <button type="button" id="tm-apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                            <button type="button" id="tm-clear-sprice-btn" class="btn btn-danger btn-sm">
+                                <i class="fas fa-eraser"></i> Clear SPRICE
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
+                        <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                            <span class="badge bg-primary fs-6 p-2" id="tm-total-sales-badge" style="font-weight:700;">Sales: $0</span>
+                            <span class="badge bg-warning fs-6 p-2" id="tm-total-ml30-badge" style="font-weight:700;color:#111;">ML30: 0</span>
+                            <span class="badge bg-success fs-6 p-2" id="tm-total-profit-badge" style="font-weight:700;">Profit: $0</span>
+                            <span class="badge bg-info fs-6 p-2" id="tm-avg-gpft-badge" style="font-weight:700;color:#111;">GPFT: 0%</span>
+                            <span class="badge bg-danger fs-6 p-2" id="tm-missing-badge" style="font-weight:700;">Missing L: 0</span>
+                            <span class="badge fs-6 p-2" id="tm-map-badge" style="font-weight:700;background:#198754;color:#fff;">Map: 0</span>
+                            <span class="badge fs-6 p-2" id="tm-nmap-badge" style="font-weight:700;background:#a71d2a;color:#fff;">N Map: 0</span>
+                            <span class="badge fs-6 p-2" id="tm-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2" id="tm-more-sold-badge" style="font-weight:700;background:#b6e0fe;color:#0f172a;">&gt;0 Sold: 0</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="tm-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
+                        </div>
+                    </div>
+
+                    <div id="tiendamia-products-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@section('script-bottom')
+    {{-- jQuery is already loaded in layouts/vertical head; avoid a second copy that can reset globals. --}}
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script>
+        let table = null;
+        let allRows = [];
+        let tmDilColor = 'all';
+
+        /** 'off' | 'decrease' | 'increase' | 'same' */
+        let tmPriceMode = 'off';
+        let selectedSkus = new Set();
+
+        const TM_SELECT_FIELD = '_tm_select';
+
+        function tmToast(msg, type) {
+            if (window.toastr) {
+                if (type === 'error') toastr.error(msg);
+                else if (type === 'warning') toastr.warning(msg);
+                else toastr.success(msg);
+            } else {
+                alert(msg);
+            }
+        }
+
+        const TM_UPLOAD_PRICE_URL = @json(route('tiendamia.products.upload.price'));
+        const TM_TABULATOR_DATA_URL = @json(route('tiendamia.products.tabulator.data'));
+
+        function tmFormatPriceUploadError(j, status, rawBody) {
+            if (j && typeof j.errors === 'object' && j.errors !== null) {
+                const vals = Object.values(j.errors).flat().filter(Boolean);
+                if (vals.length) {
+                    return String(vals[0]);
+                }
+            }
+            if (j && j.message) {
+                return String(j.message);
+            }
+            if (j && j.error) {
+                return String(j.error);
+            }
+            if (status === 419) {
+                return 'Session expired (419). Refresh the page and try again.';
+            }
+            if (status >= 400 && rawBody && rawBody.length < 800) {
+                return 'HTTP ' + status + ': ' + rawBody.replace(/<[^>]+>/g, ' ').trim().slice(0, 400);
+            }
+            if (status >= 400) {
+                return 'HTTP ' + status + ' — upload failed.';
+            }
+            return 'Upload failed.';
+        }
+
+        function roundToRetailPrice(price) {
+            return Math.ceil(price) - 0.01;
+        }
+
+        function tmPatchAllRowsSku(sku, patch) {
+            for (let i = 0; i < allRows.length; i++) {
+                const r = allRows[i];
+                if (r && r.sku === sku && !r.is_parent) {
+                    Object.assign(r, patch);
+                    break;
+                }
+            }
+        }
+
+        function tmRowsForSku(sku) {
+            if (!table) return [];
+            let rows = [];
+            if (typeof table.searchRows === 'function') {
+                try {
+                    rows = table.searchRows('sku', '=', sku) || [];
+                } catch (e) {
+                    rows = [];
+                }
+            }
+            if (rows.length) return rows;
+            return table.getRows().filter(function(r) {
+                const d = r.getData();
+                return d && String(d.sku) === String(sku) && !d.is_parent;
+            });
+        }
+
+        function tmResyncSelectColumn() {
+            if (!table || typeof table.showColumn !== 'function') return;
+            if (tmPriceMode !== 'off') {
+                table.showColumn(TM_SELECT_FIELD);
+            }
+        }
+
+        function syncTmPriceModeUi() {
+            const $btn = $('#tm-price-mode-btn');
+            if (table && typeof table.hideColumn === 'function' && typeof table.showColumn === 'function') {
+                if (tmPriceMode === 'off') {
+                    table.hideColumn(TM_SELECT_FIELD);
+                    selectedSkus.clear();
+                    $('#tm-select-all-checkbox').prop('checked', false);
+                } else {
+                    table.showColumn(TM_SELECT_FIELD);
+                }
+            }
+            $btn.removeClass('btn-secondary btn-warning btn-success btn-danger btn-primary btn-info');
+            $('#tm-same-price-hint').toggle(tmPriceMode === 'same');
+            const discDisabled = tmPriceMode === 'same';
+            $('#tm-discount-type-select, #tm-discount-value-input').prop('disabled', discDisabled);
+            if (tmPriceMode === 'off') {
+                $btn.addClass('btn-secondary').html('<i class="fas fa-exchange-alt"></i> Price mode');
+            } else if (tmPriceMode === 'decrease') {
+                $btn.addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> Decrease ON');
+            } else if (tmPriceMode === 'increase') {
+                $btn.addClass('btn-primary').html('<i class="fas fa-arrow-up"></i> Increase ON');
+            } else if (tmPriceMode === 'same') {
+                $btn.addClass('btn-info').html('<i class="fas fa-equals"></i> Same price ON');
+            }
+            updateSelectedCount();
+            if (table && typeof table.redraw === 'function') {
+                table.redraw(true);
+            }
+            updateTmSelectAllCheckbox();
+        }
+
+        function money(v) {
+            const n = parseFloat(v);
+            if (!Number.isFinite(n)) return '—';
+            return '$' + n.toFixed(2);
+        }
+
+        function tmStrictNMapFromMap(mapVal) {
+            const s = (mapVal || '').trim();
+            return s.startsWith('N Map');
+        }
+
+        function tmDilBucket(row) {
+            const inv = parseFloat(row.inv) || 0;
+            const ov = parseFloat(row.ov_l30) || 0;
+            if (inv === 0) return 'all';
+            const dil = (ov / inv) * 100;
+            if (dil < 16.66) return 'red';
+            if (dil < 25) return 'yellow';
+            if (dil < 50) return 'green';
+            return 'pink';
+        }
+
+        function updateSummary(rows) {
+            let totalSales = 0, totalMl30 = 0, totalProfit = 0;
+            let gpftSum = 0, gpftCount = 0;
+            let roiSum = 0, roiCount = 0;
+            let missingCount = 0, mapCount = 0, nmapCount = 0;
+            let zeroSold = 0, moreSold = 0;
+
+            rows.forEach(row => {
+                if (row.is_parent) return;
+                const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
+                const ml30 = parseFloat(row.al30 != null ? row.al30 : row.m_l30) || 0;
+                const profit = parseFloat(row.profit) || 0;
+                const mapVal = (row.map || '').trim();
+
+                if (!isMissing) {
+                    totalProfit += ml30 * profit;
+                    totalSales += parseFloat(row.sales) || 0;
+                    const gpft = parseFloat(row.gpft);
+                    if (Number.isFinite(gpft)) { gpftSum += gpft; gpftCount++; }
+                    const groi = parseFloat(row.groi);
+                    if (Number.isFinite(groi)) { roiSum += groi; roiCount++; }
+                }
+
+                totalMl30 += ml30;
+                if (ml30 === 0) zeroSold++; else moreSold++;
+                if (isMissing) missingCount++;
+                if (!isMissing && mapVal === 'Map') mapCount++;
+                else if (!isMissing && tmStrictNMapFromMap(mapVal)) nmapCount++;
+            });
+
+            const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
+            const avgRoi = roiCount > 0 ? roiSum / roiCount : 0;
+
+            $('#tm-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
+            $('#tm-total-ml30-badge').text('ML30: ' + totalMl30.toLocaleString());
+            $('#tm-total-profit-badge').text('Profit: $' + Math.round(totalProfit).toLocaleString());
+            $('#tm-avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
+            $('#tm-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
+            $('#tm-map-badge').text('Map: ' + mapCount.toLocaleString());
+            $('#tm-nmap-badge').text('N Map: ' + nmapCount.toLocaleString());
+            $('#tm-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
+            $('#tm-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
+            $('#tm-avg-roi-badge').text('ROI: ' + Math.round(avgRoi) + '%');
+        }
+
+        function gpftMatchesBand(gpft, band) {
+            if (band === 'all') return true;
+            const v = parseFloat(gpft) || 0;
+            if (band === 'negative') return v < 0;
+            if (band === '0-10') return v >= 0 && v < 10;
+            if (band === '10-20') return v >= 10 && v < 20;
+            if (band === '20-30') return v >= 20 && v < 30;
+            if (band === '30-40') return v >= 30 && v < 40;
+            if (band === '40-50') return v >= 40 && v < 50;
+            if (band === '50plus') return v >= 50;
+            return true;
+        }
+
+        function roiMatchesBand(groi, band) {
+            if (band === 'all') return true;
+            const roi = parseFloat(groi) || 0;
+            if (band === 'lt40') return roi < 40;
+            if (band === '40-75') return roi >= 40 && roi < 75;
+            if (band === '75-125') return roi >= 75 && roi < 125;
+            if (band === '125-175') return roi >= 125 && roi < 175;
+            if (band === '175-250') return roi >= 175 && roi < 250;
+            if (band === 'gt250') return roi >= 250;
+            return true;
+        }
+
+        function computeFiltered() {
+            const rowType = $('#tm-row-type-filter').val();
+            const invF = $('#tm-inv-filter').val();
+            const stockF = $('#tm-stock-filter').val();
+            const gpftF = $('#tm-gpft-filter').val();
+            const roiF = $('#tm-roi-filter').val();
+            const ml30F = $('#tm-ml30-filter').val();
+            const mapF = $('#tm-map-filter').val();
+            const q = ($('#tm-sku-search').val() || '').trim().toLowerCase();
+
+            return allRows.filter(row => {
+                if (row.is_parent) return true;
+
+                const parent = (row.parent || '').trim();
+                if (rowType === 'parents' && !parent) return false;
+                if (rowType === 'skus' && parent) return false;
+
+                const inv = parseInt(row.inv, 10) || 0;
+                if (invF === 'zero' && inv !== 0) return false;
+                if (invF === 'more' && inv <= 0) return false;
+
+                const st = parseInt(row.tm_stock, 10) || 0;
+                if (stockF === 'zero' && st !== 0) return false;
+                if (stockF === 'more' && st <= 0) return false;
+
+                if (ml30F !== 'all' && inv <= 0) return false;
+                const ml30 = parseFloat(row.al30 != null ? row.al30 : row.m_l30) || 0;
+                if (ml30F === '0' && ml30 !== 0) return false;
+                if (ml30F === '0-10' && !(ml30 > 0 && ml30 <= 10)) return false;
+                if (ml30F === '10plus' && !(ml30 > 10)) return false;
+
+                if (!gpftMatchesBand(row.gpft, gpftF)) return false;
+                if (!roiMatchesBand(row.groi, roiF)) return false;
+
+                const mapVal = (row.map || '').trim();
+                if (mapF === 'map' && mapVal !== 'Map') return false;
+                if (mapF === 'nmap' && !tmStrictNMapFromMap(mapVal)) return false;
+
+                if (tmDilColor !== 'all' && tmDilBucket(row) !== tmDilColor) return false;
+
+                if (q && String(row.sku || '').toLowerCase().indexOf(q) === -1) return false;
+                return true;
+            });
+        }
+
+        function applyClientFilters() {
+            if (!table) return;
+            const filtered = computeFiltered();
+            table.setData(filtered);
+            updateSummary(filtered);
+            tmResyncSelectColumn();
+            updateTmSelectAllCheckbox();
+        }
+
+        function updateSelectedCount() {
+            const count = selectedSkus.size;
+            $('#tm-selected-skus-count').text(count + ' SKU' + (count !== 1 ? 's' : '') + ' selected');
+            $('#tm-discount-input-container').toggle(count > 0);
+        }
+
+        function updateTmSelectAllCheckbox() {
+            if (!table) return;
+            const data = table.getData();
+            const skus = data.filter(function(row) { return row && !row.is_parent && row.sku; }).map(function(r) { return r.sku; });
+            if (skus.length === 0) {
+                $('#tm-select-all-checkbox').prop('checked', false);
+                return;
+            }
+            const allSel = skus.every(function(s) { return selectedSkus.has(s); });
+            $('#tm-select-all-checkbox').prop('checked', allSel);
+        }
+
+        function tmSaveSpriceUpdates(updates) {
+            fetch('{{ route('tiendamia.products.save.sprice') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ updates: updates }),
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (!data.success) {
+                    tmToast(data.error || 'Save failed', 'error');
+                }
+            }).catch(function() {
+                tmToast('Save failed', 'error');
+            });
+        }
+
+        function applyTmDiscount() {
+            if (tmPriceMode === 'off') {
+                tmToast('Turn on a price mode first (click Price mode)', 'error');
+                return;
+            }
+            if (selectedSkus.size === 0) {
+                tmToast('Please select at least one SKU', 'error');
+                return;
+            }
+            const discountType = $('#tm-discount-type-select').val();
+            const discountValue = parseFloat($('#tm-discount-value-input').val());
+            if (tmPriceMode !== 'same') {
+                if (isNaN(discountValue) || discountValue === 0) {
+                    tmToast('Please enter a valid discount value', 'error');
+                    return;
+                }
+            }
+            let updatedCount = 0;
+            const updates = [];
+            selectedSkus.forEach(function(sku) {
+                const rowData = allRows.find(function(r) { return r && r.sku === sku && !r.is_parent; });
+                if (!rowData) return;
+                const currentPrice = parseFloat(rowData.price) || 0;
+                if (currentPrice <= 0) return;
+                let newSprice;
+                if (tmPriceMode === 'same') {
+                    newSprice = Math.round(currentPrice * 100) / 100;
+                    if (newSprice < 0.99) {
+                        newSprice = 0.99;
+                    }
+                } else if (discountType === 'percentage') {
+                    newSprice = tmPriceMode === 'increase'
+                        ? currentPrice * (1 + discountValue / 100)
+                        : currentPrice * (1 - discountValue / 100);
+                    newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
+                } else {
+                    newSprice = tmPriceMode === 'increase'
+                        ? currentPrice + discountValue
+                        : currentPrice - discountValue;
+                    newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
+                }
+                const margin = parseFloat(rowData._margin) || 1;
+                const lp = parseFloat(rowData.lp) || 0;
+                const mShip = parseFloat(rowData.m_ship) || 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp - mShip) / newSprice) * 100) : 0;
+                const sroi = lp > 0 ? Math.round(((newSprice * margin - lp - mShip) / lp) * 100) : 0;
+                tmPatchAllRowsSku(sku, { sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                const found = tmRowsForSku(sku);
+                if (found.length) {
+                    found[0].update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                }
+                updates.push({ sku: sku, sprice: newSprice });
+                updatedCount++;
+            });
+            if (updates.length) {
+                tmSaveSpriceUpdates(updates);
+            }
+            $('#tm-discount-value-input').val('');
+            const label = tmPriceMode === 'same' ? 'Same price' : (tmPriceMode === 'increase' ? 'Increase' : 'Discount');
+            tmToast(label + ' applied to ' + updatedCount + ' SKU(s)', 'success');
+            applyClientFilters();
+        }
+
+        function clearTmSpriceForSelected() {
+            if (selectedSkus.size === 0) {
+                tmToast('Please select SKUs first', 'error');
+                return;
+            }
+            if (!confirm('Clear SPRICE for ' + selectedSkus.size + ' selected SKU(s)?')) {
+                return;
+            }
+            let clearedCount = 0;
+            const updates = [];
+            selectedSkus.forEach(function(sku) {
+                tmPatchAllRowsSku(sku, { sprice: 0, sgpft: 0, sroi: 0 });
+                const found = tmRowsForSku(sku);
+                if (found.length) {
+                    found[0].update({ sprice: 0, sgpft: 0, sroi: 0 });
+                }
+                updates.push({ sku: sku, sprice: 0 });
+                clearedCount++;
+            });
+            if (updates.length) {
+                tmSaveSpriceUpdates(updates);
+            }
+            tmToast('SPRICE cleared for ' + clearedCount + ' SKU(s)', 'success');
+            applyClientFilters();
+        }
+
+        $(document).ready(function() {
+            $(document).on('click', '.tm-dil-toggle', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).closest('.tm-manual-dropdown').toggleClass('show');
+            });
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('.tm-manual-dropdown').length) {
+                    $('.tm-manual-dropdown').removeClass('show');
+                }
+            });
+            $(document).on('click', '.tm-dil-item', function(e) {
+                e.preventDefault();
+                const color = $(this).data('color') || 'all';
+                tmDilColor = color;
+                $('.tm-dil-item').removeClass('active');
+                $(this).addClass('active');
+                const sc = color === 'all' ? 'def' : color;
+                $('#tm-dil-btn').find('.tm-sc').attr('class', 'tm-sc ' + sc);
+                $('.tm-manual-dropdown').removeClass('show');
+                applyClientFilters();
+            });
+
+            const tmUploadModalEl = document.getElementById('tmUploadPriceModal');
+            if (tmUploadModalEl) {
+                tmUploadModalEl.addEventListener('show.bs.modal', function() {
+                    $('#tm-upload-price-result').empty();
+                    $('#tm-price-file').val('');
+                });
+            }
+
+            $(document).on('click', '#tm-upload-price-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const inputEl = document.getElementById('tm-price-file');
+                const $out = $('#tm-upload-price-result');
+                const $btn = $('#tm-upload-price-btn');
+                const meta = document.querySelector('meta[name="csrf-token"]');
+                const csrf = meta ? meta.getAttribute('content') : '';
+                if (!inputEl || !inputEl.files || !inputEl.files.length) {
+                    const msg = 'Choose a file first.';
+                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': msg }));
+                    tmToast(msg, 'error');
+                    return;
+                }
+                if (!csrf) {
+                    const msg = 'Missing CSRF token. Refresh the page.';
+                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': msg }));
+                    tmToast(msg, 'error');
+                    return;
+                }
+                const fd = new FormData();
+                fd.append('price_file', inputEl.files[0]);
+                fd.append('_token', csrf);
+                $btn.prop('disabled', true);
+                $out.empty().append($('<span/>', { 'class': 'text-muted', 'text': 'Importing…' }));
+                fetch(TM_UPLOAD_PRICE_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-CSRF-TOKEN': csrf,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: fd,
+                }).then(function(r) {
+                    return r.text().then(function(text) {
+                        let j = null;
+                        if (text) {
+                            try {
+                                j = JSON.parse(text);
+                            } catch (err) {
+                                j = { success: false, error: text.slice(0, 500) };
+                            }
+                        } else {
+                            j = { success: false, error: 'Empty response (HTTP ' + r.status + ').' };
+                        }
+                        return { ok: r.ok, status: r.status, j: j, raw: text };
+                    });
+                }).then(function(res) {
+                    const j = res.j;
+                    if (!res.ok || !j.success) {
+                        const err = tmFormatPriceUploadError(j, res.status, res.raw || '');
+                        $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': err }));
+                        tmToast(err, 'error');
+                        return;
+                    }
+                    let msg = 'Imported ' + j.rows_stored + ' row(s) into tiendamia_price_uploads.';
+                    if (j.skipped_empty_offer_sku > 0) {
+                        msg += ' Skipped (empty SKU): ' + j.skipped_empty_offer_sku + '.';
+                    }
+                    tmToast(msg, 'success');
+                    if (tmUploadModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const inst = bootstrap.Modal.getInstance(tmUploadModalEl);
+                        if (inst) {
+                            inst.hide();
+                        }
+                    }
+                    if (table) {
+                        table.setData(TM_TABULATOR_DATA_URL);
+                    }
+                }).catch(function(err) {
+                    const errMsg = (err && err.message) ? String(err.message) : 'Network error.';
+                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': errMsg }));
+                    tmToast(errMsg, 'error');
+                }).finally(function() {
+                    $btn.prop('disabled', false);
+                });
+            });
+
+            table = new Tabulator('#tiendamia-products-table', {
+                ajaxURL: TM_TABULATOR_DATA_URL,
+                ajaxResponse: function(url, params, response) {
+                    if (response && response.error) {
+                        console.error(response.error);
+                        allRows = [];
+                        return [];
+                    }
+                    allRows = Array.isArray(response) ? response : [];
+                    const filtered = computeFiltered();
+                    updateSummary(filtered);
+                    queueMicrotask(function() {
+                        tmResyncSelectColumn();
+                        updateTmSelectAllCheckbox();
+                    });
+                    return filtered;
+                },
+                layout: 'fitDataStretch',
+                pagination: true,
+                paginationSize: 100,
+                paginationSizeSelector: [50, 100, 200, 500],
+                paginationCounter: 'rows',
+                initialSort: [{ column: 'sku', dir: 'asc' }],
+                columns: [
+                    {
+                        title: "<input type=\"checkbox\" id=\"tm-select-all-checkbox\">",
+                        field: TM_SELECT_FIELD,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        width: 40,
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent) return '';
+                            const sku = rowData.sku;
+                            const enc = encodeURIComponent(String(sku));
+                            const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                            return '<input type="checkbox" class="tm-sku-select-checkbox" data-sku-enc="' + enc + '" ' + isChecked + '>';
+                        }
+                    },
+                    {
+                        title: 'Parent',
+                        field: 'parent',
+                        width: 120,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = cell.getValue() || '';
+                            if (!v) return '<span style="color:#adb5bd;">–</span>';
+                            return '<span style="color:#0d6efd;font-size:11px;font-weight:600;">' +
+                                String(v).replace(/</g, '&lt;') + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Image',
+                        field: 'image',
+                        width: 60,
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const src = cell.getValue();
+                            if (!src) return '';
+                            return '<img src="' + String(src).replace(/"/g, '&quot;') + '" alt="" ' +
+                                'style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'">';
+                        }
+                    },
+                    {
+                        title: 'SKU',
+                        field: 'sku',
+                        minWidth: 180,
+                        frozen: true,
+                        headerFilter: 'input',
+                        cssClass: 'fw-bold text-primary',
+                    },
+                    {
+                        title: 'INV',
+                        field: 'inv',
+                        width: 55,
+                        hozAlign: 'center',
+                        sorter: 'number',
+                        formatter: function(cell) {
+                            const v = parseInt(cell.getValue(), 10) || 0;
+                            if (v === 0) return '<span style="color:#dc3545;font-weight:600;">0</span>';
+                            return '<span style="font-weight:600;">' + v + '</span>';
+                        }
+                    },
+                    {
+                        title: 'TM Stock',
+                        field: 'tm_stock',
+                        width: 65,
+                        hozAlign: 'center',
+                        sorter: 'number',
+                        formatter: function(cell) {
+                            const v = parseInt(cell.getValue(), 10) || 0;
+                            if (v === 0) return '<span style="color:#dc3545;font-weight:600;">0</span>';
+                            return '<span style="font-weight:600;">' + v + '</span>';
+                        }
+                    },
+                    {
+                        title: 'OV L30',
+                        field: 'ov_l30',
+                        width: 60,
+                        hozAlign: 'center',
+                        sorter: 'number',
+                        formatter: function(cell) {
+                            return '<span style="font-weight:700;">' + (parseInt(cell.getValue(), 10) || 0) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Dil',
+                        field: 'dil_percent',
+                        width: 55,
+                        hozAlign: 'center',
+                        sorter: 'number',
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const inv = parseFloat(row.inv) || 0;
+                            const ov = parseFloat(row.ov_l30) || 0;
+                            if (inv === 0) return '<span style="color:#6c757d;">0%</span>';
+                            const dil = (ov / inv) * 100;
+                            const color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(dil) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'ML30',
+                        field: 'm_l30',
+                        width: 55,
+                        hozAlign: 'center',
+                        sorter: 'number',
+                        formatter: function(cell) {
+                            return '<span style="font-weight:700;">' + (parseInt(cell.getValue(), 10) || 0) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'ML60',
+                        field: 'm_l60',
+                        width: 55,
+                        hozAlign: 'center',
+                        sorter: 'number',
+                        formatter: function(cell) {
+                            return '<span style="font-weight:700;">' + (parseInt(cell.getValue(), 10) || 0) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Price',
+                        field: 'price',
+                        width: 72,
+                        hozAlign: 'right',
+                        sorter: 'number',
+                        formatter: function(cell) { return money(cell.getValue()); }
+                    },
+                    {
+                        title: 'LMP',
+                        field: 'lmp',
+                        hozAlign: 'center',
+                        width: 56,
+                        headerSort: false,
+                        formatter: function() {
+                            const redDot = '<span style="display:inline-flex;width:14px;height:14px;border-radius:50%;background:#dc3545;"></span>';
+                            return '<span title="No LMP data for Tiendamia feed">' + redDot + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Missing L',
+                        field: 'missing',
+                        width: 72,
+                        hozAlign: 'center',
+                        formatter: function(cell) {
+                            const value = (cell.getValue() || '').toString().trim().toUpperCase();
+                            if (value === 'M') return '<span class="badge bg-danger">L</span>';
+                            return '';
+                        }
+                    },
+                    {
+                        title: 'Map',
+                        field: 'map',
+                        hozAlign: 'center',
+                        width: 90,
+                        formatter: function(cell) {
+                            const val = (cell.getValue() || '').trim();
+                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                            if (val.startsWith('N Map|')) {
+                                const part = val.split('|')[1];
+                                const ad = Math.abs(parseFloat(String(part || '').trim()) || 0);
+                                if (Number.isFinite(ad) && ad <= 3) {
+                                    return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                                }
+                                return '<span style="color:#dc3545;font-weight:bold;">N Map (' + String(part).replace(/</g, '&lt;') + ')</span>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: 'GPFT',
+                        field: 'gpft',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue());
+                            if (!Number.isFinite(v)) return '<span style="color:#6c757d;">–</span>';
+                            if (v === 0) return '0%';
+                            const color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'GROI',
+                        field: 'groi',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue()) || 0;
+                            let color;
+                            if (v < 40) color = '#a00211';
+                            else if (v < 75) color = '#ffc107';
+                            else if (v < 125) color = '#3591dc';
+                            else if (v < 250) color = '#28a745';
+                            else color = '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'Profit',
+                        field: 'profit',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        formatter: function(cell) { return money(cell.getValue()); }
+                    },
+                    {
+                        title: 'Sales',
+                        field: 'sales',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        formatter: function(cell) { return money(cell.getValue()); }
+                    },
+                    {
+                        title: 'LP',
+                        field: 'lp',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        formatter: function(cell) { return money(cell.getValue()); }
+                    },
+                    {
+                        title: 'Ship',
+                        field: 'ship',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        formatter: function(cell) { return money(cell.getValue()); }
+                    },
+                    {
+                        title: 'WT ACT',
+                        field: 'wt_act',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        width: 78,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v === null || v === undefined || v === '') return '<span style="color:#6c757d;">—</span>';
+                            const n = parseFloat(v);
+                            if (!Number.isFinite(n)) return '<span style="color:#6c757d;">—</span>';
+                            return '<span style="font-weight:600;">' + n.toFixed(2) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'M Ship',
+                        field: 'm_ship',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        width: 78,
+                        formatter: function(cell) { return money(cell.getValue()); }
+                    },
+                    {
+                        title: 'Sprice',
+                        field: 'sprice',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        editor: 'number',
+                        editorParams: { min: 0, step: 0.01 },
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue()) || 0;
+                            return '<span style="font-weight:600;padding:2px 6px;border-radius:3px;">' + money(v) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'SPFT',
+                        field: 'sgpft',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue());
+                            if (!Number.isFinite(v) || v === 0) return '0%';
+                            const color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'SROI',
+                        field: 'sroi',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue());
+                            if (!Number.isFinite(v) || v === 0) return '0%';
+                            let color;
+                            if (v < 40) color = '#a00211';
+                            else if (v < 75) color = '#ffc107';
+                            else if (v < 125) color = '#3591dc';
+                            else if (v < 250) color = '#28a745';
+                            else color = '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                ],
+            });
+
+            $('#tm-price-mode-btn').on('click', function() {
+                if (!table) return;
+                const order = ['off', 'decrease', 'increase', 'same'];
+                const i = order.indexOf(tmPriceMode);
+                tmPriceMode = order[(i + 1) % order.length];
+                syncTmPriceModeUi();
+            });
+
+            syncTmPriceModeUi();
+
+            $('#tm-discount-type-select').on('change', function() {
+                const t = $(this).val();
+                $('#tm-discount-value-input').attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
+            });
+
+            $('#tm-apply-discount-btn').on('click', function() { applyTmDiscount(); });
+            $('#tm-discount-value-input').on('keypress', function(e) {
+                if (e.which === 13) applyTmDiscount();
+            });
+            $('#tm-clear-sprice-btn').on('click', function() { clearTmSpriceForSelected(); });
+
+            $(document).on('change', '#tm-select-all-checkbox', function() {
+                if (!table) return;
+                const isChecked = $(this).prop('checked');
+                table.getData().forEach(function(row) {
+                    if (!row || row.is_parent || !row.sku) return;
+                    if (isChecked) {
+                        selectedSkus.add(row.sku);
+                    } else {
+                        selectedSkus.delete(row.sku);
+                    }
+                });
+                $('.tm-sku-select-checkbox').prop('checked', isChecked);
+                updateSelectedCount();
+            });
+
+            $(document).on('change', '.tm-sku-select-checkbox', function() {
+                const enc = $(this).attr('data-sku-enc');
+                const sku = enc ? decodeURIComponent(enc) : '';
+                if ($(this).prop('checked')) {
+                    selectedSkus.add(sku);
+                } else {
+                    selectedSkus.delete(sku);
+                }
+                updateSelectedCount();
+                updateTmSelectAllCheckbox();
+            });
+
+            table.on('cellEdited', function(cell) {
+                if (cell.getField() !== 'sprice') return;
+                const d = cell.getRow().getData();
+                if (d.is_parent) return;
+                const sku = d.sku;
+                const sprice = parseFloat(cell.getValue()) || 0;
+                const margin = parseFloat(d._margin) || 1;
+                const lp = parseFloat(d.lp) || 0;
+                const mShip = parseFloat(d.m_ship) || 0;
+                const sgpft = sprice > 0 ? Math.round(((sprice * margin - lp - mShip) / sprice) * 100) : 0;
+                const sroi = lp > 0 ? Math.round(((sprice * margin - lp - mShip) / lp) * 100) : 0;
+                cell.getRow().update({ sgpft: sgpft, sroi: sroi });
+                tmPatchAllRowsSku(sku, { sprice: sprice, sgpft: sgpft, sroi: sroi });
+                tmSaveSpriceUpdates([{ sku: sku, sprice: sprice }]);
+                updateSummary(computeFiltered());
+            });
+
+            $('#tm-row-type-filter, #tm-inv-filter, #tm-stock-filter, #tm-gpft-filter, #tm-roi-filter, #tm-ml30-filter, #tm-map-filter')
+                .on('change', applyClientFilters);
+            let searchTimer = null;
+            $('#tm-sku-search').on('input', function() {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(applyClientFilters, 200);
+            });
+
+            $('#tm-refresh-btn').on('click', function() {
+                table.setData(TM_TABULATOR_DATA_URL);
+            });
+
+            $('#tm-export-btn').on('click', function() {
+                const name = 'tiendamia_princing_' + new Date().toISOString().slice(0, 10) + '.csv';
+                table.download('csv', name);
+            });
+        });
+    </script>
+@endsection

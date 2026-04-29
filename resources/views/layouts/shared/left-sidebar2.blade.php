@@ -2121,6 +2121,7 @@
 
                                             <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
                                             </li>
+                                            <li><a href="{{ route('tiendamia.products.pricing') }}">Tiendamia Princing</a></li>
                                     </ul>
                                 </div>
                             </li>

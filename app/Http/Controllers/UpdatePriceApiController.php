@@ -15,34 +15,33 @@ class UpdatePriceApiController extends Controller
     public static function updateShopifyVariantPrice($variantId, $newPrice)
     {
         try {
-            // Shopify Rate Limiting: 2 calls per second
+            // Shopify rate limiting (2 calls/sec) via default cache store. On production, a missing or
+            // unwritable storage/framework/cache/data tree causes file cache to throw — do not fail the
+            // price update; fall back to the per-request delay below + HTTP 429 retries.
             $rateLimitKey = 'shopify_api_rate_limit';
-            $now = now();
-            $windowStart = $now->copy()->startOfSecond();
-            
-            // Get timestamps of recent calls in this second
-            $recentCalls = Cache::get($rateLimitKey, []);
-            
-            // Filter out calls from previous seconds
-            $recentCalls = array_filter($recentCalls, function($timestamp) use ($windowStart) {
-                return $timestamp >= $windowStart->timestamp;
-            });
-            
-            // If we have 2 or more calls in this second, wait
-            if (count($recentCalls) >= 2) {
-                // Calculate how long to wait (remaining time in current second + small buffer)
-                $waitTime = 1000000 - ($now->micro); // microseconds until next second
-                usleep($waitTime + 100000); // add 100ms buffer
-                
-                // Clear the cache after waiting
-                $recentCalls = [];
+            try {
+                $now = now();
+                $windowStart = $now->copy()->startOfSecond();
+
+                $recentCalls = Cache::get($rateLimitKey, []);
+                $recentCalls = array_filter($recentCalls, function ($timestamp) use ($windowStart) {
+                    return $timestamp >= $windowStart->timestamp;
+                });
+
+                if (count($recentCalls) >= 2) {
+                    $waitTime = 1000000 - ($now->micro);
+                    usleep($waitTime + 100000);
+                    $recentCalls = [];
+                }
+
+                $recentCalls[] = now()->timestamp;
+                Cache::put($rateLimitKey, $recentCalls, 2);
+            } catch (\Throwable $e) {
+                Log::warning('Shopify price update: rate-limit cache unavailable, continuing without coordinated throttle', [
+                    'error' => $e->getMessage(),
+                    'hint' => 'Ensure storage/framework/cache/data exists and is writable by the web user, or set CACHE_DRIVER=redis (or database).',
+                ]);
             }
-            
-            // Add current call timestamp
-            $recentCalls[] = now()->timestamp;
-            
-            // Store with 2 second TTL
-            Cache::put($rateLimitKey, $recentCalls, 2);
 
             Log::info('Shopify price update started', [
                 'variant_id' => $variantId,

@@ -157,6 +157,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 @endsection
 
 @section('content')
@@ -408,36 +409,39 @@
                         ({{ rtrim(rtrim(number_format((float) ($tiktokPercentage ?? 80), 2, '.', ''), '0'), '.') }}% Margin)
                     </h6>
                     <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
-                        <span class="badge bg-primary fs-6 p-2 tt-badge-chart" data-metric="total_sales"
+                        <span class="badge bg-primary fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="total_sales"
                             id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2 tt-badge-chart" data-metric="avg_gpft" id="avg-gpft-badge"
-                            style="color: black; font-weight: bold; cursor: pointer;" title="View trend">GPFT:
+                            title="Click or hover (½s) for daily trend">Sales: $0</span>
+                        <span class="badge bg-success fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="total_pft"
+                            id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
+                            title="Click or hover (½s) for daily trend">PFT: $0</span>
+                        <span class="badge bg-info fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="avg_gpft" id="avg-gpft-badge"
+                            style="color: black; font-weight: bold; cursor: pointer;" title="Click or hover for daily trend">GPFT:
                             0%</span>
-                        <span class="badge bg-warning fs-6 p-2 tt-badge-chart" data-metric="avg_price"
+                        <span class="badge bg-warning fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="avg_price"
                             id="avg-price-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">Price: $0</span>
-                        <span class="badge bg-success fs-6 p-2 tt-badge-chart" data-metric="total_l30"
+                            title="Click or hover for daily trend">Price: $0</span>
+                        <span class="badge bg-success fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="total_l30"
                             id="total-l30-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">TT L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
+                            title="Click or hover for daily trend">TT L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 tt-hover-chart" id="zero-sold-count-badge" data-metric="zero_sold_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter 0 sold items">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge"
+                            title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2 tt-hover-chart" id="more-sold-count-badge" data-metric="sold_count"
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
-                            title="Click to filter items with sales">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2 tt-badge-chart" data-metric="avg_roi"
+                            title="Click to filter · Hover ½s for daily trend">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="avg_roi"
                             id="roi-percent-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="View trend">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge"
+                            title="Click or hover for daily trend">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2 tt-hover-chart" id="missing-count-badge" data-metric="missing_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter: Missing L (not listed on TikTok)">Missing L: 0</span>
-                        <span class="badge fs-6 p-2" id="map-count-badge"
+                            title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
+                        <span class="badge fs-6 p-2 tt-hover-chart" id="map-count-badge" data-metric="map_count"
                             style="background-color: #198754; color: #fff; font-weight: bold; cursor: pointer;"
-                            title="Click to filter: |INV − TT Stock| ≤ 3 (listed, not Missing)">Map: 0</span>
-                        <span class="badge fs-6 p-2" id="inv-tt-stock-badge"
+                            title="Click to filter · Hover ½s for daily trend">Map: 0</span>
+                        <span class="badge fs-6 p-2 tt-hover-chart" id="inv-tt-stock-badge" data-metric="nmap_count"
                             style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;"
-                            title="Click to filter: |INV − TT Stock| &gt; 3 only (≤3 excluded from N Map)">N Map: 0</span>
+                            title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -471,10 +475,11 @@
         </div>
     </div>
 
-    <!-- Badge Trend Modal -->
+    <!-- Badge Trend Modal (top-aligned like eBay 3 / Faire badge charts — not vertically centered) -->
     <div class="modal fade" id="ttBadgeChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
-            <div class="modal-content">
+        <div class="modal-dialog modal-xl shadow-none modal-dialog-scrollable"
+            style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
                 <div class="modal-header py-2">
                     <h6 class="modal-title mb-0" id="ttBadgeChartModalTitle">TikTok - Badge Trend</h6>
                     <div class="d-flex align-items-center gap-2 me-2">
@@ -485,12 +490,13 @@
                             <option value="30" selected>30 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
                         </select>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body pt-2 pb-2">
-                    <div id="ttBadgeChartContainer" style="height: 38vh; display: none; align-items: stretch;">
+                    <div id="ttBadgeChartContainer" style="height: 38vh; display: none; flex-direction: row; align-items: stretch;">
                         <div style="flex: 1; min-width: 0;">
                             <canvas id="ttBadgeChartCanvas"></canvas>
                         </div>
@@ -517,7 +523,8 @@
                         <span class="spinner-border spinner-border-sm me-2"></span>Loading chart...
                     </div>
                     <div id="ttBadgeChartNoData" class="text-center py-3 text-muted" style="display: none;">
-                        No trend data available.
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2 d-block"></i>
+                        No daily snapshots yet. Open this page on separate days to build history (saved automatically).
                     </div>
                 </div>
             </div>
@@ -611,14 +618,23 @@
             let ttBadgeChartDays = 30;
             let ttBadgeChartMetricKey = '';
             let ttBadgeChartAjax = null;
-            const ttBadgeDollarMetrics = ['total_sales', 'avg_price'];
-            const ttBadgePercentMetrics = ['avg_gpft', 'avg_roi'];
+            const ttBadgeDollarMetrics = ['total_sales', 'avg_price', 'total_pft', 'total_cogs'];
+            const ttBadgePercentMetrics = ['avg_gpft', 'avg_roi', 'avg_dil'];
             const ttBadgeMetricLabels = {
                 total_sales: 'Sales',
+                total_pft: 'Profit',
                 avg_gpft: 'GPFT',
                 avg_price: 'Price',
                 total_l30: 'TT L30',
                 avg_roi: 'ROI%',
+                avg_dil: 'Avg DIL%',
+                total_cogs: 'COGS',
+                zero_sold_count: '0 Sold',
+                sold_count: '> 0 Sold',
+                missing_count: 'Missing L',
+                map_count: 'Map',
+                nmap_count: 'N Map',
+                inv_tt_stock_count: 'N Map',
             };
 
             function ttFormatChartValue(v) { 
@@ -628,6 +644,48 @@
                 if (ttBadgePercentMetrics.includes(ttBadgeChartMetricKey)) return num.toFixed(1) + '%';
                 return Math.round(num).toLocaleString('en-US');
             }
+
+            function ttBadgeChartBrand() {
+                return (TTP_CFG.summaryChannel === 'tiktok2') ? 'TikTok 2' : 'TikTok';
+            }
+
+            function ttBadgeChartModalTitle() {
+                const label = ttBadgeMetricLabels[ttBadgeChartMetricKey] || ttBadgeChartMetricKey;
+                return `${ttBadgeChartBrand()} — ${label} (Daily snapshot)`;
+            }
+
+            function openTtBadgeChartModal(metricKey, opts) {
+                const resetDays = !(opts && opts.keepRange);
+                ttBadgeChartMetricKey = metricKey;
+                if (resetDays) {
+                    ttBadgeChartDays = 30;
+                    $('#ttBadgeChartRangeSelect').val('30');
+                }
+                $('#ttBadgeChartModalTitle').text(ttBadgeChartModalTitle());
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('ttBadgeChartModal')).show();
+                loadTtBadgeChart();
+            }
+
+            let ttBadgeHoverTimer = null;
+            $(document).on('mouseenter', '.tt-hover-chart', function() {
+                const metric = $(this).data('metric');
+                if (!metric) return;
+                ttBadgeHoverTimer = setTimeout(function() {
+                    openTtBadgeChartModal(metric, { keepRange: false });
+                }, 500);
+            });
+            $(document).on('mouseleave', '.tt-hover-chart', function() {
+                if (ttBadgeHoverTimer) {
+                    clearTimeout(ttBadgeHoverTimer);
+                    ttBadgeHoverTimer = null;
+                }
+            });
+            $(document).on('mousedown', '.tt-hover-chart', function() {
+                if (ttBadgeHoverTimer) {
+                    clearTimeout(ttBadgeHoverTimer);
+                    ttBadgeHoverTimer = null;
+                }
+            });
 
             function renderTtBadgeChart(points) {
                 if (!Array.isArray(points) || !points.length) return false;
@@ -642,9 +700,71 @@
                 $('#ttBadgeChartMedian').text(ttFormatChartValue(median));
                 $('#ttBadgeChartLowest').text(ttFormatChartValue(min));
 
+                const dotColors = values.map(function(v, i) {
+                    if (i === 0) return '#6c757d';
+                    return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#198754' : '#6c757d');
+                });
+                const pointLabelColors = values.map(function(v, i) {
+                    if (i < 7) return '#0f172a';
+                    return v < values[i - 7] ? '#dc3545' : (v > values[i - 7] ? '#198754' : '#0f172a');
+                });
+
+                const medianLinePlugin = {
+                    id: 'ttBadgeMedianLine',
+                    afterDraw: function(chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const c = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        c.save();
+                        c.setLineDash([6, 4]);
+                        c.strokeStyle = '#6c757d';
+                        c.lineWidth = 1.2;
+                        c.beginPath();
+                        c.moveTo(xScale.left, yPixel);
+                        c.lineTo(xScale.right, yPixel);
+                        c.stroke();
+                        c.restore();
+                    }
+                };
+
+                const valueLabelsPlugin = {
+                    id: 'ttBadgeValueLabels',
+                    afterDatasetsDraw: function(chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        if (!dataset || !meta || !meta.data) return;
+                        c.save();
+                        c.font = 'bold 9px Inter, system-ui, sans-serif';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        meta.data.forEach(function(point, i) {
+                            if (point == null || point.skip) return;
+                            const val = dataset.data[i];
+                            const txt = ttFormatChartValue(val);
+                            const offsetY = (i % 2 === 0) ? -8 : -16;
+                            const py = point.y + offsetY;
+                            c.lineJoin = 'round';
+                            c.lineWidth = 3;
+                            c.strokeStyle = 'rgba(255,255,255,0.92)';
+                            c.strokeText(txt, point.x, py);
+                            c.fillStyle = pointLabelColors[i] || '#0f172a';
+                            c.fillText(txt, point.x, py);
+                        });
+                        c.restore();
+                    }
+                };
+
                 const canvas = document.getElementById('ttBadgeChartCanvas');
                 if (!canvas || typeof Chart === 'undefined') return false;
                 if (ttBadgeChartInstance) ttBadgeChartInstance.destroy();
+
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const range = dataMax - dataMin || 1;
+                const yMin = Math.max(0, dataMin - range * 0.1);
+                const yMax = dataMax + range * 0.1;
 
                 ttBadgeChartInstance = new Chart(canvas.getContext('2d'), {
                     type: 'line',
@@ -656,23 +776,37 @@
                             data: values,
                             borderColor: '#06b6d4',
                             backgroundColor: 'rgba(6, 182, 212, 0.12)',
-                            pointBackgroundColor: '#0891b2',
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
                             borderWidth: 2,
                             tension: 0.25,
                             fill: true
                         }]
                     },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        layout: { padding: { top: 22, left: 2, right: 2, bottom: 2 } },
                         scales: {
                             y: {
+                                min: yMin,
+                                max: yMax,
                                 ticks: {
                                     callback: function(value) {
                                         return ttFormatChartValue(value);
                                     }
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    autoSkip: true,
+                                    maxTicksLimit: 30,
+                                    font: { size: 8 }
                                 }
                             }
                         },
@@ -714,7 +848,11 @@
                         $('#ttBadgeChartLoading').hide();
                         const points = (res && res.success && Array.isArray(res.data)) ? res.data : [];
                         if (renderTtBadgeChart(points)) {
-                            $('#ttBadgeChartContainer').show();
+                            $('#ttBadgeChartContainer').css({
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'stretch'
+                            }).show();
                         } else {
                             $('#ttBadgeChartNoData').show();
                         }
@@ -727,21 +865,20 @@
                 });
             }
 
-            $(document).on('click', '.tt-badge-chart', function() {
-                ttBadgeChartMetricKey = $(this).data('metric');
-                ttBadgeChartDays = 30;
-                $('#ttBadgeChartRangeSelect').val('30');
-                $('#ttBadgeChartModalTitle').text(
-                    `TikTok - ${ttBadgeMetricLabels[ttBadgeChartMetricKey] || ttBadgeChartMetricKey} Trend`
-                    );
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('ttBadgeChartModal')).show();
-                loadTtBadgeChart();
+            $(document).on('click', '.tt-badge-chart', function(e) {
+                e.stopPropagation();
+                const m = $(this).data('metric');
+                if (m) {
+                    openTtBadgeChartModal(m, { keepRange: false });
+                }
             });
 
             $(document).on('change', '#ttBadgeChartRangeSelect', function() {
-                const days = parseInt($(this).val(), 10) || 30;
+                const raw = $(this).val();
+                const days = raw === '0' ? 0 : (parseInt(raw, 10) || 30);
                 if (days === ttBadgeChartDays) return;
                 ttBadgeChartDays = days;
+                $('#ttBadgeChartModalTitle').text(ttBadgeChartModalTitle());
                 loadTtBadgeChart();
             });
 
@@ -2845,6 +2982,7 @@
                 });
 
                 let totalSales = 0,
+                    totalPft = 0,
                     totalGpft = 0,
                     totalPrice = 0,
                     priceCount = 0;
@@ -2860,7 +2998,9 @@
 
                 data.forEach(row => {
                     const l30 = parseFloat(row['TT L30']) || 0;
+                    const profit = parseFloat(row['Profit']) || 0;
                     totalSales += parseFloat(row['Sales L30']) || 0;
+                    totalPft += l30 * profit;
                     totalGpft += parseFloat(row['GPFT%']) || 0;
 
                     const price = parseFloat(row['TT Price']) || 0;
@@ -2904,6 +3044,7 @@
                 const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
 
                 $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
+                $('#total-pft-amt-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
                 $('#avg-gpft-badge').text(`GPFT: ${avgGpft.toFixed(1)}%`);
                 $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
                 $('#total-l30-badge').text(`TT L30: ${totalL30.toLocaleString()}`);

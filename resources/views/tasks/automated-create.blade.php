@@ -41,6 +41,18 @@
                                 aria-label="Close"></button>
                     </div>
                     <div class="card-body" style="padding: 30px;">
+                        @if(session('success'))
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-check-circle me-2"></i>{{ session('success') }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        @endif
+                        @if(session('error'))
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-alert-circle me-2"></i>{{ session('error') }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        @endif
                         <form action="{{ route('tasks.automatedStore') }}" method="POST" enctype="multipart/form-data">
                             @csrf
                             <input type="hidden" name="schedule_type" id="schedule_type" value="daily">
@@ -48,8 +60,11 @@
                             <!-- Action Buttons at Top Right -->
                             <div class="row mb-4">
                                 <div class="col-12 text-end">
-                                    <button type="submit" class="btn btn-danger">
+                                    <button type="submit" name="after_create" value="list" class="btn btn-danger">
                                         <i class="mdi mdi-check-circle me-1"></i> Create
+                                    </button>
+                                    <button type="submit" name="after_create" value="another" class="btn btn-outline-danger ms-2" title="Save this task and open a blank form for another">
+                                        <i class="mdi mdi-plus-circle-multiple-outline me-1"></i> Save and create more
                                     </button>
                                 </div>
                             </div>

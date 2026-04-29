@@ -185,6 +185,7 @@ use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\TiendamiaController;
+use App\Http\Controllers\MarketPlace\TiendamiaPricingController;
 use App\Http\Controllers\MarketPlace\TiktokController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\MarketPlace\WalmartControllerMarket;
@@ -2543,6 +2544,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok-2-data-json', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2DataJson'])->name('tiktok2.data.json');
     Route::get('/tiktok-distinct-campaign-count', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokDistinctCampaignCount'])->name('tiktok.distinct.campaign.count');
     Route::get('/tiktok-badge-chart-data', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokBadgeChartData'])->name('tiktok.badge.chart.data');
+    Route::get('/tiktok-2-badge-chart-data', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2BadgeChartData'])->name('tiktok2.badge.chart.data');
     Route::post('/tiktok-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTokCsv'])->name('tiktok.upload.csv');
     Route::post('/tiktok-2-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTok2Csv'])->name('tiktok2.upload.csv');
     Route::get('/tiktok-download-sample-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'downloadSampleCsv'])->name('tiktok.download.sample');
@@ -2836,6 +2838,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // eBay3 Tabulator View Routes
     Route::get('/ebay3-tabulator-view', [EbayThreeController::class, 'ebay3TabulatorView'])->name('ebay3.tabulator.view');
     Route::get('/ebay3-data-json', [EbayThreeController::class, 'ebay3DataJson'])->name('ebay3.data.json');
+    Route::get('/ebay3-badge-chart-data', [EbayThreeController::class, 'getEbay3BadgeChartData'])->name('ebay3.badge.chart.data');
     Route::get('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'showEbay3'])->name('ebay3.column.visibility.get');
     Route::post('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'storeEbay3'])->name('ebay3.column.visibility.set');
     Route::get('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'show'])->name('tabulator.column.visibility.get');
@@ -3813,15 +3816,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/instagram-analytics/sample', [InstagramController::class, 'downloadSample'])->name('instagram.analytics.sample');
 
     // tiendamia
-    Route::get('tiendamiaAnalysis', action: [TiendamiaController::class, 'overallTiendamia']);
-    Route::get('/tiendamia/view-data', [TiendamiaController::class, 'getViewTiendamiaData']);
     Route::get('plsPricingCVR', [TiendamiaController::class, 'tiendamiaPricingCVR'])->name('tiendamia.pricing.cvr');
-    Route::post('/update-all-tiendamia-skus', [TiendamiaController::class, 'updateAllTiendamiaSkus']);
-    Route::post('/tiendamia/save-nr', [TiendamiaController::class, 'saveNrToDatabase']);
-    Route::post('/tiendamia/update-listed-live', [TiendamiaController::class, 'updateListedLive']);
-    Route::post('/tiendamia-analytics/import', [TiendamiaController::class, 'importTiendamiaAnalytics'])->name('tiendamia.analytics.import');
-    Route::get('/tiendamia-analytics/export', [TiendamiaController::class, 'exportTiendamiaAnalytics'])->name('tiendamia.analytics.export');
-    Route::get('/tiendamia-analytics/sample', [TiendamiaController::class, 'downloadSample'])->name('tiendamia.analytics.sample');
+    Route::get('/tiendamia-products-pricing', [TiendamiaPricingController::class, 'tabulatorView'])->name('tiendamia.products.pricing');
+    Route::get('/tiendamia-products-tabulator-data', [TiendamiaPricingController::class, 'getTabulatorData'])->name('tiendamia.products.tabulator.data');
+    Route::post('/tiendamia/save-sprice', [TiendamiaPricingController::class, 'saveSpriceUpdates'])->name('tiendamia.products.save.sprice');
+    Route::post('/tiendamia/upload-price-file', [TiendamiaPricingController::class, 'uploadPriceFile'])->name('tiendamia.products.upload.price');
 
     // fbshop
     Route::get('fbshopAnalysis', action: [FbshopController::class, 'overallFbshop']);

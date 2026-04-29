@@ -283,6 +283,16 @@ class TaskController extends Controller
     }
 
     /**
+     * Active user accounts (signed-in capable): matches Team Management “active” users.
+     */
+    protected function activeTeamUsersQuery(): Builder
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->whereNull('deactivated_at');
+    }
+
+    /**
      * Per–team-member task counts (assignee-based), matching Task Manager visibility for the viewer only.
      * Does not apply {@see Session::get('selected_user_name')} — Task Summary stays global within that visibility;
      * the /tasks page keeps its own session + UI filters.
@@ -355,7 +365,7 @@ class TaskController extends Controller
             }
         }
 
-        $members = User::where('is_active', true)
+        $members = $this->activeTeamUsersQuery()
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'avatar', 'designation']);
 
@@ -405,7 +415,9 @@ class TaskController extends Controller
             ->whereRaw('DATE_ADD(start_date, INTERVAL 1 DAY) < NOW()')
             ->where('status', '!=', 'Archived');
 
-        $activeEmailSet = array_flip(User::where('is_active', true)->pluck('email')->all());
+        $activeEmailSet = array_flip(
+            $this->activeTeamUsersQuery()->pluck('email')->filter()->all()
+        );
         $assignedMembers = (clone $q)
             ->whereNotNull('assign_to')
             ->where('assign_to', '!=', '')
@@ -482,7 +494,7 @@ class TaskController extends Controller
 
         $userNameFilter = trim((string) $request->query('user_name', ''));
         if ($userNameFilter !== '') {
-            $filterUser = User::where('name', $userNameFilter)->first();
+            $filterUser = $this->activeTeamUsersQuery()->where('name', $userNameFilter)->first();
             if ($filterUser && $filterUser->email) {
                 $email = $filterUser->email;
                 $tasksQuery->where(function ($q) use ($email) {
@@ -1892,7 +1904,12 @@ class TaskController extends Controller
         }
         $scheduleInfo .= ' at ' . ($validated['schedule_time'] ?? 'scheduled time');
 
-        return redirect()->route('tasks.automated')->with('success', 'Automated task scheduled! Will execute: ' . $scheduleInfo);
+        $successMessage = 'Automated task scheduled! Will execute: ' . $scheduleInfo;
+        if ($request->input('after_create') === 'another') {
+            return redirect()->route('tasks.automatedCreate')->with('success', $successMessage);
+        }
+
+        return redirect()->route('tasks.automated')->with('success', $successMessage);
     }
 
     public function automatedEdit($id)
