@@ -365,6 +365,8 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
                             'acos' => 0,
                             'NR' => $nrValue,
                             'price' => (float)($ebay->ebay_price ?? 0),
+                            'ebay_l30' => (float)($ebay->ebay_l30 ?? 0),
+                            'views' => (float)($ebay->views ?? 0),
                             'last_sbid' => $lastSbidMap[$campaignId] ?? '',
                         ];
                     }
@@ -414,24 +416,24 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
 
                 $sbid = 0;
 
-                if ($ub7 > 99 && $ub1 > 99) {
-                    $sbid = $l1_cpc > 0 ? floor($l1_cpc * 0.90 * 100) / 100 : ($l7_cpc > 0 ? floor($l7_cpc * 0.90 * 100) / 100 : 0);
-                } elseif ($isUnderUtilized) {
-                    $lastSbidRaw = $row['last_sbid'] ?? '';
-                    $baseBid = (!empty($lastSbidRaw) && $lastSbidRaw !== '0' && $lastSbidRaw !== 0) ? (float)$lastSbidRaw : 0;
-                    
-                    if ($baseBid <= 0) {
-                        $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
-                    }
-                    
-                    if ($baseBid > 0) {
-                        if ($ub1 < 33) {
-                            $sbid = floor(($baseBid + 0.10) * 100) / 100;
-                        } elseif ($ub1 < 66) {
-                            $sbid = floor($baseBid * 1.10 * 100) / 100;
-                        } else {
-                            $sbid = floor($baseBid * 100) / 100;
-                        }
+                // PMT S BID rule based on SCVR (CVR color thresholds)
+                $ebayL30Sold = floatval($row['ebay_l30'] ?? 0);
+                $ebayViews   = floatval($row['views'] ?? 0);
+
+                if ($ebayL30Sold == 0) {
+                    $sbid = 0; // 0 sold → no bid
+                } elseif ($ebayViews <= 0) {
+                    $sbid = 0;
+                } else {
+                    $scvr = ($ebayL30Sold / $ebayViews) * 100;
+                    if ($scvr <= 4) {
+                        $sbid = 9.1;
+                    } elseif ($scvr <= 7) {
+                        $sbid = 7.1;
+                    } elseif ($scvr <= 10) {
+                        $sbid = 4.1;
+                    } else {
+                        $sbid = 2.1;
                     }
                 }
 

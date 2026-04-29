@@ -1227,7 +1227,7 @@ class WayfairController extends Controller
                     $dilSum += ($ovL30 / $inv) * 100;
                     $dilCount++;
                 }
-                if (($r['missing'] ?? '') === 'M') {
+                if (($r['missing'] ?? '') === 'M' && $inv > 0) {
                     $missingCount++;
                 }
                 $mapCell = (string) ($r['map'] ?? '');

@@ -385,6 +385,8 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
                 $row['INV'] = $shopify->inv ?? 0;
                 $row['L30'] = $shopify->quantity ?? 0;
                 $row['price'] = $ebay->ebay_price ?? 0;
+                $row['ebay_l30'] = $ebay->ebay_l30 ?? 0;
+                $row['views'] = $ebay->views ?? 0;
             $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
             $row['campaign_id'] = $campaignId;
             $row['campaign_name'] = $matchedCampaignL7->campaign_name ?? ($matchedCampaignL1->campaign_name ?? '');
@@ -424,24 +426,32 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
                 $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
             }
             
-            if ($baseBid > 0) {
-                // If UB1 < 33%: increase bid by 0.10
-                if ($ub1 < 33) {
-                    $row['sbid'] = floor(($baseBid + 0.10) * 100) / 100;
-                    $row['rule_applied'] = "UB1 < 33%: Base Bid (\${$baseBid}) + \$0.10";
-                }
-                // If UB1 is 33% to 66%: increase bid by 10%
-                elseif ($ub1 >= 33 && $ub1 < 66) {
-                    $row['sbid'] = floor($baseBid * 1.10 * 100) / 100;
-                    $row['rule_applied'] = "UB1 33%-66%: Base Bid (\${$baseBid}) × 1.10";
-                } else {
-                    // For UB1 >= 66%, use base bid (no increase)
-                    $row['sbid'] = floor($baseBid * 100) / 100;
-                    $row['rule_applied'] = "UB1 ≥ 66%: Base Bid (\${$baseBid}) - No increase";
-                }
-            } else {
+            // PMT S BID rule based on SCVR (CVR color thresholds)
+            $ebayL30Sold = floatval($row['ebay_l30'] ?? 0);
+            $ebayViews   = floatval($row['views'] ?? 0);
+            $esSuggestedBid = floatval($row['suggested_bid'] ?? 0);
+
+            if ($ebayL30Sold == 0) {
+                $row['sbid'] = $esSuggestedBid > 0 ? $esSuggestedBid : 0;
+                $row['rule_applied'] = "0 sold → ES bid";
+            } elseif ($ebayViews <= 0) {
                 $row['sbid'] = 0;
-                $row['rule_applied'] = "No base bid available (last_sbid/L1CPC/L7CPC all zero)";
+                $row['rule_applied'] = "No views data";
+            } else {
+                $scvr = ($ebayL30Sold / $ebayViews) * 100;
+                if ($scvr <= 4) {
+                    $row['sbid'] = 9.1;
+                    $row['rule_applied'] = "SCVR ≤ 4% (RED) → 9.1";
+                } elseif ($scvr <= 7) {
+                    $row['sbid'] = 7.1;
+                    $row['rule_applied'] = "SCVR 4–7% (YELLOW) → 7.1";
+                } elseif ($scvr <= 10) {
+                    $row['sbid'] = 4.1;
+                    $row['rule_applied'] = "SCVR 7–10% (GREEN) → 4.1";
+                } else {
+                    $row['sbid'] = 2.1;
+                    $row['rule_applied'] = "SCVR > 10% (PINK) → 2.1";
+                }
             }
             
             // Store base bid source for logging

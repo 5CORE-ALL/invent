@@ -703,11 +703,10 @@
         }
 
         function updateSummary() {
-            console.log("Active Rows:", table.getRows('active').length);
             if (!table) { $('#wf-test-badge').text('Test: no table'); return; }
             let rows;
             try {
-                rows = table.getData();
+                rows = table.getData('active');
             } catch(e) {
                 $('#wf-test-badge').text('Test: err=' + e.message);
                 return;
@@ -963,7 +962,7 @@
             table = new Tabulator('#wayfair-pricing-table', {
                 ajaxURL: '{{ route("wayfair.pricing.data") }}',
                 ajaxResponse: function(url, params, response) {
-                    setTimeout(() => updateSummary(), 100);
+                    setTimeout(() => applyFilters(), 100);
                     return response;
                 },
                 layout: 'fitDataStretch',

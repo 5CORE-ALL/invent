@@ -4014,16 +4014,25 @@
                         visible: false,
                         formatter: function(cell) {
                             var rd = cell.getRow().getData();
+                            var views = parseFloat(rd.views) || 0;
                             var sold = parseInt(rd['eBay L30'], 10) || 0;
                             var es = parseFloat(rd.suggested_bid) || 0;
-                            var v;
-                            // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 9; <7 (i.e. 6) → 7; >=7 → ESbid; cap at 12
-                            if (sold === 0) v = es;
-                            else if (sold >= 1 && sold <= 5) v = 9;
-                            else if (sold > 5) v = 7;
-                            else v = es;
-                            v = Math.min(v, 12);
-                            return v > 0 ? Number(v).toFixed(2) : (es > 0 ? es.toFixed(2) : '-');
+                            if (sold === 0) {
+                                return es > 0 ? es.toFixed(2) : '-';
+                            }
+                            if (views <= 0) return '-';
+                            var scvr = (sold / views) * 100;
+                            var sbid;
+                            if (scvr <= 4) {
+                                sbid = 9.1; // RED
+                            } else if (scvr > 4 && scvr <= 7) {
+                                sbid = 7.1; // YELLOW
+                            } else if (scvr > 7 && scvr <= 10) {
+                                sbid = 4.1; // GREEN
+                            } else {
+                                sbid = 2.1; // PINK
+                            }
+                            return sbid.toFixed(2);
                         },
                         width: 80
                     },
