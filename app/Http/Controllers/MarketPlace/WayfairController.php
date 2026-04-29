@@ -226,17 +226,25 @@ class WayfairController extends Controller
     }
 
     /**
-     * Persist Wayfair NRP into wayfair_data_view.value JSON.
+     * Persist Wayfair NRP into wayfair_data_view.value JSON (same merge pattern as eBay update-ebay-nr-data:
+     * decode existing JSON, merge field(s), save).
      * REQ|NR → only key "NRP" (no duplicate "NR"). Other values (e.g. NRA) → key "NR" only.
-     * Matches SKU case-insensitively to avoid duplicate rows.
+     * Accepts eBay-style JSON `{ sku, field: "NRP", value }`, or form fields `nr` / `nrp`.
      */
     public function saveNrToDatabase(Request $request)
     {
         $skuRaw = trim((string) $request->input('sku'));
-        $nr = $request->input('nr');
+        $field = $request->input('field');
+        $nr = null;
+        if ($field !== null && strtoupper(trim((string) $field)) === 'NRP' && $request->has('value')) {
+            $nr = $request->input('value');
+        }
+        if ($nr === null || $nr === '') {
+            $nr = $request->input('nrp', $request->input('nr'));
+        }
 
         if ($skuRaw === '' || $nr === null || $nr === '') {
-            return response()->json(['error' => 'SKU and nr are required.'], 400);
+            return response()->json(['success' => false, 'error' => 'SKU and nr, nrp, or field NRP + value are required.'], 400);
         }
 
         $normalized = strtoupper(str_replace("\u{00a0}", ' ', $skuRaw));
@@ -250,7 +258,9 @@ class WayfairController extends Controller
             $dataView->sku = $skuRaw;
         }
 
-        $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
+        $value = is_array($dataView->value)
+            ? $dataView->value
+            : (json_decode($dataView->value ?? '{}', true) ?: []);
         if (is_string($nr)) {
             $u = strtoupper(trim($nr));
             if (in_array($u, ['REQ', 'NR'], true)) {
@@ -267,7 +277,13 @@ class WayfairController extends Controller
         $dataView->value = $value;
         $dataView->save();
 
-        return response()->json(['success' => true, 'data' => $dataView]);
+        return response()->json([
+            'success' => true,
+            'status' => 200,
+            'message' => 'Field updated successfully',
+            'updated_json' => $value,
+            'data' => $dataView,
+        ]);
     }
 
 
@@ -653,7 +669,30 @@ class WayfairController extends Controller
     public function getWayfairPricingData(Request $request)
     {
         try {
-            $salesAgg = WayfairDailyData::query()
+            // 1. ProductMaster — same pattern as eBay tabulator view:
+            //    order by parent then sku at DB level, filter PARENT rows in PHP.
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get()
+                ->filter(fn ($item) => stripos($item->sku, 'PARENT') === false)
+                ->values();
+
+            // 2. SKU list (original casing from ProductMaster, same as eBay).
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+            if (empty($skus)) {
+                return response()->json([], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
+            }
+
+            // 3. Normalizer — NBSP → space, trim, uppercase (matches ShopifySku keying).
+            $normalizeSku = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+
+            // Index ProductMasters by normalized SKU for O(1) lookup.
+            $productMastersBySku = $productMasters->keyBy(fn ($row) => $normalizeSku($row->sku));
+
+            // 4. Sales data (L30).
+            $salesBySku = WayfairDailyData::query()
                 ->selectRaw(
                     'sku, SUM(COALESCE(quantity, 0)) as al30, '
                     . 'SUM(COALESCE(unit_price, 0) * COALESCE(quantity, 0)) as sales'
@@ -662,172 +701,126 @@ class WayfairController extends Controller
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
                 ->groupBy('sku')
-                ->get();
-
-            // Match ProductMaster getViewProductData: NBSP → space, then trim + uppercase (ShopifySku::all() keying).
-            $normalizeSku = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
-
-            $salesBySku = $salesAgg->keyBy(fn ($row) => $normalizeSku($row->sku));
-
-            $productMastersBySku = ProductMaster::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
                 ->get()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
+            // 5. Uploaded Wayfair prices / stock.
             $uploadedPriceBySku = WayfairPricingPrice::all()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            $allNormalizedSkus = collect(array_merge(
-                $salesBySku->keys()->all(),
-                $productMastersBySku->keys()->all(),
-                $uploadedPriceBySku->keys()->all()
-            ))->unique()->values();
+            // Normalized SKU list derived from product masters (same as eBay using $skus).
+            $normalizedSkus = collect($skus)->map($normalizeSku)->unique()->values();
 
-            $viewMetaBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $viewMetaBySku = WayfairDataView::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
-            }
+            // 6. NRP / meta from wayfair_data_views.
+            $viewMetaBySku = WayfairDataView::query()
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $normalizedSkus)
+                ->get()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            // Load full Shopify map like Product Master — whereIn(UPPER(TRIM(sku))) misses UTF-8 NBSP / variant spacing.
+            // 7. Shopify inventory / image — load all, key by normalized SKU (NBSP-safe).
             $shopifyBySku = ShopifySku::all()->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            $listingStatusBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $listingStatusBySku = WayfairListingStatus::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn ($row) => $normalizeSku($row->sku));
-            }
+            // 8. Wayfair listing status (buyer/seller links).
+            $listingStatusBySku = WayfairListingStatus::query()
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $normalizedSkus)
+                ->get()
+                ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
             $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 100) : 100;
             $margin = $percentage / 100;
 
+            // 9. Build rows — iterate ProductMaster collection in DB order (same as eBay).
             $rows = [];
-            foreach ($allNormalizedSkus as $normalizedSku) {
-                $sale = $salesBySku->get($normalizedSku);
-                $productMaster = $productMastersBySku->get($normalizedSku);
-                $metaRecord = $viewMetaBySku->get($normalizedSku);
-                $metaRaw = $metaRecord ? ($metaRecord->value ?? []) : [];
-                $meta = is_array($metaRaw) ? $metaRaw : (is_string($metaRaw) ? (json_decode($metaRaw, true) ?: []) : []);
+            foreach ($productMasters as $productMaster) {
+                $normalizedSku = $normalizeSku($productMaster->sku);
+
+                $sale        = $salesBySku->get($normalizedSku);
+                $metaRecord  = $viewMetaBySku->get($normalizedSku);
+                $metaRaw     = $metaRecord ? ($metaRecord->value ?? []) : [];
+                $meta        = is_array($metaRaw) ? $metaRaw : (is_string($metaRaw) ? (json_decode($metaRaw, true) ?: []) : []);
                 if (! is_array($meta)) {
                     $meta = [];
                 }
 
-                $values = [];
-                if ($productMaster) {
-                    $values = is_array($productMaster->Values)
-                        ? $productMaster->Values
-                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
-                }
+                $values = is_array($productMaster->Values)
+                    ? $productMaster->Values
+                    : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                $values = is_array($values) ? $values : [];
 
-                $lp = isset($values['lp']) ? (float) $values['lp'] : ($productMaster && isset($productMaster->lp) ? (float) $productMaster->lp : 0);
+                $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($productMaster->lp) ? (float) $productMaster->lp : 0);
 
-                $al30 = (float) ($sale->al30 ?? 0);
+                $al30  = (float) ($sale->al30 ?? 0);
                 $sales = (float) ($sale->sales ?? 0);
 
-                $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
-                $priceRow = $uploadedPriceBySku->get($normalizedSku);
+                $sprice       = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
+                $priceRow     = $uploadedPriceBySku->get($normalizedSku);
                 $uploadedPrice = $priceRow ? (float) $priceRow->price : 0;
-                $wfStock = $priceRow ? (int) ($priceRow->wayfair_stock ?? 0) : 0;
+                $wfStock      = $priceRow ? (int) ($priceRow->wayfair_stock ?? 0) : 0;
 
                 $shopifyRow = $shopifyBySku->get($normalizedSku);
-                $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
-                $ovL30 = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
-                $imageSrc = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;
+                $inv        = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
+                $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
+                $imageSrc   = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;
 
-                $price = $uploadedPrice;
+                $price  = $uploadedPrice;
                 $profit = ($price * $margin) - $lp;
-                $gpft = $price > 0 ? ($profit / $price) * 100 : 0;
-                $groi = $lp > 0 ? ($profit / $lp) * 100 : 0;
+                $gpft   = $price > 0 ? ($profit / $price) * 100 : 0;
+                $groi   = $lp > 0 ? ($profit / $lp) * 100 : 0;
 
-                $displaySku = $productMaster
-                    ? trim((string) $productMaster->sku)
-                    : ($sale ? (string) $sale->sku : ($priceRow ? trim((string) $priceRow->sku) : $normalizedSku));
-
-                // NRP from wayfair_data_view.value JSON (e.g. {"NRP":"NR"} → not Missing L).
+                // NRP from wayfair_data_view JSON ({"NRP":"NR"} → excluded from Missing L).
                 $nrOut = $this->wayfairNrpStatusFromMeta($meta);
 
-                // Same as AliExpress pricing: missing when no product master or no positive uploaded channel price.
-                // NRP / NR string = NR: do not treat as Missing L (excluded from badge / column).
-                $wouldBeMissing = ! $productMaster || $price <= 0;
-                $isMissing = $wouldBeMissing && strtoupper($nrOut) !== 'NR';
+                // Missing L: no uploaded Wayfair price (product master always exists here).
+                $isMissing = $price <= 0 && strtoupper($nrOut) !== 'NR';
 
-                // Map / N Map: same ±3 tolerance as TikTok / Reverb / Best Buy (|INV − Wayfair stock| ≤ 3 → Map).
-                if ($isMissing) {
-                    $mapValue = '';
-                } else {
-                    $diff = abs($inv - $wfStock);
-                    if ($diff <= 3) {
-                        $mapValue = 'Map';
-                    } else {
-                        $mapValue = "N Map|{$diff}";
-                    }
+                $mapValue = '';
+                if (! $isMissing) {
+                    $diff     = abs($inv - $wfStock);
+                    $mapValue = $diff <= 3 ? 'Map' : "N Map|{$diff}";
                 }
 
                 $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
-                $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
+                $sroi  = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
 
-                $listingRecord = $listingStatusBySku->get($normalizedSku);
+                $listingRecord  = $listingStatusBySku->get($normalizedSku);
                 $listingPayload = ($listingRecord && is_array($listingRecord->value)) ? $listingRecord->value : [];
-                $buyerLink = isset($listingPayload['buyer_link']) ? trim((string) $listingPayload['buyer_link']) : '';
-                $sellerLink = isset($listingPayload['seller_link']) ? trim((string) $listingPayload['seller_link']) : '';
-                $buyerLink = $buyerLink !== '' ? $buyerLink : null;
-                $sellerLink = $sellerLink !== '' ? $sellerLink : null;
+                $buyerLink      = isset($listingPayload['buyer_link']) ? trim((string) $listingPayload['buyer_link']) : '';
+                $sellerLink     = isset($listingPayload['seller_link']) ? trim((string) $listingPayload['seller_link']) : '';
+                $buyerLink      = $buyerLink !== '' ? $buyerLink : null;
+                $sellerLink     = $sellerLink !== '' ? $sellerLink : null;
 
                 $rows[] = [
-                    'sku' => $displaySku,
-                    'parent' => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
-                    'is_parent' => false,
-                    'image' => $imageSrc,
-                    'price' => round($price, 2),
-                    'lmp' => null,
-                    'lmp_link' => null,
+                    'sku'         => trim((string) $productMaster->sku),
+                    'parent'      => trim((string) ($productMaster->parent ?? '')) ?: null,
+                    'is_parent'   => false,
+                    'image'       => $imageSrc,
+                    'price'       => round($price, 2),
+                    'lmp'         => null,
+                    'lmp_link'    => null,
                     'lmp_entries' => [],
-                    'missing' => $isMissing ? 'M' : '',
-                    'map' => $mapValue,
-                    'buyer_link' => $buyerLink,
+                    'missing'     => $isMissing ? 'M' : '',
+                    'map'         => $mapValue,
+                    'buyer_link'  => $buyerLink,
                     'seller_link' => $sellerLink,
-                    'gpft' => (int) round($gpft),
-                    'groi' => (int) round($groi),
-                    'profit' => round($profit, 2),
-                    'sales' => round($sales, 2),
-                    'al30' => (int) round($al30),
-                    'lp' => round($lp, 2),
-                    'ship' => 0,
-                    'sprice' => round($sprice, 2),
-                    'sgpft' => $sgpft,
-                    'sroi' => $sroi,
-                    '_margin' => round($margin, 4),
-                    'inv' => $inv,
-                    'ov_l30' => $ovL30,
-                    'ae_stock' => $wfStock,
+                    'gpft'        => (int) round($gpft),
+                    'groi'        => (int) round($groi),
+                    'profit'      => round($profit, 2),
+                    'sales'       => round($sales, 2),
+                    'al30'        => (int) round($al30),
+                    'lp'          => round($lp, 2),
+                    'ship'        => 0,
+                    'sprice'      => round($sprice, 2),
+                    'sgpft'       => $sgpft,
+                    'sroi'        => $sroi,
+                    '_margin'     => round($margin, 4),
+                    'inv'         => $inv,
+                    'ov_l30'      => $ovL30,
+                    'ae_stock'    => $wfStock,
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
-                    'nr' => $nrOut,
+                    'nr'          => $nrOut,
                 ];
             }
-
-            usort($rows, static function ($a, $b) {
-                $pa = (string) ($a['parent'] ?? '');
-                $pb = (string) ($b['parent'] ?? '');
-                if ($pa === '' && $pb === '') {
-                    return strnatcasecmp($a['sku'], $b['sku']);
-                }
-                if ($pa === '') {
-                    return 1;
-                }
-                if ($pb === '') {
-                    return -1;
-                }
-                $cmp = strnatcasecmp($pa, $pb);
-
-                return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
-            });
 
             $rows = $this->insertWayfairParentRows($rows);
             $this->saveWayfairPricingSnapshot($rows);

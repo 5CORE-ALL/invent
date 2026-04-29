@@ -56,15 +56,7 @@
             pointer-events: auto;
             z-index: 10050;
         }
-        .nrp-dot-cell { min-height: 32px; min-width: 44px; }
-        .nrp-dot-cell .nrp-status-dot {
-            display: inline-block; width: 12px; height: 12px; border-radius: 50%;
-            border: 1px solid rgba(0,0,0,.12); flex-shrink: 0;
-        }
-        .nrp-dot-cell .nrp-nr-select {
-            opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
-        }
-        .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
+        /* NRP (REQ / NR) emoji select — matches eBay NR/REQ style */
 
         /* Summary badges — horizontal scroll on narrow viewports (same as Faire / AliExpress pricing) */
         #wf-summary-stats .ebay2-summary-badge-row {
@@ -241,7 +233,8 @@
                             <span class="badge bg-success fs-6 p-2 d-none" id="wf-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L (no product master or uploaded Wayfair price ≤ 0). NRP = NR is excluded.">Missing L: 0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L — SKUs with no uploaded Wayfair price (price = 0).">Missing L: 0</span>
+                            <span class="badge fs-6 p-2" id="wf-test-badge" style="font-weight:700;background:#6f42c1;color:#fff;" title="Test: actual count via getRows(active)">Test: 0</span>
                             <span class="badge fs-6 p-2" id="wf-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: |INV − Wayfair stock| ≤ 3">Map: 0</span>
                             <span class="badge fs-6 p-2" id="wf-nmap-count-badge" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter: N Map (|INV − Wayfair stock| &gt; 3)">N Map: 0</span>
                             <span class="badge fs-6 p-2" id="wf-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
@@ -291,7 +284,7 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         let table = null;
-        let summaryDataCache = [];
+        // summaryDataCache removed — badges always read from getData('active') / getRows('active').
         let wfMissingActive = false;
         let wfMapActive = false;
         let wfNMapActive = false;
@@ -421,24 +414,37 @@
             return String(val).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         }
 
-        function wfUpdateForecastNrp(data, onSuccess, onFail) {
+        /** NRP save: same client pattern as eBay tabulator `/update-ebay-nr-data` (JSON + X-CSRF-TOKEN + { sku, field, value }). */
+        function wfSaveNrp(data, onSuccess, onFail) {
             onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
             onFail = typeof onFail === 'function' ? onFail : function() {};
-            $.post('{{ route("wayfair.save.nr") }}', {
-                sku: data.sku,
-                nr: data.value,
-                _token: $('meta[name="csrf-token"]').attr('content')
-            }).done(function(res) {
-                if (res && res.success) {
-                    onSuccess();
-                } else {
-                    console.warn('NRP not saved:', (res && (res.error || res.message)) || 'unknown');
+            $.ajax({
+                url: '{{ route("wayfair.save.nr") }}',
+                method: 'POST',
+                contentType: 'application/json',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: JSON.stringify({
+                    sku: data.sku,
+                    field: 'NRP',
+                    value: data.value
+                }),
+                success: function(res) {
+                    if (res && res.success) {
+                        if (window.toastr) toastr.success(res.message || 'NRP updated');
+                        onSuccess();
+                    } else {
+                        console.warn('NRP not saved:', (res && (res.error || res.message)) || 'unknown');
+                        onFail();
+                    }
+                },
+                error: function(xhr) {
+                    console.error('NRP save failed:', xhr);
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) ?
+                        (xhr.responseJSON.error || xhr.responseJSON.message) : 'Error saving NRP.';
+                    if (window.toastr) toastr.error(msg);
+                    else alert(msg);
                     onFail();
                 }
-            }).fail(function(err) {
-                console.error('NRP save failed:', err);
-                alert('Error saving NRP.');
-                onFail();
             });
         }
 
@@ -696,18 +702,18 @@
             if (updates.length) saveWayfairSpriceUpdates(updates);
         }
 
-        function updateSummary(rowsInput = null) {
-            let rows = normalizeRows(rowsInput);
-            // When called with no argument (e.g. after NRP / filter / redraw), use full table.getData().
-            // Avoid getData('active') here: with pagination/filters it can under-count so Missing L never drops after marking NR.
-            // When callers pass explicit row data (ajaxResponse / dataLoaded), keep that path — == null only matches undefined, not [].
-            if (rowsInput == null && table && typeof table.getData === 'function') {
-                const full = normalizeRows(table.getData());
-                if (full.length) {
-                    rows = full;
-                }
+        function updateSummary() {
+            console.log("Active Rows:", table.getRows('active').length);
+            if (!table) { $('#wf-test-badge').text('Test: no table'); return; }
+            let rows;
+            try {
+                rows = table.getData();
+            } catch(e) {
+                $('#wf-test-badge').text('Test: err=' + e.message);
+                return;
             }
-            if (!rows.length) rows = normalizeRows(summaryDataCache);
+            $('#wf-test-badge').text('Test: rows=' + (rows ? rows.length : 'null'));
+            if (!rows || !rows.length) return;
 
             let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0;
             let missingCount = 0, mapCount = 0, nmapCount = 0;
@@ -715,8 +721,10 @@
 
             rows.forEach(row => {
                 if (row.is_parent) return;
+                // Compute missing from raw data — same as Macy's pattern (no backend field dependency).
                 const nrVal = String(row.nr || '').trim().toUpperCase();
-                const isMissing = (row.missing || '').trim().toUpperCase() === 'M' && nrVal !== 'NR';
+                const price = parseFloat(row.price) || 0;
+                const isMissing = nrVal !== 'NR' && price <= 0;
                 const fqty = parseFloat(row.al30) || 0;
                 const sales = parseFloat(row.sales) || 0;
                 const lp = parseFloat(row.lp) || 0;
@@ -736,11 +744,15 @@
                 totalProfit += rowOrderPft;
 
                 if (fqty === 0) zeroSold++; else moreSold++;
-                if (isMissing) missingCount++;
-                else {
-                    const mapVal = (row.map || '').trim();
-                    if (mapVal === 'Map') mapCount++;
-                    else if (wfWfStrictNMapFromMap(mapVal)) nmapCount++;
+                if (isMissing) {
+                    missingCount++;
+                } else {
+                    // Compute Map/N Map from raw data — same as Macy's (no backend field dependency).
+                    const inv = parseInt(row.inv, 10) || 0;
+                    const wfStock = parseInt(row.ae_stock, 10) || 0;
+                    const diff = Math.abs(inv - wfStock);
+                    if (diff <= 3) mapCount++;
+                    else nmapCount++;
                 }
             });
 
@@ -758,9 +770,8 @@
             $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#wf-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
 
-            if (rows.length) {
-                summaryDataCache = rows;
-            }
+            // Test badge uses the same rows — if it matches Missing L the pipeline is correct.
+            $('#wf-test-badge').text('Test: ' + missingCount.toLocaleString());
         }
 
         function applyFilters() {
@@ -869,17 +880,19 @@
                 });
             }
             if (wfMissingActive) {
+                // Computed from raw data — same as Macy's Missing filter (no backend field).
                 table.addFilter(function(d) {
                     if (d.is_parent) return false;
-                    const miss = (d.missing || '').trim().toUpperCase() === 'M';
-                    const nrVal = String(d.nr || '').trim().toUpperCase();
-                    return miss && nrVal !== 'NR';
+                    if (String(d.nr || '').trim().toUpperCase() === 'NR') return false;
+                    return (parseFloat(d.price) || 0) <= 0;
                 });
             }
             if (wfMapActive) table.addFilter(d => (d.map || '') === 'Map');
             if (wfNMapActive) table.addFilter(d => wfWfStrictNMapFromMap(d.map || ''));
             if (wfZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (wfMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
+
+            updateSummary();
         }
 
         function wfBuildColumnDropdown() {
@@ -950,8 +963,7 @@
             table = new Tabulator('#wayfair-pricing-table', {
                 ajaxURL: '{{ route("wayfair.pricing.data") }}',
                 ajaxResponse: function(url, params, response) {
-                    summaryDataCache = normalizeRows(response);
-                    updateSummary(summaryDataCache);
+                    setTimeout(() => updateSummary(), 100);
                     return response;
                 },
                 layout: 'fitDataStretch',
@@ -1126,31 +1138,32 @@
                         }
                     },
                     {
+                        // Missing L: computed in JS from raw data — same pattern as Macy's Missing column.
+                        // NR rows and zero-INV rows are never missing. Missing = no uploaded Wayfair price.
                         title: 'Missing L', field: 'missing', hozAlign: 'center',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const value = (cell.getValue() || '').toString().trim().toUpperCase();
-                            if (value === 'M') return '<span class="badge bg-danger">L</span>';
-                            return '';
+                            if (String(d.nr || '').trim().toUpperCase() === 'NR') return '';
+                            if ((parseFloat(d.price) || 0) > 0) return '';
+                            return '<span class="badge bg-danger">L</span>';
                         }
                     },
                     {
+                        // Map: computed in JS from inv vs ae_stock — same pattern as Macy's Mapping column.
                         title: 'Map',
                         field: 'map',
                         hozAlign: 'center',
                         width: 90,
-                        headerTooltip: 'Map when |INV − Wayfair stock| ≤ 3; N Map when > 3 (same tolerance as TikTok / Reverb pricing).',
+                        headerTooltip: 'Map when |INV − Wayfair stock| ≤ 3; N Map when > 3.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (val.startsWith('N Map|')) {
-                                const diff = val.split('|')[1];
-                                return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
-                            }
-                            return '';
+                            if (String(d.nr || '').trim().toUpperCase() === 'NR') return '';
+                            if ((parseFloat(d.price) || 0) <= 0) return '';
+                            const diff = Math.abs((parseInt(d.inv, 10) || 0) - (parseInt(d.ae_stock, 10) || 0));
+                            if (diff <= 3) return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                            return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
                         }
                     },
                     {
@@ -1291,15 +1304,13 @@
                             const skuAttr = wfEscHtmlAttr(sku);
                             const parentAttr = wfEscHtmlAttr(parent);
                             return (
-                                '<div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' +
-                                wfEscHtmlAttr(tip + ' (click to change)') + '">' +
-                                '<span class="nrp-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>' +
-                                '<select class="form-select form-select-sm nrp-nr-select position-absolute top-0 start-0 w-100 h-100" ' +
+                                '<select class="form-select form-select-sm nrp-nr-select" ' +
                                 'data-type="NR" data-sku="' + skuAttr + '" data-parent="' + parentAttr + '" ' +
+                                'style="width:50px;border:1px solid gray;padding:2px;font-size:20px;text-align:center;" ' +
                                 'aria-label="NRP: ' + wfEscHtmlAttr(tip) + '">' +
-                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>REQ</option>' +
-                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>NR</option>' +
-                                '</select></div>'
+                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>🟢</option>' +
+                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>🔴</option>' +
+                                '</select>'
                             );
                         }
                     },
@@ -1307,11 +1318,12 @@
                 dataLoaded: function(data) {
                     wfResetSkuColHoverWidth();
                     wfRemoveImagePreview();
-                    updateSummary(data);
+                    updateSummary();
                 },
-                dataFiltered: function() { updateSummary(); },
-                dataProcessed: function() { updateSummary(); },
-                renderComplete: function() { updateSummary(); }
+                dataFiltered: function(filters, rows) {
+                    updateSummary();
+                },
+                renderComplete: function() { setTimeout(updateSummary, 100); }
             });
 
             table.on('tableBuilt', function() {
@@ -1508,6 +1520,12 @@
                 applyFilters();
             });
 
+            function wfPatchRowForNrpChange(d, newValue) {
+                // Only update nr — Missing L and Map columns are computed from d.nr + d.price
+                // in their formatters (Macy's pattern), so no patch to missing/map fields needed.
+                return { nr: newValue };
+            }
+
             $(document).on('change', '#wayfair-pricing-table .nrp-nr-select', function() {
                 const $el = $(this);
                 const newValue = String($el.val() || '').trim();
@@ -1519,44 +1537,30 @@
                     return !d.is_parent && String(d.sku) === String(sku);
                 });
                 const row = rows.length ? rows[0] : null;
-                const prevRaw = row ? String(row.getData().nr ?? '').trim().toUpperCase() : '';
-                const prevSelect = prevRaw === 'NR' ? 'NR' : 'REQ';
-                wfUpdateForecastNrp(
+                const prevNr = row ? String(row.getData().nr ?? '').trim().toUpperCase() : '';
+                const prevSelect = prevNr === 'NR' ? 'NR' : 'REQ';
+                // Update nr field → Missing L / Map formatters recompute from d.nr + d.price (Macy's pattern).
+                if (row) {
+                    row.update({ nr: newValue }, true);
+                    ['nr', 'missing', 'map'].forEach(function(field) {
+                        const c = row.getCells().find(function(cell) { return cell.getField() === field; });
+                        if (c) c.reformat();
+                    });
+                    updateSummary();
+                }
+                wfSaveNrp(
                     { sku: sku, parent: parent, value: newValue },
+                    function() {},
                     function() {
+                        $el.val(prevSelect);
                         if (row) {
-                            const d = row.getData();
-                            const patch = { nr: newValue };
-                            const price = parseFloat(d.price) || 0;
-                            const noMaster = d.parent == null || String(d.parent).trim() === '';
-                            if (newValue === 'NR') {
-                                patch.missing = '';
-                                const inv = parseInt(d.inv, 10) || 0;
-                                const wfStock = parseInt(d.ae_stock, 10) || 0;
-                                const diff = Math.abs(inv - wfStock);
-                                patch.map = diff <= 3 ? 'Map' : ('N Map|' + diff);
-                            } else {
-                                const wouldMiss = noMaster || price <= 0;
-                                patch.missing = wouldMiss ? 'M' : '';
-                                if (wouldMiss) {
-                                    patch.map = '';
-                                } else {
-                                    const inv = parseInt(d.inv, 10) || 0;
-                                    const wfStock = parseInt(d.ae_stock, 10) || 0;
-                                    const diff = Math.abs(inv - wfStock);
-                                    patch.map = diff <= 3 ? 'Map' : ('N Map|' + diff);
-                                }
-                            }
-                            row.update(patch, true);
+                            row.update({ nr: prevNr }, true);
                             ['nr', 'missing', 'map'].forEach(function(field) {
                                 const c = row.getCells().find(function(cell) { return cell.getField() === field; });
                                 if (c) c.reformat();
                             });
                             updateSummary();
                         }
-                    },
-                    function() {
-                        $el.val(prevSelect);
                     }
                 );
             });
