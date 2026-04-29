@@ -2341,6 +2341,9 @@
                             <a href="{{ route('videos.for.ads') }}">Videos for Ads</a>
                         </li>
                         <li>
+                            <a href="{{ route('video.for.ds') }}">FB Video Ads</a>
+                        </li>
+                        <li>
                             <a href="{{ route('product.description') }}">Description Master</a>
                         </li>
                         <li>

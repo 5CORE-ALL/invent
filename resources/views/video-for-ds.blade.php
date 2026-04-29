@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Videos for Ads', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'FB Video Ads', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -6,6 +6,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" rel="stylesheet" />
+    <link href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" rel="stylesheet" />
 
     <style>
         .table-wrapper {
@@ -14,7 +16,7 @@
             border-radius: 8px;
             max-height: calc(100vh - 200px);
             overflow-y: auto;
-            overflow-x: hidden;
+            overflow-x: auto;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             background: #fff;
         }
@@ -251,6 +253,174 @@
             font-size: 13px;
             font-weight: 700;
         }
+
+        /* ── FB Insights ─────────────────────────────────────── */
+        .fb-th {
+            background: linear-gradient(135deg, #1877f2 0%, #0d5fd4 100%) !important;
+        }
+        .fb-th:hover {
+            background: linear-gradient(135deg, #0d5fd4 0%, #0a4fbb 100%) !important;
+        }
+        .fb-section-header {
+            background: linear-gradient(135deg, #1877f2 0%, #0d5fd4 100%) !important;
+            text-align: center;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            font-size: 9px;
+            padding: 3px 4px !important;
+            color: #fff;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+        }
+        .fb-cell {
+            font-size: 10px;
+            font-weight: 600;
+            color: #1877f2;
+            background: rgba(24,119,242,0.04);
+        }
+        .fb-cell.no-data { color: #adb5bd; font-weight: 400; }
+        .fb-cell-loading {
+            font-size: 10px;
+            color: #adb5bd;
+            font-style: italic;
+        }
+        .fb-sync-btn {
+            background: #1877f2;
+            color: #fff;
+            border: none;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .fb-sync-btn:hover { background: #0d5fd4; transform: translateY(-1px); }
+        .fb-sync-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        #fb-sync-info {
+            font-size: 10px;
+            color: #6c757d;
+            margin-left: 4px;
+        }
+        .fb-push-btn {
+            background: #fff;
+            color: #1877f2;
+            border: 2px solid #1877f2;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .fb-push-btn:hover { background: #1877f2; color: #fff; }
+        .fb-push-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .sync-progress-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: #e9ecef;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .sync-progress-bar .bar {
+            height: 100%;
+            background: linear-gradient(90deg, #1877f2, #42b3ff);
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+        .sync-progress-bar .bar.indeterminate {
+            width: 40%;
+            animation: slide 1.2s ease-in-out infinite;
+        }
+        @keyframes slide {
+            0%   { margin-left: -40%; }
+            100% { margin-left: 100%; }
+        }
+        .sync-log-entry {
+            font-size: 11px;
+            padding: 3px 0;
+            border-bottom: 1px dashed #dee2e6;
+            color: #495057;
+        }
+        .sync-log-entry.success { color: #198754; }
+        .sync-log-entry.error   { color: #dc3545; }
+        .sync-log-entry.info    { color: #0dcaf0; }
+        .table-wrapper table {
+            min-width: 1500px;
+        }
+
+        /* ── Campaigns DataTable ──────────────────────────────── */
+        .campaigns-section {
+            margin-top: 28px;
+        }
+        .campaigns-section-header {
+            background: linear-gradient(135deg, #1877f2 0%, #0d5fd4 100%);
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .campaigns-section-header h6 { margin: 0; font-weight: 700; font-size: 13px; }
+        #campaignsPeriodLabel {
+            font-size: 11px;
+            opacity: 0.85;
+            background: rgba(255,255,255,0.15);
+            border-radius: 12px;
+            padding: 2px 10px;
+        }
+        #campaignsTable thead th {
+            background: #f0f4ff;
+            color: #1877f2;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+            text-align: center;
+        }
+        #campaignsTable tbody td {
+            font-size: 11px;
+            vertical-align: middle;
+            text-align: center;
+        }
+        #campaignsTable tbody tr:hover { background: #f0f4ff !important; }
+        .cstatus-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .cstatus-ACTIVE        { background:#d4edda; color:#155724; }
+        .cstatus-PAUSED        { background:#fff3cd; color:#856404; }
+        .cstatus-ARCHIVED      { background:#e2e3e5; color:#41464b; }
+        .cstatus-DELETED       { background:#f8d7da; color:#721c24; }
+        .cstatus-IN_PROCESS    { background:#cff4fc; color:#055160; }
+        .cstatus-WITH_ISSUES   { background:#ffe5d0; color:#984c0c; }
+        .cstatus-CAMPAIGN_PAUSED { background:#fff3cd; color:#856404; }
+        .fb-metric { color: #1877f2; font-weight: 600; }
+        .fb-metric-zero { color: #adb5bd; }
+        #campaignsTable_wrapper .dataTables_filter input {
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+        #campaignsTable_wrapper .dataTables_length select {
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 12px;
+        }
     </style>
 @endsection
 
@@ -258,7 +428,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.shared/page-title', [
-        'page_title' => 'Videos for Ads',
+        'page_title' => 'FB Video Ads',
         'sub_title'  => 'Manage Product Ad Videos',
     ])
 
@@ -288,6 +458,15 @@
                                 </ul>
                             </div>
                         </div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <button id="fbSyncBtn" class="fb-sync-btn" title="Refresh Facebook Insights from cached data">
+                                <i class="fab fa-facebook-f"></i> FB Insights
+                            </button>
+                            <button id="fbPushSyncBtn" class="fb-push-btn" title="Push a new sync from Facebook API">
+                                <i class="fas fa-cloud-download-alt"></i> Push Sync
+                            </button>
+                            <span id="fb-sync-info">Not loaded</span>
+                        </div>
                         <span id="total-count-badge">
                             <i class="fas fa-video"></i>
                             Total Videos:
@@ -299,13 +478,26 @@
                     <div class="table-wrapper">
                         <table class="table w-100" id="ads-table">
                             <thead>
+                                {{-- Row 1: group labels --}}
+                                <tr>
+                                    <th colspan="9" style="text-align:center;background:linear-gradient(135deg,#2c6ed5,#1a56b7) !important;font-size:9px;padding:3px;letter-spacing:0.5px;">
+                                        VIDEO INFO
+                                    </th>
+                                    <th colspan="12" class="fb-section-header" id="fb-header-label">
+                                        <i class="fab fa-facebook-f me-1"></i> FACEBOOK INSIGHTS — LAST 30 DAYS
+                                    </th>
+                                    <th style="text-align:center;background:linear-gradient(135deg,#2c6ed5,#1a56b7) !important;font-size:9px;padding:3px;">
+                                        ACT
+                                    </th>
+                                </tr>
+                                {{-- Row 2: column names + filters --}}
                                 <tr>
                                     <th style="width:2%;text-align:center;">
                                         <input type="checkbox" id="selectAll" title="Select all" style="cursor:pointer;width:13px;height:13px;">
                                     </th>
-                                    <th style="width:3%;">#</th>
-                                    <th style="width:5%;">Videos</th>
-                                    <th style="width:10%;">
+                                    <th style="width:2%;">#</th>
+                                    <th style="width:4%;">Video</th>
+                                    <th style="width:6%;">
                                         Category
                                         <div class="th-filter">
                                             <select id="parentSearch">
@@ -317,16 +509,14 @@
                                             </select>
                                         </div>
                                     </th>
-                                    <th style="width:9%;">
+                                    <th style="width:6%;">
                                         Target
                                         <div class="th-filter">
                                             <input type="text" id="skuSearch" placeholder="Search">
                                         </div>
                                     </th>
-                                    <th style="width:7%;">Topic</th>
-                                    <th style="width:7%;">What</th>
-                                    <th style="width:6%;">Why</th>
-                                    <th style="width:10%;">
+                                    <th style="width:5%;">Topic</th>
+                                    <th style="width:6%;">
                                         Audience
                                         <div class="th-filter">
                                             <select id="filter_ads_audience">
@@ -334,16 +524,22 @@
                                             </select>
                                         </div>
                                     </th>
-                                    <th style="width:7%;">Benefits</th>
-                                    <th style="width:7%;">Language</th>
-                                    <th style="width:7%;">Script</th>
-                                    <th style="width:8%;">Link</th>
-                                    <th style="width:7%;">Status</th>
-                                    <th style="width:4%;" title="Approval S">Appr-S</th>
-                                    <th style="width:4%;" title="Approval I">Appr-I</th>
-                                    <th style="width:4%;" title="Approval N">Appr-N</th>
-                                    <th style="width:4%;" title="All approved">Appr</th>
-                                    <th style="width:8%;">Action</th>
+                                    <th style="width:4%;">Lang</th>
+                                    <th style="width:5%;">Link</th>
+                                    {{-- Facebook Insight columns --}}
+                                    <th class="fb-th" style="width:5%;" title="Matched ad name(s)">Ad Name</th>
+                                    <th class="fb-th" style="width:4%;" title="Total Impressions">Impr.</th>
+                                    <th class="fb-th" style="width:4%;" title="Total Reach">Reach</th>
+                                    <th class="fb-th" style="width:3%;" title="Total Clicks">Clicks</th>
+                                    <th class="fb-th" style="width:4%;" title="Total Spend (USD)">Spend</th>
+                                    <th class="fb-th" style="width:3%;" title="Click-through Rate (%)">CTR%</th>
+                                    <th class="fb-th" style="width:4%;" title="Cost per 1000 Impressions">CPM</th>
+                                    <th class="fb-th" style="width:3%;" title="Average Frequency">Freq.</th>
+                                    <th class="fb-th" style="width:3%;" title="Video ThruPlay Views">Views</th>
+                                    <th class="fb-th" style="width:3%;" title="Results (Purchases)">Results</th>
+                                    <th class="fb-th" style="width:4%;" title="Cost per Result">$/Res.</th>
+                                    <th class="fb-th" style="width:4%;" title="Average Video Watch Time (seconds)">Watch</th>
+                                    <th style="width:5%;">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -362,6 +558,58 @@
         </div>
     </div>
 
+    {{-- ── Campaigns DataTable ─────────────────────────────────────── --}}
+    <div class="row">
+        <div class="col-12">
+            <div class="card mt-3">
+                <div class="campaigns-section-header">
+                    <h6><i class="fab fa-facebook-f me-2"></i>All Facebook Campaigns</h6>
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <span id="campaignsPeriodLabel">Loading…</span>
+                        <span id="campaignsTotalBadge" class="badge bg-white text-primary fw-bold" style="font-size:11px;"></span>
+                        <button id="refreshCampaignsBtn" class="btn btn-sm btn-light fw-semibold" style="font-size:11px;padding:3px 12px;">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0" style="border-radius:0 0 8px 8px;overflow:hidden;">
+                    <div id="campaignsLoader" class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <span class="ms-2 text-muted" style="font-size:12px;">Loading campaigns…</span>
+                    </div>
+                    <div id="campaignsTableWrap" class="d-none p-3">
+                        <table id="campaignsTable" class="table table-sm table-bordered w-100" style="font-size:11px;">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Campaign Name</th>
+                                    <th>Account</th>
+                                    <th>Status</th>
+                                    <th>Objective</th>
+                                    <th>Daily Budget</th>
+                                    <th>Lifetime Budget</th>
+                                    <th>Budget Left</th>
+                                    <th>Start</th>
+                                    <th>End</th>
+                                    <th>Impr.</th>
+                                    <th>Reach</th>
+                                    <th>Clicks</th>
+                                    <th>Spend ($)</th>
+                                    <th>CTR %</th>
+                                    <th>CPM ($)</th>
+                                    <th>Freq.</th>
+                                    <th>Results</th>
+                                    <th>Cost/Res.</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Add / Edit Modal --}}
     <div class="modal fade" id="videoModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -369,7 +617,7 @@
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title">
                         <i class="fas fa-video me-2"></i>
-                        <span id="modalTitle">Add Video for Ads</span>
+                        <span id="modalTitle">Add FB Video</span>
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -584,28 +832,93 @@
         </div>
     </div>
 
+    {{-- FB Push Sync Modal --}}
+    <div class="modal fade" id="fbSyncModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-md">
+            <div class="modal-content">
+                <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5fd4);color:#fff;">
+                    <h6 class="modal-title">
+                        <i class="fab fa-facebook-f me-2"></i>Push Facebook Insights Sync
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+
+                    {{-- Date range --}}
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" style="font-size:12px;">From Date</label>
+                            <input type="date" class="form-control form-control-sm" id="syncFromDate">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" style="font-size:12px;">To Date</label>
+                            <input type="date" class="form-control form-control-sm" id="syncToDate">
+                        </div>
+                    </div>
+
+                    {{-- Quick presets --}}
+                    <div class="d-flex gap-2 flex-wrap mb-3">
+                        <button type="button" class="btn btn-outline-secondary btn-sm sync-preset" data-days="30">Last 30 days</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm sync-preset" data-days="90">Last 90 days</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm sync-preset" data-days="180">Last 180 days</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm sync-preset fw-bold" data-days="365">Last 365 days</button>
+                    </div>
+
+                    {{-- Info box --}}
+                    <div class="alert alert-info py-2 mb-3" style="font-size:11px;">
+                        <i class="fas fa-info-circle me-1"></i>
+                        This queues background jobs that fetch data from the Facebook Ads API.
+                        Jobs run via <code>php artisan queue:work</code>.
+                        Large date ranges (365 days) may take <strong>5–15 minutes</strong> to complete.
+                    </div>
+
+                    {{-- Status area --}}
+                    <div id="syncStatusArea" class="d-none">
+                        <div class="sync-progress-bar mb-2">
+                            <div class="bar indeterminate" id="syncProgressBar"></div>
+                        </div>
+                        <div id="syncStatusText" class="fw-semibold" style="font-size:12px;"></div>
+                        <div id="syncLogBox" style="max-height:140px;overflow-y:auto;margin-top:8px;padding:6px;background:#f8f9fa;border-radius:6px;border:1px solid #dee2e6;"></div>
+                    </div>
+
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" id="fbSyncModalClose">Close</button>
+                    <button type="button" class="btn btn-sm text-white fw-bold" id="startSyncBtn" style="background:#1877f2;">
+                        <i class="fab fa-facebook-f me-1"></i> Start Sync
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
     <script>
         @verbatim
         const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-        let allData      = [];
-        let deleteId     = null;
-        let videoModal, deleteModal, importModal;
+        let allData        = [];
+        let fbInsightsMap  = {};   // keyed by video id
+        let fbLoaded       = false;
+        let deleteId       = null;
+        let syncPollTimer  = null;
+        let videoModal, deleteModal, importModal, fbSyncModal;
 
         // Field definitions: type 'text' = plain text, type 'link' = URL + status
         const fields = [
             { key: 'ads_topic_story',      label: 'Topic',          type: 'text' },
-            { key: 'ads_what',             label: 'What',           type: 'text' },
-            { key: 'ads_why_purpose',      label: 'Why',            type: 'text' },
             { key: 'ads_audience',         label: 'Audience',       type: 'text' },
-            { key: 'ads_benefit_audience', label: 'Benefits',       type: 'text' },
             { key: 'ads_language',         label: 'Language',       type: 'lang' },
-            { key: 'ads_script_link',      label: 'Script Link',    type: 'url' },
             { key: 'ads_video_en_link',    label: 'Link',           type: 'url' },
         ];
 
@@ -614,12 +927,22 @@
             videoModal  = new bootstrap.Modal(document.getElementById('videoModal'));
             deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
             importModal = new bootstrap.Modal(document.getElementById('importModal'));
+            fbSyncModal = new bootstrap.Modal(document.getElementById('fbSyncModal'));
+
+            // Set default dates for Push Sync (last 365 days → today)
+            const today     = new Date().toISOString().slice(0, 10);
+            const yearAgo   = new Date(Date.now() - 364 * 86400000).toISOString().slice(0, 10);
+            document.getElementById('syncToDate').value   = today;
+            document.getElementById('syncFromDate').value = yearAgo;
 
             loadData();
             loadAudienceOptions();
+            loadFbInsights();
+            loadCampaigns();
             bindToolbar();
             bindFilters();
             bindTableEvents();
+            bindSyncModal();
         });
 
         /* ── Toolbar ────────────────────────────────────────────── */
@@ -631,6 +954,290 @@
             document.getElementById('confirmDeleteBtn').addEventListener('click', deleteRecord);
             document.getElementById('doImportBtn').addEventListener('click', doImport);
             document.getElementById('downloadTemplate').addEventListener('click', downloadCsvTemplate);
+            document.getElementById('fbSyncBtn').addEventListener('click', () => loadFbInsights(true));
+            document.getElementById('fbPushSyncBtn').addEventListener('click', () => openFbSyncModal());
+            document.getElementById('refreshCampaignsBtn').addEventListener('click', () => loadCampaigns());
+        }
+
+        /* ── Facebook Insights ──────────────────────────────────── */
+        function loadFbInsights(manual = false) {
+            const btn  = document.getElementById('fbSyncBtn');
+            const info = document.getElementById('fb-sync-info');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…';
+            if (!manual && !fbLoaded) info.textContent = 'Loading…';
+
+            fetch('/video-for-ds/fb-insights')
+                .then(r => r.json())
+                .then(resp => {
+                    if (resp.success) {
+                        fbInsightsMap = resp.insights || {};
+                        fbLoaded = true;
+                        const period   = resp.period || '—';
+                        const syncedAt = resp.synced_at
+                            ? new Date(resp.synced_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})
+                            : '—';
+                        info.textContent = period + ' · DB synced ' + syncedAt;
+                        // Update the header label with actual date range
+                        const hdr = document.getElementById('fb-header-label');
+                        if (hdr && period !== '—') {
+                            hdr.innerHTML = '<i class="fab fa-facebook-f me-1"></i> FACEBOOK INSIGHTS — ' + period.toUpperCase();
+                        }
+                        // Re-render table rows with fresh FB data
+                        applyFilters();
+                    }
+                })
+                .catch(err => {
+                    info.textContent = 'FB data unavailable';
+                    console.warn('FB insights error:', err);
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fab fa-facebook-f"></i> FB Insights';
+                });
+        }
+
+        /* ── Campaigns DataTable helpers ───────────────────────── */
+        function renderFbInt(v) {
+            const n = parseInt(v);
+            if (!n) return '<span class="fb-metric-zero">—</span>';
+            if (n >= 1e6)  return '<span class="fb-metric">' + (n/1e6).toFixed(1) + 'M</span>';
+            if (n >= 1000) return '<span class="fb-metric">' + (n/1000).toFixed(1) + 'K</span>';
+            return '<span class="fb-metric">' + n.toLocaleString() + '</span>';
+        }
+        function renderFbMoney(v) {
+            const n = parseFloat(v);
+            if (!n) return '<span class="fb-metric-zero">—</span>';
+            return '<span class="fb-metric">$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
+        }
+        function renderFbPct(v) {
+            const n = parseFloat(v);
+            if (!n) return '<span class="fb-metric-zero">—</span>';
+            return '<span class="fb-metric">' + n + '%</span>';
+        }
+        function renderFbDec(v) {
+            const n = parseFloat(v);
+            if (!n) return '<span class="fb-metric-zero">—</span>';
+            return '<span class="fb-metric">' + n.toFixed(2) + '</span>';
+        }
+
+        /* ── Campaigns DataTable ────────────────────────────────── */
+        let campaignsDT = null;
+
+        function loadCampaigns() {
+            document.getElementById('campaignsLoader').style.display = 'block';
+            document.getElementById('campaignsTableWrap').classList.add('d-none');
+
+            fetch('/video-for-ds/campaigns')
+                .then(r => r.json())
+                .then(resp => {
+                    if (!resp.success) throw new Error('Server error');
+
+                    document.getElementById('campaignsPeriodLabel').textContent = resp.period || '—';
+                    document.getElementById('campaignsTotalBadge').textContent  = resp.total + ' campaigns';
+
+                    const rows = (resp.data || []).map((c, i) => [
+                        i + 1,
+                        c.name || '—',
+                        c.account_name || '—',
+                        c.effective_status || c.status || '—',
+                        (c.objective || '—').replace(/_/g, ' '),
+                        c.daily_budget    || '—',
+                        c.lifetime_budget || '—',
+                        c.budget_remaining || '—',
+                        c.start_time || '—',
+                        c.stop_time  || '—',
+                        c.impressions,
+                        c.reach,
+                        c.clicks,
+                        c.spend,
+                        c.ctr,
+                        c.cpm,
+                        c.frequency,
+                        c.results,
+                        c.cost_result,
+                    ]);
+
+                    document.getElementById('campaignsLoader').style.display  = 'none';
+                    document.getElementById('campaignsTableWrap').classList.remove('d-none');
+
+                    if (campaignsDT) {
+                        campaignsDT.clear().rows.add(rows).draw();
+                    } else {
+                        campaignsDT = $('#campaignsTable').DataTable({
+                            data: rows,
+                            pageLength: 25,
+                            order: [[13, 'desc']], // sort by Spend desc
+                            dom: '<"d-flex justify-content-between align-items-center mb-2"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
+                            buttons: [
+                                {
+                                    extend: 'csvHtml5',
+                                    text: '<i class="fas fa-file-csv me-1"></i>CSV',
+                                    className: 'btn btn-sm btn-outline-secondary',
+                                    title: 'FB_Campaigns_' + new Date().toISOString().slice(0,10),
+                                },
+                                {
+                                    extend: 'excelHtml5',
+                                    text: '<i class="fas fa-file-excel me-1"></i>Excel',
+                                    className: 'btn btn-sm btn-outline-success',
+                                    title: 'FB_Campaigns_' + new Date().toISOString().slice(0,10),
+                                },
+                            ],
+                            language: {
+                                search: '',
+                                searchPlaceholder: 'Search campaigns…',
+                                lengthMenu: 'Show _MENU_',
+                                info: '_START_–_END_ of _TOTAL_ campaigns',
+                                emptyTable: 'No Facebook campaigns found',
+                            },
+                            columnDefs: [
+                                // Status column — badge
+                                {
+                                    targets: 3,
+                                    render: function (val) {
+                                        const cls = 'cstatus-' + (val || '').replace(/\s/g, '_');
+                                        return '<span class="cstatus-badge ' + cls + '">' + (val || '—') + '</span>';
+                                    }
+                                },
+                                // Numeric insight columns: Impr(10) Reach(11) Clicks(12) Spend(13) CTR%(14) CPM(15) Freq(16) Results(17) Cost/Res(18)
+                                { targets: [10,11,12], render: (v,t) => t!=='display' ? (parseInt(v)||0) : renderFbInt(v) },
+                                { targets: [13,15,18], render: (v,t) => t!=='display' ? (parseFloat(v)||0) : renderFbMoney(v) },
+                                { targets: 14,         render: (v,t) => t!=='display' ? (parseFloat(v)||0) : renderFbPct(v) },
+                                { targets: [16,17],    render: (v,t) => t!=='display' ? (parseFloat(v)||0) : renderFbDec(v) },
+                                // Row number — not sortable
+                                { targets: 0, orderable: false, width: '30px' },
+                                // Name column — left align
+                                { targets: 1, className: 'text-start' },
+                            ],
+                        });
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('campaignsLoader').innerHTML =
+                        '<span class="text-danger" style="font-size:12px;"><i class="fas fa-exclamation-circle me-1"></i>Failed to load campaigns: ' + err.message + '</span>';
+                });
+        }
+
+        /* ── FB Push Sync Modal ─────────────────────────────────── */
+        function openFbSyncModal() {
+            // Reset UI
+            document.getElementById('syncStatusArea').classList.add('d-none');
+            document.getElementById('syncLogBox').innerHTML = '';
+            document.getElementById('startSyncBtn').disabled = false;
+            document.getElementById('startSyncBtn').innerHTML = '<i class="fab fa-facebook-f me-1"></i> Start Sync';
+            if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
+            fbSyncModal.show();
+        }
+
+        function bindSyncModal() {
+            // Quick preset buttons
+            document.querySelectorAll('.sync-preset').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const days = parseInt(this.dataset.days);
+                    const to   = new Date().toISOString().slice(0, 10);
+                    const from = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10);
+                    document.getElementById('syncFromDate').value = from;
+                    document.getElementById('syncToDate').value   = to;
+                    document.querySelectorAll('.sync-preset').forEach(b => b.classList.remove('btn-primary','btn-outline-primary'));
+                    this.classList.add('btn-primary');
+                    this.classList.remove('btn-outline-secondary','btn-outline-primary');
+                });
+            });
+
+            document.getElementById('startSyncBtn').addEventListener('click', startFbSync);
+
+            // Clean up poll timer when modal closes
+            document.getElementById('fbSyncModal').addEventListener('hidden.bs.modal', () => {
+                if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
+            });
+        }
+
+        function addSyncLog(msg, type = '') {
+            const box  = document.getElementById('syncLogBox');
+            const line = document.createElement('div');
+            line.className = 'sync-log-entry ' + type;
+            line.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+            box.prepend(line);
+        }
+
+        function startFbSync() {
+            const fromDate = document.getElementById('syncFromDate').value;
+            const toDate   = document.getElementById('syncToDate').value;
+            if (!fromDate || !toDate) { alert('Please set both From and To dates.'); return; }
+            if (fromDate > toDate)    { alert('"From" date must be before "To" date.'); return; }
+
+            const btn = document.getElementById('startSyncBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Queuing…';
+
+            // Show progress area
+            const area = document.getElementById('syncStatusArea');
+            area.classList.remove('d-none');
+            document.getElementById('syncProgressBar').classList.add('indeterminate');
+            document.getElementById('syncStatusText').textContent = 'Sending sync request…';
+            document.getElementById('syncLogBox').innerHTML = '';
+
+            fetch('/video-for-ds/trigger-fb-sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+                body: JSON.stringify({ from: fromDate, to: toDate })
+            })
+            .then(r => r.json())
+            .then(resp => {
+                if (!resp.success) throw new Error(resp.message || 'Unknown error');
+
+                addSyncLog('✓ ' + resp.message, 'success');
+                addSyncLog('Jobs are running in the background via queue worker.', 'info');
+                document.getElementById('syncStatusText').textContent =
+                    resp.queued + ' job(s) queued — processing in background…';
+
+                btn.innerHTML = '<i class="fas fa-check me-1"></i> Queued (' + resp.queued + ')';
+
+                // Start polling status every 6 seconds
+                let pollCount = 0;
+                syncPollTimer = setInterval(() => {
+                    pollCount++;
+                    fetch('/video-for-ds/sync-status')
+                        .then(r => r.json())
+                        .then(status => {
+                            const pending = status.pending_jobs ?? '?';
+                            const failed  = status.failed_jobs  ?? 0;
+                            const maxDate = status.max_date || '—';
+
+                            document.getElementById('syncStatusText').textContent =
+                                pending + ' job(s) still pending · Latest data: ' + maxDate
+                                + (failed ? ' · ⚠ ' + failed + ' failed' : '');
+
+                            if (pending === 0 || pollCount >= 60) {
+                                clearInterval(syncPollTimer);
+                                syncPollTimer = null;
+
+                                document.getElementById('syncProgressBar').classList.remove('indeterminate');
+                                document.getElementById('syncProgressBar').style.width = '100%';
+
+                                if (pending === 0) {
+                                    addSyncLog('✓ All jobs completed. Refreshing insights…', 'success');
+                                    document.getElementById('syncStatusText').textContent = '✓ Sync complete — refreshing table…';
+                                    // Auto-reload FB insights + campaigns into the table
+                                    setTimeout(() => {
+                                        loadFbInsights(true);
+                                        loadCampaigns();
+                                        document.getElementById('syncStatusText').textContent = '✓ Done — insights refreshed.';
+                                    }, 1500);
+                                } else {
+                                    addSyncLog('⏱ Jobs still running — click "FB Insights" to refresh when done.', 'info');
+                                }
+                            }
+                        })
+                        .catch(() => {});
+                }, 6000);
+            })
+            .catch(err => {
+                addSyncLog('✗ Error: ' + err.message, 'error');
+                document.getElementById('syncStatusText').textContent = 'Error queuing jobs. See log above.';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fab fa-facebook-f me-1"></i> Start Sync';
+            });
         }
 
         /* ── Table delegation (inline status dropdowns) ─────────── */
@@ -838,7 +1445,7 @@
             if (sa) { sa.checked = false; sa.indeterminate = false; }
 
             if (!data.length) {
-                tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">No records found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="22" class="text-center py-4 text-muted">No records found</td></tr>';
                 document.getElementById('total-count').textContent = '0';
                 return;
             }
@@ -947,64 +1554,46 @@
                     tr.appendChild(cell);
                 });
 
-                // Status inline dropdown
-                const statusOptions = ['Todo','Working','Archived','Done','Need Help','Need Approval','Dependent','Approved','Hold','Cancelled'];
-                const curStatus = row.ads_status || 'Todo';
-                const statusTd = document.createElement('td');
-                statusTd.style.verticalAlign = 'middle';
-                let statusOpts = statusOptions.map(s =>
-                    '<option value="' + s + '"' + (s === curStatus ? ' selected' : '') + '>' + s + '</option>'
-                ).join('');
-                const ssClass = 'ss-' + curStatus.replace(' ', '_');
-                statusTd.innerHTML = '<select class="status-select ' + ssClass + '" data-id="' + row.id + '">' + statusOpts + '</select>';
-                statusTd.querySelector('.status-select').addEventListener('change', function() {
-                    const newStatus = this.value;
-                    this.className = 'status-select ss-' + newStatus.replace(' ', '_');
-                    row.ads_status = newStatus;
-                    patchRecord(row);
+                // ── Facebook Insight columns ──────────────────────────
+                const fb = fbInsightsMap[row.id];
+                const fbCols = [
+                    { key: 'ad_name',     fmt: v => v ? '<span title="' + esc(v) + '" style="font-size:9px;display:block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(v) + '</span>' : null },
+                    { key: 'impressions', fmt: v => v ? fmtNum(v) : null },
+                    { key: 'reach',       fmt: v => v ? fmtNum(v) : null },
+                    { key: 'clicks',      fmt: v => v ? fmtNum(v) : null },
+                    { key: 'spend',       fmt: v => v ? '$' + fmtDec(v) : null },
+                    { key: 'ctr',         fmt: v => v ? v + '%' : null },
+                    { key: 'cpm',         fmt: v => v ? '$' + fmtDec(v) : null },
+                    { key: 'frequency',   fmt: v => v ? v : null },
+                    { key: 'video_views', fmt: v => v ? fmtNum(v) : null },
+                    { key: 'results',     fmt: v => v ? fmtNum(v) : null },
+                    { key: 'cost_result', fmt: v => v ? '$' + fmtDec(v) : null },
+                    { key: 'watch_time',  fmt: v => v ? v + 's' : null },
+                ];
+                fbCols.forEach(col => {
+                    const c = document.createElement('td');
+                    c.style.textAlign = 'center';
+                    c.style.verticalAlign = 'middle';
+                    if (!fbLoaded) {
+                        c.className = 'fb-cell-loading';
+                        c.innerHTML = '…';
+                    } else if (!fb) {
+                        c.className = 'fb-cell no-data';
+                        c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                    } else {
+                        const val = fb[col.key];
+                        const display = (val !== null && val !== undefined && val !== 0 && val !== '')
+                            ? col.fmt(val) : null;
+                        if (display) {
+                            c.className = 'fb-cell';
+                            c.innerHTML = display;
+                        } else {
+                            c.className = 'fb-cell no-data';
+                            c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                        }
+                    }
+                    tr.appendChild(c);
                 });
-                tr.appendChild(statusTd);
-
-                // Approval dots (appr_s, appr_i, appr_n) + summary dot
-                const summaryTd = document.createElement('td');
-                summaryTd.style.verticalAlign = 'middle';
-                const summaryDot = document.createElement('span');
-                const allApproved = () => parseInt(row.appr_s) === 1 && parseInt(row.appr_i) === 1 && parseInt(row.appr_n) === 1;
-                summaryDot.className = 'appr-dot appr-summary ' + (allApproved() ? 'on' : 'off');
-                summaryDot.title = allApproved() ? 'All approved' : 'Not fully approved';
-                summaryDot.style.width  = '16px';
-                summaryDot.style.height = '16px';
-                summaryDot.style.cursor = 'default';
-
-                const updateSummary = () => {
-                    const ok = allApproved();
-                    summaryDot.classList.toggle('on',  ok);
-                    summaryDot.classList.toggle('off', !ok);
-                    summaryDot.title = ok ? 'All approved' : 'Not fully approved';
-                };
-
-                ['appr_s', 'appr_i', 'appr_n'].forEach(col => {
-                    const apprTd = document.createElement('td');
-                    apprTd.style.verticalAlign = 'middle';
-                    const isOn = parseInt(row[col]) === 1;
-                    const dot = document.createElement('span');
-                    dot.className = 'appr-dot ' + (isOn ? 'on' : 'off');
-                    dot.title = isOn ? 'Approved' : 'Not approved';
-                    dot.addEventListener('click', function() {
-                        const newVal = dot.classList.contains('on') ? 0 : 1;
-                        dot.classList.toggle('on',  newVal === 1);
-                        dot.classList.toggle('off', newVal === 0);
-                        dot.title = newVal === 1 ? 'Approved' : 'Not approved';
-                        row[col] = newVal;
-                        updateSummary();
-                        patchRecord(row);
-                    });
-                    apprTd.appendChild(dot);
-                    tr.appendChild(apprTd);
-                });
-
-                summaryTd.appendChild(summaryDot);
-                tr.appendChild(summaryTd);
 
                 // Action
                 const actTd = document.createElement('td');
@@ -1028,6 +1617,20 @@
             tr.appendChild(c);
         }
 
+        function fmtNum(n) {
+            const num = parseInt(n, 10);
+            if (isNaN(num)) return '—';
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toLocaleString();
+        }
+
+        function fmtDec(n) {
+            const num = parseFloat(n);
+            if (isNaN(num)) return '0.00';
+            return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
         /* ── Counts ─────────────────────────────────────────────── */
         function updateCounts() {
             // counts removed per user request
@@ -1049,7 +1652,7 @@
             }
 
             if (mode === 'add') {
-                document.getElementById('modalTitle').textContent = 'Add Video for Ads';
+                document.getElementById('modalTitle').textContent = 'Add FB Video';
                 skuSelectWrap.classList.remove('d-none');
                 skuDisplayWrap.classList.add('d-none');
 
@@ -1271,8 +1874,8 @@
             });
             const ws = XLSX.utils.json_to_sheet(rows);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Videos for Ads');
-            XLSX.writeFile(wb, 'videos_for_ads_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            XLSX.utils.book_append_sheet(wb, ws, 'FB Video Ads');
+            XLSX.writeFile(wb, 'video_for_ds_' + new Date().toISOString().split('T')[0] + '.xlsx');
         }
 
         /* ── Video thumbnail live preview ───────────────────────── */
@@ -1381,7 +1984,7 @@
             const blob = new Blob([csv], { type: 'text/csv' });
             const url  = URL.createObjectURL(blob);
             const a    = document.createElement('a');
-            a.href = url; a.download = 'videos_for_ads_template.csv';
+            a.href = url; a.download = 'video_for_ds_template.csv';
             a.click(); URL.revokeObjectURL(url);
         }
 

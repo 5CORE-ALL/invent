@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class VideoForAd extends Model
+class VideoForDs extends Model
 {
-    protected $table = 'videos_for_ads';
+    protected $table = 'videos_for_ds';
 
     protected $fillable = [
         'sku',

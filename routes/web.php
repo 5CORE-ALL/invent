@@ -223,6 +223,7 @@ use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\YamibuyZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\ZendropZeroController;
 use App\Http\Controllers\ProductMaster\BulletPointMasterController;
 use App\Http\Controllers\ProductMaster\VideosForAdsController;
+use App\Http\Controllers\ProductMaster\VideoForDsController;
 use App\Http\Controllers\ProductMaster\CostpriceAnalysisController;
 use App\Http\Controllers\ProductMaster\DescriptionMaster2Controller;
 use App\Http\Controllers\ProductMaster\DescriptionMasterController;
@@ -2692,6 +2693,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/videos-for-ads/data', [VideosForAdsController::class, 'getData'])->name('videos.for.ads.data');
     Route::post('/videos-for-ads/store', [VideosForAdsController::class, 'store'])->name('videos.for.ads.store');
     Route::delete('/videos-for-ads/{id}', [VideosForAdsController::class, 'destroy'])->name('videos.for.ads.destroy');
+    Route::get('/videos-for-ads/audience-options', [VideosForAdsController::class, 'getAudienceOptions'])->name('videos.for.ads.audience.options');
+    Route::post('/videos-for-ads/audience-options', [VideosForAdsController::class, 'storeAudienceOption'])->name('videos.for.ads.audience.options.store');
+    Route::post('/videos-for-ads/import', [VideosForAdsController::class, 'import'])->name('videos.for.ads.import');
+
+    // FB Video Ads (video-for-ds)
+    Route::get('/video-for-ds', [VideoForDsController::class, 'index'])->name('video.for.ds');
+    Route::get('/video-for-ds/data', [VideoForDsController::class, 'getData'])->name('video.for.ds.data');
+    Route::post('/video-for-ds/store', [VideoForDsController::class, 'store'])->name('video.for.ds.store');
+    Route::delete('/video-for-ds/{id}', [VideoForDsController::class, 'destroy'])->name('video.for.ds.destroy');
+    Route::get('/video-for-ds/audience-options', [VideoForDsController::class, 'getAudienceOptions'])->name('video.for.ds.audience.options');
+    Route::post('/video-for-ds/audience-options', [VideoForDsController::class, 'storeAudienceOption'])->name('video.for.ds.audience.options.store');
+    Route::post('/video-for-ds/import', [VideoForDsController::class, 'import'])->name('video.for.ds.import');
+    Route::get('/video-for-ds/fb-insights', [VideoForDsController::class, 'getFbInsights'])->name('video.for.ds.fb.insights');
+    Route::get('/video-for-ds/campaigns', [VideoForDsController::class, 'getCampaigns'])->name('video.for.ds.campaigns');
+    Route::post('/video-for-ds/trigger-fb-sync', [VideoForDsController::class, 'triggerFbSync'])->name('video.for.ds.trigger.fb.sync');
+    Route::get('/video-for-ds/sync-status', [VideoForDsController::class, 'getSyncStatus'])->name('video.for.ds.sync.status');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
     Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');
