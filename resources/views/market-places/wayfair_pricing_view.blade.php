@@ -241,7 +241,7 @@
                             <span class="badge bg-success fs-6 p-2 d-none" id="wf-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L (no product master or list price ≤ 0)">Missing L: 0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L (no product master or uploaded Wayfair price ≤ 0). NRP = NR is excluded.">Missing L: 0</span>
                             <span class="badge fs-6 p-2" id="wf-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: |INV − Wayfair stock| ≤ 3">Map: 0</span>
                             <span class="badge fs-6 p-2" id="wf-nmap-count-badge" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter: N Map (|INV − Wayfair stock| &gt; 3)">N Map: 0</span>
                             <span class="badge fs-6 p-2" id="wf-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
@@ -424,17 +424,15 @@
         function wfUpdateForecastNrp(data, onSuccess, onFail) {
             onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
             onFail = typeof onFail === 'function' ? onFail : function() {};
-            $.post('{{ route("update.forecast.data") }}', {
+            $.post('{{ route("wayfair.save.nr") }}', {
                 sku: data.sku,
-                parent: data.parent != null ? String(data.parent) : '',
-                column: 'NR',
-                value: data.value,
+                nr: data.value,
                 _token: $('meta[name="csrf-token"]').attr('content')
             }).done(function(res) {
-                if (res.success) {
+                if (res && res.success) {
                     onSuccess();
                 } else {
-                    console.warn('NRP not saved:', res.message);
+                    console.warn('NRP not saved:', (res && (res.error || res.message)) || 'unknown');
                     onFail();
                 }
             }).fail(function(err) {
@@ -700,10 +698,14 @@
 
         function updateSummary(rowsInput = null) {
             let rows = normalizeRows(rowsInput);
-            if (!rows.length && table && typeof table.getData === 'function') {
-                const activeRows = normalizeRows(table.getData('active'));
-                const allRows = normalizeRows(table.getData());
-                rows = activeRows.length ? activeRows : allRows;
+            // When called with no argument (e.g. after NRP / filter / redraw), use full table.getData().
+            // Avoid getData('active') here: with pagination/filters it can under-count so Missing L never drops after marking NR.
+            // When callers pass explicit row data (ajaxResponse / dataLoaded), keep that path — == null only matches undefined, not [].
+            if (rowsInput == null && table && typeof table.getData === 'function') {
+                const full = normalizeRows(table.getData());
+                if (full.length) {
+                    rows = full;
+                }
             }
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
@@ -713,7 +715,8 @@
 
             rows.forEach(row => {
                 if (row.is_parent) return;
-                const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
+                const nrVal = String(row.nr || '').trim().toUpperCase();
+                const isMissing = (row.missing || '').trim().toUpperCase() === 'M' && nrVal !== 'NR';
                 const fqty = parseFloat(row.al30) || 0;
                 const sales = parseFloat(row.sales) || 0;
                 const lp = parseFloat(row.lp) || 0;
@@ -754,6 +757,10 @@
             $('#wf-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#wf-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
+
+            if (rows.length) {
+                summaryDataCache = rows;
+            }
         }
 
         function applyFilters() {
@@ -861,7 +868,14 @@
                     return true;
                 });
             }
-            if (wfMissingActive) table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
+            if (wfMissingActive) {
+                table.addFilter(function(d) {
+                    if (d.is_parent) return false;
+                    const miss = (d.missing || '').trim().toUpperCase() === 'M';
+                    const nrVal = String(d.nr || '').trim().toUpperCase();
+                    return miss && nrVal !== 'NR';
+                });
+            }
             if (wfMapActive) table.addFilter(d => (d.map || '') === 'Map');
             if (wfNMapActive) table.addFilter(d => wfWfStrictNMapFromMap(d.map || ''));
             if (wfZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
@@ -1244,8 +1258,9 @@
                         headerSort: true,
                         accessor: function(value, data) {
                             const val = data && data.nr != null ? data.nr : value;
-                            if (val === null || val === undefined) return '';
-                            return String(val).trim().toUpperCase();
+                            if (val === null || val === undefined || String(val).trim() === '') return '';
+                            const s = String(val).trim().toUpperCase();
+                            return s === 'NR' ? 'NR' : 'REQ';
                         },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -1262,7 +1277,7 @@
                             if (!value || value === '') {
                                 value = 'REQ';
                             }
-                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                            if (value !== 'REQ' && value !== 'NR') {
                                 value = 'REQ';
                             }
                             const sku = String(d.sku || '');
@@ -1271,10 +1286,7 @@
                             let tip = 'REQ';
                             if (value === 'NR') {
                                 dotColor = '#dc3545';
-                                tip = '2BDC';
-                            } else if (value === 'LATER') {
-                                dotColor = '#facc15';
-                                tip = 'LATER';
+                                tip = 'NR';
                             }
                             const skuAttr = wfEscHtmlAttr(sku);
                             const parentAttr = wfEscHtmlAttr(parent);
@@ -1286,8 +1298,7 @@
                                 'data-type="NR" data-sku="' + skuAttr + '" data-parent="' + parentAttr + '" ' +
                                 'aria-label="NRP: ' + wfEscHtmlAttr(tip) + '">' +
                                 '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>REQ</option>' +
-                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>2BDC</option>' +
-                                '<option value="LATER"' + (value === 'LATER' ? ' selected' : '') + '>LATER</option>' +
+                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>NR</option>' +
                                 '</select></div>'
                             );
                         }
@@ -1298,7 +1309,7 @@
                     wfRemoveImagePreview();
                     updateSummary(data);
                 },
-                dataFiltered: function(filters, rows) { updateSummary(rows); },
+                dataFiltered: function() { updateSummary(); },
                 dataProcessed: function() { updateSummary(); },
                 renderComplete: function() { updateSummary(); }
             });
@@ -1503,20 +1514,45 @@
                 const sku = $el.data('sku');
                 const parent = $el.data('parent');
                 if (!sku || !table) return;
-                const rows = table.getRows('active').filter(function(r) {
+                const rows = table.getRows().filter(function(r) {
                     const d = r.getData();
                     return !d.is_parent && String(d.sku) === String(sku);
                 });
                 const row = rows.length ? rows[0] : null;
                 const prevRaw = row ? String(row.getData().nr ?? '').trim().toUpperCase() : '';
-                const prevSelect = (prevRaw === 'NR' || prevRaw === 'LATER') ? prevRaw : 'REQ';
+                const prevSelect = prevRaw === 'NR' ? 'NR' : 'REQ';
                 wfUpdateForecastNrp(
                     { sku: sku, parent: parent, value: newValue },
                     function() {
                         if (row) {
-                            row.update({ nr: newValue }, true);
-                            const nrCell = row.getCells().find(function(c) { return c.getField() === 'nr'; });
-                            if (nrCell) nrCell.reformat();
+                            const d = row.getData();
+                            const patch = { nr: newValue };
+                            const price = parseFloat(d.price) || 0;
+                            const noMaster = d.parent == null || String(d.parent).trim() === '';
+                            if (newValue === 'NR') {
+                                patch.missing = '';
+                                const inv = parseInt(d.inv, 10) || 0;
+                                const wfStock = parseInt(d.ae_stock, 10) || 0;
+                                const diff = Math.abs(inv - wfStock);
+                                patch.map = diff <= 3 ? 'Map' : ('N Map|' + diff);
+                            } else {
+                                const wouldMiss = noMaster || price <= 0;
+                                patch.missing = wouldMiss ? 'M' : '';
+                                if (wouldMiss) {
+                                    patch.map = '';
+                                } else {
+                                    const inv = parseInt(d.inv, 10) || 0;
+                                    const wfStock = parseInt(d.ae_stock, 10) || 0;
+                                    const diff = Math.abs(inv - wfStock);
+                                    patch.map = diff <= 3 ? 'Map' : ('N Map|' + diff);
+                                }
+                            }
+                            row.update(patch, true);
+                            ['nr', 'missing', 'map'].forEach(function(field) {
+                                const c = row.getCells().find(function(cell) { return cell.getField() === field; });
+                                if (c) c.reformat();
+                            });
+                            updateSummary();
                         }
                     },
                     function() {
