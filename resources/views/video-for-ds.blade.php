@@ -673,7 +673,8 @@
                                 <label class="form-label mb-1">Video Thumbnail URL</label>
                                 <input type="url" class="form-control form-control-sm" id="f_video_thumbnail"
                                        name="video_thumbnail" placeholder="https:// (thumbnail image link)">
-                                <small class="text-muted">Image shown in the Videos column</small>
+                                <small class="text-muted">Image shown in the Videos column. Dropbox: use a <strong>file</strong> share link (not a folder); <code>dl=0</code> links are adjusted automatically.</small>
+                                <div id="thumbUrlHint" class="text-warning mt-1 d-none" style="font-size:11px;"></div>
                             </div>
                             <div>
                                 <label class="form-label mb-1">Video URL <span class="text-muted">(plays on click)</span></label>
@@ -897,12 +898,6 @@
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
     <script>
         @verbatim
         const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -938,7 +933,6 @@
             loadData();
             loadAudienceOptions();
             loadFbInsights();
-            loadCampaigns();
             bindToolbar();
             bindFilters();
             bindTableEvents();
@@ -1117,6 +1111,7 @@
                         '<span class="text-danger" style="font-size:12px;"><i class="fas fa-exclamation-circle me-1"></i>Failed to load campaigns: ' + err.message + '</span>';
                 });
         }
+        window.__videoForDsLoadCampaigns = loadCampaigns;
 
         /* ── FB Push Sync Modal ─────────────────────────────────── */
         function openFbSyncModal() {
@@ -1438,6 +1433,104 @@
             renderTable(filtered);
         }
 
+        /** Match server VideoThumbnailUrl::normalize for <img src>. */
+        function normalizeThumbUrlForImg(url) {
+            if (!url || typeof url !== 'string') return '';
+            url = url.trim();
+            if (!url) return '';
+            if (/^data:image\//i.test(url)) return url;
+            if (url.indexOf('//') === 0) url = 'https:' + url;
+            const dm = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+            if (dm) return 'https://drive.google.com/uc?export=view&id=' + dm[1];
+            if (!/dropbox\.com/i.test(url)) return url;
+            if (/\/scl\/fo\//i.test(url)) return url;
+            let out = url.replace(/([?&])dl=0(&|$)/i, '$1raw=1$2').replace(/([?&])dl=1(&|$)/i, '$1raw=1$2');
+            if (!/[?&]raw=1(&|$)/i.test(out)) out += (out.indexOf('?') !== -1 ? '&' : '?') + 'raw=1';
+            return out;
+        }
+
+        function extractYoutubeId(u) {
+            if (!u || typeof u !== 'string') return '';
+            const s = u.trim();
+            let m = s.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+            if (m) return m[1];
+            try {
+                const a = document.createElement('a');
+                a.href = s;
+                if (a.hostname.includes('youtube.com') && a.pathname.indexOf('/watch') === 0) {
+                    const v = new URLSearchParams(a.search).get('v');
+                    if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+                }
+            } catch (e) {}
+            return '';
+        }
+        function youtubeThumbUrl(id) {
+            return id ? ('https://i.ytimg.com/vi/' + id + '/hqdefault.jpg') : '';
+        }
+        function resolveVideoThumbnails(row) {
+            let primary = normalizeThumbUrlForImg(row.video_thumbnail || '');
+            const ytId = extractYoutubeId(row.video_url || '') || extractYoutubeId(row.ads_video_en_link || '');
+            const ytThumb = youtubeThumbUrl(ytId);
+            let first = '';
+            const thumbUsable = primary && (/^https?:\/\//i.test(primary) || /^data:image\//i.test(primary));
+            if (thumbUsable) first = primary;
+            else if (ytThumb) first = ytThumb;
+            const second = (first && ytThumb && first !== ytThumb) ? ytThumb : '';
+            return { first, secondEnc: second ? encodeURIComponent(second) : '' };
+        }
+        function playVideoHref(row) {
+            const u = (row.video_url || '').trim() || (row.ads_video_en_link || '').trim();
+            return u || '';
+        }
+        if (!window._vfaThumbErr) {
+            window._vfaThumbErr = function (img) {
+                const altEnc = img.getAttribute('data-thumb2');
+                if (altEnc) {
+                    try {
+                        const alt = decodeURIComponent(altEnc);
+                        if (alt && img.src !== alt) {
+                            img.src = alt;
+                            return;
+                        }
+                    } catch (e) {}
+                }
+                img.onerror = null;
+                const a = img.closest('a');
+                if (a && a.href && a.href !== '#') {
+                    a.innerHTML = '<i class="fas fa-play-circle"></i>';
+                    a.className = 'video-link-icon';
+                    a.style.position = '';
+                    return;
+                }
+                img.replaceWith(Object.assign(document.createElement('span'), { className: 'text-muted', textContent: '—' }));
+            };
+        }
+        function renderVideoCellHtml(row) {
+            const { first, secondEnc } = resolveVideoThumbnails(row);
+            const href = playVideoHref(row);
+            const hrefEsc = esc(href);
+            const imgCommon = ' referrerpolicy="no-referrer" loading="lazy" onerror="window._vfaThumbErr(this)"' +
+                (secondEnc ? ' data-thumb2="' + secondEnc + '"' : '') +
+                ' style="width:36px;height:28px;object-fit:cover;border-radius:3px;border:2px solid #2c6ed5;" alt=""';
+            if (first && href) {
+                return '<a href="' + hrefEsc + '" target="_blank" rel="noopener noreferrer" title="Play video" style="display:inline-block;position:relative;">' +
+                    '<img src="' + esc(first) + '"' + imgCommon + '>' +
+                    '<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
+                        'background:rgba(0,0,0,0.55);border-radius:50%;width:14px;height:14px;' +
+                        'display:flex;align-items:center;justify-content:center;">' +
+                        '<i class="fas fa-play" style="color:#fff;font-size:6px;margin-left:1px;"></i>' +
+                    '</span></a>';
+            }
+            if (href) {
+                return '<a href="' + hrefEsc + '" target="_blank" rel="noopener noreferrer" class="video-link-icon" title="Play video">' +
+                    '<i class="fas fa-play-circle"></i></a>';
+            }
+            if (first) {
+                return '<img src="' + esc(first) + '"' + imgCommon.replace('border:2px solid #2c6ed5;', '') + '>';
+            }
+            return '<span class="text-muted">—</span>';
+        }
+
         function renderTable(data) {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
@@ -1469,31 +1562,11 @@
                 // #
                 td(tr, idx + 1, 'text-center text-muted');
 
-                // Videos column — thumbnail + clickable link
+                // Videos column — thumbnail + clickable link (YouTube auto-thumb + onerror fallback)
                 const videoTd = document.createElement('td');
                 videoTd.style.textAlign = 'center';
                 videoTd.style.verticalAlign = 'middle';
-                if (row.video_thumbnail && row.video_url) {
-                    videoTd.innerHTML =
-                        '<a href="' + esc(row.video_url) + '" target="_blank" title="Play video" style="display:inline-block;position:relative;">' +
-                            '<img src="' + esc(row.video_thumbnail) + '" style="width:36px;height:28px;object-fit:cover;border-radius:3px;border:2px solid #2c6ed5;">' +
-                            '<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
-                                'background:rgba(0,0,0,0.55);border-radius:50%;width:14px;height:14px;' +
-                                'display:flex;align-items:center;justify-content:center;">' +
-                                '<i class="fas fa-play" style="color:#fff;font-size:6px;margin-left:1px;"></i>' +
-                            '</span>' +
-                        '</a>';
-                } else if (row.video_url) {
-                    videoTd.innerHTML =
-                        '<a href="' + esc(row.video_url) + '" target="_blank" class="video-link-icon" title="Play video">' +
-                            '<i class="fas fa-play-circle"></i>' +
-                        '</a>';
-                } else if (row.video_thumbnail) {
-                    videoTd.innerHTML =
-                        '<img src="' + esc(row.video_thumbnail) + '" style="width:36px;height:28px;object-fit:cover;border-radius:3px;">';
-                } else {
-                    videoTd.innerHTML = '<span class="text-muted">—</span>';
-                }
+                videoTd.innerHTML = renderVideoCellHtml(row);
                 tr.appendChild(videoTd);
 
                 // Parent
@@ -1773,7 +1846,7 @@
             payload.appr_i          = existingRow.appr_i ?? 0;
             payload.appr_n          = existingRow.appr_n ?? 0;
             payload.category        = document.getElementById('f_category').value;
-            payload.video_thumbnail = document.getElementById('f_video_thumbnail').value;
+            payload.video_thumbnail = normalizeThumbUrlForImg(document.getElementById('f_video_thumbnail').value.trim());
             payload.video_url       = document.getElementById('f_video_url').value;
             fields.filter(f => f.type === 'text').forEach(f => {
                 payload[f.key] = document.getElementById('f_' + f.key + '_val').value;
@@ -1993,15 +2066,47 @@
             const urlEl     = document.getElementById('f_video_url');
             const previewBox   = document.getElementById('videoPreviewBox');
             const previewThumb = document.getElementById('videoPreviewThumb');
+            const hintEl       = document.getElementById('thumbUrlHint');
             if (!thumbEl || !previewBox || !previewThumb) return;
-            const thumbUrl = thumbEl.value.trim();
+            const rawThumb = thumbEl.value.trim();
             const videoUrl = urlEl ? urlEl.value.trim() : '';
-            if (thumbUrl) {
-                previewThumb.src = thumbUrl;
-                previewThumb.onclick = videoUrl ? () => window.open(videoUrl, '_blank') : null;
+            let displaySrc = '';
+            if (rawThumb) displaySrc = normalizeThumbUrlForImg(rawThumb);
+            else {
+                const ytId = extractYoutubeId(videoUrl);
+                if (ytId) displaySrc = youtubeThumbUrl(ytId);
+            }
+            if (hintEl) {
+                hintEl.classList.add('d-none');
+                hintEl.textContent = '';
+            }
+            if (displaySrc) {
+                previewThumb.referrerPolicy = 'no-referrer';
+                previewThumb.onload = function () {
+                    if (hintEl && !/\/scl\/fo\//i.test(rawThumb)) {
+                        hintEl.classList.add('d-none');
+                        hintEl.textContent = '';
+                    }
+                };
+                previewThumb.onerror = function () {
+                    previewThumb.onerror = null;
+                    if (hintEl) {
+                        hintEl.classList.remove('d-none');
+                        hintEl.textContent = /\/scl\/fo\//i.test(rawThumb)
+                            ? 'This is a Dropbox folder link, not an image file. Share only the image file and paste that link (or upload elsewhere and use a direct image URL).'
+                            : 'Could not load this URL as an image. For Dropbox files, ensure the link is for the image file with direct access (dl=0 is converted to raw=1 on save).';
+                    }
+                };
+                previewThumb.src = displaySrc;
+                previewThumb.onclick = videoUrl ? function () { window.open(videoUrl, '_blank'); } : null;
                 previewBox.classList.remove('d-none');
+                if (hintEl && /\/scl\/fo\//i.test(rawThumb)) {
+                    hintEl.classList.remove('d-none');
+                    hintEl.textContent = 'Dropbox folder URLs cannot be used as thumbnails. Use a share link that points to the image file itself.';
+                }
             } else {
                 previewBox.classList.add('d-none');
+                previewThumb.removeAttribute('src');
             }
         }
 
@@ -2021,5 +2126,28 @@
             return String(t).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
         }
         @endverbatim
+    </script>
+@endsection
+
+{{-- DataTables must load AFTER Vite (head.js replaces window.jQuery); see layouts/vertical @yield('script-after-vite') --}}
+@section('script-after-vite')
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+    <script>
+        (function bootFbCampaignsTable() {
+            function go() {
+                if (typeof window.jQuery === 'undefined' || typeof window.jQuery.fn.DataTable !== 'function') {
+                    return setTimeout(go, 40);
+                }
+                if (typeof window.__videoForDsLoadCampaigns === 'function') {
+                    window.__videoForDsLoadCampaigns();
+                }
+            }
+            go();
+        })();
     </script>
 @endsection

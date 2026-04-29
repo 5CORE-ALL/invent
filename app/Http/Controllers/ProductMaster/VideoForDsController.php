@@ -10,6 +10,7 @@ use App\Models\MetaCampaign;
 use App\Models\MetaAdSet;
 use App\Models\MetaAdAccount;
 use App\Jobs\SyncMetaInsightsDailyJob;
+use App\Support\VideoThumbnailUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -83,6 +84,9 @@ class VideoForDsController extends Controller
         $data = ['sku' => trim($request->sku)];
         foreach ($stringFields as $field) {
             $data[$field] = $request->input($field, '');
+        }
+        if ($data['video_thumbnail'] !== '') {
+            $data['video_thumbnail'] = VideoThumbnailUrl::normalize($data['video_thumbnail']);
         }
         foreach ($intFields as $field) {
             $data[$field] = (int) $request->input($field, 0);
@@ -446,6 +450,9 @@ class VideoForDsController extends Controller
             $record = [];
             foreach ($allowedFields as $f) {
                 if (array_key_exists($f, $data)) $record[$f] = trim($data[$f]);
+            }
+            if (! empty($record['video_thumbnail'])) {
+                $record['video_thumbnail'] = VideoThumbnailUrl::normalize($record['video_thumbnail']);
             }
 
             try {

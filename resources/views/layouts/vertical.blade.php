@@ -827,6 +827,9 @@
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
+    {{-- Runs after Vite so jQuery matches head.js; DataTables and similar plugins attach here --}}
+    @yield('script-after-vite')
+
     @include('components.ai-chat-widget')
     
     <!-- PWA Service Worker Registration with Error Handling -->

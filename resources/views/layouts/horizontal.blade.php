@@ -45,6 +45,8 @@
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
+    @yield('script-after-vite')
+
     @include('components.ai-chat-widget')
 </body>
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\Controller;
 use App\Models\VideoForAd;
 use App\Models\VideoAdAudienceOption;
+use App\Support\VideoThumbnailUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -80,6 +81,9 @@ class VideosForAdsController extends Controller
         $data = ['sku' => trim($request->sku)];
         foreach ($stringFields as $field) {
             $data[$field] = $request->input($field, '');
+        }
+        if ($data['video_thumbnail'] !== '') {
+            $data['video_thumbnail'] = VideoThumbnailUrl::normalize($data['video_thumbnail']);
         }
         foreach ($intFields as $field) {
             $data[$field] = (int) $request->input($field, 0);
@@ -160,6 +164,9 @@ class VideosForAdsController extends Controller
                 if (array_key_exists($f, $data)) {
                     $record[$f] = trim($data[$f]);
                 }
+            }
+            if (! empty($record['video_thumbnail'])) {
+                $record['video_thumbnail'] = VideoThumbnailUrl::normalize($record['video_thumbnail']);
             }
 
             try {
