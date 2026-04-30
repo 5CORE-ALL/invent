@@ -2167,6 +2167,166 @@ class ChannelMasterController extends Controller
         return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 4) : 0.0;
     }
 
+    /**
+     * Fast method: Get channel data from pre-calculated table
+     * This method reads from channel_master_calculated_data table which is updated daily
+     * Much faster than calculating on-the-fly
+     */
+    public function getViewChannelDataFast(Request $request)
+    {
+        try {
+            // Check if we have fresh calculated data
+            if (!\App\Models\ChannelMasterCalculatedData::isDataFresh()) {
+                \Log::warning('Channel calculated data is not fresh, consider running: php artisan channel:calculate-data');
+                // Fallback to old method if data is stale
+                return $this->getViewChannelData($request);
+            }
+            
+            // Get pagination parameters
+            $page = (int) $request->input('page', 1);
+            $size = (int) $request->input('size', 50);
+            
+            // Get data from pre-calculated table
+            $query = \App\Models\ChannelMasterCalculatedData::query()
+                ->orderBy('l30_sales', 'desc');
+            
+            // Apply type filter if needed (from frontend section filter)
+            $section = $request->input('section');
+            if ($section && in_array($section, ['B2C', 'B2B', 'Dropship'])) {
+                $query->where('type', $section);
+            }
+            
+            // Get total count
+            $total = $query->count();
+            
+            // Get paginated data
+            $offset = ($page - 1) * $size;
+            $channels = $query->skip($offset)->take($size)->get();
+            
+            // Format data for frontend (match expected format)
+            $formattedData = $channels->map(function($channel) {
+                return [
+                    'Channel ' => $channel->channel,
+                    'sheet_link' => $channel->sheet_link,
+                    'channel_percentage' => $channel->channel_percentage,
+                    'type' => $channel->type,
+                    'base' => $channel->base,
+                    'target' => $channel->target,
+                    'missing_link' => $channel->missing_link,
+                    'addition_sheet' => $channel->addition_sheet,
+                    
+                    'L-60 Sales' => (int) $channel->l60_sales,
+                    'L30 Sales' => (int) $channel->l30_sales,
+                    'Y Sales' => $channel->yesterday_sales,
+                    'L7 Sales' => $channel->l7_sales,
+                    'Growth' => round($channel->growth, 2) . '%',
+                    'L7 vs 30 pace %' => $channel->l7_vs_30_pace,
+                    
+                    'L60 Orders' => $channel->l60_orders,
+                    'L30 Orders' => $channel->l30_orders,
+                    'Qty' => $channel->total_quantity,
+                    
+                    'Gprofit%' => round($channel->gprofit_pct, 2) . '%',
+                    'gprofitL60' => round($channel->gprofit_l60, 2) . '%',
+                    'G Roi' => round($channel->g_roi, 2),
+                    'G RoiL60' => round($channel->g_roi_l60, 2),
+                    'Total PFT' => round($channel->total_profit, 2),
+                    'N PFT' => round($channel->n_pft, 2) . '%',
+                    'N ROI' => round($channel->n_roi, 2),
+                    'TACOS' => round($channel->tacos_percentage, 2) . '%',
+                    'cogs' => round($channel->cogs, 2),
+                    
+                    'Total Ad Spend' => round($channel->total_ad_spend, 2),
+                    'Ads%' => round($channel->ads_percentage, 2) . '%',
+                    'Clicks' => $channel->clicks,
+                    'Ad Sold' => $channel->ad_sold,
+                    'Ad Sales' => round($channel->ad_sales, 2),
+                    'Ads CVR' => round($channel->cvr, 2),
+                    'ACOS' => round($channel->acos, 2),
+                    'Missing Ads' => $channel->missing_ads,
+                    
+                    'KW Clicks' => $channel->kw_clicks,
+                    'PT Clicks' => $channel->pt_clicks,
+                    'HL Clicks' => $channel->hl_clicks,
+                    'PMT Clicks' => $channel->pmt_clicks,
+                    'Shopping Clicks' => $channel->shopping_clicks,
+                    'SERP Clicks' => $channel->serp_clicks,
+                    
+                    'KW Sales' => $channel->kw_sales,
+                    'PT Sales' => $channel->pt_sales,
+                    'HL Sales' => $channel->hl_sales,
+                    'PMT Sales' => $channel->pmt_sales,
+                    'Shopping Sales' => $channel->shopping_sales,
+                    'SERP Sales' => $channel->serp_sales,
+                    
+                    'KW Sold' => $channel->kw_sold,
+                    'PT Sold' => $channel->pt_sold,
+                    'HL Sold' => $channel->hl_sold,
+                    'PMT Sold' => $channel->pmt_sold,
+                    'Shopping Sold' => $channel->shopping_sold,
+                    'SERP Sold' => $channel->serp_sold,
+                    
+                    'KW ACOS' => $channel->kw_acos,
+                    'PT ACOS' => $channel->pt_acos,
+                    'HL ACOS' => $channel->hl_acos,
+                    'PMT ACOS' => $channel->pmt_acos,
+                    'Shopping ACOS' => $channel->shopping_acos,
+                    'SERP ACOS' => $channel->serp_acos,
+                    
+                    'KW CVR' => $channel->kw_cvr,
+                    'PT CVR' => $channel->pt_cvr,
+                    'HL CVR' => $channel->hl_cvr,
+                    'PMT CVR' => $channel->pmt_cvr,
+                    'Shopping CVR' => $channel->shopping_cvr,
+                    'SERP CVR' => $channel->serp_cvr,
+                    
+                    'listed_count' => $channel->listed_count,
+                    'W/Ads' => $channel->w_ads,
+                    'Map' => $channel->map,
+                    'Miss' => $channel->miss,
+                    'NMap' => $channel->nmap,
+                    'Total Views' => $channel->total_views,
+                    
+                    'NR' => $channel->nr,
+                    'Update' => $channel->update_flag,
+                    'red_margin' => $channel->red_margin,
+                    
+                    'Account health' => $channel->account_health['data'] ?? null,
+                    'Reviews' => $channel->reviews_data['data'] ?? null,
+                ];
+            })->toArray();
+            
+            // Get summary data from cache
+            $summaryData = \Cache::get('channel_master_summary_data', []);
+            
+            return response()->json([
+                'status' => 200,
+                'message' => 'Channel data fetched successfully (from pre-calculated table)',
+                'data' => $formattedData,
+                'last_page' => ceil($total / $size),
+                'total_count' => $total,
+                'inventory_value_amazon' => $summaryData['inventory_value_amazon'] ?? 0,
+                'inv_at_lp' => $summaryData['inv_at_lp'] ?? 0,
+                'shopify_inv_sum' => $summaryData['shopify_inv_sum'] ?? 0,
+                'shopify_weighted_avg_lp' => $summaryData['shopify_weighted_avg_lp'] ?? 0,
+                'inventory_by_color' => $summaryData['inventory_by_color'] ?? [],
+                'ad_spend_by_channel' => $summaryData['ad_spend_by_channel'] ?? [],
+                'ad_spend_by_color_amazon' => $summaryData['ad_spend_by_color_amazon'] ?? [],
+                'ad_spend_by_color_by_channel' => $summaryData['ad_spend_by_color_by_channel'] ?? [],
+                'calculated_at' => $summaryData['calculated_at'] ?? null,
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error fetching fast channel data: ' . $e->getMessage());
+            // Fallback to old method
+            return $this->getViewChannelData($request);
+        }
+    }
+
+    /**
+     * Original method: Calculate channel data on-the-fly (SLOW)
+     * Used as fallback when pre-calculated data is not available
+     */
     public function getViewChannelData(Request $request)
     {
         // Fetch both channel and sheet_link from ChannelMaster
@@ -2192,11 +2352,11 @@ class ChannelMasterController extends Controller
             ->get($columns);
 
         if ($channels->isEmpty()) {
-            return response()->json([
+            return [
                 'status'  => 200,
                 'message' => 'No active channel found',
                 'data'    => [],
-            ]);
+            ];
         }
 
         // Get clicks data from adv_masters_data table

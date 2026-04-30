@@ -813,6 +813,34 @@
             padding: 0;
             border-radius: 0;
         }
+
+        /* SKU copy button */
+        .sku-copy-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: none;
+            padding: 0 0 0 5px;
+            cursor: pointer;
+            color: #adb5bd;
+            font-size: 11px;
+            line-height: 1;
+            vertical-align: middle;
+            opacity: 0;
+            transition: opacity 0.15s, color 0.15s;
+        }
+        td:hover .sku-copy-btn,
+        .sku-copy-btn:focus {
+            opacity: 1;
+        }
+        .sku-copy-btn:hover {
+            color: #2c6ed5;
+        }
+        .sku-copy-btn.copied {
+            color: #28a745;
+            opacity: 1;
+        }
     </style>
 @endsection
 
@@ -2007,9 +2035,11 @@
                                 case "Parent":
                                     cell.textContent = escapeHtml(item.Parent) || '-';
                                     break;
-                                case "SKU":
-                                    cell.textContent = escapeHtml(item.SKU) || '-';
+                                case "SKU": {
+                                    const skuText = escapeHtml(item.SKU) || '-';
+                                    cell.innerHTML = `${skuText}<button class="sku-copy-btn" title="Copy SKU" data-copy-sku="${escapeHtml(item.SKU || '')}"><i class="fas fa-copy"></i></button>`;
                                     break;
+                                }
                                 case "UPC":
                                     cell.className = 'text-center';
                                     cell.textContent = formatNumber(item.upc, 0);
@@ -2221,7 +2251,7 @@
                                             data-sku="${escapeHtml(item.SKU) || ''}" 
                                             data-image="${item.image_path ? item.image_path : ''}">
                                             ${escapeHtml(item.SKU)}
-                                        </span>
+                                        </span><button class="sku-copy-btn" title="Copy SKU" data-copy-sku="${escapeHtml(item.SKU || '')}"><i class="fas fa-copy"></i></button>
                                     `;
                                 }
                                 break;
@@ -6901,6 +6931,41 @@
                     lastTooltipImageUrl = null;
                     tooltipEl.style.display = 'none';
                 }
+            });
+
+            // SKU copy button handler (event delegation)
+            document.addEventListener('click', function(e) {
+                const btn = e.target.closest('.sku-copy-btn');
+                if (!btn) return;
+                e.stopPropagation();
+                const sku = btn.getAttribute('data-copy-sku');
+                if (!sku) return;
+                navigator.clipboard.writeText(sku).then(() => {
+                    btn.classList.add('copied');
+                    const icon = btn.querySelector('i');
+                    if (icon) { icon.classList.replace('fa-copy', 'fa-check'); }
+                    setTimeout(() => {
+                        btn.classList.remove('copied');
+                        if (icon) { icon.classList.replace('fa-check', 'fa-copy'); }
+                    }, 1500);
+                }).catch(() => {
+                    // Fallback for older browsers
+                    const ta = document.createElement('textarea');
+                    ta.value = sku;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    btn.classList.add('copied');
+                    const icon = btn.querySelector('i');
+                    if (icon) { icon.classList.replace('fa-copy', 'fa-check'); }
+                    setTimeout(() => {
+                        btn.classList.remove('copied');
+                        if (icon) { icon.classList.replace('fa-check', 'fa-copy'); }
+                    }, 1500);
+                });
             });
         });
     </script>

@@ -1201,6 +1201,20 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
+        | CHANNEL MASTER PRE-CALCULATION (New - Performance Optimization)
+        |--------------------------------------------------------------------------
+        */
+        // Calculate channel master data daily at 1 AM IST (after most data sync jobs)
+        $schedule->command('channel:calculate-data')
+            ->dailyAt('01:00')
+            ->timezone('Asia/Kolkata')
+            ->name('channel-master-calculate-data')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
         | TIKTOK
         |--------------------------------------------------------------------------
         */

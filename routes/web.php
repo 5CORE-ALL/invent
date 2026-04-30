@@ -427,7 +427,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // channel master
     Route::post('/update-executive', [ChannelMasterController::class, 'updateExecutive']);
     Route::post('/update-checkbox', [ChannelMasterController::class, 'sendToGoogleSheet']);
-    Route::get('/channels-master-data', [ChannelMasterController::class, 'getViewChannelData']);
+    
+    // Fast endpoint - reads from pre-calculated table (RECOMMENDED)
+    Route::get('/channels-master-data-fast', [ChannelMasterController::class, 'getViewChannelDataFast']);
+    
+    // Original endpoint - calculates on-the-fly (SLOW - use only as fallback)
+    Route::get('/channels-master-data', [ChannelMasterController::class, 'getViewChannelDataFast']); // Using fast by default
+    Route::get('/channels-master-data-slow', [ChannelMasterController::class, 'getViewChannelData']); // Fallback
+    
     Route::get('/channel-master-history/{channel}', [ChannelMasterController::class, 'getChannelHistory']);
     Route::get('/channel-clicks-breakdown', [ChannelMasterController::class, 'getClicksBreakdown']);
     Route::get('/ad-breakdown-chart-data', [ChannelMasterController::class, 'getAdBreakdownChartData']);
