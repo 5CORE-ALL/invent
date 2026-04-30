@@ -308,12 +308,12 @@
                                     <th style="width:10%;">
                                         Category
                                         <div class="th-filter">
-                                            <select id="parentSearch">
+                                            <select id="parentSearch" title="Filter by saved Category (same as edit form)">
                                                 <option value="all">All</option>
-                                                <option value="category">Category</option>
-                                                <option value="parents">Parents</option>
-                                                <option value="group">Group</option>
-                                                <option value="sku">SKU</option>
+                                                <option value="Category">Category</option>
+                                                <option value="Parents">Parents</option>
+                                                <option value="Group">Group</option>
+                                                <option value="SKU">SKU</option>
                                             </select>
                                         </div>
                                     </th>
@@ -811,15 +811,15 @@
 
         function applyFilters() {
             const skuQ      = document.getElementById('skuSearch').value.toLowerCase();
-            const categoryQ = document.getElementById('parentSearch').value;
+            const categoryFilter = document.getElementById('parentSearch').value;
             const audienceQ = document.getElementById('filter_ads_audience').value;
 
             const filtered = allData.filter(row => {
                 if (skuQ && !row.sku.toLowerCase().includes(skuQ)) return false;
 
-                if (categoryQ && categoryQ !== 'all') {
-                    const parent = (row.parent_name || '').toLowerCase();
-                    if (!parent.includes(categoryQ.toLowerCase())) return false;
+                if (categoryFilter && categoryFilter !== 'all') {
+                    const rowCat = ((row.category != null) ? String(row.category) : '').trim();
+                    if (rowCat.toLowerCase() !== categoryFilter.toLowerCase()) return false;
                 }
 
                 if (audienceQ && audienceQ !== 'all') {
