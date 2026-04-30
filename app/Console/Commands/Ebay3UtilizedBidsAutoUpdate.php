@@ -430,7 +430,7 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
                         $sbid = 9.1;
                     } elseif ($scvr <= 7) {
                         $sbid = 7.1;
-                    } elseif ($scvr <= 10) {
+                    } elseif ($scvr <= 13) {
                         $sbid = 4.1;
                     } else {
                         $sbid = 2.1;

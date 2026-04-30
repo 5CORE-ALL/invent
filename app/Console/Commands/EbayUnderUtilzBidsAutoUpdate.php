@@ -166,7 +166,9 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
                         foreach ($batch as $campaign) { $allResults[] = ['campaign_id' => $campaign->campaign_id, 'status' => 'success']; $totalSuccess++; }
                         continue;
                     }
-                    $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($campaignIds, $newBids);
+                    // Use PLS (Promoted Listings Standard) campaign rate update
+                    // These eBay1 campaigns are PLS (date-named, no keywords/ad groups)
+                    $result = $updateOverUtilizedBids->updatePlsCampaignBidPercentage($campaignIds, $newBids);
 
                     // Parse the result
                     $resultData = $result->getData(true);
@@ -305,9 +307,9 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
             } elseif ($scvr <= 7) {
                 $sbid        = 7.1;
                 $ruleApplied = "SCVR 4–7% (YELLOW) → 7.1";
-            } elseif ($scvr <= 10) {
+            } elseif ($scvr <= 13) {
                 $sbid        = 4.1;
-                $ruleApplied = "SCVR 7–10% (GREEN) → 4.1";
+                $ruleApplied = "SCVR 7–13% (GREEN) → 4.1";
             } else {
                 $sbid        = 2.1;
                 $ruleApplied = "SCVR > 10% (PINK) → 2.1";
@@ -505,9 +507,9 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
                 } elseif ($scvr <= 7) {
                     $row['sbid'] = 7.1;
                     $row['rule_applied'] = "SCVR 4–7% (YELLOW) → 7.1";
-                } elseif ($scvr <= 10) {
+                } elseif ($scvr <= 13) {
                     $row['sbid'] = 4.1;
-                    $row['rule_applied'] = "SCVR 7–10% (GREEN) → 4.1";
+                    $row['rule_applied'] = "SCVR 7–13% (GREEN) → 4.1";
                 } else {
                     $row['sbid'] = 2.1;
                     $row['rule_applied'] = "SCVR > 10% (PINK) → 2.1";

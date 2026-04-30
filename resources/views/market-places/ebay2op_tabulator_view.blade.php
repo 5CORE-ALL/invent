@@ -3832,7 +3832,7 @@
                             var color = '#6c757d';
                             if (scvr <= 4) color = 'red';
                             else if (scvr > 4 && scvr <= 7) color = '#daa520';
-                            else if (scvr > 7 && scvr <= 10) color = 'green';
+                            else if (scvr > 7 && scvr <= 13) color = 'green';
                             else color = '#E83E8C';
                             return '<span style="color:' + color + '; font-weight: 600;">' + Math.round(scvr) + '%</span>';
                         },

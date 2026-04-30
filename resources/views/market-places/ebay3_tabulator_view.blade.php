@@ -4080,8 +4080,8 @@
                             sbid = 9.1; // RED
                         } else if (scvr > 4 && scvr <= 7) {
                             sbid = 7.1; // YELLOW
-                        } else if (scvr > 7 && scvr <= 10) {
-                            sbid = 4.1; // GREEN
+                        } else if (scvr > 7 && scvr <= 13) {
+                                sbid = 4.1; // GREEN
                         } else {
                             sbid = 2.1; // PINK
                         }
@@ -4125,7 +4125,7 @@
                         var color = '#6c757d';
                         if (scvr <= 4) color = 'red';
                         else if (scvr > 4 && scvr <= 7) color = '#daa520';
-                        else if (scvr > 7 && scvr <= 10) color = 'green';
+                        else if (scvr > 7 && scvr <= 13) color = 'green';
                         else color = '#E83E8C';
                         return '<span style="color:' + color + '; font-weight: 600;">' + scvr.toFixed(2) + '%</span>';
                     },
@@ -6471,7 +6471,7 @@
                         const percent = parseFloat(scvr);
                         if (percent <= 4) return 'red';
                         if (percent > 4 && percent <= 7) return 'yellow';
-                        if (percent > 7 && percent <= 10) return 'green';
+                        if (percent > 7 && percent <= 13) return 'green';
                         return '#E83E8C';
                     }
                     if (response.pt_campaigns && response.pt_campaigns.length > 0) {

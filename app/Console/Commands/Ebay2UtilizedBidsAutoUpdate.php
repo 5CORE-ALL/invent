@@ -452,32 +452,19 @@ class Ebay2UtilizedBidsAutoUpdate extends Command
                     continue;
                 }
 
-                $sbid = 0;
+                // PMT S BID rule based on SCVR (CVR color thresholds)
+                $ebayL30Sold = floatval($row['ebay_l30'] ?? 0);
+                $ebayViews   = floatval($row['views'] ?? 0);
+                $scvr = $ebayViews > 0 ? ($ebayL30Sold / $ebayViews) * 100 : 0;
 
-                if ($ub7 > 99 && $ub1 > 99) {
-                    $sbid = $l1_cpc > 0 ? floor($l1_cpc * 0.90 * 100) / 100 : ($l7_cpc > 0 ? floor($l7_cpc * 0.90 * 100) / 100 : 0);
-                } elseif ($isOverUtilized) {
-                    $sbid = $l1_cpc > 1.25 ? floor($l1_cpc * 0.80 * 100) / 100 : ($l1_cpc > 0 ? floor($l1_cpc * 0.90 * 100) / 100 : 0);
-                    if ($price < 20) {
-                        $sbid = min($sbid, 0.20);
-                    }
-                } elseif ($isUnderUtilized) {
-                    $lastSbidRaw = $row['last_sbid'] ?? '';
-                    $baseBid = (!empty($lastSbidRaw) && $lastSbidRaw !== '0' && $lastSbidRaw !== 0) ? (float)$lastSbidRaw : 0;
-                    
-                    if ($baseBid <= 0) {
-                        $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
-                    }
-                    
-                    if ($baseBid > 0) {
-                        if ($ub1 < 33) {
-                            $sbid = floor(($baseBid + 0.10) * 100) / 100;
-                        } elseif ($ub1 < 66) {
-                            $sbid = floor($baseBid * 1.10 * 100) / 100;
-                        } else {
-                            $sbid = floor($baseBid * 100) / 100;
-                        }
-                    }
+                if ($scvr <= 4) {
+                    $sbid = 9.1;       // RED
+                } elseif ($scvr <= 7) {
+                    $sbid = 7.1;       // YELLOW
+                } elseif ($scvr <= 13) {
+                    $sbid = 4.1;       // GREEN
+                } else {
+                    $sbid = 2.1;       // PINK
                 }
 
                 // Only add if SBID > 0

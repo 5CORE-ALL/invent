@@ -135,7 +135,7 @@ class UpdateEbayThreeSuggestedBid extends Command
                 ->keyBy('listing_id');
             
         // Process ProductMaster data in chunks and update campaign listings
-        $this->info('Processing bid updates based on L30 eBay sold...');
+        $this->info('Processing bid updates based on SCVR (eBay L30 / Views) thresholds...');
         $updatedListings = 0;
         
         ProductMaster::whereNull('deleted_at')
@@ -157,29 +157,25 @@ class UpdateEbayThreeSuggestedBid extends Command
                         $listing = $campaignListings[$ebayMetric->item_id];
                         $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
                         
-                        // L30 eBay sold (eBay L30) for this SKU
-                        $soldL30 = (int) ($ebayMetric->ebay_l30 ?? 0);
-                        
-                        // Get ESBID (suggested bid from campaign listing)
-                        $esbid = (float) ($listing->suggested_bid ?? 0);
-                        
-                        // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 10; >5 → 8; else → ESbid; cap at 15
-                        if ($soldL30 === 0) {
-                            $newBid = $esbid;
-                        } elseif ($soldL30 >= 1 && $soldL30 <= 5) {
-                            $newBid = 10.0;
-                        } elseif ($soldL30 > 5) {
-                            $newBid = 8.0;
+                        // SCVR-based PMT S BID rule
+                        $soldL30  = (float) ($ebayMetric->ebay_l30 ?? 0);
+                        $views    = (float) ($ebayMetric->views ?? 0);
+                        $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0;
+
+                        // SCVR = 0% (no sales or no views) → RED → 9.1
+                        if ($scvr <= 4) {
+                            $newBid = 9.1;  // RED
+                        } elseif ($scvr <= 7) {
+                            $newBid = 7.1;  // YELLOW
+                        } elseif ($scvr <= 13) {
+                            $newBid = 4.1;  // GREEN
                         } else {
-                            $newBid = $esbid;
+                            $newBid = 2.1;  // PINK
                         }
-                        
-                        // Cap newBid to maximum of 15
-                        $newBid = min($newBid, 15.0);
-                        
+
                         $listing->new_bid = $newBid;
-                        $listing->sku = $pm->sku; // Store SKU for logging
-                        $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Calculated SBID: {$newBid} | L30 eBay sold: {$soldL30}");
+                        $listing->sku = $pm->sku;
+                        $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% | SBID: {$newBid}");
                         $updatedListings++;
                     }
                 }

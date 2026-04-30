@@ -230,6 +230,72 @@ class EbayOverUtilizedBgtController extends Controller
         ]);
     }
 
+    /**
+     * Update PLS (Promoted Listings Standard) campaign bid percentage.
+     * PLS campaigns use a percentage-based ad rate, not keyword bids.
+     * This is the correct method for date-named generic eBay campaigns.
+     */
+    public function updatePlsCampaignBidPercentage(array $campaignIds, array $newBids)
+    {
+        ini_set('max_execution_time', 600);
+        ini_set('memory_limit', '1024M');
+
+        if (empty($campaignIds) || empty($newBids)) {
+            return response()->json(['message' => 'Campaign IDs and bids are required', 'status' => 400, 'data' => []]);
+        }
+
+        $accessToken = $this->getEbayAccessToken();
+        $results = [];
+        $hasError = false;
+
+        foreach ($campaignIds as $index => $campaignId) {
+            $bidPct = number_format(floatval($newBids[$index] ?? 0), 2, '.', '');
+
+            $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}";
+
+            try {
+                $response = Http::timeout(60)
+                    ->withHeaders([
+                        'Authorization' => "Bearer {$accessToken}",
+                        'Content-Type'  => 'application/json',
+                    ])->put($endpoint, [
+                        'defaultBidPercentage' => $bidPct,
+                    ]);
+
+                if ($response->successful()) {
+                    $results[] = [
+                        'campaign_id' => $campaignId,
+                        'status'      => 'success',
+                        'message'     => "Bid percentage set to {$bidPct}%",
+                    ];
+                } else {
+                    $hasError = true;
+                    $err = $response->json();
+                    $results[] = [
+                        'campaign_id' => $campaignId,
+                        'status'      => 'error',
+                        'message'     => $err['errors'][0]['message'] ?? $err['message'] ?? 'Unknown error',
+                        'http_code'   => $response->status(),
+                        'response'    => $err,
+                    ];
+                }
+            } catch (\Exception $e) {
+                $hasError = true;
+                $results[] = [
+                    'campaign_id' => $campaignId,
+                    'status'      => 'error',
+                    'message'     => $e->getMessage(),
+                ];
+            }
+        }
+
+        return response()->json([
+            'status'  => $hasError ? 207 : 200,
+            'message' => $hasError ? 'Some campaigns failed to update' : 'All PLS campaign bid percentages updated',
+            'data'    => $results,
+        ]);
+    }
+
     public function updateKeywordsBidDynamic(Request $request)
     {
         ini_set('max_execution_time', 300);
