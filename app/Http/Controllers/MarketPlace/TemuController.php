@@ -2821,7 +2821,10 @@ class TemuController extends Controller
             $qty = (int)($row->quantity_purchased ?? 0);
             $base = (float)($row->base_price_total ?? 0);
             $totalQuantity += $qty;
-            $totalRevenue += $base * $qty;
+            // Use fbPrice logic to match all-marketplace-master and buildTemuDecreaseDataResponse
+            $total = $base * $qty;
+            $fbPrice = $total < 27 ? $base + 2.99 : $base;
+            $totalRevenue += $fbPrice * $qty;
         }
         return [
             'total_orders' => $totalOrders,

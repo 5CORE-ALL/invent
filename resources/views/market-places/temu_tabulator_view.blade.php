@@ -589,7 +589,10 @@
                 const temuShip = parseFloat(row.temu_ship) || 0;
                 
                 totalQuantity += quantity;
-                totalRevenue += basePrice * quantity;
+                // Use fbPrice logic to match all-marketplace-master calculation
+                const total = basePrice * quantity;
+                const fbPrice = total < 27 ? basePrice + 2.99 : basePrice;
+                totalRevenue += fbPrice * quantity;
                 
                 if (quantity > 0 && basePrice > 0) {
                     totalWeightedPrice += basePrice * quantity;

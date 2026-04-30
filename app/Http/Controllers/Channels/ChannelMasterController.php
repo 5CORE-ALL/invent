@@ -5301,22 +5301,47 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated from MiraklDailyData)
-        $metrics = MarketplaceDailyMetric::where('channel', 'Macys')->latest('date')->first();
+        // Use MacysSalesController to get live data from MiraklDailyData (same as /macys/daily-sales page)
+        $macysSalesCtrl = app(\App\Http\Controllers\Sales\MacysSalesController::class);
+        $salesRequest = Request::create('/macys/daily-sales-data', 'GET');
+        $salesResponse = $macysSalesCtrl->getData($salesRequest);
+        $salesData = json_decode($salesResponse->getContent(), true);
+
+        // Calculate totals from sales data
+        $l30Sales = 0;
+        $l30Orders = count($salesData);
+        $totalQuantity = 0;
+        $totalProfit = 0;
+        $totalCogs = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($salesData as $row) {
+            $quantity = (float) ($row['quantity'] ?? 0);
+            $saleAmount = (float) ($row['sale_amount'] ?? 0);
+            $pft = (float) ($row['pft'] ?? 0);
+            $cogs = (float) ($row['cogs'] ?? 0);
+            $unitPrice = (float) ($row['unit_price'] ?? 0);
+
+            $l30Sales += $saleAmount;
+            $totalQuantity += $quantity;
+            $totalProfit += $pft;
+            $totalCogs += $cogs;
+            
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+        }
+
+        // Calculate percentages
+        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
 
         // Get L60 data from MacyProduct for comparison
         $query = MacyProduct::where('sku', 'not like', '%Parent%');
         $l60Orders = $query->sum('m_l60');
         $l60Sales  = (clone $query)->selectRaw('SUM(m_l60 * price) as total')->value('total') ?? 0;
-
-        // Use MarketplaceDailyMetric data
-        $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
 
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -5329,7 +5354,7 @@ class ChannelMasterController extends Controller
         $nPft = $gProfitPct;
 
         // N ROI = same as G ROI for Macys (no ads)
-        $nRoi = $metrics->n_roi ?? $gRoi;
+        $nRoi = $gRoi;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Macys')->first();
@@ -7707,11 +7732,17 @@ class ChannelMasterController extends Controller
                 $pricePerItem = $itemCount > 0 ? $orderTotal / $itemCount : $orderTotal;
                 
                 $orderIds[$orderId] = true;
-                $l30Sales += $orderTotal;
                 
+                // Process items - use same rounding methodology as TikTokSalesController to match sales page
                 foreach ($items as $item) {
                     $sku = trim($item->sku ?? '');
                     $quantity = (float) ($item->quantity ?? 1);
+                    
+                    // Sum rounded distributed prices per item (same as sales page)
+                    $totalPrice = $pricePerItem; // Distributed price per item
+                    $saleAmount = round($totalPrice, 2); // Round each item's price
+                    $l30Sales += $saleAmount;
+                    
                     // Use UPPERCASE for lookup (EXACT SAME as TikTokSalesController)
                     $pm = $productMasters->get(strtoupper($sku));
                     
