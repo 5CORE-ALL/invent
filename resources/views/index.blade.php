@@ -1319,9 +1319,12 @@
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
                         <div class="min-w-0 flex-grow-1">
-                            <h5 class="header-title mb-0">Inventory by color</h5>
-                            <p class="dashboard-chart-sub mb-0 text-muted small">Includes colors at 0 Shopify units (0% slice / legend).</p>
-                            <p class="dashboard-chart-sub mb-0">Shopify units — Total: <span id="dashboard-chart-color-inv-total" class="dashboard-chart-total-amount">—</span></p>
+                            <h5 class="header-title mb-0">Inventory by DIL</h5>
+                            <p class="dashboard-chart-sub mb-0">
+                                Total: <span id="dashboard-chart-color-inv-total">—</span> | 
+                                SP: $<span id="dashboard-chart-sp-total">—</span> | 
+                                LP: $<span id="dashboard-chart-lp-total">—</span>
+                            </p>
                         </div>
                         <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
                             <button type="button" class="btn btn-chart-icon" id="dashboard-color-inv-refresh-btn" title="Refresh inventory chart" aria-label="Refresh">
@@ -1776,10 +1779,43 @@
         }
 
         /**
-         * @param {Array<{color?: string, inv?: number, percent?: number}>|undefined} rows
+         * Get DIL color based on category name
+         * Matches colors from AliExpress pricing page
          */
-        function renderInventoryByColorChart(rows) {
+        function getDilCategoryColor(categoryName) {
+            const colorMap = {
+                'Pink': '#e83e8c',
+                'Green': '#28a745',
+                'Yellow': '#ffc107',
+                'Red': '#dc3545',
+                'No Inventory': '#6c757d'
+            };
+            return colorMap[categoryName] || '#6c757d';
+        }
+
+        /**
+         * Get DIL border color (slightly darker shade)
+         */
+        function getDilCategoryBorderColor(categoryName) {
+            const borderMap = {
+                'Pink': '#c2185b',
+                'Green': '#1e7e34',
+                'Yellow': '#d39e00',
+                'Red': '#bd2130',
+                'No Inventory': '#545b62'
+            };
+            return borderMap[categoryName] || '#545b62';
+        }
+
+        /**
+         * @param {Array<{color?: string, inv?: number, percent?: number}>|undefined} rows
+         * @param {number} totalSp - Total selling price (inventory value)
+         * @param {number} totalLp - Total landing price (inv @ LP)
+         */
+        function renderInventoryByColorChart(rows, totalSp, totalLp) {
             const totalEl = document.getElementById('dashboard-chart-color-inv-total');
+            const spEl = document.getElementById('dashboard-chart-sp-total');
+            const lpEl = document.getElementById('dashboard-chart-lp-total');
             const canvas = document.getElementById('inventoryByColorChart');
             if (!canvas) {
                 return;
@@ -1795,9 +1831,9 @@
                 return String(r.color).trim() !== '';
             }) : [];
             if (list.length === 0) {
-                if (totalEl) {
-                    totalEl.textContent = '—';
-                }
+                if (totalEl) totalEl.textContent = '—';
+                if (spEl) spEl.textContent = '—';
+                if (lpEl) lpEl.textContent = '—';
                 return;
             }
             const labels = list.map(function (r) {
@@ -1809,9 +1845,23 @@
             });
             const sum = values.reduce(function (a, b) { return a + b; }, 0);
             if (totalEl) {
-                totalEl.textContent = Math.round(sum).toLocaleString('en-US') + ' units';
+                totalEl.textContent = Math.round(sum).toLocaleString('en-US');
             }
-            const n = labels.length;
+            if (spEl) {
+                spEl.textContent = Math.round(totalSp || 0).toLocaleString('en-US');
+            }
+            if (lpEl) {
+                lpEl.textContent = Math.round(totalLp || 0).toLocaleString('en-US');
+            }
+            
+            // Map DIL category colors
+            const backgroundColors = labels.map(function(label) {
+                return getDilCategoryColor(label);
+            });
+            const borderColors = labels.map(function(label) {
+                return getDilCategoryBorderColor(label);
+            });
+            
             colorInventoryPieChartInstance = new Chart(canvas, {
                 type: 'pie',
                 data: {
@@ -1819,8 +1869,8 @@
                     datasets: [{
                         label: 'Units',
                         data: values,
-                        backgroundColor: pieSliceColors(n),
-                        borderColor: pieSliceBorderColors(n),
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
                         borderWidth: 1,
                         hoverOffset: 2
                     }]
@@ -1836,9 +1886,12 @@
                             display: true,
                             position: 'bottom',
                             labels: {
-                                boxWidth: 10,
-                                padding: 4,
-                                font: { size: 7 },
+                                boxWidth: 12,
+                                padding: 8,
+                                font: { 
+                                    size: 12,
+                                    weight: 'bold'
+                                },
                                 generateLabels: function (chart) {
                                     const ds = chart.data.datasets[0];
                                     const data = ds.data;
@@ -1847,10 +1900,11 @@
                                     return lab.map(function (label, i) {
                                         const v = parseFloat(data[i]) || 0;
                                         const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
+                                        const units = Math.round(v).toLocaleString('en-US');
                                         const s = String(label);
                                         const short = s.length > 20 ? s.slice(0, 18) + '…' : s;
                                         return {
-                                            text: short + ' ' + pct + '%',
+                                            text: short + ' ' + pct + '% (' + units + ')',
                                             fillStyle: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor,
                                             strokeStyle: Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor,
                                             lineWidth: 1,
@@ -2449,7 +2503,11 @@
                 const tat = totalSales > 0 ? invVal / totalSales : 0;
                 tatEl.textContent = tat > 0 ? tat.toFixed(2) : '0';
             }
-            renderInventoryByColorChart(response.inventory_by_color);
+            renderInventoryByColorChart(
+                response.inventory_by_color,
+                response.inventory_value_amazon || 0,  // SP from top badge
+                response.inv_at_lp || 0                 // LP from top badge
+            );
             renderChannelAdSpendPie(response.ad_spend_by_channel);
             const byCh = response.ad_spend_by_color_by_channel;
             if (byCh && ((byCh.channels && byCh.channels.length) || (byCh.combined && byCh.combined.length))) {
@@ -2497,7 +2555,7 @@
         function showErrorState() {
             var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total', 'dashboard-chart-y-total', 'dashboard-chart-y-bar-total', 'dashboard-chart-color-inv-total', 'dashboard-chart-ad-channel-total', 'dashboard-chart-ad-color-total'];
             ids.forEach(function (id) { setDashText(id, '—'); });
-            renderInventoryByColorChart([]);
+            renderInventoryByColorChart([], 0, 0);
             renderChannelAdSpendPie([]);
             window.__dashboardAdColorByChannel = null;
             const selAdc = document.getElementById('dashboard-ad-color-channel-select');

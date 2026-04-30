@@ -841,23 +841,48 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Sum of shopify_skus.inv grouped by color (from product_master.Values), same SKU join as Inv@LP.
-     * Includes SKUs with zero or negative inv so colors with no stock still appear (0 units, 0%).
-     * Positive quantities: top 14 colors + "All other" for the rest. Zero-total colors: listed separately (capped).
+     * Calculate DIL color category based on L30 sales and inventory
+     * Returns simple color names without DIL percentage ranges
+     * 
+     * @param float $l30 L30 sales
+     * @param float $inv Inventory
+     * @return string Color category
+     */
+    private function getDilColorCategory(float $l30, float $inv): string
+    {
+        if ($inv <= 0) {
+            return 'No Inventory';
+        }
+        
+        $dilPercent = ($l30 / $inv) * 100;
+        
+        if ($dilPercent < 16.66) {
+            return 'Red';
+        } elseif ($dilPercent < 25) {
+            return 'Yellow';
+        } elseif ($dilPercent < 50) {
+            return 'Green';
+        } else {
+            return 'Pink';
+        }
+    }
+
+    /**
+     * Sum of shopify_skus.inv grouped by DIL color categories based on L30 sales.
+     * DIL % = (L30 / INV) × 100, categorized into 4 color bands.
+     * Note: Using 'quantity' field as L30 (consistent with other controllers)
      *
      * @return list<array{color: string, inv: float, percent: float}>
      */
     private function getShopifyInventoryByColor(): array
     {
-        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv']);
-        $skus = $shopifySkus->pluck('sku')->unique()->filter()->values()->toArray();
-        if ($skus === []) {
+        // Get all Shopify SKUs with inventory and L30 sales data
+        // Note: 'quantity' field is the L30 sales data used across the application
+        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv', 'quantity']);
+        
+        if ($shopifySkus->isEmpty()) {
             return [];
         }
-        $productMasters = ProductMaster::whereNull('deleted_at')->whereIn('sku', $skus)->get();
-        $pmBySku = $productMasters->keyBy(function ($item) {
-            return strtoupper(trim((string) $item->sku));
-        });
 
         $byColor = [];
         foreach ($shopifySkus as $row) {
@@ -865,9 +890,12 @@ class ChannelMasterController extends Controller
             if ($sku === '') {
                 continue;
             }
+            
             $inv = is_numeric($row->inv) ? (float) $row->inv : 0.0;
-            $pm = $pmBySku->get(strtoupper($sku));
-            $color = $this->resolveColorLabelFromProductMaster($pm);
+            $l30 = is_numeric($row->quantity) ? (float) $row->quantity : 0.0;
+            
+            // Determine DIL color category based on L30 and inventory
+            $color = $this->getDilColorCategory($l30, $inv);
             $byColor[$color] = ($byColor[$color] ?? 0.0) + $inv;
         }
 
@@ -880,96 +908,37 @@ class ChannelMasterController extends Controller
             return $totalUnits > 0 ? round(($inv / $totalUnits) * 100, 1) : 0.0;
         };
 
-        $withStock = [];
-        $noStock = [];
-        foreach ($byColor as $color => $inv) {
-            if ($inv > 0) {
-                $withStock[$color] = $inv;
-            } elseif ($inv < 0) {
-                $withStock[$color] = $inv;
-            } else {
-                $noStock[$color] = 0.0;
-            }
-        }
-
-        arsort($withStock, SORT_NUMERIC);
-        $maxSlices = 14;
-        $mergedPositive = [];
-        $tail = 0.0;
-        $i = 0;
-        foreach ($withStock as $color => $inv) {
-            if ($i < $maxSlices) {
-                $mergedPositive[$color] = $inv;
-            } else {
-                $tail += $inv;
-            }
-            $i++;
-        }
-        $otherLabel = 'All other';
-        if ($tail != 0.0) {
-            $mergedPositive[$otherLabel] = ($mergedPositive[$otherLabel] ?? 0.0) + $tail;
-        }
+        // Define the order of DIL categories for consistent display
+        $categoryOrder = [
+            'Pink',
+            'Green',
+            'Yellow',
+            'Red',
+            'No Inventory'
+        ];
 
         $out = [];
-        foreach ($mergedPositive as $color => $inv) {
-            $inv = (float) $inv;
-            $out[] = [
-                'color' => (string) $color,
-                'inv' => round($inv, 2),
-                'percent' => $pct($inv),
-            ];
+        foreach ($categoryOrder as $category) {
+            if (isset($byColor[$category]) && $byColor[$category] > 0) {
+                $inv = (float) $byColor[$category];
+                $out[] = [
+                    'color' => $category,
+                    'inv' => round($inv, 2),
+                    'percent' => $pct($inv),
+                ];
+            }
         }
 
-        ksort($noStock, SORT_NATURAL | SORT_FLAG_CASE);
-        $zeroCap = 50;
-        $z = 0;
-        foreach ($noStock as $color => $_) {
-            if ($z >= $zeroCap) {
-                $overflow = count($noStock) - $zeroCap;
-                if ($overflow > 0) {
-                    $out[] = [
-                        'color' => 'Other colors (no stock, +' . $overflow . ')',
-                        'inv' => 0.0,
-                        'percent' => 0.0,
-                    ];
-                }
-                break;
+        // Add any categories not in the predefined order (shouldn't happen, but just in case)
+        foreach ($byColor as $color => $inv) {
+            if (!in_array($color, $categoryOrder) && $inv > 0) {
+                $out[] = [
+                    'color' => (string) $color,
+                    'inv' => round($inv, 2),
+                    'percent' => $pct($inv),
+                ];
             }
-            $out[] = [
-                'color' => (string) $color,
-                'inv' => 0.0,
-                'percent' => $pct(0.0),
-            ];
-            $z++;
         }
-
-        $rankInv = function (float $x): int {
-            if ($x > 0) {
-                return 0;
-            }
-            if ($x == 0.0) {
-                return 1;
-            }
-
-            return 2;
-        };
-        usort($out, function ($a, $b) use ($rankInv) {
-            $ai = (float) ($a['inv'] ?? 0);
-            $bi = (float) ($b['inv'] ?? 0);
-            $ra = $rankInv($ai);
-            $rb = $rankInv($bi);
-            if ($ra !== $rb) {
-                return $ra <=> $rb;
-            }
-            if ($ra === 0) {
-                return $bi <=> $ai;
-            }
-            if ($ra === 1) {
-                return strcasecmp((string) ($a['color'] ?? ''), (string) ($b['color'] ?? ''));
-            }
-
-            return $ai <=> $bi;
-        });
 
         return $out;
     }
