@@ -248,6 +248,7 @@ class CalculateChannelMasterData extends Command
             'shopify_inv_sum' => $response['shopify_inv_sum'] ?? 0,
             'shopify_weighted_avg_lp' => $response['shopify_weighted_avg_lp'] ?? 0,
             'inventory_by_color' => $response['inventory_by_color'] ?? [],
+            'stock_availability' => $response['stock_availability'] ?? ['zero_stock' => 0, 'in_stock' => 0],
             'ad_spend_by_channel' => $response['ad_spend_by_channel'] ?? [],
             'ad_spend_by_color_amazon' => $response['ad_spend_by_color_amazon'] ?? [],
             'ad_spend_by_color_by_channel' => $response['ad_spend_by_color_by_channel'] ?? [],

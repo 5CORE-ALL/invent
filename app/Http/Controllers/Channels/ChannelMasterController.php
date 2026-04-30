@@ -850,7 +850,8 @@ class ChannelMasterController extends Controller
      */
     private function getDilColorCategory(float $l30, float $inv): string
     {
-        if ($inv <= 0) {
+        // Include inventory from 0.01 onwards; exclude only 0
+        if ($inv < 0.01) {
             return 'No Inventory';
         }
         
@@ -941,6 +942,45 @@ class ChannelMasterController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Get stock availability: count of SKUs with <0.01 stock vs >=0.01 stock
+     * Matches the DIL threshold: inventory from 0.01 onwards is considered "in stock"
+     * 
+     * @return array{zero_stock: int, in_stock: int}
+     */
+    private function getStockAvailability(): array
+    {
+        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv']);
+        
+        if ($shopifySkus->isEmpty()) {
+            return ['zero_stock' => 0, 'in_stock' => 0];
+        }
+
+        $zeroStock = 0;
+        $inStock = 0;
+
+        foreach ($shopifySkus as $row) {
+            $sku = trim((string) $row->sku);
+            if ($sku === '') {
+                continue;
+            }
+            
+            $inv = is_numeric($row->inv) ? (float) $row->inv : 0.0;
+            
+            // Match DIL logic: < 0.01 is considered zero stock
+            if ($inv < 0.01) {
+                $zeroStock++;
+            } else {
+                $inStock++;
+            }
+        }
+
+        return [
+            'zero_stock' => $zeroStock,
+            'in_stock' => $inStock,
+        ];
     }
 
     /**
@@ -2279,6 +2319,7 @@ class ChannelMasterController extends Controller
                 'shopify_inv_sum' => $summaryData['shopify_inv_sum'] ?? 0,
                 'shopify_weighted_avg_lp' => $summaryData['shopify_weighted_avg_lp'] ?? 0,
                 'inventory_by_color' => $summaryData['inventory_by_color'] ?? [],
+                'stock_availability' => $summaryData['stock_availability'] ?? ['zero_stock' => 0, 'in_stock' => 0],
                 'ad_spend_by_channel' => $summaryData['ad_spend_by_channel'] ?? [],
                 'ad_spend_by_color_amazon' => $summaryData['ad_spend_by_color_amazon'] ?? [],
                 'ad_spend_by_color_by_channel' => $summaryData['ad_spend_by_color_by_channel'] ?? [],
@@ -2904,6 +2945,7 @@ class ChannelMasterController extends Controller
         $shopifyInvLp = $this->getShopifyInvLpMetrics();
         $invAtLp = $shopifyInvLp['inv_at_lp'];
         $inventoryByColor = $this->getShopifyInventoryByColor();
+        $stockAvailability = $this->getStockAvailability();
         $adSpendByChannel = $this->buildAdSpendByChannelFromRows($finalData);
         $adSpendByColorAmazon = $this->getAdSpendByProductColorAmazonFamilyL30();
         $adSpendByColorByChannel = $this->getAdSpendByColorByChannelL30();
@@ -2917,6 +2959,7 @@ class ChannelMasterController extends Controller
             'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
             'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
             'inventory_by_color' => $inventoryByColor,
+            'stock_availability' => $stockAvailability,
             'ad_spend_by_channel' => $adSpendByChannel,
             'ad_spend_by_color_amazon' => $adSpendByColorAmazon,
             'ad_spend_by_color_by_channel' => $adSpendByColorByChannel,

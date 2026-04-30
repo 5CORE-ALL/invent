@@ -1267,7 +1267,7 @@
     </div>
 
     <div class="row g-2 dashboard-charts-row align-items-stretch mb-2">
-        <div class="col-12 col-md-4 col-lg-4 d-flex">
+        <div class="col-12 col-md-3 col-lg-3 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -1289,7 +1289,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-4 col-lg-4 d-flex">
+        <div class="col-12 col-md-3 col-lg-3 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -1314,13 +1314,13 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-4 col-lg-4 d-flex">
+        <div class="col-12 col-md-3 col-lg-3 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
                         <div class="min-w-0 flex-grow-1">
-                            <h5 class="header-title mb-0">Inventory by DIL</h5>
-                            <p class="dashboard-chart-sub mb-0">
+                            <h5 class="header-title mb-0" style="font-size: 1.25rem; font-weight: 600;">Inventory by DIL</h5>
+                            <p class="dashboard-chart-sub mb-0" style="font-size: 1rem; font-weight: 500;">
                                 Total: <span id="dashboard-chart-color-inv-total">—</span> | 
                                 SP: $<span id="dashboard-chart-sp-total">—</span> | 
                                 LP: $<span id="dashboard-chart-lp-total">—</span>
@@ -1335,6 +1335,30 @@
                     <div class="pt-1">
                         <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-chart-wrap">
                             <canvas id="inventoryByColorChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-3 col-lg-3 d-flex">
+            <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
+                <div class="card-body">
+                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
+                        <div class="min-w-0 flex-grow-1">
+                            <h5 class="header-title mb-0">Stock Availability</h5>
+                            <p class="dashboard-chart-sub mb-0">
+                                Total SKUs: <span id="dashboard-chart-stock-total">—</span>
+                            </p>
+                        </div>
+                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
+                            <button type="button" class="btn btn-chart-icon" id="dashboard-stock-refresh-btn" title="Refresh stock chart" aria-label="Refresh">
+                                <i class="ri-refresh-line" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pt-1">
+                        <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-chart-wrap">
+                            <canvas id="stockAvailabilityChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1886,10 +1910,10 @@
                             display: true,
                             position: 'bottom',
                             labels: {
-                                boxWidth: 12,
-                                padding: 8,
+                                boxWidth: 14,
+                                padding: 10,
                                 font: { 
-                                    size: 12,
+                                    size: 15,
                                     weight: 'bold'
                                 },
                                 generateLabels: function (chart) {
@@ -1917,12 +1941,116 @@
                         },
                         tooltip: {
                             backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                            padding: 8,
+                            titleFont: { size: 12, weight: 'bold' },
+                            bodyFont: { size: 11 },
+                            callbacks: {
+                                label: function (context) {
+                                    return colorInvPieTooltipLabel(context, values);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        let stockAvailabilityChartInstance = null;
+
+        /**
+         * @param {Object} stockData - Object with zero_stock and in_stock counts
+         */
+        function renderStockAvailabilityChart(stockData) {
+            const totalEl = document.getElementById('dashboard-chart-stock-total');
+            const canvas = document.getElementById('stockAvailabilityChart');
+            if (!canvas) {
+                return;
+            }
+            if (stockAvailabilityChartInstance) {
+                stockAvailabilityChartInstance.destroy();
+                stockAvailabilityChartInstance = null;
+            }
+            
+            const zeroStock = parseInt(stockData?.zero_stock) || 0;
+            const inStock = parseInt(stockData?.in_stock) || 0;
+            const total = zeroStock + inStock;
+            
+            if (totalEl) {
+                totalEl.textContent = total.toLocaleString('en-US');
+            }
+            
+            if (total === 0) {
+                return;
+            }
+            
+            const labels = ['0 Stock', '>0 Stock'];
+            const values = [zeroStock, inStock];
+            const colors = ['#dc3545', '#007bff'];  // Red for 0 stock, Blue for >0 stock
+            const borderColors = ['#bd2130', '#0056b3'];
+            
+            stockAvailabilityChartInstance = new Chart(canvas, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'SKUs',
+                        data: values,
+                        backgroundColor: colors,
+                        borderColor: borderColors,
+                        borderWidth: 1,
+                        hoverOffset: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: { top: 2, bottom: 0, left: 4, right: 4 }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            align: 'center',
+                            labels: {
+                                boxWidth: 12,
+                                padding: 8,
+                                font: { 
+                                    size: 12,
+                                    weight: 'bold'
+                                },
+                                generateLabels: function (chart) {
+                                    const ds = chart.data.datasets[0];
+                                    const data = ds.data;
+                                    const lab = chart.data.labels;
+                                    const total = data.reduce(function (a, b) { return a + b; }, 0);
+                                    return lab.map(function (label, i) {
+                                        const v = parseFloat(data[i]) || 0;
+                                        const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
+                                        const count = Math.round(v).toLocaleString('en-US');
+                                        return {
+                                            text: label + ' ' + pct + '% (' + count + ')',
+                                            fillStyle: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor,
+                                            strokeStyle: Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor,
+                                            lineWidth: 1,
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.85)',
                             padding: 6,
                             titleFont: { size: 9, weight: 'bold' },
                             bodyFont: { size: 8 },
                             callbacks: {
                                 label: function (context) {
-                                    return colorInvPieTooltipLabel(context, values);
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce(function (a, b) { return a + b; }, 0);
+                                    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                                    return context.label + ': ' + Math.round(value).toLocaleString('en-US') + ' SKUs (' + pct + '%)';
                                 }
                             }
                         }
@@ -2508,6 +2636,7 @@
                 response.inventory_value_amazon || 0,  // SP from top badge
                 response.inv_at_lp || 0                 // LP from top badge
             );
+            renderStockAvailabilityChart(response.stock_availability || { zero_stock: 0, in_stock: 0 });
             renderChannelAdSpendPie(response.ad_spend_by_channel);
             const byCh = response.ad_spend_by_color_by_channel;
             if (byCh && ((byCh.channels && byCh.channels.length) || (byCh.combined && byCh.combined.length))) {
@@ -2556,6 +2685,7 @@
             var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total', 'dashboard-chart-y-total', 'dashboard-chart-y-bar-total', 'dashboard-chart-color-inv-total', 'dashboard-chart-ad-channel-total', 'dashboard-chart-ad-color-total'];
             ids.forEach(function (id) { setDashText(id, '—'); });
             renderInventoryByColorChart([], 0, 0);
+            renderStockAvailabilityChart({ zero_stock: 0, in_stock: 0 });
             renderChannelAdSpendPie([]);
             window.__dashboardAdColorByChannel = null;
             const selAdc = document.getElementById('dashboard-ad-color-channel-select');
@@ -3251,6 +3381,12 @@
             var colorInvRef = document.getElementById('dashboard-color-inv-refresh-btn');
             if (colorInvRef) {
                 colorInvRef.addEventListener('click', function () {
+                    loadDashboardFromChannels();
+                });
+            }
+            var stockRef = document.getElementById('dashboard-stock-refresh-btn');
+            if (stockRef) {
+                stockRef.addEventListener('click', function () {
                     loadDashboardFromChannels();
                 });
             }
