@@ -13,9 +13,12 @@ use Illuminate\Support\Facades\DB;
 
 class EbayUnderUtilzBidsAutoUpdate extends Command
 {
-    protected $signature = 'ebay:auto-update-under-bids';
+    protected $signature = 'ebay:auto-update-under-bids
+                            {--sku= : Test with a specific SKU only}
+                            {--dry-run : Show what would be pushed without actually updating bids}
+                            {--debug : Show detailed per-SKU trace}';
 
-    protected $description = 'Automatically update Ebay campaign keyword bids';
+    protected $description = 'Automatically update Ebay campaign keyword bids based on SCVR thresholds';
 
     protected $profileId;
 
@@ -44,13 +47,19 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
                 return 1;
             }
 
+            $isDryRun = $this->option('dry-run');
+            $testSku  = $this->option('sku');
+            $isDebug  = $this->option('debug');
+
             $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            $this->info('🚀 Starting eBay Under-Utilized Bids Auto-Update');
+            $this->info('🚀 Starting eBay SCVR-Based Bids Auto-Update');
+            if ($isDryRun) $this->warn('⚠️  DRY-RUN MODE: No bids will be pushed to eBay');
+            if ($testSku)  $this->warn("🔍 SKU FILTER: Testing for SKU = {$testSku}");
             $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-            $updateOverUtilizedBids = new EbayOverUtilizedBgtController;
+            $updateOverUtilizedBids = $isDryRun ? null : new EbayOverUtilizedBgtController;
 
-            $campaigns = $this->getEbayOverUtilizCampaign();
+            $campaigns = $this->getEbayOverUtilizCampaign($testSku, $isDebug);
 
             if (empty($campaigns)) {
                 $this->warn('⚠️  No campaigns matched filter conditions.');
@@ -151,7 +160,12 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
             $campaignIds = collect($batch)->pluck('campaign_id')->toArray();
             $newBids = collect($batch)->pluck('sbid')->toArray();
 
-                try {
+                    try {
+                    if ($isDryRun) {
+                        $this->info("   ✅ [DRY-RUN] Batch {$batchNumber} — would push bids: " . implode(', ', array_map(fn($id, $bid) => "{$id}=\${$bid}", $campaignIds, $newBids)));
+                        foreach ($batch as $campaign) { $allResults[] = ['campaign_id' => $campaign->campaign_id, 'status' => 'success']; $totalSuccess++; }
+                        continue;
+                    }
                     $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($campaignIds, $newBids);
 
                     // Parse the result
@@ -261,13 +275,101 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
         }
     }
 
-    public function getEbayOverUtilizCampaign()
+    public function getEbayOverUtilizCampaign($testSku = null, $debug = false)
     {
         try {
-            $productMasters = ProductMaster::orderBy('parent', 'asc')
+            // eBay Account 1 uses generic date-named campaigns (e.g. "Campaign Oct 29 2025, 10:55:21")
+            // so we cannot match by SKU name. Instead, compute aggregate SCVR across all EbayMetric
+            // records and apply one bid to every RUNNING campaign.
+
+            // Aggregate ebay_l30 and views across all (or one test) EbayMetric rows
+            $metricQuery = EbayMetric::query();
+            if ($testSku) {
+                $metricQuery->where('sku', $testSku);
+            }
+            $metrics = $metricQuery->get(['sku', 'ebay_l30', 'views']);
+
+            if ($debug) $this->info("📦 EbayMetric rows: " . $metrics->count());
+
+            $totalL30   = $metrics->sum('ebay_l30');
+            $totalViews = $metrics->sum('views');
+            $scvr       = ($totalViews > 0) ? ($totalL30 / $totalViews) * 100 : 0;
+
+            if ($debug) $this->info("📊 Aggregate L30={$totalL30} | Views={$totalViews} | SCVR=" . round($scvr, 2) . "%");
+
+            // Determine bid and rule from SCVR
+            // SCVR = 0% (0 sold or no views) counts as RED → 9.1
+            if ($scvr <= 4) {
+                $sbid        = 9.1;
+                $ruleApplied = "SCVR " . round($scvr, 2) . "% ≤ 4% (RED) → 9.1";
+            } elseif ($scvr <= 7) {
+                $sbid        = 7.1;
+                $ruleApplied = "SCVR 4–7% (YELLOW) → 7.1";
+            } elseif ($scvr <= 10) {
+                $sbid        = 4.1;
+                $ruleApplied = "SCVR 7–10% (GREEN) → 4.1";
+            } else {
+                $sbid        = 2.1;
+                $ruleApplied = "SCVR > 10% (PINK) → 2.1";
+            }
+
+            if ($debug) $this->info("💡 Bid rule: {$ruleApplied} → SBID = {$sbid}");
+
+            if ($sbid <= 0) {
+                if ($debug) $this->warn("⚠️  SBID = 0, no campaigns will be updated.");
+                return [];
+            }
+
+            // Fetch all RUNNING campaigns
+            $runningCampaigns = EbayPriorityReport::where('report_range', 'L7')
+                ->where('campaignStatus', 'RUNNING')
+                ->get(['campaign_id', 'campaign_name', 'campaignBudgetAmount']);
+
+            if ($debug) $this->info("📋 RUNNING campaigns to update: " . $runningCampaigns->count());
+
+            $result = [];
+            foreach ($runningCampaigns as $campaign) {
+                if (empty($campaign->campaign_id)) continue;
+                $result[] = (object) [
+                    'campaign_id'          => $campaign->campaign_id,
+                    'campaign_name'        => $campaign->campaign_name,
+                    'campaignBudgetAmount' => $campaign->campaignBudgetAmount,
+                    'sbid'                 => $sbid,
+                    'rule_applied'         => $ruleApplied,
+                    'scvr'                 => round($scvr, 2),
+                ];
+            }
+
+            DB::connection()->disconnect();
+            return $result;
+
+        } catch (\Exception $e) {
+            $this->error('Error in getEbayOverUtilizCampaign: ' . $e->getMessage());
+            $this->error('Stack trace: ' . $e->getTraceAsString());
+            return [];
+        } finally {
+            DB::connection()->disconnect();
+        }
+    }
+
+    // Legacy per-SKU method kept for reference — not used
+    private function getEbayOverUtilizCampaign_Legacy($testSku = null, $debug = false)
+    {
+        try {
+            $normalizeSku = function ($sku) {
+                $sku = trim($sku);
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return strtoupper($sku);
+            };
+
+            $query = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
-                ->get();
+                ->orderBy('sku', 'asc');
+            if ($testSku) {
+                $query->where('sku', $testSku);
+            }
+            $productMasters = $query->get();
 
             if ($productMasters->isEmpty()) {
                 $this->warn('No product masters found in database!');
@@ -318,35 +420,16 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
 
             $ebayCampaignReportsL7 = EbayPriorityReport::where('report_range', 'L7')
                 ->where('campaignStatus', 'RUNNING')
-                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
-                ->where('campaign_name', 'NOT LIKE', 'General - %')
-                ->where('campaign_name', 'NOT LIKE', 'Default%')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) {
-                        $q->orWhere('campaign_name', 'LIKE', '%'.$sku.'%');
-                    }
-                })
                 ->get();
 
             $ebayCampaignReportsL1 = EbayPriorityReport::where('report_range', 'L1')
                 ->where('campaignStatus', 'RUNNING')
-                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
-                ->where('campaign_name', 'NOT LIKE', 'General - %')
-                ->where('campaign_name', 'NOT LIKE', 'Default%')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) {
-                        $q->orWhere('campaign_name', 'LIKE', '%'.$sku.'%');
-                    }
-                })
                 ->get();
 
             // Fetch last_sbid from day-before-yesterday's date records
             $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
             $lastSbidReports = EbayPriorityReport::where('report_range', $dayBeforeYesterday)
                 ->where('campaignStatus', 'RUNNING')
-                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
-                ->where('campaign_name', 'NOT LIKE', 'General - %')
-                ->where('campaign_name', 'NOT LIKE', 'Default%')
                 ->get();
             
             $lastSbidMap = [];
@@ -367,17 +450,18 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
 
                 $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($normalizedSku, $normalizeSku) {
                     $campaignName = $normalizeSku(rtrim($item->campaign_name, '.'));
-
-                    return $campaignName === $normalizedSku;
+                    return $campaignName === $normalizedSku
+                        || str_contains(strtoupper($item->campaign_name), strtoupper($normalizedSku));
                 });
 
                 $matchedCampaignL1 = $ebayCampaignReportsL1->first(function ($item) use ($normalizedSku, $normalizeSku) {
                     $campaignName = $normalizeSku(rtrim($item->campaign_name, '.'));
-
-                    return $campaignName === $normalizedSku;
+                    return $campaignName === $normalizedSku
+                        || str_contains(strtoupper($item->campaign_name), strtoupper($normalizedSku));
                 });
 
                 if (! $matchedCampaignL7 && ! $matchedCampaignL1) {
+                    if ($debug) $this->line("   ⬜ [{$normalizedSku}] No matching L7/L1 campaign — skipped");
                     continue;
                 }
 
@@ -408,40 +492,16 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Calculate SBID using new UB1-based rules
-            // Get base bid from last_sbid, fallback to L1_CPC or L7_CPC if last_sbid is 0
-            $lastSbidRaw = $row['last_sbid'] ?? '';
-            $baseBid = 0;
-            
-            // Parse last_sbid, treat empty/0 as 0
-            if (!empty($lastSbidRaw) && $lastSbidRaw !== '0' && $lastSbidRaw !== 0) {
-                $baseBid = floatval($lastSbidRaw);
-                if (is_nan($baseBid) || $baseBid <= 0) {
-                    $baseBid = 0;
-                }
-            }
-            
-            // If last_sbid is 0, use L1_CPC or L7_CPC as fallback
-            if ($baseBid == 0) {
-                $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
-            }
-            
-            // PMT S BID rule based on SCVR (CVR color thresholds)
+            // PMT S BID: SCVR-based rule
             $ebayL30Sold = floatval($row['ebay_l30'] ?? 0);
             $ebayViews   = floatval($row['views'] ?? 0);
-            $esSuggestedBid = floatval($row['suggested_bid'] ?? 0);
 
-            if ($ebayL30Sold == 0) {
-                $row['sbid'] = $esSuggestedBid > 0 ? $esSuggestedBid : 0;
-                $row['rule_applied'] = "0 sold → ES bid";
-            } elseif ($ebayViews <= 0) {
-                $row['sbid'] = 0;
-                $row['rule_applied'] = "No views data";
-            } else {
-                $scvr = ($ebayL30Sold / $ebayViews) * 100;
+            {
+                $scvr = ($ebayViews > 0) ? ($ebayL30Sold / $ebayViews) * 100 : 0;
+                // SCVR = 0% (0 sold or no views) counts as RED → 9.1
                 if ($scvr <= 4) {
                     $row['sbid'] = 9.1;
-                    $row['rule_applied'] = "SCVR ≤ 4% (RED) → 9.1";
+                    $row['rule_applied'] = "SCVR " . round($scvr, 2) . "% ≤ 4% (RED) → 9.1";
                 } elseif ($scvr <= 7) {
                     $row['sbid'] = 7.1;
                     $row['rule_applied'] = "SCVR 4–7% (YELLOW) → 7.1";
@@ -453,17 +513,7 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
                     $row['rule_applied'] = "SCVR > 10% (PINK) → 2.1";
                 }
             }
-            
-            // Store base bid source for logging
-            if (!empty($lastSbidRaw) && $lastSbidRaw !== '0' && $lastSbidRaw !== 0) {
-                $row['base_bid_source'] = "last_sbid";
-            } elseif ($l1_cpc > 0) {
-                $row['base_bid_source'] = "L1CPC";
-            } elseif ($l7_cpc > 0) {
-                $row['base_bid_source'] = "L7CPC";
-            } else {
-                $row['base_bid_source'] = "none";
-            }
+            $row['base_bid_source'] = "scvr";
 
                 $row['NR'] = '';
                 if (isset($nrValues[$pm->sku])) {
@@ -476,7 +526,11 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
                     }
                 }
 
-                if ($row['NR'] !== 'NRA' && $ub7 < 66 && $ub1 < 66 && $row['INV'] > 0) {
+                // Include if: has inventory, not NRA, and SCVR-based bid was calculated (sbid > 0)
+                if ($debug) {
+                    $this->line("   🔎 [{$normalizedSku}] INV={$row['INV']} | NR={$row['NR']} | ebay_l30={$row['ebay_l30']} | views={$row['views']} | sbid={$row['sbid']} | rule={$row['rule_applied']}");
+                }
+                if ($row['NR'] !== 'NRA' && $row['INV'] > 0 && $row['sbid'] > 0) {
                     $result[] = (object) $row;
                 }
 
