@@ -227,6 +227,9 @@ class ImageMasterController extends Controller
             $urlsForMetrics = $images;
             if ($remoteOk && ! empty($remote['normalized_urls']) && is_array($remote['normalized_urls'])) {
                 $urlsForMetrics = array_values($remote['normalized_urls']);
+            } elseif ($remoteOk && $images !== []) {
+                // eBay, Amazon, etc. return no normalized_urls — rewrite localhost /storage/ to APP_URL/ASSET_URL for metrics
+                $urlsForMetrics = $this->normalizeStorageUrlsForImageMasterMetrics($images);
             }
 
             // Only persist metrics when we have actual image URLs
@@ -569,6 +572,42 @@ class ImageMasterController extends Controller
         }
 
         return str_replace("\u{00a0}", ' ', trim((string) $sku));
+    }
+
+    /**
+     * Rebuild /storage/… URLs using APP_URL / ASSET_URL so metrics JSON stores publicly reachable
+     * links (marketplaces and teammates see the same URLs as Reverb/Shopify ingest).
+     *
+     * @param  list<string>  $urls
+     * @return list<string>
+     */
+    private function normalizeStorageUrlsForImageMasterMetrics(array $urls): array
+    {
+        $base = rtrim((string) (config('app.asset_url') ?: config('app.url')), '/');
+        $out  = [];
+        foreach ($urls as $u) {
+            $u = trim((string) $u);
+            if ($u === '') {
+                continue;
+            }
+            $path = parse_url($u, PHP_URL_PATH);
+            if (! is_string($path) || ! preg_match('#/storage/(.+)$#', $path, $m)) {
+                $out[] = $u;
+
+                continue;
+            }
+            $rel      = str_replace('\\', '/', rawurldecode($m[1]));
+            $rel      = ltrim($rel, '/');
+            $segments = array_values(array_filter(explode('/', $rel), fn ($s) => $s !== ''));
+            if ($segments === []) {
+                $out[] = $u;
+
+                continue;
+            }
+            $out[] = $base.'/storage/'.implode('/', array_map('rawurlencode', $segments));
+        }
+
+        return array_values($out);
     }
 
     /**

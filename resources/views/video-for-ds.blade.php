@@ -6,8 +6,6 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
-    <link href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" rel="stylesheet" />
-    <link href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" rel="stylesheet" />
 
     <style>
         .table-wrapper {
@@ -16,7 +14,7 @@
             border-radius: 8px;
             max-height: calc(100vh - 200px);
             overflow-y: auto;
-            overflow-x: auto;
+            overflow-x: hidden;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             background: #fff;
         }
@@ -24,7 +22,7 @@
         .table-wrapper table {
             margin-bottom: 0;
             width: 100% !important;
-            table-layout: fixed;
+            table-layout: auto;
         }
 
         .table-wrapper thead th {
@@ -350,47 +348,36 @@
         .sync-log-entry.success { color: #198754; }
         .sync-log-entry.error   { color: #dc3545; }
         .sync-log-entry.info    { color: #0dcaf0; }
-        .table-wrapper table {
-            min-width: 1500px;
+
+        /* Campaign name — truncate long names, no forced min-width */
+        .table-wrapper thead th.fb-col-campaign {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .table-wrapper tbody td.fb-col-campaign {
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left !important;
+            vertical-align: middle;
         }
 
-        /* ── Campaigns DataTable ──────────────────────────────── */
-        .campaigns-section {
-            margin-top: 28px;
-        }
-        .campaigns-section-header {
-            background: linear-gradient(135deg, #1877f2 0%, #0d5fd4 100%);
-            color: #fff;
-            padding: 10px 18px;
-            border-radius: 8px 8px 0 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .campaigns-section-header h6 { margin: 0; font-weight: 700; font-size: 13px; }
-        #campaignsPeriodLabel {
+        /* ── Campaigns toolbar strip ─────────────────────────── */
+        .campaigns-period-pill {
             font-size: 11px;
             opacity: 0.85;
             background: rgba(255,255,255,0.15);
             border-radius: 12px;
             padding: 2px 10px;
+            color: #fff;
         }
-        #campaignsTable thead th {
-            background: #f0f4ff;
-            color: #1877f2;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-            text-align: center;
+        .video-toolbar-campaigns-strip {
+            background: linear-gradient(135deg, #1877f2 0%, #0d5fd4 100%);
+            border-radius: 10px;
+            padding: 4px 10px;
         }
-        #campaignsTable tbody td {
-            font-size: 11px;
-            vertical-align: middle;
-            text-align: center;
-        }
-        #campaignsTable tbody tr:hover { background: #f0f4ff !important; }
         .cstatus-badge {
             display: inline-block;
             padding: 2px 8px;
@@ -409,18 +396,6 @@
         .cstatus-CAMPAIGN_PAUSED { background:#fff3cd; color:#856404; }
         .fb-metric { color: #1877f2; font-weight: 600; }
         .fb-metric-zero { color: #adb5bd; }
-        #campaignsTable_wrapper .dataTables_filter input {
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 4px 10px;
-            font-size: 12px;
-        }
-        #campaignsTable_wrapper .dataTables_length select {
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 3px 8px;
-            font-size: 12px;
-        }
     </style>
 @endsection
 
@@ -457,6 +432,29 @@
                                     <li><a class="dropdown-item" href="#" id="bulkDuplicate"><i class="fas fa-copy me-2"></i>Duplicate selected</a></li>
                                 </ul>
                             </div>
+                            <div class="d-flex align-items-center gap-1">
+                                <label class="mb-0 text-muted fw-semibold" style="font-size:11px;white-space:nowrap;">
+                                    <i class="fab fa-facebook-f me-1 text-primary"></i> Account
+                                </label>
+                                <select id="accountFilter" class="form-select form-select-sm" style="min-width:160px;max-width:240px;font-size:11px;">
+                                    <option value="all">All Accounts</option>
+                                </select>
+                            </div>
+                            <div class="d-flex align-items-center gap-1">
+                                <label class="mb-0 text-muted fw-semibold" style="font-size:11px;white-space:nowrap;">
+                                    <i class="fas fa-circle me-1 text-success" style="font-size:8px;"></i> Status
+                                </label>
+                                <select id="statusFilter" class="form-select form-select-sm" style="min-width:130px;max-width:200px;font-size:11px;">
+                                    <option value="all">All Statuses</option>
+                                    <option value="ACTIVE">Active</option>
+                                    <option value="PAUSED">Paused</option>
+                                    <option value="ARCHIVED">Archived</option>
+                                    <option value="DELETED">Deleted</option>
+                                    <option value="IN_PROCESS">In Process</option>
+                                    <option value="WITH_ISSUES">With Issues</option>
+                                    <option value="CAMPAIGN_PAUSED">Campaign Paused</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <button id="fbSyncBtn" class="fb-sync-btn" title="Refresh Facebook Insights from cached data">
@@ -467,11 +465,20 @@
                             </button>
                             <span id="fb-sync-info">Not loaded</span>
                         </div>
-                        <span id="total-count-badge">
-                            <i class="fas fa-video"></i>
-                            Total Videos:
-                            <span class="count-num" id="total-count">0</span>
-                        </span>
+                        <div class="d-flex align-items-center gap-3 flex-wrap">
+                            <div class="video-toolbar-campaigns-strip d-inline-flex align-items-center gap-2 flex-wrap">
+                                <span id="videoToolbarCampaignsPeriod" class="campaigns-period-pill">Loading…</span>
+                                <span id="videoToolbarCampaignsBadge" class="badge bg-white text-primary fw-bold" style="font-size:11px;"></span>
+                                <button type="button" id="videoToolbarRefreshCampaignsBtn" class="btn btn-sm btn-light fw-semibold" style="font-size:11px;padding:3px 12px;">
+                                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                                </button>
+                            </div>
+                            <span id="total-count-badge">
+                                <i id="total-count-icon" class="fas fa-video"></i>
+                                <span id="total-count-label">Total:</span>
+                                <span class="count-num" id="total-count">0</span>
+                            </span>
+                        </div>
                     </div>
 
                     {{-- Table --}}
@@ -480,66 +487,26 @@
                             <thead>
                                 {{-- Row 1: group labels --}}
                                 <tr>
-                                    <th colspan="9" style="text-align:center;background:linear-gradient(135deg,#2c6ed5,#1a56b7) !important;font-size:9px;padding:3px;letter-spacing:0.5px;">
-                                        VIDEO INFO
+                                    <th colspan="1" style="text-align:center;background:linear-gradient(135deg,#2c6ed5,#1a56b7) !important;font-size:9px;padding:3px;letter-spacing:0.5px;">
+                                        Select
                                     </th>
-                                    <th colspan="12" class="fb-section-header" id="fb-header-label">
+                                    <th colspan="7" class="fb-section-header" id="fb-header-label">
                                         <i class="fab fa-facebook-f me-1"></i> FACEBOOK INSIGHTS — LAST 30 DAYS
-                                    </th>
-                                    <th style="text-align:center;background:linear-gradient(135deg,#2c6ed5,#1a56b7) !important;font-size:9px;padding:3px;">
-                                        ACT
                                     </th>
                                 </tr>
                                 {{-- Row 2: column names + filters --}}
                                 <tr>
-                                    <th style="width:2%;text-align:center;">
+                                    <th style="width:1%;text-align:center;">
                                         <input type="checkbox" id="selectAll" title="Select all" style="cursor:pointer;width:13px;height:13px;">
                                     </th>
-                                    <th style="width:2%;">#</th>
-                                    <th style="width:4%;">Video</th>
-                                    <th style="width:6%;">
-                                        Category
-                                        <div class="th-filter">
-                                            <select id="parentSearch" title="Filter by saved Category (same as edit form)">
-                                                <option value="all">All</option>
-                                                <option value="Category">Category</option>
-                                                <option value="Parents">Parents</option>
-                                                <option value="Group">Group</option>
-                                                <option value="SKU">SKU</option>
-                                            </select>
-                                        </div>
-                                    </th>
-                                    <th style="width:6%;">
-                                        Target
-                                        <div class="th-filter">
-                                            <input type="text" id="skuSearch" placeholder="Search">
-                                        </div>
-                                    </th>
-                                    <th style="width:5%;">Topic</th>
-                                    <th style="width:6%;">
-                                        Audience
-                                        <div class="th-filter">
-                                            <select id="filter_ads_audience">
-                                                <option value="all">All</option>
-                                            </select>
-                                        </div>
-                                    </th>
-                                    <th style="width:4%;">Lang</th>
-                                    <th style="width:5%;">Link</th>
-                                    {{-- Facebook Insight columns --}}
-                                    <th class="fb-th" style="width:5%;" title="Matched ad name(s)">Ad Name</th>
-                                    <th class="fb-th" style="width:4%;" title="Total Impressions">Impr.</th>
-                                    <th class="fb-th" style="width:4%;" title="Total Reach">Reach</th>
-                                    <th class="fb-th" style="width:3%;" title="Total Clicks">Clicks</th>
-                                    <th class="fb-th" style="width:4%;" title="Total Spend (USD)">Spend</th>
-                                    <th class="fb-th" style="width:3%;" title="Click-through Rate (%)">CTR%</th>
-                                    <th class="fb-th" style="width:4%;" title="Cost per 1000 Impressions">CPM</th>
-                                    <th class="fb-th" style="width:3%;" title="Average Frequency">Freq.</th>
-                                    <th class="fb-th" style="width:3%;" title="Video ThruPlay Views">Views</th>
-                                    <th class="fb-th" style="width:3%;" title="Results (Purchases)">Results</th>
-                                    <th class="fb-th" style="width:4%;" title="Cost per Result">$/Res.</th>
-                                    <th class="fb-th" style="width:4%;" title="Average Video Watch Time (seconds)">Watch</th>
-                                    <th style="width:5%;">Action</th>
+                                    <th class="fb-th fb-col-campaign" title="Campaign name">Campaign</th>
+                                    <th class="fb-th" style="white-space:nowrap;">Campaign ID</th>
+                                    <th class="fb-th">Status</th>
+                                    <th class="fb-th">Daily Budget</th>
+                                    <th class="fb-th">Reach</th>
+                                    <th class="fb-th">Clicks</th>
+                                    <th class="fb-th">Spend ($)</th>
+                                    <th class="fb-th">CTR %</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -558,57 +525,7 @@
         </div>
     </div>
 
-    {{-- ── Campaigns DataTable ─────────────────────────────────────── --}}
-    <div class="row">
-        <div class="col-12">
-            <div class="card mt-3">
-                <div class="campaigns-section-header">
-                    <h6><i class="fab fa-facebook-f me-2"></i>All Facebook Campaigns</h6>
-                    <div class="d-flex align-items-center gap-3 flex-wrap">
-                        <span id="campaignsPeriodLabel">Loading…</span>
-                        <span id="campaignsTotalBadge" class="badge bg-white text-primary fw-bold" style="font-size:11px;"></span>
-                        <button id="refreshCampaignsBtn" class="btn btn-sm btn-light fw-semibold" style="font-size:11px;padding:3px 12px;">
-                            <i class="fas fa-sync-alt me-1"></i>Refresh
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body p-0" style="border-radius:0 0 8px 8px;overflow:hidden;">
-                    <div id="campaignsLoader" class="text-center py-4">
-                        <div class="spinner-border spinner-border-sm text-primary"></div>
-                        <span class="ms-2 text-muted" style="font-size:12px;">Loading campaigns…</span>
-                    </div>
-                    <div id="campaignsTableWrap" class="d-none p-3">
-                        <table id="campaignsTable" class="table table-sm table-bordered w-100" style="font-size:11px;">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Campaign Name</th>
-                                    <th>Account</th>
-                                    <th>Status</th>
-                                    <th>Objective</th>
-                                    <th>Daily Budget</th>
-                                    <th>Lifetime Budget</th>
-                                    <th>Budget Left</th>
-                                    <th>Start</th>
-                                    <th>End</th>
-                                    <th>Impr.</th>
-                                    <th>Reach</th>
-                                    <th>Clicks</th>
-                                    <th>Spend ($)</th>
-                                    <th>CTR %</th>
-                                    <th>CPM ($)</th>
-                                    <th>Freq.</th>
-                                    <th>Results</th>
-                                    <th>Cost/Res.</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    {{-- All Facebook Campaigns table removed: data now merges into the FB Video Ads table above --}}
 
     {{-- Add / Edit Modal --}}
     <div class="modal fade" id="videoModal" tabindex="-1" aria-hidden="true">
@@ -903,19 +820,15 @@
         const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         let allData        = [];
-        let fbInsightsMap  = {};   // keyed by video id
+        let allCampaigns   = [];   // full list from /video-for-ds/campaigns
+        let fbInsightsMap  = {};
         let fbLoaded       = false;
         let deleteId       = null;
         let syncPollTimer  = null;
         let videoModal, deleteModal, importModal, fbSyncModal;
 
         // Field definitions: type 'text' = plain text, type 'link' = URL + status
-        const fields = [
-            { key: 'ads_topic_story',      label: 'Topic',          type: 'text' },
-            { key: 'ads_audience',         label: 'Audience',       type: 'text' },
-            { key: 'ads_language',         label: 'Language',       type: 'lang' },
-            { key: 'ads_video_en_link',    label: 'Link',           type: 'url' },
-        ];
+        const fields = [];
 
         /* ── Bootstrap ─────────────────────────────────────────── */
         document.addEventListener('DOMContentLoaded', () => {
@@ -937,6 +850,7 @@
             bindFilters();
             bindTableEvents();
             bindSyncModal();
+            loadCampaigns();
         });
 
         /* ── Toolbar ────────────────────────────────────────────── */
@@ -948,18 +862,149 @@
             document.getElementById('confirmDeleteBtn').addEventListener('click', deleteRecord);
             document.getElementById('doImportBtn').addEventListener('click', doImport);
             document.getElementById('downloadTemplate').addEventListener('click', downloadCsvTemplate);
-            document.getElementById('fbSyncBtn').addEventListener('click', () => loadFbInsights(true));
+            document.getElementById('fbSyncBtn').addEventListener('click', () => loadFbInsights());
             document.getElementById('fbPushSyncBtn').addEventListener('click', () => openFbSyncModal());
-            document.getElementById('refreshCampaignsBtn').addEventListener('click', () => loadCampaigns());
+            document.getElementById('videoToolbarRefreshCampaignsBtn').addEventListener('click', refreshVideoAdsTable);
+        }
+
+        /* ── Refresh FB Video Ads table (insights + campaign matching) ── */
+        function refreshVideoAdsTable() {
+            loadFbInsights();
+            loadCampaigns();
+        }
+
+        /* ── Convert a campaign object into a table-row-compatible object ── */
+        function campaignToVideoRow(c) {
+            return {
+                id:              'c_' + c.id,
+                _is_campaign:    true,
+                _campaign_id:    c.id,
+                sku:             c.name || '—',
+                account_name:    c.account_name || '',
+                parent_name:     c.account_name || '',
+                ads_topic_story: c.objective ? String(c.objective).replace(/_/g, ' ') : null,
+                ads_audience:    (c.effective_status || c.status || '').replace(/_/g, ' '),
+                ads_language:    null,
+                ads_video_en_link: null,
+                video_url:       null,
+                video_thumbnail: null,
+            };
+        }
+
+        /* ── Fill fbInsightsMap for every campaign in allCampaigns ── */
+        function populateCampaignInsights() {
+            allCampaigns.forEach(c => {
+                fbInsightsMap['c_' + c.id] = buildInsightEntryFromCampaigns([c]);
+            });
+        }
+
+        /* ── Match loaded campaigns to video rows (client-side fallback) ── */
+        function enrichFbMapFromCampaigns() {
+            if (!allCampaigns.length) return;
+            let changed = false;
+            allData.forEach(row => {
+                // Campaign rows: re-populate their insight entry directly (may have been cleared by loadFbInsights)
+                if (row._is_campaign) {
+                    const c = allCampaigns.find(x => x.id === row._campaign_id);
+                    if (c && !fbInsightsMap[row.id]) {
+                        fbInsightsMap[row.id] = buildInsightEntryFromCampaigns([c]);
+                        changed = true;
+                    }
+                    return;
+                }
+                // Video rows: match by ads_topic_story
+                if (fbInsightsMap[row.id]) return;
+                const topic = (row.ads_topic_story || '').toLowerCase().trim();
+                if (!topic) return;
+                const matched = allCampaigns.filter(c => c.name && c.name.toLowerCase().includes(topic));
+                if (!matched.length) return;
+                fbInsightsMap[row.id] = buildInsightEntryFromCampaigns(matched);
+                changed = true;
+            });
+            if (changed) {
+                fbLoaded = true;
+                applyFilters();
+            }
+        }
+
+        function buildInsightEntryFromCampaigns(campaigns) {
+            const sum  = (key) => campaigns.reduce((s, c) => s + (parseFloat(c[key]) || 0), 0);
+            const isum = (key) => Math.round(sum(key));
+            const unique = (key) => [...new Set(campaigns.map(c => c[key]).filter(Boolean))];
+
+            const totalImpr    = isum('impressions');
+            const totalClicks  = isum('clicks');
+            const totalSpend   = Math.round(sum('spend') * 100) / 100;
+            const totalResults = isum('results');
+            const avgFreq      = campaigns.length
+                ? Math.round(campaigns.reduce((s, c) => s + (parseFloat(c.frequency) || 0), 0) / campaigns.length * 100) / 100
+                : 0;
+
+            const names    = unique('name');
+            const accounts = unique('account_name');
+            const statuses = unique('effective_status').filter(Boolean).concat(unique('status').filter(Boolean));
+            const objs     = unique('objective').map(o => String(o).replace(/_/g, ' '));
+            const starts   = unique('start_time').filter(Boolean).sort();
+            const stops    = unique('stop_time').filter(Boolean).sort();
+
+            const multiStr = (arr, sep, max) =>
+                arr.slice(0, max).join(sep) + (arr.length > max ? '…' : '');
+
+            if (campaigns.length === 1) {
+                const c = campaigns[0];
+                return {
+                    campaign_name:    c.name,
+                    campaign_meta_id: c.meta_id || c.id || null,
+                    account_name:     c.account_name,
+                    status:           c.effective_status || c.status,
+                    objective:        c.objective ? String(c.objective).replace(/_/g, ' ') : null,
+                    daily_budget:     c.daily_budget,
+                    lifetime_budget:  c.lifetime_budget,
+                    budget_remaining: c.budget_remaining,
+                    start_time:       c.start_time,
+                    stop_time:        c.stop_time,
+                    impressions:      parseInt(c.impressions) || 0,
+                    reach:            parseInt(c.reach)       || 0,
+                    clicks:           parseInt(c.clicks)      || 0,
+                    spend:            parseFloat(c.spend)     || 0,
+                    ctr:              parseFloat(c.ctr)       || 0,
+                    cpm:              parseFloat(c.cpm)       || 0,
+                    frequency:        parseFloat(c.frequency) || 0,
+                    results:          parseInt(c.results)     || 0,
+                    cost_result:      parseFloat(c.cost_result) || 0,
+                };
+            }
+
+            return {
+                campaign_name:    multiStr(names,    ' / ', 2),
+                campaign_meta_id: campaigns.length === 1 ? (campaigns[0].meta_id || campaigns[0].id || null) : 'Multiple',
+                account_name:     multiStr(accounts, ' · ', 2),
+                status:           statuses[0] || null,
+                objective:        multiStr(objs, ' · ', 2),
+                daily_budget:     'Multiple',
+                lifetime_budget:  'Multiple',
+                budget_remaining: 'Multiple',
+                start_time:       starts[0] || null,
+                stop_time:        stops[stops.length - 1] || null,
+                impressions:      totalImpr,
+                reach:            isum('reach'),
+                clicks:           totalClicks,
+                spend:            totalSpend,
+                ctr:  totalImpr > 0 ? Math.round(totalClicks / totalImpr * 10000) / 100 : 0,
+                cpm:  totalImpr > 0 ? Math.round(totalSpend / totalImpr * 100000) / 100  : 0,
+                frequency:        avgFreq,
+                results:          totalResults,
+                cost_result:      totalResults > 0 ? Math.round(totalSpend / totalResults * 100) / 100 : 0,
+            };
         }
 
         /* ── Facebook Insights ──────────────────────────────────── */
-        function loadFbInsights(manual = false) {
+        function loadFbInsights() {
             const btn  = document.getElementById('fbSyncBtn');
             const info = document.getElementById('fb-sync-info');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…';
-            if (!manual && !fbLoaded) info.textContent = 'Loading…';
+            info.textContent = 'Loading…';
 
             fetch('/video-for-ds/fb-insights')
                 .then(r => r.json())
@@ -972,12 +1017,14 @@
                             ? new Date(resp.synced_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})
                             : '—';
                         info.textContent = period + ' · DB synced ' + syncedAt;
-                        // Update the header label with actual date range
                         const hdr = document.getElementById('fb-header-label');
                         if (hdr && period !== '—') {
-                            hdr.innerHTML = '<i class="fab fa-facebook-f me-1"></i> FACEBOOK INSIGHTS — ' + period.toUpperCase();
+                            hdr.innerHTML = '<i class="fab fa-facebook-f me-1"></i> FACEBOOK INSIGHTS — ' + String(period).toUpperCase();
                         }
-                        // Re-render table rows with fresh FB data
+                        // Re-populate campaign-row entries (cleared by the map reset above)
+                        populateCampaignInsights();
+                        // Fill in any videos not matched by backend via client-side campaign matching
+                        enrichFbMapFromCampaigns();
                         applyFilters();
                     }
                 })
@@ -991,7 +1038,7 @@
                 });
         }
 
-        /* ── Campaigns DataTable helpers ───────────────────────── */
+        /* ── FB metric renderers (used by video table FB columns) ── */
         function renderFbInt(v) {
             const n = parseInt(v);
             if (!n) return '<span class="fb-metric-zero">—</span>';
@@ -1002,7 +1049,7 @@
         function renderFbMoney(v) {
             const n = parseFloat(v);
             if (!n) return '<span class="fb-metric-zero">—</span>';
-            return '<span class="fb-metric">$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
+            return '<span class="fb-metric">$' + Math.round(n).toLocaleString('en-US') + '</span>';
         }
         function renderFbPct(v) {
             const n = parseFloat(v);
@@ -1015,120 +1062,36 @@
             return '<span class="fb-metric">' + n.toFixed(2) + '</span>';
         }
 
-        /* ── Campaigns DataTable ────────────────────────────────── */
-        let campaignsDT = null;
-
-        function loadCampaigns(dtRetry) {
-            dtRetry = dtRetry || 0;
-            const $jq = window.jQuery;
-            if (!$jq || typeof $jq.fn.DataTable !== 'function') {
-                if (dtRetry < 80) {
-                    document.getElementById('campaignsLoader').style.display = 'block';
-                    document.getElementById('campaignsLoader').innerHTML =
-                        '<span class="text-muted" style="font-size:12px;"><i class="fas fa-spinner fa-spin me-1"></i>Preparing DataTables…</span>';
-                    setTimeout(function () { loadCampaigns(dtRetry + 1); }, 100);
-                    return;
-                }
-                document.getElementById('campaignsLoader').innerHTML =
-                    '<span class="text-danger" style="font-size:12px;"><i class="fas fa-exclamation-circle me-1"></i>DataTables did not load. Refresh the page.</span>';
-                return;
-            }
-
-            document.getElementById('campaignsLoader').style.display = 'block';
-            document.getElementById('campaignsLoader').innerHTML =
-                '<span class="ms-2 text-muted" style="font-size:12px;">Loading campaigns…</span>';
-            document.getElementById('campaignsTableWrap').classList.add('d-none');
-
+        /* ── Campaigns data (feeds into video table FB columns) ── */
+        function loadCampaigns() {
             fetch('/video-for-ds/campaigns')
                 .then(r => r.json())
                 .then(resp => {
-                    if (!resp.success) throw new Error('Server error');
-
-                    document.getElementById('campaignsPeriodLabel').textContent = resp.period || '—';
-                    document.getElementById('campaignsTotalBadge').textContent  = resp.total + ' campaigns';
-
-                    const rows = (resp.data || []).map((c, i) => [
-                        i + 1,
-                        c.name || '—',
-                        c.account_name || '—',
-                        c.effective_status || c.status || '—',
-                        (c.objective || '—').replace(/_/g, ' '),
-                        c.daily_budget    || '—',
-                        c.lifetime_budget || '—',
-                        c.budget_remaining || '—',
-                        c.start_time || '—',
-                        c.stop_time  || '—',
-                        c.impressions,
-                        c.reach,
-                        c.clicks,
-                        c.spend,
-                        c.ctr,
-                        c.cpm,
-                        c.frequency,
-                        c.results,
-                        c.cost_result,
-                    ]);
-
-                    document.getElementById('campaignsLoader').style.display  = 'none';
-                    document.getElementById('campaignsTableWrap').classList.remove('d-none');
-
-                    if (campaignsDT) {
-                        campaignsDT.clear().rows.add(rows).draw();
+                    if (!resp.success) return;
+                    allCampaigns = resp.data || [];
+                    populateAccountFilter();
+                    const periodText = resp.period || '—';
+                    const totalBadge = (resp.total ?? 0) + ' campaigns';
+                    const vPeriod = document.getElementById('videoToolbarCampaignsPeriod');
+                    const vBadge  = document.getElementById('videoToolbarCampaignsBadge');
+                    if (vPeriod) vPeriod.textContent = periodText;
+                    if (vBadge)  vBadge.textContent  = totalBadge;
+                    // Build campaign rows — these become the rows of the video table
+                    // (they coexist with real video rows; if no videos, they are all rows)
+                    const campaignRows = allCampaigns.map(campaignToVideoRow);
+                    populateCampaignInsights();
+                    fbLoaded = true;
+                    if (allData.length === 0) {
+                        // No video data yet: show campaigns directly
+                        allData = campaignRows;
                     } else {
-                        campaignsDT = $jq('#campaignsTable').DataTable({
-                            data: rows,
-                            pageLength: 25,
-                            order: [[13, 'desc']], // sort by Spend desc
-                            dom: '<"d-flex justify-content-between align-items-center mb-2"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
-                            buttons: [
-                                {
-                                    extend: 'csvHtml5',
-                                    text: '<i class="fas fa-file-csv me-1"></i>CSV',
-                                    className: 'btn btn-sm btn-outline-secondary',
-                                    title: 'FB_Campaigns_' + new Date().toISOString().slice(0,10),
-                                },
-                                {
-                                    extend: 'excelHtml5',
-                                    text: '<i class="fas fa-file-excel me-1"></i>Excel',
-                                    className: 'btn btn-sm btn-outline-success',
-                                    title: 'FB_Campaigns_' + new Date().toISOString().slice(0,10),
-                                },
-                            ],
-                            language: {
-                                search: '',
-                                searchPlaceholder: 'Search campaigns…',
-                                lengthMenu: 'Show _MENU_',
-                                info: '_START_–_END_ of _TOTAL_ campaigns',
-                                emptyTable: 'No Facebook campaigns found',
-                            },
-                            columnDefs: [
-                                // Status column — badge
-                                {
-                                    targets: 3,
-                                    render: function (val) {
-                                        const cls = 'cstatus-' + (val || '').replace(/\s/g, '_');
-                                        return '<span class="cstatus-badge ' + cls + '">' + (val || '—') + '</span>';
-                                    }
-                                },
-                                // Numeric insight columns: Impr(10) Reach(11) Clicks(12) Spend(13) CTR%(14) CPM(15) Freq(16) Results(17) Cost/Res(18)
-                                { targets: [10,11,12], render: (v,t) => t!=='display' ? (parseInt(v)||0) : renderFbInt(v) },
-                                { targets: [13,15,18], render: (v,t) => t!=='display' ? (parseFloat(v)||0) : renderFbMoney(v) },
-                                { targets: 14,         render: (v,t) => t!=='display' ? (parseFloat(v)||0) : renderFbPct(v) },
-                                { targets: [16,17],    render: (v,t) => t!=='display' ? (parseFloat(v)||0) : renderFbDec(v) },
-                                // Row number — not sortable
-                                { targets: 0, orderable: false, width: '30px' },
-                                // Name column — left align
-                                { targets: 1, className: 'text-start' },
-                            ],
-                        });
+                        // Remove any stale campaign rows then re-append updated ones
+                        allData = allData.filter(r => !r._is_campaign).concat(campaignRows);
                     }
+                    applyFilters();
                 })
-                .catch(err => {
-                    document.getElementById('campaignsLoader').innerHTML =
-                        '<span class="text-danger" style="font-size:12px;"><i class="fas fa-exclamation-circle me-1"></i>Failed to load campaigns: ' + err.message + '</span>';
-                });
+                .catch(err => console.warn('Campaigns load error:', err));
         }
-        window.__videoForDsLoadCampaigns = loadCampaigns;
 
         /* ── FB Push Sync Modal ─────────────────────────────────── */
         function openFbSyncModal() {
@@ -1241,7 +1204,7 @@
                                     document.getElementById('syncStatusText').textContent = '✓ Sync complete — refreshing table…';
                                     // Auto-reload FB insights + campaigns into the table
                                     setTimeout(() => {
-                                        loadFbInsights(true);
+                                        loadFbInsights();
                                         loadCampaigns();
                                         document.getElementById('syncStatusText').textContent = '✓ Done — insights refreshed.';
                                     }, 1500);
@@ -1332,9 +1295,10 @@
         }
 
         function bindFilters() {
-            document.getElementById('skuSearch').addEventListener('input', applyFilters);
-            document.getElementById('parentSearch').addEventListener('change', applyFilters);
-            document.getElementById('filter_ads_audience').addEventListener('change', applyFilters);
+            const accountFilter = document.getElementById('accountFilter');
+            if (accountFilter) accountFilter.addEventListener('change', applyFilters);
+            const statusFilter = document.getElementById('statusFilter');
+            if (statusFilter) statusFilter.addEventListener('change', applyFilters);
         }
 
         /* ── Load ───────────────────────────────────────────────── */
@@ -1345,7 +1309,11 @@
             fetch('/videos-for-ads/data')
                 .then(r => r.json())
                 .then(resp => {
-                    allData = resp.data || [];
+                    const videoRows = resp.data || [];
+                    const existingCampaignRows = allData.filter(r => r._is_campaign);
+                    // Keep campaign rows; videos go first
+                    allData = videoRows.concat(existingCampaignRows);
+                    enrichFbMapFromCampaigns();
                     applyFilters();
                     updateCounts();
                 })
@@ -1436,25 +1404,48 @@
             });
         }
 
+        function populateAccountFilter() {
+            const sel = document.getElementById('accountFilter');
+            if (!sel) return;
+            const current = sel.value;
+            const accounts = [...new Set(
+                allCampaigns.map(c => (c.account_name || '').trim()).filter(Boolean)
+            )].sort();
+            sel.innerHTML = '<option value="all">All Accounts</option>';
+            accounts.forEach(acc => {
+                const o = document.createElement('option');
+                o.value = acc; o.textContent = acc;
+                sel.appendChild(o);
+            });
+            if (current && accounts.includes(current)) sel.value = current;
+        }
+
         function applyFilters() {
-            const skuQ      = document.getElementById('skuSearch').value.toLowerCase();
-            const categoryFilter = document.getElementById('parentSearch').value;
-            const audienceQ = document.getElementById('filter_ads_audience').value;
-
+            const accountQ = (document.getElementById('accountFilter')?.value || 'all');
+            const statusQ  = (document.getElementById('statusFilter')?.value  || 'all');
             const filtered = allData.filter(row => {
-                if (skuQ && !row.sku.toLowerCase().includes(skuQ)) return false;
-
-                if (categoryFilter && categoryFilter !== 'all') {
-                    const rowCat = ((row.category != null) ? String(row.category) : '').trim();
-                    if (rowCat.toLowerCase() !== categoryFilter.toLowerCase()) return false;
+                if (accountQ !== 'all') {
+                    if ((row.account_name || '').trim() !== accountQ) return false;
                 }
-
-                if (audienceQ && audienceQ !== 'all') {
-                    if ((row.ads_audience || '').toLowerCase() !== audienceQ.toLowerCase()) return false;
+                if (statusQ !== 'all') {
+                    // For campaign rows check status; for video rows always pass
+                    if (row._is_campaign) {
+                        const rowStatus = (row.ads_audience || '').replace(/\s/g, '_').toUpperCase();
+                        if (rowStatus !== statusQ) return false;
+                    }
                 }
-
                 return true;
             });
+
+            // Update toolbar badge to reflect filtered count
+            const badge = document.getElementById('videoToolbarCampaignsBadge');
+            if (badge) {
+                const total = allCampaigns.length;
+                const shown = filtered.filter(r => r._is_campaign).length;
+                badge.textContent = accountQ === 'all'
+                    ? total + ' campaigns'
+                    : shown + ' / ' + total + ' campaigns';
+            }
 
             renderTable(filtered);
         }
@@ -1563,12 +1554,20 @@
             const sa = document.getElementById('selectAll');
             if (sa) { sa.checked = false; sa.indeterminate = false; }
 
+            const hasCampaigns = data.length > 0 && data[0]._is_campaign;
+            const lbl  = document.getElementById('total-count-label');
+            const icon = document.getElementById('total-count-icon');
+
             if (!data.length) {
-                tbody.innerHTML = '<tr><td colspan="22" class="text-center py-4 text-muted">No records found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No records found</td></tr>';
                 document.getElementById('total-count').textContent = '0';
+                if (lbl)  lbl.textContent = 'Total:';
+                if (icon) icon.className  = 'fas fa-video';
                 return;
             }
 
+            if (lbl)  lbl.textContent  = hasCampaigns ? 'Campaigns:' : 'Total Videos:';
+            if (icon) icon.className   = hasCampaigns ? 'fab fa-facebook-f' : 'fas fa-video';
             document.getElementById('total-count').textContent = data.length;
 
             data.forEach((row, idx) => {
@@ -1586,93 +1585,37 @@
                 tr.appendChild(cbTd);
 
                 // #
-                td(tr, idx + 1, 'text-center text-muted');
 
-                // Videos column — thumbnail + clickable link (YouTube auto-thumb + onerror fallback)
-                const videoTd = document.createElement('td');
-                videoTd.style.textAlign = 'center';
-                videoTd.style.verticalAlign = 'middle';
-                videoTd.innerHTML = renderVideoCellHtml(row);
-                tr.appendChild(videoTd);
 
-                // Parent
-                const parentTd = document.createElement('td');
-                parentTd.style.overflow = 'hidden';
-                parentTd.style.textOverflow = 'ellipsis';
-                parentTd.style.whiteSpace = 'nowrap';
-                parentTd.title = row.parent_name || '';
-                parentTd.innerHTML = row.parent_name
-                    ? '<span style="color:#6c757d;">' + esc(row.parent_name) + '</span>'
-                    : '<span class="text-muted">—</span>';
-                tr.appendChild(parentTd);
-
-                // SKU
-                const skuTd = document.createElement('td');
-                skuTd.style.overflow = 'hidden';
-                skuTd.style.textOverflow = 'ellipsis';
-                skuTd.style.whiteSpace = 'nowrap';
-                skuTd.title = row.sku || '';
-                skuTd.innerHTML = '<span class="sku-badge">' + esc(row.sku) + '</span>';
-                tr.appendChild(skuTd);
-
-                // Text fields — green dot when data exists, dash when empty
-                fields.filter(f => f.type === 'text').forEach(f => {
-                    const cell = document.createElement('td');
-                    cell.style.textAlign = 'center';
-                    cell.style.verticalAlign = 'middle';
-                    if (row[f.key]) {
-                        cell.innerHTML =
-                            '<span class="data-dot" title="' + esc(row[f.key]) + '"></span>';
-                    } else {
-                        cell.innerHTML = '<span class="text-muted">-</span>';
-                    }
-                    tr.appendChild(cell);
-                });
-
-                // Language field — flag emojis
-                fields.filter(f => f.type === 'lang').forEach(f => {
-                    const cell = document.createElement('td');
-                    cell.style.textAlign = 'center';
-                    cell.style.verticalAlign = 'middle';
-                    const val = (row[f.key] || '').toLowerCase();
-                    let flags = '';
-                    if (val.includes('en')) flags += '<span title="English" style="font-size:16px;line-height:1;">🇺🇸</span>';
-                    if (val.includes('es')) flags += '<span title="Spanish" style="font-size:16px;line-height:1;margin-left:2px;">🇪🇸</span>';
-                    cell.innerHTML = flags || '<span class="text-muted">-</span>';
-                    tr.appendChild(cell);
-                });
-
-                // URL fields — hyperlink icon only
-                fields.filter(f => f.type === 'url').forEach(f => {
-                    const cell = document.createElement('td');
-                    cell.style.textAlign = 'center';
-                    cell.style.verticalAlign = 'middle';
-                    cell.innerHTML = row[f.key]
-                        ? '<a href="' + esc(row[f.key]) + '" target="_blank" class="video-link-icon" title="' + esc(row[f.key]) + '"><i class="fas fa-link"></i></a>'
-                        : '<span class="text-muted">-</span>';
-                    tr.appendChild(cell);
-                });
-
-                // ── Facebook Insight columns ──────────────────────────
+                // Facebook — same fields as “All Facebook Campaigns” (matched ads → campaigns + 30d ad metrics)
                 const fb = fbInsightsMap[row.id];
                 const fbCols = [
-                    { key: 'ad_name',     fmt: v => v ? '<span title="' + esc(v) + '" style="font-size:9px;display:block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(v) + '</span>' : null },
-                    { key: 'impressions', fmt: v => v ? fmtNum(v) : null },
-                    { key: 'reach',       fmt: v => v ? fmtNum(v) : null },
-                    { key: 'clicks',      fmt: v => v ? fmtNum(v) : null },
-                    { key: 'spend',       fmt: v => v ? '$' + fmtDec(v) : null },
-                    { key: 'ctr',         fmt: v => v ? v + '%' : null },
-                    { key: 'cpm',         fmt: v => v ? '$' + fmtDec(v) : null },
-                    { key: 'frequency',   fmt: v => v ? v : null },
-                    { key: 'video_views', fmt: v => v ? fmtNum(v) : null },
-                    { key: 'results',     fmt: v => v ? fmtNum(v) : null },
-                    { key: 'cost_result', fmt: v => v ? '$' + fmtDec(v) : null },
-                    { key: 'watch_time',  fmt: v => v ? v + 's' : null },
+                    { key: 'campaign_name',    type: 'text' },
+                    { key: 'campaign_meta_id', type: 'id'   },
+                    { key: 'status', type: 'status' },
+                    { key: 'daily_budget', type: 'str' },
+                    { key: 'reach', type: 'int' },
+                    { key: 'clicks', type: 'int' },
+                    { key: 'spend', type: 'money' },
+                    { key: 'ctr', type: 'pct' },
                 ];
                 fbCols.forEach(col => {
                     const c = document.createElement('td');
-                    c.style.textAlign = 'center';
                     c.style.verticalAlign = 'middle';
+                    const isCampaignName = col.key === 'campaign_name';
+                    if (col.type === 'text') {
+                        c.style.textAlign = 'left';
+                        if (isCampaignName) {
+                            c.classList.add('fb-col-campaign');
+                        } else {
+                            c.style.maxWidth = '320px';
+                            c.style.overflow = 'hidden';
+                            c.style.textOverflow = 'ellipsis';
+                            c.style.whiteSpace = 'nowrap';
+                        }
+                    } else {
+                        c.style.textAlign = 'center';
+                    }
                     if (!fbLoaded) {
                         c.className = 'fb-cell-loading';
                         c.innerHTML = '…';
@@ -1681,11 +1624,61 @@
                         c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
                     } else {
                         const val = fb[col.key];
-                        const display = (val !== null && val !== undefined && val !== 0 && val !== '')
-                            ? col.fmt(val) : null;
-                        if (display) {
+                        const empty = (val === null || val === undefined || val === '');
+                        if (empty && col.type !== 'int' && col.type !== 'money' && col.type !== 'pct' && col.type !== 'dec') {
+                            c.className = 'fb-cell no-data';
+                            c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                        } else if (col.type === 'text' && val) {
+                            c.className = 'fb-cell' + (isCampaignName ? ' fb-col-campaign' : '');
+                            c.title = String(val);
+                            c.textContent = String(val);
+                        } else if (col.type === 'status' && val) {
+                            const cls = 'cstatus-' + String(val).replace(/\s/g, '_');
                             c.className = 'fb-cell';
-                            c.innerHTML = display;
+                            c.innerHTML = '<span class="cstatus-badge ' + cls + '">' + esc(String(val)) + '</span>';
+                        } else if (col.type === 'id') {
+                            c.className = val ? 'fb-cell' : 'fb-cell no-data';
+                            c.style.textAlign = 'center';
+                            c.innerHTML = val ? '<span style="font-family:monospace;font-size:10px;color:#555;">' + esc(String(val)) + '</span>' : '<span class="text-muted" style="font-size:10px;">—</span>';
+                        } else if (col.type === 'str') {
+                            c.className = val ? 'fb-cell' : 'fb-cell no-data';
+                            c.innerHTML = val ? esc(String(val)) : '<span class="text-muted" style="font-size:10px;">—</span>';
+                        } else if (col.type === 'int') {
+                            const n = parseInt(val, 10);
+                            if (!n) {
+                                c.className = 'fb-cell no-data';
+                                c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                            } else {
+                                c.className = 'fb-cell';
+                                c.innerHTML = renderFbInt(n);
+                            }
+                        } else if (col.type === 'money') {
+                            const n = parseFloat(val);
+                            if (!n) {
+                                c.className = 'fb-cell no-data';
+                                c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                            } else {
+                                c.className = 'fb-cell';
+                                c.innerHTML = renderFbMoney(n);
+                            }
+                        } else if (col.type === 'pct') {
+                            const n = parseFloat(val);
+                            if (!n) {
+                                c.className = 'fb-cell no-data';
+                                c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                            } else {
+                                c.className = 'fb-cell';
+                                c.innerHTML = renderFbPct(n);
+                            }
+                        } else if (col.type === 'dec') {
+                            const n = parseFloat(val);
+                            if (!n) {
+                                c.className = 'fb-cell no-data';
+                                c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                            } else {
+                                c.className = 'fb-cell';
+                                c.innerHTML = renderFbDec(n);
+                            }
                         } else {
                             c.className = 'fb-cell no-data';
                             c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
@@ -1694,16 +1687,6 @@
                     tr.appendChild(c);
                 });
 
-                // Action
-                const actTd = document.createElement('td');
-                actTd.style.whiteSpace = 'nowrap';
-                actTd.innerHTML =
-                    '<button class="action-btn edit-btn me-1" data-id="' + row.id + '" title="Edit"><i class="fas fa-edit"></i></button>' +
-                    '<button class="action-btn del-btn"  data-id="' + row.id + '" data-sku="' + esc(row.sku) + '" title="Delete"><i class="fas fa-trash"></i></button>';
-                tr.appendChild(actTd);
-
-                actTd.querySelector('.edit-btn').addEventListener('click', () => openModal('edit', row.id));
-                actTd.querySelector('.del-btn').addEventListener('click', () => openDeleteConfirm(row.id, row.sku));
 
                 tbody.appendChild(tr);
             });
@@ -1714,20 +1697,6 @@
             if (cls) c.className = cls;
             c.textContent = val ?? '—';
             tr.appendChild(c);
-        }
-
-        function fmtNum(n) {
-            const num = parseInt(n, 10);
-            if (isNaN(num)) return '—';
-            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-            return num.toLocaleString();
-        }
-
-        function fmtDec(n) {
-            const num = parseFloat(n);
-            if (isNaN(num)) return '0.00';
-            return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
         /* ── Counts ─────────────────────────────────────────────── */
@@ -1833,11 +1802,6 @@
                     const el = document.getElementById('f_' + f.key + '_val');
                     if (el) el.value = row[f.key] || '';
                 });
-                fields.filter(f => f.type === 'url').forEach(f => {
-                    const url = document.getElementById('f_' + f.key + '_val');
-                    if (url) url.value = row[f.key] || '';
-                });
-
                 // Language toggles prefill
                 setLangToggles(row.ads_language || '');
             }
@@ -1877,13 +1841,6 @@
             fields.filter(f => f.type === 'text').forEach(f => {
                 payload[f.key] = document.getElementById('f_' + f.key + '_val').value;
             });
-            fields.filter(f => f.type === 'lang').forEach(f => {
-                payload[f.key] = document.getElementById('f_' + f.key + '_val').value;
-            });
-            fields.filter(f => f.type === 'url').forEach(f => {
-                payload[f.key] = document.getElementById('f_' + f.key + '_val').value;
-            });
-
             const btn = document.getElementById('saveBtn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
@@ -2155,71 +2112,3 @@
     </script>
 @endsection
 
-{{-- DataTables must attach to the SAME jQuery instance Vite’s head.js sets. Sync <script src> here runs BEFORE deferred Vite, so plugins were lost. Load after DOMContentLoaded instead. --}}
-@section('script-after-vite')
-    <script>
-        (function () {
-            var dtScriptUrls = [
-                'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js',
-                'https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js',
-                'https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js',
-                'https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js',
-                'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
-                'https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js'
-            ];
-            function loadScriptSequentially(index) {
-                if (index >= dtScriptUrls.length) {
-                    return Promise.resolve();
-                }
-                return new Promise(function (resolve, reject) {
-                    var s = document.createElement('script');
-                    s.src = dtScriptUrls[index];
-                    s.onload = function () { loadScriptSequentially(index + 1).then(resolve).catch(reject); };
-                    s.onerror = function () { reject(new Error('Could not load ' + dtScriptUrls[index])); };
-                    document.body.appendChild(s);
-                });
-            }
-            function waitForViteJquery() {
-                return new Promise(function (resolve) {
-                    function tick() {
-                        if (typeof window.jQuery !== 'undefined' && window.jQuery.fn) {
-                            resolve();
-                            return;
-                        }
-                        setTimeout(tick, 30);
-                    }
-                    tick();
-                });
-            }
-            function boot() {
-                waitForViteJquery()
-                    .then(function () {
-                        if (typeof window.jQuery.fn.DataTable === 'function') {
-                            return Promise.resolve();
-                        }
-                        return loadScriptSequentially(0);
-                    })
-                    .then(function () {
-                        if (typeof window.jQuery.fn.DataTable !== 'function') {
-                            throw new Error('DataTables did not register on jQuery');
-                        }
-                        if (typeof window.__videoForDsLoadCampaigns === 'function') {
-                            window.__videoForDsLoadCampaigns();
-                        }
-                    })
-                    .catch(function (err) {
-                        var el = document.getElementById('campaignsLoader');
-                        if (el) {
-                            el.innerHTML = '<span class="text-danger" style="font-size:12px;"><i class="fas fa-exclamation-circle me-1"></i>' +
-                                (err && err.message ? err.message : 'Failed to load DataTables') + '</span>';
-                        }
-                    });
-            }
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', boot);
-            } else {
-                boot();
-            }
-        })();
-    </script>
-@endsection
