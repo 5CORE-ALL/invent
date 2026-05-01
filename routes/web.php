@@ -2721,6 +2721,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/video-for-ds/campaigns', [VideoForDsController::class, 'getCampaigns'])->name('video.for.ds.campaigns');
     Route::post('/video-for-ds/trigger-fb-sync', [VideoForDsController::class, 'triggerFbSync'])->name('video.for.ds.trigger.fb.sync');
     Route::get('/video-for-ds/sync-status', [VideoForDsController::class, 'getSyncStatus'])->name('video.for.ds.sync.status');
+    Route::get('/video-for-ds/shopify-attribution', [VideoForDsController::class, 'shopifyAttribution'])->name('video.for.ds.shopify.attribution');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
     Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');

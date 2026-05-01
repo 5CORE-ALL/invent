@@ -12,7 +12,10 @@ use App\Models\MetaAdAccount;
 use App\Jobs\SyncMetaInsightsDailyJob;
 use App\Support\VideoThumbnailUrl;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class VideoForDsController extends Controller
@@ -418,6 +421,119 @@ class VideoForDsController extends Controller
             'period'   => $period,
             'total'    => $data->count(),
         ]);
+    }
+
+    /**
+     * Return Shopify order attribution (sessions, sales, orders) for a list of
+     * Facebook campaign meta_ids matched via utm_campaign in order landing_site.
+     *
+     * Results are cached for 4 hours to avoid hammering the Shopify API.
+     */
+    public function shopifyAttribution(Request $request)
+    {
+        $campaignIds = array_values(array_filter((array) $request->input('campaign_ids', [])));
+
+        if (empty($campaignIds)) {
+            return response()->json(['success' => true, 'data' => new \stdClass]);
+        }
+
+        // Cache the entire 90-day attribution map (keyed by utm_campaign) for 4 h
+        $map = Cache::remember('shopify_attribution_map', now()->addHours(4), function () {
+            return $this->buildShopifyAttributionMap();
+        });
+
+        $result = [];
+        foreach ($campaignIds as $cid) {
+            $key = (string) $cid;
+            $result[$key] = $map[$key] ?? ['activities' => 0, 'sales' => 0.0, 'orders' => 0];
+        }
+
+        return response()->json(['success' => true, 'data' => $result]);
+    }
+
+    /**
+     * Fetch all Shopify orders from the last 90 days and aggregate by utm_campaign.
+     * Returns array<string, array{activities:int, sales:float, orders:int}>.
+     */
+    private function buildShopifyAttributionMap(): array
+    {
+        $token  = config('services.shopify.access_token') ?: config('services.shopify.password');
+        $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+
+        if (! $domain || ! $token) {
+            Log::warning('Shopify attribution: credentials not configured');
+            return [];
+        }
+
+        $domain   = rtrim(preg_replace('#^https?://#', '', $domain), '/');
+        $since    = now()->subDays(90)->toIso8601String();
+        $map      = [];
+        $pageInfo = null;
+
+        do {
+            if ($pageInfo) {
+                $url = "https://{$domain}/admin/api/2024-04/orders.json?"
+                     . http_build_query(['limit' => 250, 'page_info' => $pageInfo]);
+            } else {
+                $url = "https://{$domain}/admin/api/2024-04/orders.json?"
+                     . http_build_query([
+                         'status'         => 'any',
+                         'limit'          => 250,
+                         'created_at_min' => $since,
+                         'fields'         => 'id,total_price,landing_site',
+                     ]);
+            }
+
+            $response = Http::withHeaders(['X-Shopify-Access-Token' => $token])
+                ->timeout(60)
+                ->connectTimeout(15)
+                ->get($url);
+
+            if (! $response->successful()) {
+                Log::warning('Shopify attribution fetch failed', [
+                    'status' => $response->status(),
+                    'body'   => substr($response->body(), 0, 300),
+                ]);
+                break;
+            }
+
+            $orders = $response->json('orders', []);
+
+            foreach ($orders as $order) {
+                $ls = $order['landing_site'] ?? '';
+                if (! $ls) {
+                    continue;
+                }
+
+                parse_str(parse_url($ls, PHP_URL_QUERY) ?? '', $params);
+                $utmCampaign = $params['utm_campaign'] ?? null;
+
+                if ($utmCampaign) {
+                    $key = (string) $utmCampaign;
+                    if (! isset($map[$key])) {
+                        $map[$key] = ['activities' => 0, 'sales' => 0.0, 'orders' => 0];
+                    }
+                    $map[$key]['activities']++;
+                    $map[$key]['orders']++;
+                    $map[$key]['sales'] += (float) ($order['total_price'] ?? 0);
+                }
+            }
+
+            // Shopify cursor pagination – next page token lives in Link header
+            $link     = $response->header('Link') ?? '';
+            $pageInfo = null;
+            if ($link && preg_match('/page_info=([^&>]+)[^>]*>;\s*rel="next"/', $link, $m)) {
+                $pageInfo = $m[1];
+            }
+
+        } while ($pageInfo && count($orders) === 250);
+
+        // Round sales
+        foreach ($map as &$row) {
+            $row['sales'] = round($row['sales'], 2);
+        }
+
+        return $map;
     }
 
     public function triggerFbSync(Request $request)
