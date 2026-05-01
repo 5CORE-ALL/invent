@@ -179,7 +179,11 @@
                     </div>
                     <div id="imSlots"></div>
                     <div class="mt-3">
-                        <div class="fw-semibold small mb-1">Push to marketplaces</div>
+                        <div class="fw-semibold small mb-1 d-flex align-items-center flex-wrap gap-2">
+                            <span>Push to marketplaces</span>
+                            <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-2" id="mpSelAllBtn" style="font-size:10px;">All channels</button>
+                            <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-2" id="mpSelNoneBtn" style="font-size:10px;">None</button>
+                        </div>
                         <div id="modalMarketplaceChecks" class="row g-1"></div>
                     </div>
                 </div>
@@ -377,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('uploadSuccessMsg').style.display = 'none';
         document.getElementById('modalMarketplaceChecks').innerHTML = MARKETPLACES.map(mp => `
             <div class="col-6 col-md-4 col-lg-3">
-                <label class="form-check small"><input type="checkbox" class="form-check-input im-mp-chk" value="${mp}"> ${esc(LABELS[mp])}</label>
+                <label class="form-check small"><input type="checkbox" class="form-check-input im-mp-chk" value="${mp}" checked> ${esc(LABELS[mp])}</label>
             </div>`).join('');
         if (editModal) editModal.show();
         // Load stored images for this SKU in the background
@@ -761,43 +765,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const selLabel = selectedUrls.size > 0 ? `${imagesToPush.length} selected` : `all ${imagesToPush.length}`;
         const modeLabel = mode === 'add' ? 'adding to' : 'replacing';
-        setPushProgress(true, `Pushing ${selLabel} image(s) (${modeLabel} existing) to ${checks.length} marketplace(s)… Please wait, do not close this window.`, '');
 
         const progress = [];
         let okCount = 0, failCount = 0, metricsFailCount = 0;
+        const updates = checks.map(mp => ({ marketplace: mp, images: imagesToPush }));
+        const msTimeout = Math.max(600000, checks.length * 120000);
         try {
-            for (let i = 0; i < checks.length; i++) {
-                const mp = checks[i];
-                setPushProgress(true, `Pushing ${selLabel} image(s) (${modeLabel} existing) to ${checks.length} marketplace(s)… This may take 1-2 minutes`, progress.join('<br>'));
-                const controller = new AbortController();
-                // 5 minutes: each image upload + old image deletes needs ~0.4s × N calls,
-                // so 20 images + 20 deletes ≈ 16s minimum even at full speed.
-                const t = setTimeout(() => controller.abort(), 300000);
+            setPushProgress(true, `Pushing ${selLabel} image(s) (${modeLabel} existing) to ${checks.length} marketplace(s)… One request, please wait.`, '');
+            const controller = new AbortController();
+            const t = setTimeout(() => controller.abort(), msTimeout);
+            try {
+                const r = await fetch('/image-master/push', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: JSON.stringify({ sku, mode, updates }),
+                    signal: controller.signal,
+                });
+                const rawText = await r.text();
+                let j = null;
                 try {
-                    const r = await fetch('/image-master/push', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                        body: JSON.stringify({ sku, mode, updates: [{ marketplace: mp, images: imagesToPush }] }),
-                        signal: controller.signal,
-                    });
-                    const j  = await r.json();
-                    const row = (j.results && j.results[mp]) ? j.results[mp] : null;
-                    const rowOk = !!(row && row.success);
-                    const rowMetrics = !!(row && row.metrics_saved);
-                    if (rowOk) okCount++; else failCount++;
-                    if (row && rowOk && !rowMetrics) metricsFailCount++;
-                    progress.push(`${i + 1}/${checks.length} ${LABELS[mp]}: ${rowOk ? 'OK' : 'Failed'}${row && row.message ? ` - ${esc(row.message)}` : ''}`);
-                } catch (e) {
-                    failCount++;
-                    const txt = (e?.name === 'AbortError') ? 'Request timed out after 300s' : (e.message || 'Request failed');
-                    progress.push(`${i + 1}/${checks.length} ${LABELS[mp]}: Failed - ${esc(txt)}`);
-                } finally {
-                    clearTimeout(t);
+                    j = JSON.parse(rawText);
+                } catch (parseErr) {
+                    progress.push(`Bad response (HTTP ${r.status}). ${esc(rawText.slice(0, 280))}`);
+                    failCount = checks.length;
                 }
+                if (j && !r.ok && (j.message || j.error)) {
+                    progress.unshift(`${esc(String(j.message || j.error))} (HTTP ${r.status})`);
+                } else if (j && !r.ok) {
+                    progress.unshift(`HTTP ${r.status}`);
+                }
+                if (j && j.results) {
+                okCount = 0;
+                failCount = 0;
+                metricsFailCount = 0;
+                let idx = 0;
+                for (const mp of checks) {
+                    idx++;
+                    const row = j.results[mp] ? j.results[mp] : null;
+                    const rowOk = !!(row && row.success);
+                    if (rowOk) { okCount++; } else { failCount++; }
+                    if (row && rowOk && !row.metrics_saved) { metricsFailCount++; }
+                    progress.push(`${idx}/${checks.length} ${LABELS[mp]}: ${rowOk ? 'OK' : 'Failed'}${row && row.message ? ` - ${esc(row.message)}` : ''}`);
+                }
+                } else if (j && failCount === 0) {
+                    failCount = checks.length;
+                }
+            } catch (e) {
+                failCount = checks.length;
+                const txt = (e?.name === 'AbortError') ? `Request timed out after ${Math.round(msTimeout/1000)}s` : (e.message || 'Request failed');
+                progress.push(`Batch failed: ${esc(txt)}`);
+            } finally {
+                clearTimeout(t);
             }
             setPushProgress(true, `Push finished: ${okCount} success, ${failCount} failed${metricsFailCount ? `, ${metricsFailCount} metrics save failed` : ''}`, progress.join('<br>'));
             if (failCount === 0) {
-                toast(`Pushed to ${okCount} marketplace(s).${metricsFailCount ? ` ${metricsFailCount} metrics save failed.` : ''}`, true);
+                toast(`Pushed to ${okCount} marketplace(s).${metricsFailCount ? ` ${metricsFailCount} metrics save failed.` : ''}`, !metricsFailCount);
                 loadData();
                 if (editModal) editModal.hide();
             } else {
@@ -823,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('/image-master/push', {
             method:'POST',
             headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrfToken,'Accept':'application/json'},
-            body: JSON.stringify({ sku, updates: [{ marketplace: mp, images: urls }] }),
+            body: JSON.stringify({ sku, mode: 'replace', updates: [{ marketplace: mp, images: urls }] }),
         }).then(r=>r.json()).then(j => {
             const rowRes = (j.results && j.results[mp]) ? j.results[mp] : null;
             const ok = !!(rowRes && rowRes.success);
@@ -889,6 +911,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.bootstrap?.Modal) {
         editModal = new bootstrap.Modal(document.getElementById('editImModal'));
     }
+    document.getElementById('mpSelAllBtn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.querySelectorAll('#editImModal .im-mp-chk').forEach(c => { c.checked = true; });
+    });
+    document.getElementById('mpSelNoneBtn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.querySelectorAll('#editImModal .im-mp-chk').forEach(c => { c.checked = false; });
+    });
     loadData();
 });
 </script>

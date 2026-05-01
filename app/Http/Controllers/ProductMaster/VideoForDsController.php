@@ -153,6 +153,7 @@ class VideoForDsController extends Controller
             ->select(
                 'ma.id as ad_id',
                 'ma.name as ad_name',
+                'ma.campaign_id',
                 DB::raw('SUM(mid.impressions) as impressions'),
                 DB::raw('SUM(mid.reach) as reach'),
                 DB::raw('SUM(mid.clicks) as clicks'),
@@ -160,37 +161,30 @@ class VideoForDsController extends Controller
                 DB::raw('SUM(mid.purchases) as purchases'),
                 DB::raw('AVG(mid.frequency) as frequency')
             )
-            ->groupBy('ma.id', 'ma.name')
+            ->groupBy('ma.id', 'ma.name', 'ma.campaign_id')
             ->get();
 
-        // Collect video action metrics (thruplay + avg watch time) from actions JSON
-        $actionsRows = DB::table('meta_insights_daily as mid')
-            ->join('meta_ads as ma', function ($j) {
-                $j->on('ma.id', '=', 'mid.entity_id')->where('mid.entity_type', 'ad');
-            })
-            ->whereBetween('mid.date_start', [$startDate, $endDate])
-            ->whereNotNull('mid.actions')
-            ->select('ma.name as ad_name', 'mid.actions')
-            ->get();
-
-        $videoMetrics = [];
-        foreach ($actionsRows as $row) {
-            $actions = is_string($row->actions) ? json_decode($row->actions, true) : $row->actions;
-            if (!is_array($actions)) continue;
-            $name = $row->ad_name;
-            if (!isset($videoMetrics[$name])) {
-                $videoMetrics[$name] = ['thruplay' => 0, 'watch_total' => 0, 'watch_count' => 0];
-            }
-            foreach ($actions as $action) {
-                $type = $action['action_type'] ?? '';
-                $val  = (float)($action['value'] ?? 0);
-                if ($type === 'video_thruplay_watched') {
-                    $videoMetrics[$name]['thruplay'] += (int)$val;
-                } elseif ($type === 'video_avg_time_watched') {
-                    $videoMetrics[$name]['watch_total'] += $val;
-                    $videoMetrics[$name]['watch_count']++;
-                }
-            }
+        $allCampaignIds = $insightRows->pluck('campaign_id')->filter()->unique()->values();
+        $campaignById   = collect();
+        if ($allCampaignIds->isNotEmpty()) {
+            $campaignById = DB::table('meta_campaigns as mc')
+                ->leftJoin('meta_ad_accounts as maa', 'maa.id', '=', 'mc.ad_account_id')
+                ->whereIn('mc.id', $allCampaignIds->all())
+                ->select(
+                    'mc.id',
+                    'mc.name',
+                    'mc.status',
+                    'mc.effective_status',
+                    'mc.objective',
+                    'mc.daily_budget',
+                    'mc.lifetime_budget',
+                    'mc.budget_remaining',
+                    'mc.start_time',
+                    'mc.stop_time',
+                    'maa.name as account_name',
+                )
+                ->get()
+                ->keyBy('id');
         }
 
         $result = [];
@@ -208,33 +202,24 @@ class VideoForDsController extends Controller
             $totalPurchases = (int) $matched->sum('purchases');
             $totalReach     = (int) $matched->sum('reach');
 
-            $thruplay    = 0;
-            $watchTotal  = 0;
-            $watchCount  = 0;
-            foreach ($matched as $m) {
-                $vm = $videoMetrics[$m->ad_name] ?? null;
-                if ($vm) {
-                    $thruplay   += $vm['thruplay'];
-                    $watchTotal += $vm['watch_total'];
-                    $watchCount += $vm['watch_count'];
-                }
-            }
+            $campaignIds  = $matched->pluck('campaign_id')->filter()->unique()->values()->all();
+            $campaignRows = collect($campaignIds)
+                ->map(fn ($cid) => $campaignById->get($cid))
+                ->filter();
 
-            $result[$video->id] = [
-                'ad_name'    => $matched->pluck('ad_name')->unique()->take(2)->implode(' / '),
-                'ad_count'   => $matched->count(),
-                'impressions'=> $totalImpr,
-                'reach'      => $totalReach,
-                'clicks'     => $totalClicks,
-                'spend'      => round($totalSpend, 2),
-                'ctr'        => $totalImpr > 0 ? round($totalClicks / $totalImpr * 100, 2) : 0,
-                'cpm'        => $totalImpr > 0 ? round($totalSpend / $totalImpr * 1000, 2) : 0,
-                'frequency'  => $matched->count() > 0 ? round((float)$matched->avg('frequency'), 2) : 0,
-                'video_views'=> $thruplay,
-                'results'    => $totalPurchases,
-                'cost_result'=> $totalPurchases > 0 ? round($totalSpend / $totalPurchases, 2) : 0,
-                'watch_time' => $watchCount > 0 ? round($watchTotal / $watchCount, 1) : 0,
-            ];
+            $campaignUi = $this->buildVideoRowCampaignUiFields($campaignRows);
+
+            $result[$video->id] = array_merge($campaignUi, [
+                'impressions' => $totalImpr,
+                'reach'       => $totalReach,
+                'clicks'      => $totalClicks,
+                'spend'       => round($totalSpend, 2),
+                'ctr'         => $totalImpr > 0 ? round($totalClicks / $totalImpr * 100, 2) : 0,
+                'cpm'         => $totalImpr > 0 ? round($totalSpend / $totalImpr * 1000, 2) : 0,
+                'frequency'   => $matched->count() > 0 ? round((float) $matched->avg('frequency'), 2) : 0,
+                'results'     => $totalPurchases,
+                'cost_result' => $totalPurchases > 0 ? round($totalSpend / $totalPurchases, 2) : 0,
+            ]);
         }
 
         $lastSync = DB::table('meta_insights_daily')->max('synced_at');
@@ -245,6 +230,97 @@ class VideoForDsController extends Controller
             'period'    => $period,
             'synced_at' => $lastSync,
         ]);
+    }
+
+    /**
+     * Campaign identity fields for a video row (matched Meta ads → campaigns).
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return array<string, mixed>
+     */
+    protected function buildVideoRowCampaignUiFields($rows): array
+    {
+        $fmtMoney = static function ($v): string {
+            if ($v === null || $v === '') {
+                return '—';
+            }
+            $n = (float) $v;
+
+            return $n > 0 ? '$' . number_format($n, 2) : '—';
+        };
+        $fmtDate = static fn ($v): string => $v ? Carbon::parse($v)->format('M j, Y') : '—';
+
+        if ($rows->isEmpty()) {
+            return [
+                'campaign_name'     => null,
+                'account_name'      => null,
+                'status'            => null,
+                'objective'         => null,
+                'daily_budget'      => null,
+                'lifetime_budget'   => null,
+                'budget_remaining'  => null,
+                'start_time'        => null,
+                'stop_time'         => null,
+            ];
+        }
+
+        if ($rows->count() === 1) {
+            $c = $rows->first();
+
+            return [
+                'campaign_name'     => $c->name,
+                'account_name'      => $c->account_name,
+                'status'            => $c->effective_status ?: $c->status,
+                'objective'         => $c->objective ? str_replace('_', ' ', (string) $c->objective) : null,
+                'daily_budget'      => $fmtMoney($c->daily_budget ?? null),
+                'lifetime_budget'   => $fmtMoney($c->lifetime_budget ?? null),
+                'budget_remaining'  => $fmtMoney($c->budget_remaining ?? null),
+                'start_time'        => $fmtDate($c->start_time ?? null),
+                'stop_time'         => $fmtDate($c->stop_time ?? null),
+            ];
+        }
+
+        $uniqueNames = $rows->pluck('name')->filter()->unique();
+        $campaignName = $uniqueNames->take(2)->implode(' / ');
+        if ($uniqueNames->count() > 2) {
+            $campaignName .= '…';
+        }
+
+        $accounts = $rows->pluck('account_name')->filter()->unique();
+        $accountName = $accounts->take(2)->implode(' · ');
+        if ($accounts->count() > 2) {
+            $accountName .= '…';
+        }
+
+        $status = $rows->pluck('effective_status')->filter()->first()
+            ?: $rows->pluck('status')->filter()->first();
+
+        $objUnique = $rows->pluck('objective')->filter()->unique();
+        $objective = $objUnique->take(2)->map(fn ($o) => str_replace('_', ' ', (string) $o))->implode(' · ');
+        if ($objUnique->count() > 2) {
+            $objective .= '…';
+        }
+
+        $starts = $rows->pluck('start_time')->filter();
+        $stops  = $rows->pluck('stop_time')->filter();
+        $minStart = $starts->isNotEmpty()
+            ? Carbon::createFromTimestamp($starts->map(fn ($t) => Carbon::parse($t)->timestamp)->min())
+            : null;
+        $maxStop = $stops->isNotEmpty()
+            ? Carbon::createFromTimestamp($stops->map(fn ($t) => Carbon::parse($t)->timestamp)->max())
+            : null;
+
+        return [
+            'campaign_name'     => $campaignName ?: null,
+            'account_name'      => $accountName ?: null,
+            'status'            => $status,
+            'objective'         => $objective ?: null,
+            'daily_budget'      => 'Multiple',
+            'lifetime_budget'   => 'Multiple',
+            'budget_remaining'  => 'Multiple',
+            'start_time'        => $minStart ? $minStart->format('M j, Y') : '—',
+            'stop_time'         => $maxStop ? $maxStop->format('M j, Y') : '—',
+        ];
     }
 
     public function getCampaigns()
