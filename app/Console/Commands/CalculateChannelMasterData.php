@@ -107,6 +107,7 @@ class CalculateChannelMasterData extends Command
                         $this->info("Processing Reverb with updated calculations:");
                         $this->info("  - L30 Sales: " . ($channelData['L30 Sales'] ?? 'N/A'));
                         $this->info("  - GPFT %: " . ($channelData['Gprofit%'] ?? 'N/A'));
+                        $this->info("  - G ROI: " . ($channelData['G Roi'] ?? 'N/A'));
                         $this->info("  - N PFT %: " . ($channelData['N PFT'] ?? 'N/A'));
                     }
                     

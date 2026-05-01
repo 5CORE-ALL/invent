@@ -2366,9 +2366,15 @@ class AmazonAdsController extends Controller
      */
     public function getBgtRule(): JsonResponse
     {
+        // Clear cache to get fresh data
+        AmazonAcosSbgtRule::forgetResolvedCache();
+        
         return response()->json([
             'rule' => AmazonAcosSbgtRule::resolvedRule(),
-        ]);
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
     }
 
     /**
@@ -2379,6 +2385,8 @@ class AmazonAdsController extends Controller
         try {
             $normalized = AmazonAcosSbgtRule::normalizeRule($request->all());
             AmazonAcosSbgtRule::persistRule($normalized);
+            // Clear cache immediately after saving
+            AmazonAcosSbgtRule::forgetResolvedCache();
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
@@ -2392,11 +2400,17 @@ class AmazonAdsController extends Controller
             ], 500);
         }
 
+        // Fetch fresh from database
+        $freshRule = AmazonAcosSbgtRule::resolvedRule();
+        
         return response()->json([
             'message' => 'BGT rule saved. SBGT on the grid will use the new ACOS → tier mapping after reload.',
-            'rule' => AmazonAcosSbgtRule::resolvedRule(),
+            'rule' => $freshRule,
             'status' => 200,
-        ]);
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
     }
 
     /**
@@ -2404,9 +2418,15 @@ class AmazonAdsController extends Controller
      */
     public function getSbidRule(): JsonResponse
     {
+        // Clear cache to get fresh data
+        AmazonAdsSbidRule::forgetResolvedCache();
+        
         return response()->json([
             'rule' => AmazonAdsSbidRule::resolvedRule(),
-        ]);
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
     }
 
     /**
@@ -2417,6 +2437,8 @@ class AmazonAdsController extends Controller
         try {
             $normalized = AmazonAdsSbidRule::normalizeRule($request->all());
             AmazonAdsSbidRule::persistRule($normalized);
+            // Clear cache immediately after saving
+            AmazonAdsSbidRule::forgetResolvedCache();
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
@@ -2430,11 +2452,17 @@ class AmazonAdsController extends Controller
             ], 500);
         }
 
+        // Fetch fresh from database
+        $freshRule = AmazonAdsSbidRule::resolvedRule();
+
         return response()->json([
             'message' => 'SBID rule saved. Suggested SBID on the grid and in bid updates will use the new thresholds after reload.',
-            'rule' => AmazonAdsSbidRule::resolvedRule(),
+            'rule' => $freshRule,
             'status' => 200,
-        ]);
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
     }
 
     /**
