@@ -40,7 +40,145 @@ final class EbayTradingReviseItem
     }
 
     /**
-     * Replace gallery images via PictureDetails (up to 12 publicly accessible URLs).
+     * Upload a single image to eBay's EPS (Electronic Photo Service) and return the hosted URL.
+     * eBay requires images to be on their CDN before they can be used in listings.
+     *
+     * @return array{success: bool, url?: string, message?: string}
+     */
+    public static function uploadImageToEps(
+        string $endpoint,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $authToken,
+        string $imageUrl,
+        string $pictureName = 'image',
+    ): array {
+        // Already an eBay-hosted URL — no need to re-upload
+        if (preg_match('#^https?://(i|p)\.ebayimg\.com/#i', $imageUrl)) {
+            return ['success' => true, 'url' => $imageUrl, 'message' => 'Already eBay-hosted.'];
+        }
+
+        // Read image binary: local file or remote URL
+        $imageData = null;
+        $contentType = 'image/jpeg';
+
+        $localPath = self::resolveLocalStoragePath($imageUrl);
+        if ($localPath && file_exists($localPath)) {
+            $imageData = file_get_contents($localPath);
+            $mime = mime_content_type($localPath);
+            if ($mime && str_starts_with($mime, 'image/')) {
+                $contentType = $mime;
+            }
+        }
+
+        if ($imageData === null || $imageData === false) {
+            // Fetch from remote URL
+            try {
+                $resp = Http::timeout(30)->connectTimeout(10)->get($imageUrl);
+                if (! $resp->successful()) {
+                    return ['success' => false, 'message' => "Image not accessible (HTTP {$resp->status()}): {$imageUrl}"];
+                }
+                $imageData = $resp->body();
+                $ct = $resp->header('Content-Type');
+                if ($ct && str_starts_with($ct, 'image/')) {
+                    $contentType = explode(';', $ct)[0];
+                }
+            } catch (\Throwable $e) {
+                return ['success' => false, 'message' => "Image download failed: {$e->getMessage()} — URL: {$imageUrl}"];
+            }
+        }
+
+        if (empty($imageData)) {
+            return ['success' => false, 'message' => "Image file is empty: {$imageUrl}"];
+        }
+
+        // Build UploadSiteHostedPictures XML payload
+        $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $nameEsc  = htmlspecialchars($pictureName, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $xmlPayload = '<?xml version="1.0" encoding="utf-8"?>'
+            .'<UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+            .'<RequesterCredentials><eBayAuthToken>'.$tokenEsc.'</eBayAuthToken></RequesterCredentials>'
+            .'<ErrorLanguage>en_US</ErrorLanguage>'
+            .'<PictureName>'.$nameEsc.'</PictureName>'
+            .'<PictureSet>Supersize</PictureSet>'
+            .'</UploadSiteHostedPicturesRequest>';
+
+        $headers = [
+            'X-EBAY-API-COMPATIBILITY-LEVEL' => '967',
+            'X-EBAY-API-DEV-NAME'             => $devId,
+            'X-EBAY-API-APP-NAME'             => $appId,
+            'X-EBAY-API-CERT-NAME'            => $certId,
+            'X-EBAY-API-CALL-NAME'            => 'UploadSiteHostedPictures',
+            'X-EBAY-API-SITEID'               => '0',
+        ];
+
+        // eBay EPS upload uses multipart/form-data with XML payload + image binary
+        $boundary = '----eBayEPSBoundary'.uniqid();
+        $body  = "--{$boundary}\r\n";
+        $body .= "Content-Disposition: form-data; name=\"XML Payload\"\r\n";
+        $body .= "Content-Type: text/xml;charset=utf-8\r\n\r\n";
+        $body .= $xmlPayload."\r\n";
+        $body .= "--{$boundary}\r\n";
+        $ext   = $contentType === 'image/png' ? 'png' : ($contentType === 'image/gif' ? 'gif' : 'jpg');
+        $body .= "Content-Disposition: form-data; name=\"image\"; filename=\"{$nameEsc}.{$ext}\"\r\n";
+        $body .= "Content-Type: {$contentType}\r\n\r\n";
+        $body .= $imageData."\r\n";
+        $body .= "--{$boundary}--\r\n";
+
+        try {
+            $response = Http::withoutVerifying()
+                ->connectTimeout(15)
+                ->timeout(60)
+                ->withHeaders($headers + ['Content-Type' => "multipart/form-data; boundary={$boundary}"])
+                ->withBody($body, "multipart/form-data; boundary={$boundary}")
+                ->post($endpoint);
+
+            $respBody = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($respBody);
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid EPS upload response: '.substr($respBody, 0, 200)];
+            }
+
+            $arr  = json_decode(json_encode($xmlResp), true);
+            $ack  = $arr['Ack'] ?? 'Failure';
+
+            if ($ack === 'Success' || $ack === 'Warning') {
+                $epsUrl = $arr['SiteHostedPictureDetails']['FullURL']
+                    ?? $arr['SiteHostedPictureDetails']['BaseURL']
+                    ?? null;
+                if ($epsUrl) {
+                    return ['success' => true, 'url' => (string) $epsUrl];
+                }
+
+                return ['success' => false, 'message' => 'EPS upload succeeded but no URL returned.'];
+            }
+
+            // Parse eBay error
+            $errors = $arr['Errors'] ?? [];
+            if (! is_array($errors)) {
+                $errors = [];
+            }
+            if (isset($errors['ErrorCode']) || isset($errors['ShortMessage']) || isset($errors['LongMessage'])) {
+                $errors = [$errors];
+            }
+            $firstErr = $errors[0] ?? [];
+            $errMsg = (string) ($firstErr['LongMessage'] ?? $firstErr['ShortMessage'] ?? 'EPS upload failed');
+            if (isset($firstErr['ErrorCode'])) {
+                $errMsg = '[eBay #'.$firstErr['ErrorCode'].'] '.$errMsg;
+            }
+
+            return ['success' => false, 'message' => $errMsg];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'EPS upload exception: '.$e->getMessage()];
+        }
+    }
+
+    /**
+     * Replace gallery images via PictureDetails.
+     * Images are first uploaded to eBay EPS so eBay hosts them — this avoids
+     * error #37 "PictureURL invalid" that occurs when eBay can't reach external URLs.
      *
      * @param  list<string>  $pictureUrls
      * @return array{success: bool, message: string}
@@ -68,8 +206,28 @@ final class EbayTradingReviseItem
             return ['success' => false, 'message' => 'At least one image URL is required.'];
         }
 
+        // Upload each image to eBay EPS to get eBay-hosted URLs.
+        // eBay error #37 occurs when external URLs are not accessible from eBay's servers.
+        $epsUrls    = [];
+        $epsErrors  = [];
+        foreach ($urls as $i => $srcUrl) {
+            $name   = 'img_'.($i + 1).'_'.substr(md5($srcUrl), 0, 8);
+            $result = self::uploadImageToEps($endpoint, $devId, $appId, $certId, $authToken, $srcUrl, $name);
+            if ($result['success'] ?? false) {
+                $epsUrls[] = $result['url'];
+            } else {
+                $epsErrors[] = 'Image '.($i + 1).': '.($result['message'] ?? 'upload failed');
+                Log::warning('eBay EPS upload failed', ['url' => $srcUrl, 'error' => $result['message'] ?? '']);
+            }
+        }
+
+        if ($epsUrls === []) {
+            return ['success' => false, 'message' => 'All image uploads to eBay EPS failed. '.implode(' | ', $epsErrors)];
+        }
+
+        // Build ReviseItem with EPS-hosted URLs
         $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-        $idEsc = htmlspecialchars($itemId, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $idEsc    = htmlspecialchars($itemId, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
         $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $creds = $xml->addChild('RequesterCredentials');
@@ -79,7 +237,7 @@ final class EbayTradingReviseItem
         $itemNode = $xml->addChild('Item');
         $itemNode->addChild('ItemID', $idEsc);
         $pd = $itemNode->addChild('PictureDetails');
-        foreach ($urls as $u) {
+        foreach ($epsUrls as $u) {
             $pd->addChild('PictureURL', self::escapeXmlElementText($u));
         }
 
@@ -88,7 +246,38 @@ final class EbayTradingReviseItem
             return ['success' => false, 'message' => 'Failed to build ReviseItem XML for pictures.'];
         }
 
-        return self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'pictures');
+        $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'pictures');
+
+        // Append any partial EPS failures to the success message
+        if (($result['success'] ?? false) && $epsErrors) {
+            $result['message'] = ($result['message'] ?? 'eBay images updated.')
+                .' Note: '.count($epsErrors).' of '.count($urls).' image(s) could not be uploaded: '.implode(' | ', $epsErrors);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolve a storage URL to a local absolute file path for local-file reads.
+     * Works for both http://localhost/storage/... and https://domain.com/storage/... patterns.
+     */
+    private static function resolveLocalStoragePath(string $url): ?string
+    {
+        // Try matching /storage/ path component
+        if (preg_match('#/storage/(.+)$#', $url, $m)) {
+            $rel  = ltrim(str_replace('\\', '/', rawurldecode($m[1])), '/');
+            $path = storage_path('app/public/'.$rel);
+            if (file_exists($path)) {
+                return $path;
+            }
+            // Fallback: public_path
+            $path2 = public_path('storage/'.$rel);
+            if (file_exists($path2)) {
+                return $path2;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -706,11 +895,23 @@ final class EbayTradingReviseItem
 
             $errors = $responseArray['Errors'] ?? [];
             if (! is_array($errors)) {
+                $errors = [];
+            }
+            // eBay returns a single <Errors> block as an associative array,
+            // and multiple blocks as a numeric array of associative arrays.
+            // Detect the single-error case by checking for known eBay error keys.
+            if (isset($errors['ErrorCode']) || isset($errors['ShortMessage']) || isset($errors['LongMessage'])) {
                 $errors = [$errors];
             }
-            $msg = isset($errors[0]['LongMessage']) ? $errors[0]['LongMessage'] : (isset($errors[0]['ShortMessage']) ? $errors[0]['ShortMessage'] : 'Unknown eBay error');
+            $firstErr = $errors[0] ?? [];
+            $msg = (string) ($firstErr['LongMessage'] ?? $firstErr['ShortMessage'] ?? $firstErr['ErrorCode'] ?? 'Unknown eBay error');
+            // Include error code for easier debugging
+            if (isset($firstErr['ErrorCode']) && ! str_contains($msg, (string) $firstErr['ErrorCode'])) {
+                $msg = '[eBay #'.$firstErr['ErrorCode'].'] '.$msg;
+            }
+            Log::warning('eBay ReviseItem failed', ['item_id' => $itemId, 'context' => $contextLabel, 'errors' => $errors]);
 
-            return ['success' => false, 'message' => (string) $msg];
+            return ['success' => false, 'message' => $msg];
         } catch (\Throwable $e) {
             Log::error('eBay ReviseItem exception', ['itemId' => $itemId, 'context' => $contextLabel, 'error' => $e->getMessage()]);
 

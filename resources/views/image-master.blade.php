@@ -112,12 +112,13 @@
                             <tbody id="table-body"></tbody>
                         </table>
                     </div>
-                    <div id="pushProgressBox" class="alert alert-info mt-3 py-2 px-3" style="display:none;">
+                    <div id="pushProgressBox" class="alert alert-info mt-3 py-2 px-3" style="display:none;word-break:break-word;">
                         <div class="d-flex align-items-center gap-2">
-                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                            <div class="small" id="pushProgressTitle">Pushing...</div>
+                            <div class="spinner-border spinner-border-sm text-primary" id="pushSpinner" role="status"></div>
+                            <div class="small fw-semibold flex-grow-1" id="pushProgressTitle">Pushing...</div>
+                            <button type="button" class="btn-close btn-sm" id="pushProgressClose" style="font-size:10px;" onclick="document.getElementById('pushProgressBox').style.display='none'"></button>
                         </div>
-                        <div class="small mt-2" id="pushProgressDetails"></div>
+                        <div class="small mt-2" id="pushProgressDetails" style="max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
                     </div>
                     <div id="rainbow-loader" class="text-center py-4" style="display:none;">
                         <div class="spinner-border text-primary"></div>
@@ -295,14 +296,18 @@ document.addEventListener('DOMContentLoaded', () => {
         el.addEventListener('hidden.bs.toast', () => el.remove());
     }
 
-    function setPushProgress(visible, title = '', detailsHtml = '') {
+    function setPushProgress(visible, title = '', detailsHtml = '', hasError = false) {
         const box = document.getElementById('pushProgressBox');
         const t = document.getElementById('pushProgressTitle');
         const d = document.getElementById('pushProgressDetails');
+        const spinner = document.getElementById('pushSpinner');
         if (!box || !t || !d) return;
         box.style.display = visible ? 'block' : 'none';
         if (title) t.textContent = title;
         d.innerHTML = detailsHtml || '';
+        if (spinner) spinner.style.display = visible && !hasError ? 'inline-block' : 'none';
+        box.className = 'alert mt-3 py-2 px-3' + (hasError ? ' alert-danger' : ' alert-info');
+        box.style.wordBreak = 'break-word';
     }
 
     function confirmEbay3Push(mps) {
@@ -838,17 +843,20 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 clearTimeout(t);
             }
-            setPushProgress(true, `Push finished: ${okCount} success, ${failCount} failed${metricsFailCount ? `, ${metricsFailCount} metrics save failed` : ''}`, progress.join('<br>'));
-            if (failCount === 0) {
+            const hasAnyError = failCount > 0;
+            setPushProgress(true, `Push finished: ${okCount} success, ${failCount} failed${metricsFailCount ? `, ${metricsFailCount} metrics save failed` : ''}`, progress.join('<br>'), hasAnyError);
+            if (!hasAnyError) {
                 toast(`Pushed to ${okCount} marketplace(s).${metricsFailCount ? ` ${metricsFailCount} metrics save failed.` : ''}`, !metricsFailCount);
                 loadData();
                 if (editModal) editModal.hide();
+                setTimeout(() => setPushProgress(false, '', ''), 5000);
             } else {
-                toast(`Push completed with failures (${failCount}). See progress details.`, false);
+                toast(`Push completed with failures (${failCount}). See error details below.`, false);
                 loadData();
+                // Keep failures visible until user clicks elsewhere — don't auto-hide
             }
         } finally {
-            setTimeout(() => setPushProgress(false, '', ''), 5000);
+            // spinner already stopped in setPushProgress(hasError=true); do nothing here
         }
     }
 
@@ -871,13 +879,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const rowRes = (j.results && j.results[mp]) ? j.results[mp] : null;
             const ok = !!(rowRes && rowRes.success);
             const msg = rowRes?.message || j.message || (ok ? 'Updated' : 'Failed');
-            setPushProgress(true, `Push finished: ${ok ? '1 success' : '1 failed'}`, `1/1 ${LABELS[mp]}: ${ok ? 'OK' : 'Failed'} - ${esc(msg)}`);
-            if (ok) { toast(LABELS[mp]+' pushed'); loadData(); }
+            setPushProgress(true, `Push finished: ${ok ? '1 success' : '1 failed'}`, `1/1 ${LABELS[mp]}: ${ok ? '✓ OK' : '✗ Failed'} — ${esc(msg)}`, !ok);
+            if (ok) { toast(LABELS[mp]+' pushed'); loadData(); setTimeout(() => setPushProgress(false,'',''), 5000); }
             else toast(msg, false);
         }).catch(e => {
-            setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: Failed - ${esc(e.message || 'Request failed')}`);
+            setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: ✗ Failed — ${esc(e.message || 'Request failed')}`, true);
             toast(e.message, false);
-        }).finally(() => setTimeout(() => setPushProgress(false, '', ''), 4000));
+        });
     }
 
     document.getElementById('skuSearchIm')?.addEventListener('input', () => renderTable(tableData));
