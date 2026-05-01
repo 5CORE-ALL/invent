@@ -151,6 +151,12 @@ class ShopifyController extends Controller
         $rows = $paginator->getCollection()->map(static function (ShopifyCustomer $c) {
             $name = trim(implode(' ', array_filter([(string) ($c->first_name ?? ''), (string) ($c->last_name ?? '')])));
 
+            if ($name === '' && $c->email) {
+                $localPart = explode('@', $c->email)[0];
+                $segment = explode('.', $localPart)[0];
+                $name = ucfirst(rtrim($segment, '0123456789'));
+            }
+
             return [
                 'id' => $c->id,
                 'shopify_customer_id' => $c->shopify_customer_id,
@@ -326,6 +332,12 @@ class ShopifyController extends Controller
 
         $rows = $paginator->getCollection()->map(static function (ShopifyCustomer $c) {
             $name = trim(implode(' ', array_filter([(string) ($c->first_name ?? ''), (string) ($c->last_name ?? '')])));
+
+            if ($name === '' && $c->email) {
+                $localPart = explode('@', $c->email)[0];
+                $segment = explode('.', $localPart)[0];
+                $name = ucfirst(rtrim($segment, '0123456789'));
+            }
 
             return [
                 'id' => $c->id,
