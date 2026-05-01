@@ -1458,6 +1458,9 @@
                                         <a href="{{ url('reverb-pricing') }}">Reverb Analytics</a>
                                     </li>
                                     <li>
+                                        <a href="{{ url('reverb-sales') }}">Reverb Sales Data</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('listing.reverb') }}">Listing Reverb</a>
                                     </li>
                                 </ul>

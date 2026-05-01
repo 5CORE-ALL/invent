@@ -1563,6 +1563,10 @@
                                                             </li>
 
                                                          <li>
+                                                                <a href="{{ url('reverb-sales') }}">Reverb Sales Data</a>
+                                                            </li>
+
+                                                         <li>
                                                                 <a href="{{ url('reverb-pricing-cvr') }}">Reverb Pricing CVR</a>
                                                             </li>
                                                     </ul>

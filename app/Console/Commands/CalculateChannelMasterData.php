@@ -22,7 +22,15 @@ class CalculateChannelMasterData extends Command
      *
      * @var string
      */
-    protected $description = 'Calculate and store channel master data in pre-calculated table for fast page loads';
+    protected $description = 'Calculate and store channel master data in pre-calculated table for fast page loads
+                              
+                              Reverb Calculations (synchronized with /reverb-sales badge):
+                              - Uses L30 data including today (not yesterday)
+                              - Excludes cancelled/refunded orders
+                              - Excludes empty SKU/order_number
+                              - Revenue: product_subtotal (fallback to amount)
+                              - Profit: (Revenue × 85% margin) - COGS
+                              - GPFT %: (Total Profit / L30 Sales) × 100';
 
     /**
      * Execute the console command.
@@ -91,6 +99,17 @@ class CalculateChannelMasterData extends Command
                 
                 // Insert new data
                 foreach ($channels as $channelData) {
+                    $channelName = $channelData['Channel '] ?? $channelData['Channel'] ?? 'Unknown';
+                    
+                    // Log Reverb-specific calculations
+                    if ($channelName === 'Reverb') {
+                        $this->newLine();
+                        $this->info("Processing Reverb with updated calculations:");
+                        $this->info("  - L30 Sales: " . ($channelData['L30 Sales'] ?? 'N/A'));
+                        $this->info("  - GPFT %: " . ($channelData['Gprofit%'] ?? 'N/A'));
+                        $this->info("  - N PFT %: " . ($channelData['N PFT'] ?? 'N/A'));
+                    }
+                    
                     $this->saveChannelData($channelData, $calculatedAt, $dataAsOf);
                     $bar->advance();
                 }

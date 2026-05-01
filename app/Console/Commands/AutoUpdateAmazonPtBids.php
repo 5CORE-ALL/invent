@@ -59,11 +59,36 @@ class AutoUpdateAmazonPtBids extends Command
             $campaignBudgetMap = [];
             $campaignDetails = [];
             $sbidRule = AmazonAdsSbidRule::resolvedRule();
+            $skippedCampaigns = [];
 
-            foreach ($campaigns as $campaign) {
+            foreach ($campaigns as $index => $campaign) {
                 $campaignId = $campaign->campaign_id ?? '';
                 $sbid = $campaign->sbid ?? 0;
                 $campaignName = $campaign->campaignName ?? '';
+                
+                // Check for empty campaign ID
+                if (empty($campaignId)) {
+                    $skippedCampaigns[] = [
+                        'index' => $index,
+                        'campaign_id' => $campaignId,
+                        'campaign_name' => $campaignName,
+                        'bid' => $sbid,
+                        'reason' => 'Missing or empty campaign_id',
+                    ];
+                    continue;
+                }
+                
+                // Check for invalid bid
+                if ($sbid <= 0) {
+                    $skippedCampaigns[] = [
+                        'index' => $index,
+                        'campaign_id' => $campaignId,
+                        'campaign_name' => $campaignName,
+                        'bid' => $sbid,
+                        'reason' => 'Invalid bid (must be positive number > 0)',
+                    ];
+                    continue;
+                }
                 
                 if (!empty($campaignId) && $sbid > 0) {
                     // Only add if we haven't seen this campaign ID before
@@ -90,6 +115,13 @@ class AutoUpdateAmazonPtBids extends Command
                     } else {
                         // Log duplicate but keep first one
                         $this->warn("Duplicate campaign ID skipped: {$campaignId} ({$campaignName}). Already using bid: {$campaignBudgetMap[$campaignId]}");
+                        $skippedCampaigns[] = [
+                            'index' => $index,
+                            'campaign_id' => $campaignId,
+                            'campaign_name' => $campaignName,
+                            'bid' => $sbid,
+                            'reason' => 'Duplicate campaign_id (using first occurrence)',
+                        ];
                     }
                 }
             }
@@ -99,6 +131,28 @@ class AutoUpdateAmazonPtBids extends Command
 
             if (empty($campaignIds)) {
                 $this->warn("No valid campaign IDs found to update.");
+                
+                // Display detailed skip report
+                if (!empty($skippedCampaigns)) {
+                    $this->newLine();
+                    $this->warn("========================================");
+                    $this->warn("SKIPPED CAMPAIGNS REPORT (PT BIDS)");
+                    $this->warn("========================================");
+                    $this->info("Total Submitted: " . count($campaigns));
+                    $this->info("Total Processed: 0");
+                    $this->warn("Total Skipped: " . count($skippedCampaigns));
+                    $this->newLine();
+                    
+                    foreach ($skippedCampaigns as $skipped) {
+                        $this->warn("Campaign: " . ($skipped['campaign_name'] ?? 'N/A'));
+                        $this->warn("  - Campaign ID: " . ($skipped['campaign_id'] ?: '(empty)'));
+                        $this->warn("  - Bid: " . ($skipped['bid'] ?? 'N/A'));
+                        $this->warn("  - Reason: " . $skipped['reason']);
+                        $this->warn("---");
+                    }
+                    $this->warn("========================================");
+                }
+                
                 return 0;
             }
 
@@ -223,6 +277,27 @@ class AutoUpdateAmazonPtBids extends Command
                     $this->error("Last Error: " . ($lastError['error'] ?? json_encode($lastError)));
                 }
             }
+            
+            // Display final summary with skip report
+            $this->newLine();
+            $this->info("========================================");
+            $this->info("FINAL UPDATE SUMMARY (PT BIDS)");
+            $this->info("========================================");
+            $this->info("Total Submitted: " . count($campaigns));
+            $this->info("Total Processed: " . count($campaignIds));
+            $this->warn("Total Skipped: " . count($skippedCampaigns));
+            
+            if (!empty($skippedCampaigns)) {
+                $this->newLine();
+                $this->warn("SKIPPED CAMPAIGNS:");
+                foreach (array_slice($skippedCampaigns, 0, 10) as $skipped) {
+                    $this->warn("  - {$skipped['campaign_name']}: {$skipped['reason']}");
+                }
+                if (count($skippedCampaigns) > 10) {
+                    $this->warn("  ... and " . (count($skippedCampaigns) - 10) . " more.");
+                }
+            }
+            $this->info("========================================");
             
             $this->info("Amazon PT Bids Update completed. Total campaigns: " . count($campaignIds));
 

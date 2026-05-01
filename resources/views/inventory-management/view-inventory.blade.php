@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'View Inventory', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'INV MAIN', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
@@ -968,7 +968,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Inventory Management', 'sub_title' => 'View Inventory'])
+    @include('layouts.shared/page-title', ['page_title' => 'Inventory Management', 'sub_title' => 'INV MAIN'])
     <!-- <div class="row">
         <div class="col-12">
             <div class="card">
@@ -985,7 +985,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="header-title">View Inventory</h4>
+                    <h4 class="header-title">INV MAIN</h4>
 
                     <!-- <div id="zeroInvWrapper" style="margin-bottom: 10px;">
                         <span id="zeroInvLabel" style="
@@ -1229,6 +1229,13 @@
                                                 DIL <span class="sort-arrow">↓</span>
                                             </div>
                                             <!-- <div class="metric-total" id="ovdil-total">0%</div> -->
+                                        </div>
+                                    </th>
+                                    <th data-field="value" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <div class="d-flex align-items-center">
+                                                VALUE <span class="sort-arrow">↓</span>
+                                            </div>
                                         </div>
                                     </th>
                                     <th data-field="el_30" style="vertical-align: middle; white-space: nowrap;">
@@ -2095,6 +2102,7 @@
                                 INV: INV,
                                 L30: L30,
                                 DIL: DIL,
+                                AMAZON_PRICE: parseFloat(item.AMAZON_PRICE) || 0,
                                 ON_HAND:  isNaN(item.ON_HAND) ? 0 : parseFloat(item.ON_HAND),
                                 COMMITTED: isNaN(item.COMMITTED) ? 0 : parseFloat(item.COMMITTED),
                                 AVAILABLE_TO_SELL: isNaN(item.AVAILABLE_TO_SELL) ? 0 : parseFloat(item.AVAILABLE_TO_SELL),
@@ -2283,6 +2291,13 @@
                     $row.append(
                         $('<td>').html(dilContent)
                     );
+
+                    // Add Value column (INV * Amazon Price)
+                    const inv = parseFloat(item.INV) || parseFloat(item.AVAILABLE_TO_SELL) || 0;
+                    const amazonPrice = parseFloat(item.AMAZON_PRICE) || 0;
+                    const value = inv * amazonPrice;
+                    const valueFormatted = value > 0 ? '$' + value.toFixed(2) : '-';
+                    $row.append($('<td>').text(valueFormatted));
 
                     $row.append($('<td>').addClass('on-hand').text(item.ON_HAND));
                     $row.append($('<td>').text(item.COMMITTED));

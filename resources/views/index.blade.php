@@ -1223,31 +1223,6 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-4 col-lg-4 d-flex">
-            <div class="card dashboard-chart-card dashboard-chart-card--bar w-100 h-100 border-0">
-                <div class="card-body">
-                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
-                        <div class="min-w-0 flex-grow-1">
-                            <h5 class="header-title mb-0">
-                                Y Sales by Channel 
-                                <span id="dashboard-y-bar-percentage-badge" class="badge" style="display: none; font-size: 0.75rem; vertical-align: middle;"></span>
-                            </h5>
-                            <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-y-bar-total" class="dashboard-chart-total-amount">—</span></p>
-                        </div>
-                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
-                            <button type="button" class="btn btn-chart-icon" id="dashboard-y-bar-refresh-btn" title="Refresh Y charts" aria-label="Refresh">
-                                <i class="ri-refresh-line" aria-hidden="true"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="pt-1">
-                        <div dir="ltr" class="dashboard-chart-canvas-wrap daily-sales-bar-chart-wrap">
-                            <canvas id="dailySalesBarChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div class="row g-2 dashboard-charts-row align-items-stretch mb-2">
@@ -1539,7 +1514,6 @@
         
         let l30SalesPieChartInstance = null;
         let ySalesPieChartInstance = null;
-        let ySalesBarChartInstance = null;
         let colorInventoryPieChartInstance = null;
         let channelAdSpendPieInstance = null;
 
@@ -1609,8 +1583,8 @@
                 badgeClass = 'bg-info';
             }
             
-            // Update both badges (pie chart and bar chart)
-            const badgeIds = ['dashboard-y-percentage-badge', 'dashboard-y-bar-percentage-badge'];
+            // Update percentage badge (pie chart only)
+            const badgeIds = ['dashboard-y-percentage-badge'];
             
             badgeIds.forEach(function(badgeId) {
                 const badge = document.getElementById(badgeId);
@@ -1627,12 +1601,12 @@
          * Source: GET /channels-master-data → row['Y Sales'].
          */
         function createYSalesBarChart(prefetchedResult) {
-            console.log('[Dashboard] Y Sales pie + bar charts...');
+            console.log('[Dashboard] Y Sales pie chart...');
 
             function renderYSalesCharts(result) {
                 if (!result.data || result.data.length === 0) {
                     console.warn('[Dashboard] No channel data for Y Sales charts');
-                    setDashboardChartTotals(['dashboard-chart-y-total', 'dashboard-chart-y-bar-total'], []);
+                    setDashboardChartTotals(['dashboard-chart-y-total'], []);
                     return;
                 }
 
@@ -1655,7 +1629,7 @@
                 });
                 const n = channels.length;
 
-                setDashboardChartTotals(['dashboard-chart-y-total', 'dashboard-chart-y-bar-total'], ySalesValues);
+                setDashboardChartTotals(['dashboard-chart-y-total'], ySalesValues);
                 
                 // Update percentage badges if sales_by_channel data is available
                 if (result.sales_by_channel && result.sales_by_channel.summary) {
@@ -1704,77 +1678,7 @@
                     });
                 }
 
-                if (ySalesBarChartInstance) {
-                    ySalesBarChartInstance.destroy();
-                }
-                const barCtx = document.getElementById('dailySalesBarChart');
-                if (barCtx) {
-                    ySalesBarChartInstance = new Chart(barCtx, {
-                        type: 'bar',
-                        data: {
-                            labels: channels,
-                            datasets: [{
-                                label: 'Y Sales',
-                                data: ySalesValues,
-                                backgroundColor: pieSliceColors(n),
-                                borderColor: pieSliceBorderColors(n),
-                                borderWidth: 1,
-                                borderRadius: 3
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            layout: {
-                                padding: { top: 2, bottom: 0, left: 0, right: 2 }
-                            },
-                            plugins: {
-                                legend: { display: false },
-                                tooltip: {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-                                    padding: 6,
-                                    titleFont: { size: 9, weight: 'bold' },
-                                    bodyFont: { size: 8 },
-                                    callbacks: {
-                                        label: function (context) {
-                                            return '$' + context.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 2 });
-                                        }
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    ticks: {
-                                        font: { size: 7 },
-                                        maxRotation: 52,
-                                        minRotation: 38,
-                                        autoSkip: false,
-                                        color: '#475569'
-                                    },
-                                    grid: { display: false },
-                                    title: { display: false }
-                                },
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: {
-                                        callback: function (value) {
-                                            return '$' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
-                                        },
-                                        font: { size: 8 },
-                                        color: '#475569'
-                                    },
-                                    grid: {
-                                        color: 'rgba(0, 0, 0, 0.06)',
-                                        drawBorder: false
-                                    },
-                                    title: { display: false }
-                                }
-                            }
-                        }
-                    });
-                }
-
-                console.log('[Dashboard] ✅ Y Sales pie + bar created (' + n + ' channels)');
+                console.log('[Dashboard] ✅ Y Sales pie created (' + n + ' channels)');
             }
 
             if (prefetchedResult && prefetchedResult.data !== undefined) {
@@ -1806,7 +1710,7 @@
             const total = dataValues.reduce(function (a, b) { return a + b; }, 0);
             const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
             const skuCount = skuCounts && skuCounts[index] ? skuCounts[index] : 0;
-            return ' ' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' units (' + pct + '%) | ' + skuCount + ' SKUs';
+            return ' $' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' (' + pct + '%) | ' + skuCount + ' SKUs';
         }
 
         /**
@@ -1880,7 +1784,8 @@
             });
             const sum = values.reduce(function (a, b) { return a + b; }, 0);
             if (totalEl) {
-                totalEl.textContent = Math.round(sum).toLocaleString('en-US');
+                // Display total as dollar value since we're now using inventory value
+                totalEl.textContent = '$' + Math.round(sum).toLocaleString('en-US');
             }
             if (spEl) {
                 spEl.textContent = Math.round(totalSp || 0).toLocaleString('en-US');
@@ -1902,7 +1807,7 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Units',
+                        label: 'Inventory Value',
                         data: values,
                         backgroundColor: backgroundColors,
                         borderColor: borderColors,
@@ -2470,7 +2375,7 @@
         }
 
         function showErrorState() {
-            var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-y-total', 'dashboard-chart-y-bar-total', 'dashboard-chart-color-inv-total', 'dashboard-chart-ad-channel-total'];
+            var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-y-total', 'dashboard-chart-color-inv-total', 'dashboard-chart-ad-channel-total'];
             ids.forEach(function (id) { setDashText(id, '—'); });
             renderInventoryByColorChart([], 0, 0);
             renderStockAvailabilityChart({ zero_stock: 0, in_stock: 0 });
@@ -3145,12 +3050,6 @@
             if (yFs) {
                 yFs.addEventListener('click', function () {
                     window.openYSalesChartModal();
-                });
-            }
-            var yBarRef = document.getElementById('dashboard-y-bar-refresh-btn');
-            if (yBarRef) {
-                yBarRef.addEventListener('click', function () {
-                    createYSalesBarChart();
                 });
             }
             var colorInvRef = document.getElementById('dashboard-color-inv-refresh-btn');

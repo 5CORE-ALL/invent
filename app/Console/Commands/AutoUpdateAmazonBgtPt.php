@@ -61,24 +61,56 @@ class AutoUpdateAmazonBgtPt extends Command
 
             // Track campaigns skipped due to bid cap
             $skippedDueToCap = [];
+            $skippedCampaigns = [];
 
             // Filter out campaigns with empty/null campaign_id or invalid sbgt
             // Also filter out if SBGT > Bid Cap (cap protection)
-            $validCampaigns = collect($campaigns)->filter(function ($campaign) use ($bidCapsData, &$skippedDueToCap) {
-                if (empty($campaign->campaign_id) || !isset($campaign->sbgt) || $campaign->sbgt <= 0) {
+            $validCampaigns = collect($campaigns)->filter(function ($campaign, $index) use ($bidCapsData, &$skippedDueToCap, &$skippedCampaigns) {
+                $campaignId = $campaign->campaign_id ?? '';
+                $campaignName = $campaign->campaignName ?? 'Unknown';
+                $sbgt = $campaign->sbgt ?? null;
+                
+                // Check for empty campaign ID
+                if (empty($campaignId)) {
+                    $skippedCampaigns[] = [
+                        'index' => $index,
+                        'campaign_id' => $campaignId,
+                        'campaign_name' => $campaignName,
+                        'sbgt' => $sbgt,
+                        'reason' => 'Missing or empty campaign_id',
+                    ];
+                    return false;
+                }
+                
+                // Check for invalid SBGT
+                if (!isset($sbgt) || $sbgt <= 0) {
+                    $skippedCampaigns[] = [
+                        'index' => $index,
+                        'campaign_id' => $campaignId,
+                        'campaign_name' => $campaignName,
+                        'sbgt' => $sbgt,
+                        'reason' => 'Invalid SBGT (must be positive number > 0)',
+                    ];
                     return false;
                 }
                 
                 // Check if bid cap exists for this SKU
-                $sku = strtoupper($campaign->campaignName ?? '');
+                $sku = strtoupper($campaignName);
                 if ($bidCapsData->has($sku)) {
                     $bidCap = $bidCapsData[$sku]->bid_cap;
                     // If SBGT exceeds bid cap, skip this campaign
-                    if ($bidCap > 0 && $campaign->sbgt > $bidCap) {
+                    if ($bidCap > 0 && $sbgt > $bidCap) {
                         $skippedDueToCap[] = [
-                            'campaign' => $campaign->campaignName,
-                            'sbgt' => $campaign->sbgt,
+                            'campaign' => $campaignName,
+                            'sbgt' => $sbgt,
                             'cap' => $bidCap
+                        ];
+                        $skippedCampaigns[] = [
+                            'index' => $index,
+                            'campaign_id' => $campaignId,
+                            'campaign_name' => $campaignName,
+                            'sbgt' => $sbgt,
+                            'reason' => "SBGT \${$sbgt} exceeds Bid Cap \${$bidCap}",
                         ];
                         return false; // Skip - SBGT exceeds cap
                     }
@@ -98,6 +130,28 @@ class AutoUpdateAmazonBgtPt extends Command
 
             if ($validCampaigns->isEmpty()) {
                 $this->warn("No valid campaigns found (all have empty campaign_id or invalid budget).");
+                
+                // Display detailed skip report
+                if (!empty($skippedCampaigns)) {
+                    $this->newLine();
+                    $this->warn("========================================");
+                    $this->warn("SKIPPED CAMPAIGNS REPORT (PT)");
+                    $this->warn("========================================");
+                    $this->info("Total Submitted: " . count($campaigns));
+                    $this->info("Total Processed: 0");
+                    $this->warn("Total Skipped: " . count($skippedCampaigns));
+                    $this->newLine();
+                    
+                    foreach ($skippedCampaigns as $skipped) {
+                        $this->warn("Campaign: " . ($skipped['campaign_name'] ?? 'N/A'));
+                        $this->warn("  - Campaign ID: " . ($skipped['campaign_id'] ?: '(empty)'));
+                        $this->warn("  - SBGT: " . ($skipped['sbgt'] ?? 'N/A'));
+                        $this->warn("  - Reason: " . $skipped['reason']);
+                        $this->warn("---");
+                    }
+                    $this->warn("========================================");
+                }
+                
                 return 0;
             }
 
@@ -139,6 +193,27 @@ class AutoUpdateAmazonBgtPt extends Command
                     }
                     $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
                 }
+                
+                // Display final summary with skip report
+                $this->newLine();
+                $this->info("========================================");
+                $this->info("FINAL UPDATE SUMMARY (PT)");
+                $this->info("========================================");
+                $this->info("Total Submitted: " . count($campaigns));
+                $this->info("Total Processed: " . count($campaignIds));
+                $this->warn("Total Skipped: " . count($skippedCampaigns));
+                
+                if (!empty($skippedCampaigns)) {
+                    $this->newLine();
+                    $this->warn("SKIPPED CAMPAIGNS:");
+                    foreach (array_slice($skippedCampaigns, 0, 10) as $skipped) {
+                        $this->warn("  - {$skipped['campaign_name']}: {$skipped['reason']}");
+                    }
+                    if (count($skippedCampaigns) > 10) {
+                        $this->warn("  ... and " . (count($skippedCampaigns) - 10) . " more.");
+                    }
+                }
+                $this->info("========================================");
                 
             } catch (\Exception $e) {
                 $this->error("Error updating campaign budgets: " . $e->getMessage());

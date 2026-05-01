@@ -3574,7 +3574,7 @@ class ChannelMasterController extends Controller
 
         $sum = (float) DB::table('reverb_daily_data')
             ->whereDate('order_date', $yDate)
-            ->selectRaw('COALESCE(SUM(quantity * COALESCE(NULLIF(product_subtotal, 0), amount, 0)), 0) as revenue')
+            ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);
@@ -5713,10 +5713,9 @@ class ChannelMasterController extends Controller
         }
 
         $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        // Use latest date (today) instead of yesterday to match sales badge
-        $l30EndDate = $latestPacific->toDateString();  // Today (not yesterday)
-        $l30StartDate = $latestPacific->copy()->subDays(29)->toDateString();  // 30 days including today
-        $l60StartDate = $latestPacific->copy()->subDays(59)->toDateString();
+        $l30EndDate = $latestPacific->copy()->subDay()->toDateString();
+        $l30StartDate = $latestPacific->copy()->subDay()->subDays(29)->toDateString();
+        $l60StartDate = $latestPacific->copy()->subDay()->subDays(59)->toDateString();
 
         $prior30End = Carbon::parse($l30StartDate)->subDay()->toDateString();
         $prior30Start = Carbon::parse($prior30End)->subDays(29)->toDateString();
@@ -5763,19 +5762,13 @@ class ChannelMasterController extends Controller
      */
     private function aggregateReverbDailyProfitGroupedQuery($baseQuery, $productMastersByUpperSku): array
     {
-        // Get Reverb marketplace percentage (net revenue after fees) - matching frontend
-        $mpRow = \App\Models\MarketplacePercentage::where('marketplace', 'Reverb')->first();
-        $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 85) : 85.0;
-        if ($percentage <= 0) {
-            $percentage = 85.0;
-        }
-        $margin = $percentage / 100.0;
-
-        // Get individual rows instead of grouping by SKU (matching frontend badge calculation)
         $rows = (clone $baseQuery)
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->select('sku', 'quantity', 'product_subtotal', 'amount')
+            ->groupBy('sku')
+            ->select('sku')
+            ->selectRaw('SUM(quantity) as qty')
+            ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as rev')
             ->get();
 
         $totalQty = 0;
@@ -5785,19 +5778,11 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as $row) {
             $sku = strtoupper(trim((string) $row->sku));
-            $qty = max(1, (int) ($row->quantity ?? 1));
-            
-            // Revenue: prefer product_subtotal, fallback to amount (matching ReverbSalesController line 124)
-            $productSubtotal = (float) ($row->product_subtotal ?? 0);
-            $amount = (float) ($row->amount ?? 0);
-            $lineTotal = $productSubtotal > 0 ? $productSubtotal : $amount;
-            
-            if ($qty <= 0 && $lineTotal <= 0) {
+            $qty = (int) ($row->qty ?? 0);
+            $rev = (float) ($row->rev ?? 0);
+            if ($qty <= 0 && $rev <= 0) {
                 continue;
             }
-            
-            // Unit price (matching ReverbSalesController line 125)
-            $unitPrice = $lineTotal > 0 ? $lineTotal / $qty : 0;
 
             $lp = 0.0;
             $ship = 0.0;
@@ -5809,17 +5794,11 @@ class ChannelMasterController extends Controller
                 $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($pm->ship ?? 0);
             }
 
-            // Calculate PFT per unit, then total (matching ReverbSalesController lines 134, 140)
-            $pftEach = ($unitPrice * $margin) - $lp - $ship;
-            $tPft = $pftEach * $qty;
-            
-            // COGS (matching ReverbSalesController line 143)
-            $lineCogs = $lp * $qty;
-
+            $lineCogs = $qty * ($lp + $ship);
             $totalQty += $qty;
-            $totalRev += $lineTotal;
+            $totalRev += $rev;
             $totalCogs += $lineCogs;
-            $totalProfit += $tPft;
+            $totalProfit += ($rev - $lineCogs);
         }
 
         return [
@@ -5843,15 +5822,7 @@ class ChannelMasterController extends Controller
     ): array {
         $baseQuery = DB::table('reverb_daily_data')
             ->whereNotNull('order_date')
-            ->whereBetween('order_date', [$startDate, $endDate])
-            // Match frontend filters: exclude empty SKU/order_number
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->whereNotNull('order_number')
-            ->where('order_number', '!=', '')
-            // Exclude cancelled/refunded orders (case-insensitive, matching frontend)
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%']);
+            ->whereBetween('order_date', [$startDate, $endDate]);
 
         return $this->aggregateReverbDailyProfitGroupedQuery($baseQuery, $productMastersByUpperSku);
     }
@@ -5891,17 +5862,19 @@ class ChannelMasterController extends Controller
                 $productMasters
             );
 
-            // Master "Sales" / Orders: use L30 window (last 30 days only, matching sales badge)
-            $l30Sales = $l30['sales'];  // L30 sales from windowed calculation
-            $l30Orders = $l30['qty'];   // L30 orders from windowed calculation
+            // Master "Sales" / Orders: match Reverb pricing badges (full reverb_daily_data table).
+            $l30Sales = (float) $fullTotals['sum_qty_x_amount'];
+            $l30Orders = (int) $fullTotals['sum_quantity'];
             $totalQuantity = $l30Orders;
 
             $l60Sales = $l60['sales'];
             $l60Orders = $l60['qty'];
 
-            // GPFT ord–style margin on L30 revenue (matching sales badge calculation)
-            $totalProfit = $l30['profit'];  // Use L30-specific profit
-            $totalCogs = $l30['cogs'];      // Use L30-specific COGS
+            // GPFT ord–style margin on full-table revenue (rows without SKU have no COGS in PM).
+            $groupedAll = $this->aggregateReverbDailyProfitGroupedQuery(DB::table('reverb_daily_data'), $productMasters);
+            $orphanRev = max(0.0, $l30Sales - $groupedAll['sales']);
+            $totalProfit = $groupedAll['profit'] + $orphanRev;
+            $totalCogs = $groupedAll['cogs'];
 
             $totalProfitL60 = $l60['profit'];
             $totalCogsL60 = $l60['cogs'];
@@ -5909,14 +5882,7 @@ class ChannelMasterController extends Controller
             $priorRev = (float) DB::table('reverb_daily_data')
                 ->whereNotNull('order_date')
                 ->whereBetween('order_date', [$windows['prior30_start'], $windows['prior30_end']])
-                // Match frontend filters: exclude empty SKU/order_number and cancelled/refunded orders
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->whereNotNull('order_number')
-                ->where('order_number', '!=', '')
-                ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
-                ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-                ->selectRaw('COALESCE(SUM(quantity * COALESCE(NULLIF(product_subtotal, 0), amount, 0)), 0) as rev')
+                ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as rev')
                 ->value('rev');
 
             $growth = $priorRev > 0
@@ -9567,8 +9533,6 @@ class ChannelMasterController extends Controller
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
-            'Total PFT'  => round($totalProfit, 2),
-            'N ROI'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'KW Spent'   => 0,

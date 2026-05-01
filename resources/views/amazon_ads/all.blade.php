@@ -138,6 +138,9 @@
         <div class="col-12 d-flex flex-wrap justify-content-end align-items-center gap-1">
             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS boundaries and SBGT tier amounts used for suggested budgets">BGT RULE</button>
             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID (grid and bid jobs)">SBID RULE</button>
+            <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-danger" title="View campaigns that failed to update (skipped/failed bids & budgets)">
+                <i class="mdi mdi-alert-circle-outline"></i> Failed Campaigns
+            </a>
             <span class="text-muted small d-none d-md-inline" title="Fetches every row matching your filters (500 per request); same sort and search as the grid.">Export all filtered rows (CSV).</span>
             <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSectionExportBtn" title="Download all rows matching current filters and DataTables search (max 50k)">Export view</button>
         </div>

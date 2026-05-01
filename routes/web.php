@@ -12,6 +12,7 @@ use App\Http\Controllers\AdvertisementMaster\Prod_Target_Advt\ProdTargetAmazonCo
 use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayController;
 use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingController;
 use App\Http\Controllers\AmazonAdsController;
+use App\Http\Controllers\AmazonAds\AmazonAdsPushLogController;
 use App\Http\Controllers\ArrivedContainerController;
 use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
@@ -2380,6 +2381,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'getSbidRule'])->name('amazon.ads.sbid-rule');
     Route::post('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'saveSbidRule'])->name('amazon.ads.sbid-rule.save');
 
+    // Amazon Ads Push Logs - Failed Campaigns Tracker
+    Route::prefix('amazon-ads/push-logs')->name('amazon-ads.push-logs.')->group(function () {
+        Route::get('/', [AmazonAdsPushLogController::class, 'index'])->name('index');
+        Route::get('/data', [AmazonAdsPushLogController::class, 'getData'])->name('data');
+        Route::get('/stats', [AmazonAdsPushLogController::class, 'getStats'])->name('stats');
+        Route::get('/export', [AmazonAdsPushLogController::class, 'export'])->name('export');
+        Route::post('/cleanup', [AmazonAdsPushLogController::class, 'cleanup'])->name('cleanup');
+    });
+
     // ajax routes
     Route::get('/amazon/all-data', [OverallAmazonController::class, 'getAllData'])->name('amazon.allData');
     Route::get('/channel/all-data', [ChannelMasterController::class, 'getAllData'])->name('channel.allData');
@@ -2514,6 +2524,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
     Route::post('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'setColumnVisibility'])->name('reverb.pricing.column.set');
     Route::get('/reverb/fallback-stats', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'fallbackStats'])->name('reverb.fallback.stats');
+
+    // Reverb Sales Routes (Tabulator - Daily Sales Data)
+    Route::get('/reverb-sales', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'reverbSalesTabulatorView'])->name('reverb.sales');
+    Route::get('/reverb/sales/daily-data', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'getDailyData'])->name('reverb.sales.daily.data');
+    Route::get('/reverb/sales/column-visibility', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'getColumnVisibility'])->name('reverb.sales.column.get');
+    Route::post('/reverb/sales/column-visibility', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'saveColumnVisibility'])->name('reverb.sales.column.set');
     Route::get('/admin/shopify-store/{store}', function ($store) {
         $allowed = ['prolightsounds', 'main', '5core', 'business'];
         if (in_array($store, $allowed)) {

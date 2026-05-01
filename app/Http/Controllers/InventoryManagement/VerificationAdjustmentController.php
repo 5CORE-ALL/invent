@@ -325,6 +325,22 @@ class VerificationAdjustmentController extends Controller
         // Shopify rows keyed by product_master.sku (NBSP / unicode space safe)
         $shopifyData = ShopifySku::mapByProductSkus($originalSkus);
 
+        // Fetch Amazon prices from amazon_datsheets table (gracefully handle if table doesn't exist)
+        $amazonPrices = collect();
+        try {
+            if (\Schema::hasTable('amazon_datsheets')) {
+                $amazonPrices = DB::table('amazon_datsheets')
+                    ->whereIn('sku', $originalSkus)
+                    ->select('sku', 'price')
+                    ->get()
+                    ->keyBy(function($item) use ($normalizeSku) {
+                        return $normalizeSku($item->sku);
+                    });
+            }
+        } catch (\Exception $e) {
+            \Log::warning('Could not fetch Amazon prices from amazon_datsheets table: ' . $e->getMessage());
+        }
+
         // Latest inventory per SKU (one query for ids, one with eager load - avoids N+1)
         $latestInventoryIds = Inventory::whereIn('sku', $originalSkus)
             ->select(DB::raw('MAX(id) as latest_id'))
@@ -347,7 +363,7 @@ class VerificationAdjustmentController extends Controller
             ->map(fn($group) => $group->first());
 
         // OVERRIDE: Merge everything - return ALL SKUs from product_master without any filtering
-        $data = $productMasterData->map(function ($item) use ($shopifyData, $verifiedInventory, $latestApprovedHistory, $normalizeSku) {
+        $data = $productMasterData->map(function ($item) use ($shopifyData, $verifiedInventory, $latestApprovedHistory, $amazonPrices, $normalizeSku) {
             $sku = $normalizeSku($item->sku ?? '');
             $values = $item->values;
             $lp = $values['lp'] ?? 0;
@@ -381,6 +397,10 @@ class VerificationAdjustmentController extends Controller
                     $item->INCOMING = 0;
                     $item->IMAGE_URL = null;
                 }
+
+                // Add Amazon price from amazon_datsheet table
+                $amazonPrice = $amazonPrices[$sku] ?? null;
+                $item->AMAZON_PRICE = $amazonPrice ? (float) $amazonPrice->price : 0;
 
                 $item->VERIFIED_STOCK = $inv?->verified_stock;
                 $item->REASON = $inv?->reason;
@@ -442,6 +462,7 @@ class VerificationAdjustmentController extends Controller
             $item->is_doubtful = false;
             $item->VERIFIED_BY_FIRST_NAME = null;
             $item->HISTORY = null;
+            $item->AMAZON_PRICE = 0;
 
             // OVERRIDE: Explicitly set IS_HIDE to 0 for all items to override any filtering
             $item->IS_HIDE = 0;

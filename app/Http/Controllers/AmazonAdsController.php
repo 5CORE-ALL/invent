@@ -3002,20 +3002,44 @@ class AmazonAdsController extends Controller
 
         $kwMap = [];
         $ptMap = [];
+        $skipped = [];
 
-        foreach ($rows as $row) {
+        foreach ($rows as $index => $row) {
             if (! is_array($row)) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => null,
+                    'campaign_name' => null,
+                    'bid' => null,
+                    'reason' => 'Row is not an array',
+                ];
                 continue;
             }
             $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
-            if ($cid === '') {
-                continue;
-            }
-            $bid = self::normalizePositiveBid($row['bid'] ?? null);
-            if ($bid === null) {
-                continue;
-            }
             $name = $row['campaignName'] ?? $row['campaign_name'] ?? null;
+            $bidRaw = $row['bid'] ?? null;
+            
+            if ($cid === '') {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'bid' => $bidRaw,
+                    'reason' => 'Missing or empty campaign_id',
+                ];
+                continue;
+            }
+            $bid = self::normalizePositiveBid($bidRaw);
+            if ($bid === null) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'bid' => $bidRaw,
+                    'reason' => 'Invalid bid (must be positive number > 0)',
+                ];
+                continue;
+            }
             if (self::isSpProductTargetingCampaignName(is_string($name) ? $name : null)) {
                 $ptMap[$cid] = $bid;
             } else {
@@ -3028,12 +3052,16 @@ class AmazonAdsController extends Controller
             return response()->json([
                 'message' => 'No valid campaign_id / positive bid pairs after classification.',
                 'status' => 422,
+                'skipped_rows' => $skipped,
+                'total_skipped' => count($skipped),
             ], 422);
         }
         if ($totalUnique > 100) {
             return response()->json([
                 'message' => 'At most 100 distinct campaigns per request.',
                 'status' => 422,
+                'skipped_rows' => $skipped,
+                'total_skipped' => count($skipped),
             ], 422);
         }
 
@@ -3045,6 +3073,10 @@ class AmazonAdsController extends Controller
             'targets' => null,
             'keyword_http_status' => null,
             'target_http_status' => null,
+            'skipped_rows' => $skipped,
+            'total_skipped' => count($skipped),
+            'total_processed' => $totalUnique,
+            'total_submitted' => count($rows),
         ];
 
         if ($kwMap !== []) {
@@ -3094,17 +3126,42 @@ class AmazonAdsController extends Controller
 
         /** @var array<string, float> $bidByCampaignId */
         $bidByCampaignId = [];
+        $skipped = [];
 
-        foreach ($rows as $row) {
+        foreach ($rows as $index => $row) {
             if (! is_array($row)) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => null,
+                    'campaign_name' => null,
+                    'bid' => null,
+                    'reason' => 'Row is not an array',
+                ];
                 continue;
             }
             $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
+            $name = $row['campaignName'] ?? $row['campaign_name'] ?? null;
+            $bidRaw = $row['bid'] ?? null;
+            
             if ($cid === '') {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'bid' => $bidRaw,
+                    'reason' => 'Missing or empty campaign_id',
+                ];
                 continue;
             }
-            $bid = self::normalizePositiveBid($row['bid'] ?? null);
+            $bid = self::normalizePositiveBid($bidRaw);
             if ($bid === null) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'bid' => $bidRaw,
+                    'reason' => 'Invalid bid (must be positive number > 0)',
+                ];
                 continue;
             }
             $bidByCampaignId[$cid] = $bid;
@@ -3114,12 +3171,16 @@ class AmazonAdsController extends Controller
             return response()->json([
                 'message' => 'No valid campaign_id / positive bid pairs.',
                 'status' => 422,
+                'skipped_rows' => $skipped,
+                'total_skipped' => count($skipped),
             ], 422);
         }
         if (count($bidByCampaignId) > 100) {
             return response()->json([
                 'message' => 'At most 100 distinct campaigns per request.',
                 'status' => 422,
+                'skipped_rows' => $skipped,
+                'total_skipped' => count($skipped),
             ], 422);
         }
 
@@ -3146,6 +3207,10 @@ class AmazonAdsController extends Controller
             'keywords' => $decoded,
             'target_http_status' => null,
             'targets' => null,
+            'skipped_rows' => $skipped,
+            'total_skipped' => count($skipped),
+            'total_processed' => count($bidByCampaignId),
+            'total_submitted' => count($rows),
         ]);
     }
 
@@ -3167,21 +3232,52 @@ class AmazonAdsController extends Controller
         $allowedTiers = AmazonAcosSbgtRule::allowedSbgtTierValues();
         /** @var array<string, float> $tierByCampaignId last row on page wins */
         $tierByCampaignId = [];
+        $skipped = [];
 
-        foreach ($rows as $row) {
+        foreach ($rows as $index => $row) {
             if (! is_array($row)) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => null,
+                    'campaign_name' => null,
+                    'sbgt' => null,
+                    'reason' => 'Row is not an array',
+                ];
                 continue;
             }
             $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
+            $name = $row['campaignName'] ?? $row['campaign_name'] ?? null;
+            $raw = $row['sbgt'] ?? null;
+            
             if ($cid === '') {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'sbgt' => $raw,
+                    'reason' => 'Missing or empty campaign_id',
+                ];
                 continue;
             }
-            $raw = $row['sbgt'] ?? null;
             if ($raw === null || $raw === '') {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'sbgt' => $raw,
+                    'reason' => 'Missing or empty SBGT value',
+                ];
                 continue;
             }
             $tier = (int) $raw;
             if (! in_array($tier, $allowedTiers, true)) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'sbgt' => $raw,
+                    'reason' => 'Invalid SBGT tier (must be one of: '.implode(', ', $allowedTiers).')',
+                ];
                 continue;
             }
             $tierByCampaignId[$cid] = (float) $tier;
@@ -3191,12 +3287,17 @@ class AmazonAdsController extends Controller
             return response()->json([
                 'message' => 'No valid campaign_id / SBGT tier pairs (tier must be one of the configured rule values: '.implode(', ', $allowedTiers).').',
                 'status' => 422,
+                'skipped_rows' => $skipped,
+                'total_skipped' => count($skipped),
+                'allowed_tiers' => $allowedTiers,
             ], 422);
         }
         if (count($tierByCampaignId) > 100) {
             return response()->json([
                 'message' => 'At most 100 distinct campaigns per request.',
                 'status' => 422,
+                'skipped_rows' => $skipped,
+                'total_skipped' => count($skipped),
             ], 422);
         }
 
@@ -3211,7 +3312,18 @@ class AmazonAdsController extends Controller
         /** @var AmazonACOSController $acos */
         $acos = app(AmazonACOSController::class);
 
-        return $acos->updateAmazonCampaignBgt($sub);
+        $response = $acos->updateAmazonCampaignBgt($sub);
+        $responseData = json_decode($response->getContent(), true);
+        
+        if (is_array($responseData)) {
+            $responseData['skipped_rows'] = $skipped;
+            $responseData['total_skipped'] = count($skipped);
+            $responseData['total_processed'] = count($tierByCampaignId);
+            $responseData['total_submitted'] = count($rows);
+            return response()->json($responseData, $response->getStatusCode());
+        }
+        
+        return $response;
     }
 
     /**
@@ -3232,21 +3344,52 @@ class AmazonAdsController extends Controller
         $allowedTiers = AmazonAcosSbgtRule::allowedSbgtTierValues();
         /** @var array<string, float> $tierByCampaignId */
         $tierByCampaignId = [];
+        $skipped = [];
 
-        foreach ($rows as $row) {
+        foreach ($rows as $index => $row) {
             if (! is_array($row)) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => null,
+                    'campaign_name' => null,
+                    'sbgt' => null,
+                    'reason' => 'Row is not an array',
+                ];
                 continue;
             }
             $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
+            $name = $row['campaignName'] ?? $row['campaign_name'] ?? null;
+            $raw = $row['sbgt'] ?? null;
+            
             if ($cid === '') {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'sbgt' => $raw,
+                    'reason' => 'Missing or empty campaign_id',
+                ];
                 continue;
             }
-            $raw = $row['sbgt'] ?? null;
             if ($raw === null || $raw === '') {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'sbgt' => $raw,
+                    'reason' => 'Missing or empty SBGT value',
+                ];
                 continue;
             }
             $tier = (int) $raw;
             if (! in_array($tier, $allowedTiers, true)) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'sbgt' => $raw,
+                    'reason' => 'Invalid SBGT tier (must be one of: '.implode(', ', $allowedTiers).')',
+                ];
                 continue;
             }
             $tierByCampaignId[$cid] = (float) $tier;
@@ -3256,12 +3399,17 @@ class AmazonAdsController extends Controller
             return response()->json([
                 'message' => 'No valid campaign_id / SBGT tier pairs (tier must be one of the configured rule values: '.implode(', ', $allowedTiers).').',
                 'status' => 422,
+                'skipped_rows' => $skipped,
+                'total_skipped' => count($skipped),
+                'allowed_tiers' => $allowedTiers,
             ], 422);
         }
         if (count($tierByCampaignId) > 100) {
             return response()->json([
                 'message' => 'At most 100 distinct campaigns per request.',
                 'status' => 422,
+                'skipped_rows' => $skipped,
+                'total_skipped' => count($skipped),
             ], 422);
         }
 
@@ -3276,6 +3424,17 @@ class AmazonAdsController extends Controller
         /** @var AmazonACOSController $acos */
         $acos = app(AmazonACOSController::class);
 
-        return $acos->updateAmazonSbCampaignBgt($sub);
+        $response = $acos->updateAmazonSbCampaignBgt($sub);
+        $responseData = json_decode($response->getContent(), true);
+        
+        if (is_array($responseData)) {
+            $responseData['skipped_rows'] = $skipped;
+            $responseData['total_skipped'] = count($skipped);
+            $responseData['total_processed'] = count($tierByCampaignId);
+            $responseData['total_submitted'] = count($rows);
+            return response()->json($responseData, $response->getStatusCode());
+        }
+        
+        return $response;
     }
 }

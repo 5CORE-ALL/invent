@@ -257,8 +257,10 @@ class UpdateMarketplaceDailyMetrics extends Command
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // N ROI = ROI % - TACOS % (same as N PFT formula)
-        $nRoi = $roiPercentage - $tacosPercentage;
+        // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $totalAdSpend = $kwSpent + $ptSpent + $hlSpent;
+        $netProfit = $totalPft - $totalAdSpend;
+        $nRoi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -272,6 +274,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
             'tacos_percentage' => $tacosPercentage,
+            'ads_percentage' => $tacosPercentage, // Add ads_percentage for Amazon (same as TACOS)
             'n_pft' => $nPft,
             'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
@@ -436,8 +439,10 @@ class UpdateMarketplaceDailyMetrics extends Command
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // N ROI = ROI % - TACOS % (same as N PFT formula)
-        $nRoi = $roiPercentage - $tacosPercentage;
+        // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $totalAdSpend = $kwSpent + $pmtSpent;
+        $netProfit = $totalPft - $totalAdSpend;
+        $nRoi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -451,6 +456,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
             'tacos_percentage' => $tacosPercentage,
+            'ads_percentage' => $tacosPercentage, // Add ads_percentage for eBay (same as TACOS)
             'n_pft' => $nPft,
             'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
@@ -630,8 +636,10 @@ class UpdateMarketplaceDailyMetrics extends Command
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // N ROI = ROI % - TACOS % (same as N PFT formula)
-        $nRoi = $roiPercentage - $tacosPercentage;
+        // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $totalAdSpend = $kwSpent + $pmtSpent;
+        $netProfit = $totalPft - $totalAdSpend;
+        $nRoi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -645,6 +653,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
             'tacos_percentage' => $tacosPercentage,
+            'ads_percentage' => $tacosPercentage, // Add ads_percentage for eBay (same as TACOS)
             'n_pft' => $nPft,
             'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
@@ -799,8 +808,10 @@ class UpdateMarketplaceDailyMetrics extends Command
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // N ROI = ROI % - TACOS % (same as N PFT formula)
-        $nRoi = $roiPercentage - $tacosPercentage;
+        // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $totalAdSpend = $kwSpent + $pmtSpent;
+        $netProfit = $totalPft - $totalAdSpend;
+        $nRoi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -814,6 +825,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
             'tacos_percentage' => $tacosPercentage,
+            'ads_percentage' => $tacosPercentage, // Add ads_percentage for eBay (same as TACOS)
             'n_pft' => $nPft,
             'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
@@ -966,8 +978,9 @@ class UpdateMarketplaceDailyMetrics extends Command
         // Calculate N PFT: GPFT % - TACOS %
         $nPftPercentage = $pftPercentage - $tacosPercentage;
 
-        // Calculate N ROI: ROI % - TACOS %
-        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $netProfit = $totalPft - $temuSpent;
+        $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -983,6 +996,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'kw_spent' => round($temuSpent, 2), // Store Temu ad spend in kw_spent field
             'pmt_spent' => 0, // Temu doesn't have separate PMT
             'tacos_percentage' => round($tacosPercentage, 1),
+            'ads_percentage' => round($tacosPercentage, 1), // Add ads_percentage for Temu (same as TACOS)
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
         ];
@@ -1082,7 +1096,9 @@ class UpdateMarketplaceDailyMetrics extends Command
         $temu2Spent = 0;
         $tacosPercentage = $totalL30Sales > 0 ? ($temu2Spent / $totalL30Sales) * 100 : 0;
         $nPftPercentage = $pftPercentage - $tacosPercentage;
-        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $netProfit = $totalPft - $temu2Spent;
+        $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -1098,6 +1114,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'kw_spent' => round($temu2Spent, 2),
             'pmt_spent' => 0,
             'tacos_percentage' => round($tacosPercentage, 1),
+            'ads_percentage' => round($tacosPercentage, 1), // Add ads_percentage for Temu2 (same as TACOS)
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
         ];
@@ -1190,7 +1207,9 @@ class UpdateMarketplaceDailyMetrics extends Command
         $topdawgSpent = 0;
         $tacosPercentage = $totalL30Sales > 0 ? ($topdawgSpent / $totalL30Sales) * 100 : 0;
         $nPftPercentage = $pftPercentage - $tacosPercentage;
-        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $netProfit = $totalPft - $topdawgSpent;
+        $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -1206,6 +1225,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'kw_spent' => round($topdawgSpent, 2),
             'pmt_spent' => 0,
             'tacos_percentage' => round($tacosPercentage, 1),
+            'ads_percentage' => round($tacosPercentage, 1), // Add ads_percentage for TopDawg (same as TACOS)
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
         ];
@@ -1985,8 +2005,9 @@ class UpdateMarketplaceDailyMetrics extends Command
         // Calculate N PFT: GPFT % - TACOS %
         $nPftPercentage = $pftPercentage - $tacosPercentage;
 
-        // Calculate N ROI: ROI % - TACOS %
-        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $netProfit = $totalPft - $totalGoogleSpent;
+        $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -3133,8 +3154,9 @@ class UpdateMarketplaceDailyMetrics extends Command
         // Calculate N PFT: GPFT % - TACOS %
         $nPftPercentage = $pftPercentage - $tacosPercentage;
         
-        // Calculate N ROI: ROI % - TACOS %
-        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
+        $netProfit = $totalPft - $walmartSpent;
+        $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
