@@ -1746,11 +1746,13 @@
             return ' $' + value.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' (' + pct + '%)';
         }
 
-        function colorInvPieTooltipLabel(context, dataValues) {
+        function colorInvPieTooltipLabel(context, dataValues, skuCounts) {
             const value = context.parsed;
+            const index = context.dataIndex;
             const total = dataValues.reduce(function (a, b) { return a + b; }, 0);
             const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-            return ' ' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' units (' + pct + '%)';
+            const skuCount = skuCounts && skuCounts[index] ? skuCounts[index] : 0;
+            return ' ' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' units (' + pct + '%) | ' + skuCount + ' SKUs';
         }
 
         /**
@@ -1817,6 +1819,10 @@
             const values = list.map(function (r) {
                 const v = parseFloat(r.inv);
                 return Number.isFinite(v) ? v : 0;
+            });
+            const counts = list.map(function (r) {
+                const c = parseInt(r.count);
+                return Number.isFinite(c) ? c : 0;
             });
             const sum = values.reduce(function (a, b) { return a + b; }, 0);
             if (totalEl) {
@@ -1896,7 +1902,7 @@
                             bodyFont: { size: 11 },
                             callbacks: {
                                 label: function (context) {
-                                    return colorInvPieTooltipLabel(context, values);
+                                    return colorInvPieTooltipLabel(context, values, counts);
                                 }
                             }
                         }
@@ -1976,7 +1982,7 @@
                                     const total = data.reduce(function (a, b) { return a + b; }, 0);
                                     return lab.map(function (label, i) {
                                         const v = parseFloat(data[i]) || 0;
-                                        const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
+                                        const pct = total > 0 ? Math.round((v / total) * 100) : 0;
                                         const count = Math.round(v).toLocaleString('en-US');
                                         return {
                                             text: label + ' ' + pct + '% (' + count + ')',
@@ -1999,7 +2005,7 @@
                                 label: function (context) {
                                     const value = context.parsed || 0;
                                     const total = context.dataset.data.reduce(function (a, b) { return a + b; }, 0);
-                                    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                                    const pct = total > 0 ? Math.round((value / total) * 100) : 0;
                                     return context.label + ': ' + Math.round(value).toLocaleString('en-US') + ' SKUs (' + pct + '%)';
                                 }
                             }

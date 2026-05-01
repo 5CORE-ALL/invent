@@ -773,17 +773,32 @@ class ChannelMasterController extends Controller
 
     /**
      * Shopify inventory + LP from product_master Values JSON (same matching as Inv@LP).
+     * Only includes ACTIVE status SKUs from product_master.
      *
      * @return array{inv_sum: float, inv_at_lp: float, weighted_avg_lp: float}
      */
     private function getShopifyInvLpMetrics(): array
     {
-        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv']);
-        $skus = $shopifySkus->pluck('sku')->unique()->filter()->values()->toArray();
-        if (empty($skus)) {
+        // Get active SKUs from product_master (excluding deleted and non-active)
+        $productMasters = ProductMaster::whereNull('deleted_at')
+            ->whereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(`Values`, "$.status"))) = ?', ['active'])
+            ->get();
+            
+        if ($productMasters->isEmpty()) {
             return ['inv_sum' => 0.0, 'inv_at_lp' => 0.0, 'weighted_avg_lp' => 0.0];
         }
-        $productMasters = ProductMaster::whereNull('deleted_at')->whereIn('sku', $skus)->get();
+        
+        $activeSkus = $productMasters->pluck('sku')->unique()->filter()->values()->toArray();
+        
+        // Get Shopify inventory for active SKUs only
+        $shopifySkus = ShopifySku::whereNotNull('sku')
+            ->whereIn('sku', $activeSkus)
+            ->get(['sku', 'inv']);
+            
+        if ($shopifySkus->isEmpty()) {
+            return ['inv_sum' => 0.0, 'inv_at_lp' => 0.0, 'weighted_avg_lp' => 0.0];
+        }
+        
         $pmBySku = $productMasters->keyBy(function ($item) {
             return strtoupper(trim((string) $item->sku));
         });
@@ -795,7 +810,19 @@ class ChannelMasterController extends Controller
             if ($sku === '') {
                 continue;
             }
-            $inv = is_numeric($row->inv) ? (float) $row->inv : 0;
+            
+            // Exclude SKUs with null or 0 inventory
+            if ($row->inv === null || $row->inv === '' || !is_numeric($row->inv)) {
+                continue;
+            }
+            
+            $inv = (float) $row->inv;
+            
+            // Exclude SKUs with 0 or near-0 inventory (< 0.01)
+            if ($inv < 0.01) {
+                continue;
+            }
+            
             $invSum += $inv;
             $pm = $pmBySku->get(strtoupper($sku));
             $lp = 0.0;
@@ -877,27 +904,57 @@ class ChannelMasterController extends Controller
      */
     private function getShopifyInventoryByColor(): array
     {
-        // Get all Shopify SKUs with inventory and L30 sales data
+        // Get active SKUs from product_master (excluding deleted and non-active)
+        $activeSkus = ProductMaster::whereNull('deleted_at')
+            ->whereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(`Values`, "$.status"))) = ?', ['active'])
+            ->pluck('sku')
+            ->toArray();
+        
+        if (empty($activeSkus)) {
+            return [];
+        }
+        
+        // Get Shopify SKUs with inventory and L30 sales data for active SKUs only
         // Note: 'quantity' field is the L30 sales data used across the application
-        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv', 'quantity']);
+        $shopifySkus = ShopifySku::whereNotNull('sku')
+            ->whereIn('sku', $activeSkus)
+            ->get(['sku', 'inv', 'quantity']);
         
         if ($shopifySkus->isEmpty()) {
             return [];
         }
 
         $byColor = [];
+        $countByColor = [];
         foreach ($shopifySkus as $row) {
             $sku = trim((string) $row->sku);
             if ($sku === '') {
                 continue;
             }
             
-            $inv = is_numeric($row->inv) ? (float) $row->inv : 0.0;
+            // Exclude parent rows (same pattern as other calculations in this controller)
+            if (stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            
+            // Exclude SKUs with null or 0 inventory
+            if ($row->inv === null || $row->inv === '' || !is_numeric($row->inv)) {
+                continue;
+            }
+            
+            $inv = (float) $row->inv;
+            
+            // Exclude SKUs with 0 or near-0 inventory (using DIL threshold: < 0.01)
+            if ($inv < 0.01) {
+                continue;
+            }
+            
             $l30 = is_numeric($row->quantity) ? (float) $row->quantity : 0.0;
             
             // Determine DIL color category based on L30 and inventory
             $color = $this->getDilColorCategory($l30, $inv);
             $byColor[$color] = ($byColor[$color] ?? 0.0) + $inv;
+            $countByColor[$color] = ($countByColor[$color] ?? 0) + 1;
         }
 
         if ($byColor === []) {
@@ -926,6 +983,7 @@ class ChannelMasterController extends Controller
                     'color' => $category,
                     'inv' => round($inv, 2),
                     'percent' => $pct($inv),
+                    'count' => $countByColor[$category] ?? 0,
                 ];
             }
         }
@@ -937,6 +995,7 @@ class ChannelMasterController extends Controller
                     'color' => (string) $color,
                     'inv' => round($inv, 2),
                     'percent' => $pct($inv),
+                    'count' => $countByColor[$color] ?? 0,
                 ];
             }
         }
@@ -945,14 +1004,28 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Get stock availability: count of SKUs with <0.01 stock vs >=0.01 stock
+     * Get stock availability: count of ACTIVE SKUs with <0.01 stock vs >=0.01 stock
      * Matches the DIL threshold: inventory from 0.01 onwards is considered "in stock"
+     * Only includes Active status SKUs from product_master
      * 
      * @return array{zero_stock: int, in_stock: int}
      */
     private function getStockAvailability(): array
     {
-        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv']);
+        // Get active SKUs from product_master (excluding deleted and non-active)
+        $activeSkus = ProductMaster::whereNull('deleted_at')
+            ->whereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(`Values`, "$.status"))) = ?', ['active'])
+            ->pluck('sku')
+            ->toArray();
+        
+        if (empty($activeSkus)) {
+            return ['zero_stock' => 0, 'in_stock' => 0];
+        }
+        
+        // Get shopify inventory data for active SKUs only
+        $shopifySkus = ShopifySku::whereNotNull('sku')
+            ->whereIn('sku', $activeSkus)
+            ->get(['sku', 'inv']);
         
         if ($shopifySkus->isEmpty()) {
             return ['zero_stock' => 0, 'in_stock' => 0];
@@ -964,6 +1037,11 @@ class ChannelMasterController extends Controller
         foreach ($shopifySkus as $row) {
             $sku = trim((string) $row->sku);
             if ($sku === '') {
+                continue;
+            }
+            
+            // Exclude parent rows (same pattern as DIL calculation)
+            if (stripos($sku, 'PARENT') !== false) {
                 continue;
             }
             
@@ -2585,6 +2663,15 @@ class ChannelMasterController extends Controller
             Log::warning('AliExpress Y Sales failed: ' . $e->getMessage());
         }
 
+        try {
+            $purchasingPowerY = $this->computePurchasingPowerYSalesLikeAmazon();
+            if ($purchasingPowerY !== null) {
+                $yesterdaySummaries['purchasingpower'] = $purchasingPowerY;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power Y Sales failed: ' . $e->getMessage());
+        }
+
         // L7 Sales: seven Pacific calendar days ending on the same "yesterday" as Y Sales (inclusive).
         $temuL7 = $this->computeTemuL7SalesLikeAmazon(false);
         if ($temuL7 !== null) {
@@ -3532,6 +3619,53 @@ class ChannelMasterController extends Controller
             if ($lineRevenue <= 0) {
                 $lineRevenue = (float) ($row->order_amount ?? 0);
             }
+            $sum += $lineRevenue;
+        }
+
+        return round($sum, 2);
+    }
+
+    /**
+     * Purchasing Power Y Sales: day before latest date_created in purchasing_power_sales.
+     * Revenue = unit_price × quantity, excluding canceled/cancelled orders.
+     */
+    private function computePurchasingPowerYSalesLikeAmazon(): ?float
+    {
+        $cancelled = ['Canceled', 'Cancelled', 'canceled', 'cancelled', 'CANCELED', 'CANCELLED'];
+
+        $latestRaw = DB::table('purchasing_power_sales')
+            ->whereNotNull('date_created')
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled'])
+            ->max('date_created');
+
+        if (!$latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
+        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+
+        $sum = 0.0;
+        foreach (
+            DB::table('purchasing_power_sales')
+                ->where('date_created', '>=', $yStartPacific)
+                ->where('date_created', '<=', $yEndPacific)
+                ->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled'])
+                ->cursor() as $row
+        ) {
+            $qty = (int) ($row->quantity ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $unitPrice = (float) ($row->unit_price ?? 0);
+            if ($unitPrice <= 0) {
+                $amount = (float) ($row->amount ?? 0);
+                $unitPrice = $qty > 0 ? $amount / $qty : 0.0;
+            }
+
+            $lineRevenue = $unitPrice * $qty;
             $sum += $lineRevenue;
         }
 

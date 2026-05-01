@@ -109,6 +109,16 @@
         .status-badges-full .status-badge-item.bg-dc { background-color: #fecaca; }
         .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
         .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
+        .status-badges-full .status-badge-item.bg-zero-inv { 
+            background-color: #fed7aa; 
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .status-badges-full .status-badge-item.bg-zero-inv:hover {
+            background-color: #fdba74;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
 
         .status-dot {
             display: inline-block;
@@ -3336,10 +3346,18 @@
             function updateStatusBadgesBar() {
                 const bar = document.getElementById('statusBadgesBar');
                 if (!bar) return;
-                const statusCounts = { active: 0, inactive: 0, DC: 0, upcoming: 0, '2BDC': 0 };
+                const statusCounts = { active: 0, inactive: 0, DC: 0, upcoming: 0, '2BDC': 0, zeroInv: 0 };
                 (tableData || []).forEach(item => {
                     const sku = String(item.SKU || item.sku || '').toUpperCase();
                     if (sku.includes('PARENT')) return;
+                    
+                    // Count zero or null/empty inventory items from shopify_skus.inv
+                    const shopifyInv = item.shopify_inv;
+                    const inventory = parseFloat(shopifyInv);
+                    if (shopifyInv === null || shopifyInv === '' || shopifyInv === undefined || inventory === 0 || isNaN(inventory)) {
+                        statusCounts.zeroInv++;
+                    }
+                    
                     let raw = item.status;
                     if ((raw == null || raw === '') && item.Values) {
                         const V = typeof item.Values === 'string' ? (function(){ try { return JSON.parse(item.Values); } catch(e) { return {}; } })() : item.Values;
@@ -3359,7 +3377,36 @@
                     <span class="status-badge-item bg-dc">DC ${statusCounts.DC}</span>
                     <span class="status-badge-item bg-upcoming">Upcoming ${statusCounts.upcoming}</span>
                     <span class="status-badge-item bg-2bdc">2BDC ${statusCounts['2BDC']}</span>
+                    <span id="zeroInvBadge" class="status-badge-item bg-zero-inv" title="Click to filter 0 inventory items">0 Inv Count ${statusCounts.zeroInv}</span>
                 `;
+                
+                // Add click event to zero inventory badge
+                const zeroInvBadge = document.getElementById('zeroInvBadge');
+                if (zeroInvBadge) {
+                    zeroInvBadge.onclick = function() {
+                        // Find the Inventory filter dropdown
+                        const inventoryFilter = Array.from(document.querySelectorAll('.missing-data-filter')).find(
+                            filter => filter.getAttribute('data-column') === 'Inventory'
+                        );
+                        
+                        if (inventoryFilter) {
+                            // Set the filter to '0' to show only zero inventory items
+                            inventoryFilter.value = '0';
+                            
+                            // Trigger change event
+                            inventoryFilter.dispatchEvent(new Event('change'));
+                            
+                            // Apply filters
+                            applyFilters();
+                            
+                            // Scroll to the table
+                            const tableContainer = document.querySelector('.table-responsive');
+                            if (tableContainer) {
+                                tableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }
+                    };
+                }
             }
 
             function pmStatusFilterLabels() {
