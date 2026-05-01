@@ -490,7 +490,7 @@
                                     <th colspan="1" style="text-align:center;background:linear-gradient(135deg,#2c6ed5,#1a56b7) !important;font-size:9px;padding:3px;letter-spacing:0.5px;">
                                         Select
                                     </th>
-                                    <th colspan="7" class="fb-section-header" id="fb-header-label">
+                                    <th colspan="10" class="fb-section-header" id="fb-header-label">
                                         <i class="fab fa-facebook-f me-1"></i> FACEBOOK INSIGHTS — LAST 30 DAYS
                                     </th>
                                 </tr>
@@ -507,6 +507,9 @@
                                     <th class="fb-th">Clicks</th>
                                     <th class="fb-th">Spend ($)</th>
                                     <th class="fb-th">CTR %</th>
+                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify sessions attributed to this campaign">Activities</th>
+                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify revenue attributed to this campaign">Sales ($)</th>
+                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify orders attributed to this campaign">Orders</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -823,6 +826,7 @@
         let allCampaigns   = [];   // full list from /video-for-ds/campaigns
         let fbInsightsMap  = {};
         let fbLoaded       = false;
+        let shopifyAttribMap = {};  // keyed by meta_id → {activities, sales, orders}
         let deleteId       = null;
         let syncPollTimer  = null;
         let videoModal, deleteModal, importModal, fbSyncModal;
@@ -876,18 +880,23 @@
         /* ── Convert a campaign object into a table-row-compatible object ── */
         function campaignToVideoRow(c) {
             return {
-                id:              'c_' + c.id,
-                _is_campaign:    true,
-                _campaign_id:    c.id,
-                sku:             c.name || '—',
-                account_name:    c.account_name || '',
-                parent_name:     c.account_name || '',
-                ads_topic_story: c.objective ? String(c.objective).replace(/_/g, ' ') : null,
-                ads_audience:    (c.effective_status || c.status || '').replace(/_/g, ' '),
-                ads_language:    null,
-                ads_video_en_link: null,
-                video_url:       null,
-                video_thumbnail: null,
+                id:                  'c_' + c.id,
+                _is_campaign:        true,
+                _campaign_id:        c.id,
+                _campaign_meta_id:   c.meta_id || null,
+                sku:                 c.name || '—',
+                account_name:        c.account_name || '',
+                parent_name:         c.account_name || '',
+                ads_topic_story:     c.objective ? String(c.objective).replace(/_/g, ' ') : null,
+                ads_audience:        (c.effective_status || c.status || '').replace(/_/g, ' '),
+                ads_language:        null,
+                ads_video_en_link:   null,
+                video_url:           null,
+                video_thumbnail:     null,
+                // Shopify attribution — null means "loading", 0 means "no data"
+                _sp_activities:      null,
+                _sp_sales:           null,
+                _sp_orders:          null,
             };
         }
 
@@ -1089,8 +1098,40 @@
                         allData = allData.filter(r => !r._is_campaign).concat(campaignRows);
                     }
                     applyFilters();
+                    // Load Shopify attribution in the background after campaigns are ready
+                    loadShopifyAttribution();
                 })
                 .catch(err => console.warn('Campaigns load error:', err));
+        }
+
+        /* ── Shopify Attribution ─────────────────────────────────── */
+        function loadShopifyAttribution() {
+            const metaIds = allCampaigns
+                .map(c => c.meta_id)
+                .filter(Boolean);
+
+            if (!metaIds.length) return;
+
+            const params = metaIds.map(id => 'campaign_ids[]=' + encodeURIComponent(id)).join('&');
+            fetch('/video-for-ds/shopify-attribution?' + params)
+                .then(r => r.json())
+                .then(resp => {
+                    if (!resp.success) return;
+                    shopifyAttribMap = resp.data || {};
+                    // Patch Shopify columns into existing campaign rows and re-render
+                    allData = allData.map(row => {
+                        if (!row._is_campaign) return row;
+                        const cid = row._campaign_meta_id;
+                        const att = cid ? (shopifyAttribMap[String(cid)] || null) : null;
+                        return Object.assign({}, row, {
+                            _sp_activities: att ? att.activities : 0,
+                            _sp_sales:      att ? att.sales      : 0,
+                            _sp_orders:     att ? att.orders     : 0,
+                        });
+                    });
+                    applyFilters();
+                })
+                .catch(err => console.warn('Shopify attribution load error:', err));
         }
 
         /* ── FB Push Sync Modal ─────────────────────────────────── */
@@ -1559,7 +1600,7 @@
             const icon = document.getElementById('total-count-icon');
 
             if (!data.length) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No records found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">No records found</td></tr>';
                 document.getElementById('total-count').textContent = '0';
                 if (lbl)  lbl.textContent = 'Total:';
                 if (icon) icon.className  = 'fas fa-video';
@@ -1598,11 +1639,50 @@
                     { key: 'clicks', type: 'int' },
                     { key: 'spend', type: 'money' },
                     { key: 'ctr', type: 'pct' },
+                    { key: '_sp_activities', type: 'sp_int',   label: 'Activities' },
+                    { key: '_sp_sales',      type: 'sp_money', label: 'Sales ($)' },
+                    { key: '_sp_orders',     type: 'sp_int',   label: 'Orders' },
                 ];
                 fbCols.forEach(col => {
                     const c = document.createElement('td');
                     c.style.verticalAlign = 'middle';
                     const isCampaignName = col.key === 'campaign_name';
+                    // Shopify columns read directly from the row object — bypass fbInsightsMap guards
+                    const isSpCol = col.type === 'sp_int' || col.type === 'sp_money';
+                    if (isSpCol) {
+                        // Handled fully inside the sp_int / sp_money branches below
+                        const val = row[col.key];
+                        if (val === null || val === undefined) {
+                            c.className = 'fb-cell sp-cell no-data';
+                            c.style.background = 'rgba(45,106,79,0.06)';
+                            c.style.textAlign   = 'center';
+                            c.innerHTML = '<span class="text-muted" style="font-size:10px;">…</span>';
+                        } else if (col.type === 'sp_int') {
+                            const spN = parseInt(val, 10);
+                            c.style.background = 'rgba(45,106,79,0.06)';
+                            c.style.textAlign  = 'center';
+                            if (!spN) {
+                                c.className = 'fb-cell sp-cell no-data';
+                                c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                            } else {
+                                c.className = 'fb-cell sp-cell';
+                                c.innerHTML = '<span style="color:#2d6a4f;font-weight:600;">' + renderFbInt(spN) + '</span>';
+                            }
+                        } else {
+                            const spM = parseFloat(val);
+                            c.style.background = 'rgba(45,106,79,0.06)';
+                            c.style.textAlign  = 'center';
+                            if (!spM) {
+                                c.className = 'fb-cell sp-cell no-data';
+                                c.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                            } else {
+                                c.className = 'fb-cell sp-cell';
+                                c.innerHTML = '<span style="color:#2d6a4f;font-weight:600;">$' + spM.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
+                            }
+                        }
+                        tr.appendChild(c);
+                        return; // skip the fb-guard block below
+                    }
                     if (col.type === 'text') {
                         c.style.textAlign = 'left';
                         if (isCampaignName) {
@@ -1640,6 +1720,30 @@
                             c.className = val ? 'fb-cell' : 'fb-cell no-data';
                             c.style.textAlign = 'center';
                             c.innerHTML = val ? '<span style="font-family:monospace;font-size:10px;color:#555;">' + esc(String(val)) + '</span>' : '<span class="text-muted" style="font-size:10px;">—</span>';
+                        } else if (col.type === 'sp_int') {
+                            c.style.background = 'rgba(45,106,79,0.06)';
+                            c.style.textAlign  = 'center';
+                            const spN = parseInt(val, 10);
+                            if (!spN) {
+                                c.className = 'fb-cell sp-cell no-data';
+                                c.innerHTML = val === null ? '<span class="text-muted" style="font-size:10px;">…</span>'
+                                                           : '<span class="text-muted" style="font-size:10px;">—</span>';
+                            } else {
+                                c.className = 'fb-cell sp-cell';
+                                c.innerHTML = '<span style="color:#2d6a4f;font-weight:600;">' + renderFbInt(spN) + '</span>';
+                            }
+                        } else if (col.type === 'sp_money') {
+                            c.style.background = 'rgba(45,106,79,0.06)';
+                            c.style.textAlign  = 'center';
+                            const spM = parseFloat(val);
+                            if (!spM) {
+                                c.className = 'fb-cell sp-cell no-data';
+                                c.innerHTML = val === null ? '<span class="text-muted" style="font-size:10px;">…</span>'
+                                                           : '<span class="text-muted" style="font-size:10px;">—</span>';
+                            } else {
+                                c.className = 'fb-cell sp-cell';
+                                c.innerHTML = '<span style="color:#2d6a4f;font-weight:600;">$' + spM.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
+                            }
                         } else if (col.type === 'str') {
                             c.className = val ? 'fb-cell' : 'fb-cell no-data';
                             c.innerHTML = val ? esc(String(val)) : '<span class="text-muted" style="font-size:10px;">—</span>';

@@ -71,6 +71,7 @@
                         <button type="button" id="importBtn" class="btn btn-info btn-sm"><i class="fas fa-upload"></i> Import</button>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
                         <button type="button" id="pushAllBtn" class="btn btn-warning btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
+                        <button type="button" id="diagnosePushBtn" class="btn btn-outline-info btn-sm"><i class="fas fa-stethoscope"></i> Diagnose Push</button>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
@@ -111,12 +112,13 @@
                             <tbody id="table-body"></tbody>
                         </table>
                     </div>
-                    <div id="pushProgressBox" class="alert alert-info mt-3 py-2 px-3" style="display:none;">
+                    <div id="pushProgressBox" class="alert alert-info mt-3 py-2 px-3" style="display:none;word-break:break-word;">
                         <div class="d-flex align-items-center gap-2">
-                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                            <div class="small" id="pushProgressTitle">Pushing...</div>
+                            <div class="spinner-border spinner-border-sm text-primary" id="pushSpinner" role="status"></div>
+                            <div class="small fw-semibold flex-grow-1" id="pushProgressTitle">Pushing...</div>
+                            <button type="button" class="btn-close btn-sm" id="pushProgressClose" style="font-size:10px;" onclick="document.getElementById('pushProgressBox').style.display='none'"></button>
                         </div>
-                        <div class="small mt-2" id="pushProgressDetails"></div>
+                        <div class="small mt-2" id="pushProgressDetails" style="max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
                     </div>
                     <div id="rainbow-loader" class="text-center py-4" style="display:none;">
                         <div class="spinner-border text-primary"></div>
@@ -222,6 +224,26 @@
     </div>
     {{-- ── End push mode popup ─────────────────────────────────────── --}}
 
+    {{-- ── Diagnose Push modal ────────────────────────────────────── --}}
+    <div class="modal fade" id="diagnosePushModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#17a2b8 0%,#138496 100%);">
+                    <h6 class="modal-title text-white mb-0"><i class="fas fa-stethoscope me-2"></i>Push Diagnostics Report</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="diagnoseBody">
+                    <div class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>Loading…</div>
+                </div>
+                <div class="modal-footer">
+                    <div class="me-auto small text-muted" id="diagnoseSkuLabel"></div>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{-- ── End diagnose push modal ─────────────────────────────────── --}}
+
     <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
 @endsection
 
@@ -274,14 +296,18 @@ document.addEventListener('DOMContentLoaded', () => {
         el.addEventListener('hidden.bs.toast', () => el.remove());
     }
 
-    function setPushProgress(visible, title = '', detailsHtml = '') {
+    function setPushProgress(visible, title = '', detailsHtml = '', hasError = false) {
         const box = document.getElementById('pushProgressBox');
         const t = document.getElementById('pushProgressTitle');
         const d = document.getElementById('pushProgressDetails');
+        const spinner = document.getElementById('pushSpinner');
         if (!box || !t || !d) return;
         box.style.display = visible ? 'block' : 'none';
         if (title) t.textContent = title;
         d.innerHTML = detailsHtml || '';
+        if (spinner) spinner.style.display = visible && !hasError ? 'inline-block' : 'none';
+        box.className = 'alert mt-3 py-2 px-3' + (hasError ? ' alert-danger' : ' alert-info');
+        box.style.wordBreak = 'break-word';
     }
 
     function confirmEbay3Push(mps) {
@@ -817,17 +843,20 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 clearTimeout(t);
             }
-            setPushProgress(true, `Push finished: ${okCount} success, ${failCount} failed${metricsFailCount ? `, ${metricsFailCount} metrics save failed` : ''}`, progress.join('<br>'));
-            if (failCount === 0) {
+            const hasAnyError = failCount > 0;
+            setPushProgress(true, `Push finished: ${okCount} success, ${failCount} failed${metricsFailCount ? `, ${metricsFailCount} metrics save failed` : ''}`, progress.join('<br>'), hasAnyError);
+            if (!hasAnyError) {
                 toast(`Pushed to ${okCount} marketplace(s).${metricsFailCount ? ` ${metricsFailCount} metrics save failed.` : ''}`, !metricsFailCount);
                 loadData();
                 if (editModal) editModal.hide();
+                setTimeout(() => setPushProgress(false, '', ''), 5000);
             } else {
-                toast(`Push completed with failures (${failCount}). See progress details.`, false);
+                toast(`Push completed with failures (${failCount}). See error details below.`, false);
                 loadData();
+                // Keep failures visible until user clicks elsewhere — don't auto-hide
             }
         } finally {
-            setTimeout(() => setPushProgress(false, '', ''), 5000);
+            // spinner already stopped in setPushProgress(hasError=true); do nothing here
         }
     }
 
@@ -850,13 +879,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const rowRes = (j.results && j.results[mp]) ? j.results[mp] : null;
             const ok = !!(rowRes && rowRes.success);
             const msg = rowRes?.message || j.message || (ok ? 'Updated' : 'Failed');
-            setPushProgress(true, `Push finished: ${ok ? '1 success' : '1 failed'}`, `1/1 ${LABELS[mp]}: ${ok ? 'OK' : 'Failed'} - ${esc(msg)}`);
-            if (ok) { toast(LABELS[mp]+' pushed'); loadData(); }
+            setPushProgress(true, `Push finished: ${ok ? '1 success' : '1 failed'}`, `1/1 ${LABELS[mp]}: ${ok ? '✓ OK' : '✗ Failed'} — ${esc(msg)}`, !ok);
+            if (ok) { toast(LABELS[mp]+' pushed'); loadData(); setTimeout(() => setPushProgress(false,'',''), 5000); }
             else toast(msg, false);
         }).catch(e => {
-            setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: Failed - ${esc(e.message || 'Request failed')}`);
+            setPushProgress(true, 'Push finished: 1 failed', `1/1 ${LABELS[mp]}: ✗ Failed — ${esc(e.message || 'Request failed')}`, true);
             toast(e.message, false);
-        }).finally(() => setTimeout(() => setPushProgress(false, '', ''), 4000));
+        });
     }
 
     document.getElementById('skuSearchIm')?.addEventListener('input', () => renderTable(tableData));
@@ -903,6 +932,64 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('pushSelectedBtn')?.addEventListener('click', () => toast('Select rows in a future update, or use Edit → Push selected', false));
+
+    // ── Diagnose Push ──────────────────────────────────────────────────────
+    const diagnosePushModal = window.bootstrap?.Modal ? new bootstrap.Modal(document.getElementById('diagnosePushModal')) : null;
+    document.getElementById('diagnosePushBtn')?.addEventListener('click', () => {
+        const sku = (document.getElementById('skuSearchIm')?.value || '').trim();
+        if (!sku) { toast('Type a SKU in the search box first, then click Diagnose Push.', false); return; }
+        document.getElementById('diagnoseSkuLabel').textContent = 'SKU: ' + sku;
+        document.getElementById('diagnoseBody').innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>Running diagnostics…</div>';
+        if (diagnosePushModal) diagnosePushModal.show();
+        fetch('/image-master/diagnose?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' } })
+            .then(r => r.json())
+            .then(j => {
+                const mpRows = (j.marketplaces || []).map(m => {
+                    const found = m.listing_found;
+                    const badge = found
+                        ? '<span class="badge bg-success">FOUND</span>'
+                        : (m.note && m.note.includes('does not exist')
+                            ? '<span class="badge bg-secondary">TABLE MISSING</span>'
+                            : '<span class="badge bg-warning text-dark">NOT FOUND</span>');
+                    const extra = m.item_id ? ` item_id: ${esc(m.item_id)}` : (m.reverb_listing_id ? ` listing: ${esc(m.reverb_listing_id)}` : '');
+                    const pushed = m.has_pushed_images ? ' <i class="fas fa-images text-success" title="Has previously pushed images"></i>' : '';
+                    const note = m.note ? `<small class="text-muted d-block">${esc(m.note)}</small>` : '';
+                    return `<tr><td><strong>${esc(LABELS[m.marketplace] || m.marketplace)}</strong></td>
+                        <td>${badge}${pushed}</td>
+                        <td><small class="text-muted">${esc(m.table)}</small>${extra ? `<br><small>${esc(extra)}</small>` : ''}${note}</td></tr>`;
+                }).join('');
+
+                const urlSection = j.sample_image ? `
+                    <h6 class="mt-3 mb-2">Sample Image URL (from Product Master)</h6>
+                    <table class="table table-sm table-bordered mb-0">
+                        <tr><th>Original</th><td class="text-break small">${esc(j.sample_image.original)}</td></tr>
+                        <tr><th>Is Local?</th><td>${j.sample_image.is_local ? '<span class="badge bg-warning text-dark">YES — was unusable by external APIs</span>' : '<span class="badge bg-success">No (already public)</span>'}</td></tr>
+                        ${j.sample_image.is_local ? `<tr><th>Rewritten To</th><td class="text-break small text-success">${esc(j.sample_image.rewritten)}</td></tr>` : ''}
+                        <tr><th>Status</th><td>${j.sample_image.status === 'will_be_rewritten' ? '<span class="text-success fw-bold">✓ Will be rewritten to public URL on push</span>' : (j.sample_image.status === 'still_local_no_public_url' ? '<span class="text-danger">⚠ Still local — set REVERB_SKU_IMAGE_PUBLIC_BASE_URL in .env</span>' : '<span class="text-success">✓ Already a public URL</span>')}</td></tr>
+                    </table>` : '';
+
+                document.getElementById('diagnoseBody').innerHTML = `
+                    <div class="mb-3 p-2 rounded" style="background:#f8f9fa;font-size:12px;">
+                        <div><strong>APP_URL:</strong> <code>${esc(j.app_url)}</code></div>
+                        <div><strong>Public Image URL:</strong> <code class="text-success">${esc(j.public_url)}</code></div>
+                        <div><strong>URL Rewrite:</strong> <span class="${j.url_rewrite === 'none (APP_URL is already public)' ? 'text-muted' : 'text-success fw-bold'}">${esc(j.url_rewrite)}</span></div>
+                    </div>
+                    <h6 class="mb-2">Marketplace Listing Check</h6>
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr><th>Marketplace</th><th>Listing</th><th>Details</th></tr></thead>
+                        <tbody>${mpRows}</tbody>
+                    </table>
+                    ${urlSection}
+                    <div class="alert alert-info mt-3 mb-0 small">
+                        <strong>Note:</strong> "NOT FOUND" in the local metrics table does not always mean push will fail —
+                        eBay and Reverb services also do live API lookups. But it helps diagnose potential issues.
+                    </div>`;
+            })
+            .catch(e => {
+                document.getElementById('diagnoseBody').innerHTML = `<div class="alert alert-danger">Diagnostic failed: ${esc(e.message)}</div>`;
+            });
+    });
+    // ── End diagnose push ─────────────────────────────────────────────────
     document.getElementById('pushAllBtn')?.addEventListener('click', () => {
         if (!confirm('Push Product Master images to ALL marketplaces for ALL loaded products? This may take a long time.')) return;
         toast('Bulk push: use per-row icons or extend with row selection.', false);

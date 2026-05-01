@@ -78,6 +78,110 @@ class ShopifyController extends Controller
             ->setStatusCode(201);
     }
 
+    public function shopifyOthersIndex(): View
+    {
+        $assignees = User::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        if ($assignees->isEmpty()) {
+            $assignees = User::query()
+                ->whereKey(optional(auth()->user())->id)
+                ->get(['id', 'name', 'email']);
+        }
+
+        return view('crm.shopify.others', [
+            'crmAssignees' => $assignees,
+        ]);
+    }
+
+    public function shopifyOthersData(Request $request): JsonResponse
+    {
+        $marketplaceDomains = [
+            'members.ebay.com',
+            'marketplace.amazon.com',
+            'u.shipping.temuemail.com',
+            'ul.shipping.temuemail.com',
+            'us.notification.mirakl.net',
+            'scs.tiktokw.us',
+            'private-relay.reverb.com',
+            'no-reply.com',
+            'relay.walmart.com',
+        ];
+
+        $perPage = max(5, min(100, (int) $request->input('per_page', 25)));
+
+        $query = ShopifyCustomer::query()
+            ->select([
+                'id',
+                'shopify_customer_id',
+                'customer_id',
+                'email',
+                'first_name',
+                'last_name',
+                'phone',
+                'sync_status',
+                'last_synced_at',
+            ])
+            ->where(function ($q) use ($marketplaceDomains) {
+                foreach ($marketplaceDomains as $domain) {
+                    $q->orWhere('email', 'like', '%@'.$domain);
+                }
+            })
+            ->orderByDesc('last_synced_at')
+            ->orderByDesc('id');
+
+        if ($request->filled('q')) {
+            $term = trim((string) $request->input('q'));
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $query->where(function ($q) use ($like, $term) {
+                $q->where('email', 'like', $like)
+                    ->orWhere('phone', 'like', $like)
+                    ->orWhere('first_name', 'like', $like)
+                    ->orWhere('last_name', 'like', $like);
+                if ($term !== '' && ctype_digit($term)) {
+                    $q->orWhere('shopify_customer_id', (int) $term);
+                }
+            });
+        }
+
+        $paginator = $query->paginate($perPage);
+
+        $rows = $paginator->getCollection()->map(static function (ShopifyCustomer $c) {
+            $name = trim(implode(' ', array_filter([(string) ($c->first_name ?? ''), (string) ($c->last_name ?? '')])));
+
+            if ($name === '' && $c->email) {
+                $localPart = explode('@', $c->email)[0];
+                $segment = explode('.', $localPart)[0];
+                $name = ucfirst(rtrim($segment, '0123456789'));
+            }
+
+            return [
+                'id' => $c->id,
+                'shopify_customer_id' => $c->shopify_customer_id,
+                'customer_id' => $c->customer_id,
+                'name' => $name !== '' ? $name : null,
+                'email' => $c->email,
+                'phone' => $c->phone,
+                'sync_status' => $c->sync_status,
+                'last_synced_at' => $c->last_synced_at?->toIso8601String(),
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+        ]);
+    }
+
     public function shopifyOrdersIndex(): View
     {
         return view('crm.shopify.orders');
@@ -178,6 +282,18 @@ class ShopifyController extends Controller
     {
         $perPage = max(5, min(100, (int) $request->input('per_page', 25)));
 
+        $marketplaceDomains = [
+            'members.ebay.com',
+            'marketplace.amazon.com',
+            'u.shipping.temuemail.com',
+            'ul.shipping.temuemail.com',
+            'us.notification.mirakl.net',
+            'scs.tiktokw.us',
+            'private-relay.reverb.com',
+            'no-reply.com',
+            'relay.walmart.com',
+        ];
+
         $query = ShopifyCustomer::query()
             ->select([
                 'id',
@@ -190,6 +306,11 @@ class ShopifyController extends Controller
                 'sync_status',
                 'last_synced_at',
             ])
+            ->where(function ($q) use ($marketplaceDomains) {
+                foreach ($marketplaceDomains as $domain) {
+                    $q->where('email', 'not like', '%@'.$domain);
+                }
+            })
             ->orderByDesc('last_synced_at')
             ->orderByDesc('id');
 
@@ -211,6 +332,12 @@ class ShopifyController extends Controller
 
         $rows = $paginator->getCollection()->map(static function (ShopifyCustomer $c) {
             $name = trim(implode(' ', array_filter([(string) ($c->first_name ?? ''), (string) ($c->last_name ?? '')])));
+
+            if ($name === '' && $c->email) {
+                $localPart = explode('@', $c->email)[0];
+                $segment = explode('.', $localPart)[0];
+                $name = ucfirst(rtrim($segment, '0123456789'));
+            }
 
             return [
                 'id' => $c->id,

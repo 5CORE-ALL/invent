@@ -38,6 +38,8 @@ Route::middleware(['auth'])
         Route::get('shopify/customers/data', [ShopifyController::class, 'shopifyCustomersData'])->name('shopify.customers.data');
         Route::post('shopify/customers/{shopify_customer}/follow-ups', [ShopifyController::class, 'storeCustomerFollowUp'])
             ->name('shopify.customers.follow-ups.store');
+        Route::get('shopify/others', [ShopifyController::class, 'shopifyOthersIndex'])->name('shopify.others.index');
+        Route::get('shopify/others/data', [ShopifyController::class, 'shopifyOthersData'])->name('shopify.others.data');
         Route::get('shopify/orders', [ShopifyController::class, 'shopifyOrdersIndex'])->name('shopify.orders.index');
         Route::get('shopify/orders/data', [ShopifyController::class, 'shopifyOrdersData'])->name('shopify.orders.data');
 

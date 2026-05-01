@@ -275,9 +275,16 @@ class EbayApiService
 
             $errors = $responseArray['Errors'] ?? [];
             if (! is_array($errors)) {
+                $errors = [];
+            }
+            if (isset($errors['ErrorCode']) || isset($errors['ShortMessage']) || isset($errors['LongMessage'])) {
                 $errors = [$errors];
             }
-            $msg = isset($errors[0]['LongMessage']) ? $errors[0]['LongMessage'] : (isset($errors[0]['ShortMessage']) ? $errors[0]['ShortMessage'] : 'Unknown error');
+            $firstErr = $errors[0] ?? [];
+            $msg = (string) ($firstErr['LongMessage'] ?? $firstErr['ShortMessage'] ?? $firstErr['ErrorCode'] ?? 'Unknown eBay error');
+            if (isset($firstErr['ErrorCode']) && ! str_contains($msg, (string) $firstErr['ErrorCode'])) {
+                $msg = '[eBay #'.$firstErr['ErrorCode'].'] '.$msg;
+            }
             Log::error('❌ eBay updateTitle failed', ['itemId' => $itemId, 'error' => $msg]);
 
             return ['success' => false, 'message' => $msg];

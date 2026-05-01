@@ -2690,6 +2690,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/image-master/ebay-images', [ImageMasterController::class, 'getEbayImages'])->name('image.master.ebay.images');
     Route::get('/image-master/sku-images', [ImageMasterController::class, 'getSkuImages'])->name('image.master.sku.images');
     Route::delete('/image-master/sku-image/{id}', [ImageMasterController::class, 'deleteSkuImage'])->name('image.master.sku.image.delete');
+    Route::get('/image-master/diagnose', [ImageMasterController::class, 'diagnosePush'])->name('image.master.diagnose');
 
     Route::get('/bullet-point-master', [BulletPointMasterController::class, 'index'])->name('bullet.point.master');
     Route::get('/bullet-point-master-data', [BulletPointMasterController::class, 'getData'])->name('bullet.point.master.data');
@@ -2736,6 +2737,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/video-for-ds/campaigns', [VideoForDsController::class, 'getCampaigns'])->name('video.for.ds.campaigns');
     Route::post('/video-for-ds/trigger-fb-sync', [VideoForDsController::class, 'triggerFbSync'])->name('video.for.ds.trigger.fb.sync');
     Route::get('/video-for-ds/sync-status', [VideoForDsController::class, 'getSyncStatus'])->name('video.for.ds.sync.status');
+    Route::get('/video-for-ds/shopify-attribution', [VideoForDsController::class, 'shopifyAttribution'])->name('video.for.ds.shopify.attribution');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
     Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');
