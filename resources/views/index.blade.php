@@ -1170,7 +1170,7 @@
     </div>
 
     <div class="row g-2 dashboard-charts-row align-items-stretch mb-1">
-        <div class="col-12 col-md-6 col-lg-3 d-flex">
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -1195,29 +1195,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-6 col-lg-3 d-flex">
-            <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
-                <div class="card-body">
-                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
-                        <div class="min-w-0 flex-grow-1">
-                            <h5 class="header-title mb-0">Sales by Channels</h5>
-                            <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-l30-bar-total" class="dashboard-chart-total-amount">—</span></p>
-                        </div>
-                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
-                            <button type="button" class="btn btn-chart-icon" id="dashboard-l30-bar-refresh-btn" title="Refresh L30 charts" aria-label="Refresh">
-                                <i class="ri-refresh-line" aria-hidden="true"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="pt-1">
-                        <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-bar-chart-wrap">
-                            <canvas id="channelSalesBarChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-md-6 col-lg-3 d-flex">
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--bar w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -1242,7 +1220,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-6 col-lg-3 d-flex">
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--bar w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -1267,7 +1245,7 @@
     </div>
 
     <div class="row g-2 dashboard-charts-row align-items-stretch mb-2">
-        <div class="col-12 col-md-3 col-lg-3 d-flex">
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -1289,32 +1267,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-3 col-lg-3 d-flex">
-            <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
-                <div class="card-body">
-                    <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
-                        <div class="min-w-0 flex-grow-1">
-                            <h5 class="header-title mb-0">Ad spend by color</h5>
-                            <p class="dashboard-chart-sub mb-0 text-muted small">L30 — color from SKU match in campaign / listing text (per channel)</p>
-                            <label for="dashboard-ad-color-channel-select" class="visually-hidden">Channel for ad color chart</label>
-                            <select id="dashboard-ad-color-channel-select" class="form-select form-select-sm mt-1 mb-1" style="max-width: 100%; font-size: 0.72rem;" title="Pick marketplace"></select>
-                            <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-ad-color-total" class="dashboard-chart-total-amount">—</span></p>
-                        </div>
-                        <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
-                            <button type="button" class="btn btn-chart-icon" id="dashboard-ad-color-refresh-btn" title="Refresh ad charts" aria-label="Refresh">
-                                <i class="ri-refresh-line" aria-hidden="true"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="pt-1">
-                        <div dir="ltr" class="dashboard-chart-canvas-wrap channel-sales-chart-wrap">
-                            <canvas id="adSpendByColorAmazonChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-md-3 col-lg-3 d-flex">
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -1340,7 +1293,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-3 col-lg-3 d-flex">
+        <div class="col-12 col-md-4 col-lg-4 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -1579,12 +1532,10 @@
         // ============================================
         
         let l30SalesPieChartInstance = null;
-        let l30SalesBarChartInstance = null;
         let ySalesPieChartInstance = null;
         let ySalesBarChartInstance = null;
         let colorInventoryPieChartInstance = null;
         let channelAdSpendPieInstance = null;
-        let colorAdSpendAmazonPieInstance = null;
 
         function pieSliceColors(count) {
             const colors = [];
@@ -1923,12 +1874,11 @@
                                     const total = data.reduce(function (a, b) { return a + b; }, 0);
                                     return lab.map(function (label, i) {
                                         const v = parseFloat(data[i]) || 0;
-                                        const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
-                                        const units = Math.round(v).toLocaleString('en-US');
+                                        const pct = total > 0 ? Math.round((v / total) * 100) : 0;
                                         const s = String(label);
                                         const short = s.length > 20 ? s.slice(0, 18) + '…' : s;
                                         return {
-                                            text: short + ' ' + pct + '% (' + units + ')',
+                                            text: short + ' ' + pct + '%',
                                             fillStyle: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor,
                                             strokeStyle: Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor,
                                             lineWidth: 1,
@@ -2111,9 +2061,12 @@
                             display: true,
                             position: 'bottom',
                             labels: {
-                                boxWidth: 10,
-                                padding: 4,
-                                font: { size: 7 },
+                                boxWidth: 16,
+                                padding: 10,
+                                font: { 
+                                    size: 15,
+                                    weight: 'bold'
+                                },
                                 generateLabels: function (chart) {
                                     const ds = chart.data.datasets[0];
                                     const data = ds.data;
@@ -2121,152 +2074,12 @@
                                     const total = data.reduce(function (a, b) { return a + b; }, 0);
                                     return lab.map(function (label, i) {
                                         const v = parseFloat(data[i]) || 0;
-                                        const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
+                                        const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+                                        const amount = '$' + Math.round(v).toLocaleString('en-US');
                                         const s = String(label);
                                         const short = s.length > 18 ? s.slice(0, 16) + '…' : s;
                                         return {
-                                            text: short + ' ' + pct + '%',
-                                            fillStyle: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor,
-                                            strokeStyle: Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor,
-                                            lineWidth: 1,
-                                            hidden: false,
-                                            index: i
-                                        };
-                                    });
-                                }
-                            }
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.85)',
-                            padding: 6,
-                            titleFont: { size: 9, weight: 'bold' },
-                            bodyFont: { size: 8 },
-                            callbacks: {
-                                label: function (context) {
-                                    return channelPieTooltipLabel(context, values);
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Ad color chart data: combined + channels (JSON from channels-master-data).
-        window.__dashboardAdColorByChannel = null;
-
-        function setupAdSpendColorChannelSelect() {
-            const sel = document.getElementById('dashboard-ad-color-channel-select');
-            if (!sel) return;
-            const pack = window.__dashboardAdColorByChannel;
-            sel.innerHTML = '';
-            if (!pack || (!pack.channels || pack.channels.length === 0) && (!pack.combined || pack.combined.length === 0)) {
-                sel.disabled = true;
-                const o = document.createElement('option');
-                o.value = '';
-                o.textContent = 'No data';
-                sel.appendChild(o);
-                return;
-            }
-            sel.disabled = false;
-            if (pack.combined && pack.combined.length > 0) {
-                const o = document.createElement('option');
-                o.value = '__all__';
-                o.textContent = 'All channels (combined)';
-                sel.appendChild(o);
-            }
-            (pack.channels || []).forEach(function (ch) {
-                if (!ch || !ch.channel) return;
-                const o = document.createElement('option');
-                o.value = ch.channel;
-                o.textContent = ch.channel;
-                sel.appendChild(o);
-            });
-        }
-
-        function applyAdSpendColorSelection() {
-            const sel = document.getElementById('dashboard-ad-color-channel-select');
-            const pack = window.__dashboardAdColorByChannel;
-            let rows = [];
-            if (pack && sel && sel.value) {
-                if (sel.value === '__all__' && pack.combined) {
-                    rows = pack.combined;
-                } else {
-                    const hit = (pack.channels || []).find(function (c) { return c.channel === sel.value; });
-                    rows = hit && hit.slices ? hit.slices : [];
-                }
-            }
-            renderAdSpendByColorAmazonPie(rows);
-        }
-
-        /**
-         * Amazon + FBA L30 spend by product color (from API).
-         * @param {Array<{color?: string, spend?: number}>|undefined} rows
-         */
-        function renderAdSpendByColorAmazonPie(rows) {
-            const canvas = document.getElementById('adSpendByColorAmazonChart');
-            const totalEl = document.getElementById('dashboard-chart-ad-color-total');
-            if (colorAdSpendAmazonPieInstance) {
-                colorAdSpendAmazonPieInstance.destroy();
-                colorAdSpendAmazonPieInstance = null;
-            }
-            if (!canvas) {
-                return;
-            }
-            const list = Array.isArray(rows) ? rows.filter(function (r) {
-                return r && (parseFloat(r.spend) || 0) > 0;
-            }) : [];
-            if (list.length === 0) {
-                if (totalEl) {
-                    totalEl.textContent = '—';
-                }
-                return;
-            }
-            const labels = list.map(function (r) {
-                return String(r.color || 'Unknown');
-            });
-            const values = list.map(function (r) {
-                return parseFloat(r.spend) || 0;
-            });
-            setDashboardChartTotals(['dashboard-chart-ad-color-total'], values);
-            const n = labels.length;
-            colorAdSpendAmazonPieInstance = new Chart(canvas, {
-                type: 'pie',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Ad spend ($)',
-                        data: values,
-                        backgroundColor: pieSliceColors(n),
-                        borderColor: pieSliceBorderColors(n),
-                        borderWidth: 1,
-                        hoverOffset: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    layout: { padding: { top: 4, bottom: 4, left: 2, right: 2 } },
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'bottom',
-                            labels: {
-                                boxWidth: 10,
-                                padding: 4,
-                                font: { size: 7 },
-                                generateLabels: function (chart) {
-                                    const ds = chart.data.datasets[0];
-                                    const data = ds.data;
-                                    const lab = chart.data.labels;
-                                    const total = data.reduce(function (a, b) { return a + b; }, 0);
-                                    return lab.map(function (label, i) {
-                                        const v = parseFloat(data[i]) || 0;
-                                        const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0.0';
-                                        const s = String(label);
-                                        const short = s.length > 20 ? s.slice(0, 18) + '…' : s;
-                                        return {
-                                            text: short + ' ' + pct + '%',
+                                            text: short + ' ' + pct + '% (' + amount + ')',
                                             fillStyle: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor,
                                             strokeStyle: Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor,
                                             lineWidth: 1,
@@ -2337,7 +2150,7 @@
             function renderL30Charts(result) {
                 if (!result.data || result.data.length === 0) {
                     console.warn('[Dashboard] No channel data for L30 charts');
-                    setDashboardChartTotals(['dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total'], []);
+                    setDashboardChartTotals(['dashboard-chart-l30-total'], []);
                     return;
                 }
 
@@ -2359,7 +2172,7 @@
                 });
                 const n = channels.length;
 
-                setDashboardChartTotals(['dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total'], l30Values);
+                setDashboardChartTotals(['dashboard-chart-l30-total'], l30Values);
 
                 if (l30SalesPieChartInstance) {
                     l30SalesPieChartInstance.destroy();
@@ -2403,77 +2216,7 @@
                     });
                 }
 
-                if (l30SalesBarChartInstance) {
-                    l30SalesBarChartInstance.destroy();
-                }
-                const barCtx = document.getElementById('channelSalesBarChart');
-                if (barCtx) {
-                    l30SalesBarChartInstance = new Chart(barCtx, {
-                        type: 'bar',
-                        data: {
-                            labels: channels,
-                            datasets: [{
-                                label: 'L30 Sales',
-                                data: l30Values,
-                                backgroundColor: pieSliceColors(n),
-                                borderColor: pieSliceBorderColors(n),
-                                borderWidth: 1,
-                                borderRadius: 3
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            layout: {
-                                padding: { top: 2, bottom: 0, left: 0, right: 2 }
-                            },
-                            plugins: {
-                                legend: { display: false },
-                                tooltip: {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-                                    padding: 6,
-                                    titleFont: { size: 9, weight: 'bold' },
-                                    bodyFont: { size: 8 },
-                                    callbacks: {
-                                        label: function (context) {
-                                            return '$' + context.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 2 });
-                                        }
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    ticks: {
-                                        font: { size: 7 },
-                                        maxRotation: 52,
-                                        minRotation: 38,
-                                        autoSkip: false,
-                                        color: '#475569'
-                                    },
-                                    grid: { display: false },
-                                    title: { display: false }
-                                },
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: {
-                                        callback: function (value) {
-                                            return '$' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
-                                        },
-                                        font: { size: 8 },
-                                        color: '#475569'
-                                    },
-                                    grid: {
-                                        color: 'rgba(0, 0, 0, 0.06)',
-                                        drawBorder: false
-                                    },
-                                    title: { display: false }
-                                }
-                            }
-                        }
-                    });
-                }
-
-                console.log('[Dashboard] ✅ L30 Sales pie + bar created (' + n + ' channels)');
+                console.log('[Dashboard] ✅ L30 Sales pie created (' + n + ' channels)');
             }
 
             if (prefetchedResult && prefetchedResult.data !== undefined) {
@@ -2638,21 +2381,6 @@
             );
             renderStockAvailabilityChart(response.stock_availability || { zero_stock: 0, in_stock: 0 });
             renderChannelAdSpendPie(response.ad_spend_by_channel);
-            const byCh = response.ad_spend_by_color_by_channel;
-            if (byCh && ((byCh.channels && byCh.channels.length) || (byCh.combined && byCh.combined.length))) {
-                window.__dashboardAdColorByChannel = byCh;
-            } else {
-                window.__dashboardAdColorByChannel = {
-                    combined: response.ad_spend_by_color_amazon || [],
-                    channels: [{ channel: 'Amazon + FBA', slices: response.ad_spend_by_color_amazon || [] }]
-                };
-            }
-            setupAdSpendColorChannelSelect();
-            const sel = document.getElementById('dashboard-ad-color-channel-select');
-            if (sel && sel.options.length > 0) {
-                sel.selectedIndex = 0;
-            }
-            applyAdSpendColorSelection();
         }
 
         function loadDashboardFromChannels() {
@@ -2682,18 +2410,11 @@
         }
 
         function showErrorState() {
-            var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-l30-bar-total', 'dashboard-chart-y-total', 'dashboard-chart-y-bar-total', 'dashboard-chart-color-inv-total', 'dashboard-chart-ad-channel-total', 'dashboard-chart-ad-color-total'];
+            var ids = ['total-channels', 'total-l30-sales', 'total-l30-orders', 'total-qty', 'avg-gprofit', 'total-gross-pft', 'avg-groi', 'total-ad-spend', 'total-views-badge', 'cvr-pct-badge', 'total-pft', 'avg-npft', 'avg-nroi', 'total-clicks', 'total-nmap', 'total-miss', 'inventory-value-amazon', 'inv-at-lp', 'dashboard-shopify-inv-sum', 'dashboard-shopify-lp-avg', 'tat-badge', 'ratings-reviews-badge', 'seller-ratings-reviews-badge', 'dashboard-chart-l30-total', 'dashboard-chart-y-total', 'dashboard-chart-y-bar-total', 'dashboard-chart-color-inv-total', 'dashboard-chart-ad-channel-total'];
             ids.forEach(function (id) { setDashText(id, '—'); });
             renderInventoryByColorChart([], 0, 0);
             renderStockAvailabilityChart({ zero_stock: 0, in_stock: 0 });
             renderChannelAdSpendPie([]);
-            window.__dashboardAdColorByChannel = null;
-            const selAdc = document.getElementById('dashboard-ad-color-channel-select');
-            if (selAdc) {
-                selAdc.innerHTML = '';
-                selAdc.disabled = true;
-            }
-            renderAdSpendByColorAmazonPie([]);
         }
 
         window.reloadDashboardMetrics = function () {
@@ -3366,12 +3087,6 @@
                     window.openYSalesChartModal();
                 });
             }
-            var l30BarRef = document.getElementById('dashboard-l30-bar-refresh-btn');
-            if (l30BarRef) {
-                l30BarRef.addEventListener('click', function () {
-                    loadChannelSalesChart();
-                });
-            }
             var yBarRef = document.getElementById('dashboard-y-bar-refresh-btn');
             if (yBarRef) {
                 yBarRef.addEventListener('click', function () {
@@ -3394,18 +3109,6 @@
             if (adChRef) {
                 adChRef.addEventListener('click', function () {
                     loadDashboardFromChannels();
-                });
-            }
-            var adColRef = document.getElementById('dashboard-ad-color-refresh-btn');
-            if (adColRef) {
-                adColRef.addEventListener('click', function () {
-                    loadDashboardFromChannels();
-                });
-            }
-            var adColSel = document.getElementById('dashboard-ad-color-channel-select');
-            if (adColSel) {
-                adColSel.addEventListener('change', function () {
-                    applyAdSpendColorSelection();
                 });
             }
         }

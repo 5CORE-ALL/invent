@@ -3373,6 +3373,11 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         $productMasters = ProductMaster::all()->keyBy(fn ($pm) => strtoupper(trim((string) ($pm->sku ?? ''))));
 
+        $yesterday = now()->subDay()->startOfDay();
+        $yesterdayEnd = now()->subDay()->endOfDay();
+        $l7Start = now()->subDays(7)->startOfDay();
+        $l7End = now()->endOfDay();
+
         $totalOrders = $sales->count();
         $totalQuantity = 0;
         $totalRevenue = 0.0;
@@ -3380,6 +3385,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalQuantityForPrice = 0;
         $totalPft = 0.0;
         $totalCogs = 0.0;
+        $yesterdaySales = 0.0;
+        $l7Sales = 0.0;
 
         foreach ($sales as $row) {
             $qty = (int) ($row->quantity ?? 0);
@@ -3400,6 +3407,16 @@ class UpdateMarketplaceDailyMetrics extends Command
             if ($unit > 0) {
                 $totalWeightedPrice += $unit * $qty;
                 $totalQuantityForPrice += $qty;
+            }
+
+            $orderDate = $row->date_created;
+            if ($orderDate) {
+                if ($orderDate >= $yesterday && $orderDate <= $yesterdayEnd) {
+                    $yesterdaySales += $lineRevenue;
+                }
+                if ($orderDate >= $l7Start && $orderDate <= $l7End) {
+                    $l7Sales += $lineRevenue;
+                }
             }
 
             $sku = strtoupper(trim((string) ($row->offer_sku ?? '')));
@@ -3444,6 +3461,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => round($avgPrice, 2),
             'l30_sales' => $totalRevenue,
+            'yesterday_sales' => $yesterdaySales,
+            'l7_sales' => $l7Sales,
             'kw_spent' => 0,
             'pmt_spent' => 0,
             'tacos_percentage' => 0,

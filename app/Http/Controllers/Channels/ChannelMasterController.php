@@ -7177,6 +7177,9 @@ class ChannelMasterController extends Controller
                 'Channel '   => 'Purchasing Power',
                 'L-60 Sales' => 0,
                 'L30 Sales'  => 0,
+                'Y Sales'    => 0,
+                'L7 Sales'   => 0,
+                'L7 vs 30 pace %' => null,
                 'Growth'     => '0%',
                 'L60 Orders' => 0,
                 'L30 Orders' => 0,
@@ -7228,10 +7231,15 @@ class ChannelMasterController extends Controller
         $gRoi = (float) ($metrics->roi_percentage ?? 0);
         $nPftPct = (float) ($metrics->n_pft ?? $gProfitPct);
         $nRoi = (float) ($metrics->n_roi ?? $gRoi);
+        $ySales = (float) ($metrics->yesterday_sales ?? 0);
+        $l7Sales = (float) ($metrics->l7_sales ?? 0);
 
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
         $gprofitL60 = 0;
         $gRoiL60 = 0;
+
+        $expectedL7 = ($l30Sales / 30) * 7;
+        $l7Vs30Pace = $expectedL7 > 0 ? (($l7Sales - $expectedL7) / $expectedL7) * 100 : null;
 
         $channelData = ChannelMaster::where('channel', 'Purchasing Power')->first();
         $mapMissCounts = $this->getPurchasingPowerLiveMapMissNMapFromPricingData($request);
@@ -7240,6 +7248,9 @@ class ChannelMasterController extends Controller
             'Channel '   => 'Purchasing Power',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
+            'Y Sales'    => intval($ySales),
+            'L7 Sales'   => intval($l7Sales),
+            'L7 vs 30 pace %' => $l7Vs30Pace !== null ? round($l7Vs30Pace, 2) : null,
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
