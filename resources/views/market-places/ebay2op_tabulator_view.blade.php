@@ -3827,12 +3827,11 @@
                             var rd = cell.getRow().getData();
                             var views = parseFloat(rd.views) || 0;
                             var ebayL30 = parseFloat(rd['eBay L30']) || 0;
-                            if (views <= 0) return '0%';
-                            var scvr = (ebayL30 / views) * 100;
-                            var color = '#6c757d';
+                            var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
+                            var color;
                             if (scvr <= 4) color = 'red';
-                            else if (scvr > 4 && scvr <= 7) color = '#daa520';
-                            else if (scvr > 7 && scvr <= 13) color = 'green';
+                            else if (scvr <= 7) color = '#daa520';
+                            else if (scvr <= 13) color = 'green';
                             else color = '#E83E8C';
                             return '<span style="color:' + color + '; font-weight: 600;">' + Math.round(scvr) + '%</span>';
                         },

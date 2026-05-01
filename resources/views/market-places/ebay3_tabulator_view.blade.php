@@ -4051,41 +4051,28 @@
                     headerSortStartingDir: "desc",
                     sorter: function(a, b, aRow, bRow) {
                         var getVal = function(rd) {
-                            var sold = parseInt(rd['eBay L30'], 10) || 0;
-                            var es = parseFloat(rd.suggested_bid) || 0;
-                            var v;
-                            if (sold === 0) v = es;
-                            else if (sold >= 1 && sold <= 5) v = 10;
-                            else if (sold > 5) v = 8;
-                            else v = es;
-                            v = Math.min(v, 15);
-                            return v > 0 ? v : (es > 0 ? es : 0);
+                            var views = parseFloat(rd.views) || 0;
+                            var sold  = parseFloat(rd['eBay L30']) || 0;
+                            var scvr  = views > 0 ? (sold / views) * 100 : 0;
+                            if (scvr <= 4)       return 9.1;
+                            else if (scvr <= 7)  return 7.1;
+                            else if (scvr <= 13) return 4.1;
+                            else                 return 2.1;
                         };
-                        var aVal = getVal(aRow.getData());
-                        var bVal = getVal(bRow.getData());
-                        return aVal - bVal;
+                        return getVal(aRow.getData()) - getVal(bRow.getData());
                     },
                     formatter: function(cell) {
                         var rd = cell.getRow().getData();
                         var views = parseFloat(rd.views) || 0;
-                        var sold = parseInt(rd['eBay L30'], 10) || 0;
-                        var es = parseFloat(rd.suggested_bid) || 0;
-                        if (sold === 0) {
-                            return es > 0 ? es.toFixed(2) : '-';
-                        }
-                        if (views <= 0) return '-';
-                        var scvr = (sold / views) * 100;
-                        var sbid;
-                        if (scvr <= 4) {
-                            sbid = 9.1; // RED
-                        } else if (scvr > 4 && scvr <= 7) {
-                            sbid = 7.1; // YELLOW
-                        } else if (scvr > 7 && scvr <= 13) {
-                                sbid = 4.1; // GREEN
-                        } else {
-                            sbid = 2.1; // PINK
-                        }
-                        return sbid.toFixed(2);
+                        var sold  = parseFloat(rd['eBay L30']) || 0;
+                        // SCVR = 0 when no views or no sold → RED
+                        var scvr  = views > 0 ? (sold / views) * 100 : 0;
+                        var sbid, color;
+                        if (scvr <= 4)       { sbid = 9.1; color = 'red'; }
+                        else if (scvr <= 7)  { sbid = 7.1; color = '#daa520'; }
+                        else if (scvr <= 13) { sbid = 4.1; color = 'green'; }
+                        else                 { sbid = 2.1; color = '#E83E8C'; }
+                        return '<span style="color:' + color + '; font-weight:600;">' + sbid.toFixed(2) + '</span>';
                     },
                     width: 80
                 },
@@ -4120,12 +4107,11 @@
                         var rd = cell.getRow().getData();
                         var views = parseFloat(rd.pmt_own_views) || 0;
                         var ebayL30 = parseFloat(rd.pmt_own_ebay_l30) || 0;
-                        if (views <= 0) return '0.00%';
-                        var scvr = (ebayL30 / views) * 100;
-                        var color = '#6c757d';
+                        var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
+                        var color;
                         if (scvr <= 4) color = 'red';
-                        else if (scvr > 4 && scvr <= 7) color = '#daa520';
-                        else if (scvr > 7 && scvr <= 13) color = 'green';
+                        else if (scvr <= 7) color = '#daa520';
+                        else if (scvr <= 13) color = 'green';
                         else color = '#E83E8C';
                         return '<span style="color:' + color + '; font-weight: 600;">' + scvr.toFixed(2) + '%</span>';
                     },
@@ -6467,11 +6453,10 @@
                     }
                     // SCVR coloring – same rule as ebay/pmp/ads getCvrColor
                     function getScvrColor(scvr) {
-                        if (scvr == null || scvr === '' || (typeof scvr === 'number' && isNaN(scvr))) return '#6c757d';
-                        const percent = parseFloat(scvr);
+                        const percent = (scvr == null || scvr === '' || isNaN(parseFloat(scvr))) ? 0 : parseFloat(scvr);
                         if (percent <= 4) return 'red';
-                        if (percent > 4 && percent <= 7) return 'yellow';
-                        if (percent > 7 && percent <= 13) return 'green';
+                        if (percent <= 7) return '#daa520';
+                        if (percent <= 13) return 'green';
                         return '#E83E8C';
                     }
                     if (response.pt_campaigns && response.pt_campaigns.length > 0) {

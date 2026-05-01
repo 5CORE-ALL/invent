@@ -4690,36 +4690,16 @@
                         visible: false,
                         formatter: function(cell) {
                             var rd = cell.getRow().getData();
-
                             var views = parseFloat(rd.views) || 0;
-                            var sold = parseInt(rd['eBay L30'], 10) || 0;
-                            var es = parseFloat(rd.suggested_bid) || 0;
-
-                            // If no sold → use suggested bid
-                            if (sold === 0) {
-                                return es > 0 ? es.toFixed(2) : '-';
-                            }
-
-                            // Avoid divide by zero
-                            if (views <= 0) return '-';
-
-                            // Calculate SCVR
-                            var scvr = (sold / views) * 100;
-
-                            var sbid;
-
-                            // Apply color-based logic
-                            if (scvr <= 4) {
-                                sbid = 9.1; // RED
-                            } else if (scvr > 4 && scvr <= 7) {
-                                sbid = 7.1; // YELLOW
-                            } else if (scvr > 7 && scvr <= 13) {
-                                sbid = 4.1; // GREEN
-                            } else {
-                                sbid = 2.1; // PINK
-                            }
-
-                            return sbid.toFixed(2);
+                            var sold  = parseFloat(rd['eBay L30']) || 0;
+                            // SCVR = 0 when no views or no sold → RED
+                            var scvr  = views > 0 ? (sold / views) * 100 : 0;
+                            var sbid, color;
+                            if (scvr <= 4)       { sbid = 9.1; color = 'red'; }
+                            else if (scvr <= 7)  { sbid = 7.1; color = '#daa520'; }
+                            else if (scvr <= 13) { sbid = 4.1; color = 'green'; }
+                            else                 { sbid = 2.1; color = '#E83E8C'; }
+                            return '<span style="color:' + color + '; font-weight:600;">' + sbid.toFixed(2) + '</span>';
                         },
                         width: 80
                     },
@@ -4754,12 +4734,11 @@
                             var rd = cell.getRow().getData();
                             var views = parseFloat(rd.views) || 0;
                             var ebayL30 = parseFloat(rd['eBay L30']) || 0;
-                            if (views <= 0) return '0.00%';
-                            var scvr = (ebayL30 / views) * 100;
-                            var color = '#6c757d';
+                            var scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
+                            var color;
                             if (scvr <= 4) color = 'red';
-                            else if (scvr > 4 && scvr <= 7) color = '#daa520';
-                            else if (scvr > 7 && scvr <= 13) color = 'green';
+                            else if (scvr <= 7) color = '#daa520';
+                            else if (scvr <= 13) color = 'green';
                             else color = '#E83E8C';
                             return '<span style="color:' + color + '; font-weight: 600;">' + scvr
                                 .toFixed(2) + '%</span>';
