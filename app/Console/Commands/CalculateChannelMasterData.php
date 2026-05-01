@@ -250,6 +250,7 @@ class CalculateChannelMasterData extends Command
             'inventory_by_color' => $response['inventory_by_color'] ?? [],
             'stock_availability' => $response['stock_availability'] ?? ['zero_stock' => 0, 'in_stock' => 0],
             'ad_spend_by_channel' => $response['ad_spend_by_channel'] ?? [],
+            'sales_by_channel' => $response['sales_by_channel'] ?? [],
             'ad_spend_by_color_amazon' => $response['ad_spend_by_color_amazon'] ?? [],
             'ad_spend_by_color_by_channel' => $response['ad_spend_by_color_by_channel'] ?? [],
             'calculated_at' => $calculatedAt,

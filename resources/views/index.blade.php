@@ -1200,7 +1200,10 @@
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
                         <div class="min-w-0 flex-grow-1">
-                            <h5 class="header-title mb-0">Y Sales by Channel</h5>
+                            <h5 class="header-title mb-0">
+                                Y Sales by Channel 
+                                <span id="dashboard-y-percentage-badge" class="badge" style="display: none; font-size: 0.75rem; vertical-align: middle;"></span>
+                            </h5>
                             <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-y-total" class="dashboard-chart-total-amount">—</span></p>
                         </div>
                         <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
@@ -1225,7 +1228,10 @@
                 <div class="card-body">
                     <div class="dashboard-chart-head d-flex flex-wrap align-items-start justify-content-between gap-2">
                         <div class="min-w-0 flex-grow-1">
-                            <h5 class="header-title mb-0">Y Sales by Channel</h5>
+                            <h5 class="header-title mb-0">
+                                Y Sales by Channel 
+                                <span id="dashboard-y-bar-percentage-badge" class="badge" style="display: none; font-size: 0.75rem; vertical-align: middle;"></span>
+                            </h5>
                             <p class="dashboard-chart-sub mb-0">Total: <span id="dashboard-chart-y-bar-total" class="dashboard-chart-total-amount">—</span></p>
                         </div>
                         <div class="dashboard-chart-head-actions d-flex align-items-center gap-1 flex-shrink-0 align-self-start">
@@ -1574,6 +1580,49 @@
         }
         
         /**
+         * Update Y Sales percentage badges comparing yesterday vs L30 daily average
+         */
+        function updateYSalesPercentageBadges(summary) {
+            if (!summary) return;
+            
+            const percentDiff = summary.percentage_diff || 0;
+            const trend = summary.trend || 'stable';
+            const dailyAvg = summary.daily_average || 0;
+            const ySales = summary.total_y_sales || 0;
+            
+            // Format the badge text and style (rounded to whole number)
+            const absPercent = Math.round(Math.abs(percentDiff));
+            let badgeText = '';
+            let badgeClass = 'bg-secondary';
+            let arrow = '';
+            
+            if (trend === 'increase') {
+                badgeText = `${absPercent}% ↑`;
+                badgeClass = 'bg-success';
+                arrow = '↑';
+            } else if (trend === 'decrease') {
+                badgeText = `${absPercent}% ↓`;
+                badgeClass = 'bg-danger';
+                arrow = '↓';
+            } else {
+                badgeText = '0%';
+                badgeClass = 'bg-info';
+            }
+            
+            // Update both badges (pie chart and bar chart)
+            const badgeIds = ['dashboard-y-percentage-badge', 'dashboard-y-bar-percentage-badge'];
+            
+            badgeIds.forEach(function(badgeId) {
+                const badge = document.getElementById(badgeId);
+                if (badge) {
+                    badge.textContent = badgeText;
+                    badge.className = 'badge ' + badgeClass;
+                    badge.style.display = 'inline-block';
+                }
+            });
+        }
+        
+        /**
          * Y Sales: compact pie + bar (same API name as before for callers).
          * Source: GET /channels-master-data → row['Y Sales'].
          */
@@ -1607,6 +1656,11 @@
                 const n = channels.length;
 
                 setDashboardChartTotals(['dashboard-chart-y-total', 'dashboard-chart-y-bar-total'], ySalesValues);
+                
+                // Update percentage badges if sales_by_channel data is available
+                if (result.sales_by_channel && result.sales_by_channel.summary) {
+                    updateYSalesPercentageBadges(result.sales_by_channel.summary);
+                }
 
                 if (ySalesPieChartInstance) {
                     ySalesPieChartInstance.destroy();

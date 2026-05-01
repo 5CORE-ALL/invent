@@ -1627,6 +1627,88 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Build sales by channel data with percentage difference calculation
+     * Shows Y Sales vs L30 daily average: ((L30 Sales / 30) - Y Sales) / (L30 Sales / 30) * 100
+     * Positive % = Y Sales below average (decrease), Negative % = Y Sales above average (increase)
+     */
+    private function buildSalesByChannelWithPercentage(array $finalData): array
+    {
+        $byChannel = [];
+        foreach ($finalData as $row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? 'Unknown'));
+            if ($name === '') {
+                $name = 'Unknown';
+            }
+            
+            $l30Sales = is_numeric($row['L30 Sales'] ?? 0) 
+                ? (float) $row['L30 Sales'] 
+                : (float) str_replace(['$', ',', '%'], '', (string) ($row['L30 Sales'] ?? 0));
+            
+            $ySales = is_numeric($row['Y Sales'] ?? 0)
+                ? (float) $row['Y Sales']
+                : (float) str_replace(['$', ',', '%'], '', (string) ($row['Y Sales'] ?? 0));
+            
+            $byChannel[$name] = [
+                'l30_sales' => $l30Sales,
+                'y_sales' => $ySales,
+            ];
+        }
+        
+        if ($byChannel === []) {
+            return [];
+        }
+        
+        // Calculate totals
+        $totalL30Sales = array_sum(array_column($byChannel, 'l30_sales'));
+        $totalYSales = array_sum(array_column($byChannel, 'y_sales'));
+        
+        // Calculate percentage difference
+        $dailyAverage = $totalL30Sales / 30;
+        $difference = $dailyAverage - $totalYSales;
+        $percentageDiff = $dailyAverage > 0 ? round(($difference / $dailyAverage) * 100, 1) : 0.0;
+        
+        $out = [];
+        
+        // Add Y Sales data
+        arsort($byChannel);
+        foreach ($byChannel as $channel => $data) {
+            if ($data['y_sales'] > 0) {
+                $out['y_sales'][] = [
+                    'channel' => (string) $channel,
+                    'sales' => round($data['y_sales'], 2),
+                    'percent' => $totalYSales > 0 ? round(($data['y_sales'] / $totalYSales) * 100, 1) : 0.0,
+                ];
+            }
+        }
+        
+        // Add L30 Sales data (sort by L30)
+        uasort($byChannel, function($a, $b) {
+            return $b['l30_sales'] <=> $a['l30_sales'];
+        });
+        
+        foreach ($byChannel as $channel => $data) {
+            if ($data['l30_sales'] > 0) {
+                $out['l30_sales'][] = [
+                    'channel' => (string) $channel,
+                    'sales' => round($data['l30_sales'], 2),
+                    'percent' => $totalL30Sales > 0 ? round(($data['l30_sales'] / $totalL30Sales) * 100, 1) : 0.0,
+                ];
+            }
+        }
+        
+        // Add summary with percentage difference
+        $out['summary'] = [
+            'total_l30_sales' => round($totalL30Sales, 2),
+            'total_y_sales' => round($totalYSales, 2),
+            'daily_average' => round($dailyAverage, 2),
+            'percentage_diff' => $percentageDiff,
+            'trend' => $percentageDiff > 0 ? 'decrease' : ($percentageDiff < 0 ? 'increase' : 'stable'),
+        ];
+        
+        return $out;
+    }
+
+    /**
      * Sum of (Shopify inventory * LP) across all SKUs for the Inv@LP badge.
      * Uses shopify_skus.inv and product_master LP (from Values->lp or lp column).
      */
@@ -2399,6 +2481,7 @@ class ChannelMasterController extends Controller
                 'inventory_by_color' => $summaryData['inventory_by_color'] ?? [],
                 'stock_availability' => $summaryData['stock_availability'] ?? ['zero_stock' => 0, 'in_stock' => 0],
                 'ad_spend_by_channel' => $summaryData['ad_spend_by_channel'] ?? [],
+                'sales_by_channel' => $summaryData['sales_by_channel'] ?? [],
                 'ad_spend_by_color_amazon' => $summaryData['ad_spend_by_color_amazon'] ?? [],
                 'ad_spend_by_color_by_channel' => $summaryData['ad_spend_by_color_by_channel'] ?? [],
                 'calculated_at' => $summaryData['calculated_at'] ?? null,
@@ -2997,7 +3080,7 @@ class ChannelMasterController extends Controller
 
             // L7 vs pace: expected L7 = (trailing sales ÷ N days) × 7; % = (L7 − expected) / expected × 100.
             // N must match the rolling window used for this row's L30 Sales. Amazon B2C uses the same
-            // day count as Amazon Daily Sales (DAILY_SALES_WINDOW_DAYS = 32), not 30 — dividing by 30 skewed red.
+            // day count as Amazon Daily Sales (DAILY_SALES_WINDOW_DAYS = 33), not 30 — dividing by 30 skewed red.
             // Reverb: L30 Sales matches pricing full-table total; use rolling L30 for pace only.
             $paceBase = $row['reverb_pace_l30_sales'] ?? $row['L30 Sales'] ?? 0;
             $l30ForPace = (float) str_replace(['$', ',', '%'], '', (string) $paceBase);
@@ -3034,6 +3117,7 @@ class ChannelMasterController extends Controller
         $inventoryByColor = $this->getShopifyInventoryByColor();
         $stockAvailability = $this->getStockAvailability();
         $adSpendByChannel = $this->buildAdSpendByChannelFromRows($finalData);
+        $salesByChannel = $this->buildSalesByChannelWithPercentage($finalData);
         $adSpendByColorAmazon = $this->getAdSpendByProductColorAmazonFamilyL30();
         $adSpendByColorByChannel = $this->getAdSpendByColorByChannelL30();
 
@@ -3048,6 +3132,7 @@ class ChannelMasterController extends Controller
             'inventory_by_color' => $inventoryByColor,
             'stock_availability' => $stockAvailability,
             'ad_spend_by_channel' => $adSpendByChannel,
+            'sales_by_channel' => $salesByChannel,
             'ad_spend_by_color_amazon' => $adSpendByColorAmazon,
             'ad_spend_by_color_by_channel' => $adSpendByColorByChannel,
         ]);

@@ -15,7 +15,7 @@ use Carbon\Carbon;
 class AmazonSalesController extends Controller
 {
     /** Inclusive calendar days ending yesterday (Pacific), same for badge + grid API + Channel Master */
-    public const DAILY_SALES_WINDOW_DAYS = 31;
+    public const DAILY_SALES_WINDOW_DAYS = 33;
 
     public function index()
     {
