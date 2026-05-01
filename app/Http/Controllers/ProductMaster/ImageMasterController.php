@@ -178,6 +178,82 @@ class ImageMasterController extends Controller
     }
 
     /**
+     * Diagnostic: check which marketplaces have a listing for the given SKU and whether
+     * image URLs are reachable. Does NOT push anything. Returns a JSON report.
+     */
+    public function diagnosePush(Request $request)
+    {
+        $sku = $this->normalizeSku($request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'sku query param required.'], 422);
+        }
+
+        $appUrl    = rtrim((string) config('app.url'), '/');
+        $publicUrl = rtrim((string) (
+            config('services.reverb.sku_image_public_base_url') ?:
+            config('app.asset_url') ?:
+            $appUrl
+        ), '/');
+
+        $report = [
+            'sku'           => $sku,
+            'app_url'       => $appUrl,
+            'public_url'    => $publicUrl,
+            'url_rewrite'   => $publicUrl !== $appUrl ? "localhost → {$publicUrl}" : 'none (APP_URL is already public)',
+            'marketplaces'  => [],
+        ];
+
+        $tableMap = $this->marketplaceTableMap();
+        foreach ($tableMap as $mp => $table) {
+            $entry = ['marketplace' => $mp, 'table' => $table];
+
+            if (! Schema::hasTable($table)) {
+                $entry['listing_found'] = false;
+                $entry['note']          = 'Metrics table does not exist.';
+                $report['marketplaces'][] = $entry;
+                continue;
+            }
+
+            $row = DB::table($table)->where(function ($q) use ($sku) {
+                $q->where('sku', $sku)
+                    ->orWhere('sku', strtoupper($sku))
+                    ->orWhere('sku', strtolower($sku));
+            })->first();
+
+            $entry['listing_found'] = (bool) $row;
+            if ($row && isset($row->item_id) && $row->item_id) {
+                $entry['item_id'] = $row->item_id;
+            }
+            if ($row && isset($row->reverb_listing_id) && $row->reverb_listing_id) {
+                $entry['reverb_listing_id'] = $row->reverb_listing_id;
+            }
+            if ($row && isset($row->image_master_json) && $row->image_master_json) {
+                $entry['has_pushed_images'] = true;
+            }
+
+            $report['marketplaces'][] = $entry;
+        }
+
+        // Check a sample image URL from product master
+        $pm = DB::table('product_master')->where('sku', $sku)->first();
+        if ($pm) {
+            $sampleUrl = $pm->image1 ?? $pm->main_image ?? null;
+            if ($sampleUrl) {
+                $isLocal = (bool) preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?/storage/#i', $sampleUrl);
+                $rewritten = $isLocal ? ($publicUrl . preg_replace('#^https?://(localhost|127\.0\.0\.1)(:\d+)?#i', '', $sampleUrl)) : $sampleUrl;
+                $report['sample_image'] = [
+                    'original'   => $sampleUrl,
+                    'is_local'   => $isLocal,
+                    'rewritten'  => $rewritten,
+                    'status'     => $isLocal ? ($publicUrl !== $appUrl ? 'will_be_rewritten' : 'still_local_no_public_url') : 'ok_already_public',
+                ];
+            }
+        }
+
+        return response()->json($report);
+    }
+
+    /**
      * Push ordered image URLs to marketplace and persist image_master_json on success (or local-only for unsupported APIs).
      *
      * @return \Illuminate\Http\JsonResponse
@@ -221,20 +297,24 @@ class ImageMasterController extends Controller
                 continue;
             }
 
-            $remote   = $this->pushImagesToRemote($mp, $sku, $images, $mode);
+            // Rewrite localhost/127.0.0.1 storage URLs → public URL so external APIs can download them.
+            // Shopify services handle local files via base64 anyway; for all others this is critical.
+            $imagesForPush = $this->rewriteLocalStorageUrlsToPublic($images);
+
+            $remote   = $this->pushImagesToRemote($mp, $sku, $imagesForPush, $mode);
             $remoteOk = (bool) ($remote['success'] ?? false);
 
-            $urlsForMetrics = $images;
+            $urlsForMetrics = $imagesForPush;
             if ($remoteOk && ! empty($remote['normalized_urls']) && is_array($remote['normalized_urls'])) {
                 $urlsForMetrics = array_values($remote['normalized_urls']);
-            } elseif ($remoteOk && $images !== []) {
-                // eBay, Amazon, etc. return no normalized_urls — rewrite localhost /storage/ to APP_URL/ASSET_URL for metrics
-                $urlsForMetrics = $this->normalizeStorageUrlsForImageMasterMetrics($images);
+            } elseif ($remoteOk && $imagesForPush !== []) {
+                // eBay, Amazon, etc. return no normalized_urls — already rewritten to public URL above
+                $urlsForMetrics = $imagesForPush;
             }
 
             // Only persist metrics when we have actual image URLs
             $saved = false;
-            if ($remoteOk && $images !== []) {
+            if ($remoteOk && $imagesForPush !== []) {
                 $saved = $this->saveImageMetricsToTable($mp, $sku, $urlsForMetrics);
                 if (in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
                     $saved = $this->saveShopifyCatalogImages($sku, $mp, $urlsForMetrics) || $saved;
@@ -244,7 +324,7 @@ class ImageMasterController extends Controller
             $results[$mp] = [
                 'success'        => $remoteOk,
                 'metrics_saved'  => $saved,
-                'message'        => ($remote['message'] ?? '').($saved ? '' : ($images !== [] ? ' Metrics not saved.' : '')),
+                'message'        => ($remote['message'] ?? '').($saved ? '' : ($imagesForPush !== [] ? ' Metrics not saved.' : '')),
             ];
         }
 
@@ -572,6 +652,48 @@ class ImageMasterController extends Controller
         }
 
         return str_replace("\u{00a0}", ' ', trim((string) $sku));
+    }
+
+    /**
+     * Convert localhost / 127.0.0.1 storage URLs to the publicly accessible URL so that
+     * external marketplace APIs (eBay, Amazon, Temu, Macy's, Reverb, etc.) can download
+     * the images. Shopify handles local files via base64, but all other APIs need a real URL.
+     *
+     * Public base URL precedence:
+     *   1. REVERB_SKU_IMAGE_PUBLIC_BASE_URL (already set to https://inventory.5coremanagement.com)
+     *   2. ASSET_URL
+     *   3. APP_URL
+     *
+     * @param  list<string>  $urls
+     * @return list<string>
+     */
+    private function rewriteLocalStorageUrlsToPublic(array $urls): array
+    {
+        $publicBase = rtrim((string) (
+            config('services.reverb.sku_image_public_base_url') ?:
+            config('app.asset_url') ?:
+            config('app.url')
+        ), '/');
+
+        $appBase = rtrim((string) config('app.url'), '/');
+
+        // Nothing to rewrite when public == local
+        if ($publicBase === '' || $publicBase === $appBase) {
+            return $urls;
+        }
+
+        return array_values(array_map(function (string $u) use ($publicBase, $appBase) {
+            // Match both http://localhost/... and http://127.0.0.1:PORT/...
+            if (preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?(/storage/.+)$#i', $u, $m)) {
+                return $publicBase . $m[3];
+            }
+            // Also rewrite APP_URL-based localhost paths
+            if ($appBase !== '' && str_starts_with($u, $appBase . '/storage/')) {
+                return $publicBase . '/storage/' . substr($u, strlen($appBase) + 9);
+            }
+
+            return $u;
+        }, $urls));
     }
 
     /**
