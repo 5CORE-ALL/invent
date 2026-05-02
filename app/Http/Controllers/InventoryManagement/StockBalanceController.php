@@ -330,8 +330,42 @@ class StockBalanceController extends Controller
                 }
 
                 $levels = $levelsResponse->json('inventory_levels');
-                $locationId = $levels[0]['location_id'] ?? null;
-                $availableQty = $levels[0]['available'] ?? 0;
+                
+                // IMPORTANT: Use the configured primary location if set, otherwise use first location
+                $configuredLocationId = config('services.shopify.inventory_location_id');
+                $locationId = null;
+                $availableQty = 0;
+                
+                if ($configuredLocationId) {
+                    // Find the level for the configured location
+                    foreach ($levels as $level) {
+                        if ($level['location_id'] == $configuredLocationId) {
+                            $locationId = $level['location_id'];
+                            $availableQty = $level['available'] ?? 0;
+                            Log::info("Using configured primary location", [
+                                'sku' => $sku,
+                                'location_id' => $locationId,
+                                'available' => $availableQty
+                            ]);
+                            break;
+                        }
+                    }
+                }
+                
+                // Fallback to first location if configured one not found or not set
+                if (!$locationId && !empty($levels)) {
+                    $locationId = $levels[0]['location_id'] ?? null;
+                    $availableQty = $levels[0]['available'] ?? 0;
+                    
+                    if ($configuredLocationId) {
+                        Log::warning("Configured location not found, using first location", [
+                            'sku' => $sku,
+                            'configured_location' => $configuredLocationId,
+                            'using_location' => $locationId,
+                            'total_locations' => count($levels)
+                        ]);
+                    }
+                }
 
                 if (!$locationId) {
                     return [

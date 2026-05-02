@@ -2807,18 +2807,47 @@
                 return activeRows.slice(start, Math.min(start + size, activeRows.length));
             }
 
-            /** Named link column: teal link icon only for http(s) (full URL in title); "-" if empty or not a URL. */
+            /** Named link column: custom icon for http(s) (full URL in title); "-" if empty or not a URL. */
             function formatNamedLinkSlot(rowData, getRawFn) {
                 var v = String(getRawFn(rowData) || '').trim();
                 if (!v) return '<span style="color:#adb5bd;">-</span>';
                 var escAttr = function(t) {
                     return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
                 };
-                var linkTeal = '#14b8a6';
                 if (/^https?:\/\//i.test(v)) {
                     return '<a href="' + escAttr(v) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr(v) + '" ' +
                         'style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;" aria-label="Open link">' +
-                        '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' + linkTeal + ';"></span></a>';
+                        '<img src="{{ asset("assets/images/task-link-icon.png") }}" alt="Link" style="width:36px;height:36px;display:inline-block;" /></a>';
+                }
+                return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
+            }
+
+            /** SOP link column: custom SOP icon for http(s) (full URL in title); "-" if empty or not a URL. */
+            function formatSopLinkSlot(rowData, getRawFn) {
+                var v = String(getRawFn(rowData) || '').trim();
+                if (!v) return '<span style="color:#adb5bd;">-</span>';
+                var escAttr = function(t) {
+                    return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                };
+                if (/^https?:\/\//i.test(v)) {
+                    return '<a href="' + escAttr(v) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr(v) + '" ' +
+                        'style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;" aria-label="Open SOP link">' +
+                        '<img src="{{ asset("assets/images/task-sop-icon.png") }}" alt="SOP" style="width:36px;height:36px;display:inline-block;" /></a>';
+                }
+                return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
+            }
+
+            /** Video link column: custom video icon for http(s) (full URL in title); "-" if empty or not a URL. */
+            function formatVideoLinkSlot(rowData, getRawFn) {
+                var v = String(getRawFn(rowData) || '').trim();
+                if (!v) return '<span style="color:#adb5bd;">-</span>';
+                var escAttr = function(t) {
+                    return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                };
+                if (/^https?:\/\//i.test(v)) {
+                    return '<a href="' + escAttr(v) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr(v) + '" ' +
+                        'style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;" aria-label="Open video link">' +
+                        '<img src="{{ asset("assets/images/task-video-icon.png") }}" alt="Video" style="width:36px;height:36px;display:inline-block;" /></a>';
                 }
                 return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
             }
@@ -3200,11 +3229,39 @@
                     };
                     linkCol("L1", "link1", function(d) { return d.link1 || d.l1; }, 38);
                     linkCol("L2", "link2", function(d) { return d.link2 || d.l2; }, 38);
-                    linkCol("SOP", "link3", function(d) { return d.link3 || d.training_link; }, 48, {
+                    
+                    // SOP - Custom icon
+                    cols.push({
+                        title: "SOP",
+                        field: "link3",
+                        width: 48,
+                        minWidth: 40,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
                         headerTooltip: "Training",
-                        minWidth: 40
+                        formatter: function(cell) {
+                            return formatSopLinkSlot(cell.getRow().getData(), function(d) { return d.link3 || d.training_link; });
+                        }
                     });
-                    linkCol("Video", "link4", function(d) { return d.link4 || d.video_link; }, 44);
+                    
+                    // Video - Custom icon
+                    cols.push({
+                        title: "Video",
+                        field: "link4",
+                        width: 44,
+                        minWidth: 34,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            return formatVideoLinkSlot(cell.getRow().getData(), function(d) { return d.link4 || d.video_link; });
+                        }
+                    });
+                    
+                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
                     linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
                     linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
                     linkCol("CL", "link7", function(d) { return d.link7 || d.checklist_link; }, 38, {

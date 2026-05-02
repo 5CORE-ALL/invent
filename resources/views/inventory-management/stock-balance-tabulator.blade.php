@@ -669,11 +669,12 @@
             });
             const $dd = $wrap.find('.custom-sku-dropdown');
             const esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+            const escAttr = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
             if (list.length === 0) {
                 $dd.html('<div class="custom-sku-option text-muted" style="cursor:default;">No matching SKU</div>');
             } else {
                 $dd.html(list.map(function(o) {
-                    return '<div class="custom-sku-option' + (o.selected ? ' selected' : '') + '" data-sku="' + esc(o.sku) + '">' + esc(o.sku) + '</div>';
+                    return '<div class="custom-sku-option' + (o.selected ? ' selected' : '') + '" data-sku="' + escAttr(o.sku) + '">' + esc(o.sku) + '</div>';
                 }).join(''));
             }
         }
@@ -1163,7 +1164,7 @@
                     width: 100,
                     visible: true,
                     formatter: function(cell) {
-                        return '<select class="form-select form-select-sm ratio-select" style="width:90px; font-size:14px;"><option value="1:4">1:4</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="4:1">4:1</option></select>';
+                        return '<select class="form-select form-select-sm ratio-select" style="width:90px; font-size:14px;"><option value="1:4">1:4</option><option value="1:3">1:3</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="3:1">3:1</option><option value="4:1">4:1</option></select>';
                     }
                 },
                 {
