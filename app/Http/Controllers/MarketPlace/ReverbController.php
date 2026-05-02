@@ -921,7 +921,7 @@ class ReverbController extends Controller
             // Calculate CVR percentage (L30 / Views * 100)
             $views = $processedItem["Views"];
             $rvL30 = $processedItem["RV L30"];
-            $processedItem["CVR"] = $views > 0 ? round(($rvL30 / $views) * 100, 2) : 0;
+            $processedItem["CVR"] = $views > 0 ? round(($rvL30 / $views) * 100, 0) : 0;
 
             // Amazon Price
             if (isset($amazonData[$sku])) {
@@ -1013,7 +1013,7 @@ class ReverbController extends Controller
             // GPFT%
             if ($price > 0) {
                 $gpft_percentage = (($price * $percentageValue - $lp - $ship) / $price) * 100;
-                $processedItem["GPFT%"] = round($gpft_percentage, 2);
+                $processedItem["GPFT%"] = round($gpft_percentage, 0);
             } else {
                 $processedItem["GPFT%"] = 0;
             }
@@ -1024,7 +1024,7 @@ class ReverbController extends Controller
             // ROI%
             if ($lp > 0) {
                 $roi_percentage = (($price * $percentageValue - $lp - $ship) / $lp) * 100;
-                $processedItem["ROI%"] = round($roi_percentage, 2);
+                $processedItem["ROI%"] = round($roi_percentage, 0);
             } else {
                 $processedItem["ROI%"] = 0;
             }
@@ -1038,7 +1038,7 @@ class ReverbController extends Controller
             // Dil%
             $inv = $processedItem["INV"];
             $l30 = $processedItem["L30"];
-            $processedItem["RV Dil%"] = $inv > 0 ? round(($l30 / $inv) * 100, 2) : 0;
+            $processedItem["RV Dil%"] = $inv > 0 ? round(($l30 / $inv) * 100, 0) : 0;
 
             $rd = $dailyBySku[$sku] ?? null;
             $processedItem["reverb_daily_qty"] = $rd ? (int) $rd->rd_qty : 0;
@@ -1106,7 +1106,7 @@ class ReverbController extends Controller
                     // Calculate SGPFT
                     if ($sprice > 0) {
                         $sgpft = (($sprice * $percentage - $lp - $ship) / $sprice) * 100;
-                        $values['SGPFT'] = round($sgpft, 2);
+                        $values['SGPFT'] = round($sgpft, 0);
                     } else {
                         $values['SGPFT'] = 0;
                     }
@@ -1117,7 +1117,7 @@ class ReverbController extends Controller
                     // Calculate SROI
                     if ($lp > 0) {
                         $sroi = (($sprice * $percentage - $lp - $ship) / $lp) * 100;
-                        $values['SROI'] = round($sroi, 2) . '%';
+                        $values['SROI'] = round($sroi, 0) . '%';
                     } else {
                         $values['SROI'] = '0%';
                     }

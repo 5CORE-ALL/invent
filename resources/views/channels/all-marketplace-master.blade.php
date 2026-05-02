@@ -328,6 +328,9 @@
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amazon Daily Sales). Other channels vary.">
                             Sales: <span id="total-l30-sales">$0</span>
                         </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels)">
+                            Y Sales: <span id="total-y-sales">$0</span>
+                        </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
                             Orders: <span id="total-l30-orders">0</span>
                         </span>
@@ -1197,13 +1200,50 @@
                         }
                     },
                     {
+                        title: "L60 Sales",
+                        field: "L-60 Sales",
+                        headerTooltip: "Sales from days 31-60 (previous 30-day period). Used for Growth calculation.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = Math.round(parseNumber(cell.getValue()));
+                            return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = Math.round(parseNumber(cell.getValue()));
+                            return `<strong>$${value.toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
                         title: "Growth",
-                        field: "Growth %",
+                        field: "Growth",
                         headerTooltip: "Growth percentage comparing L30 Sales to L60 Sales. Formula: ((L30 - L60) / L60) × 100. Green indicates positive growth, red indicates decline.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 88,
                         formatter: function(cell) {
+                            const value = cell.getValue();
+                            
+                            // If backend provides Growth value, use it
+                            if (value && value !== '0%' && value !== '0.00%') {
+                                const growthStr = String(value).replace('%', '');
+                                const growth = parseFloat(growthStr);
+                                
+                                if (isNaN(growth) || Math.abs(growth) < 0.1) {
+                                    return '<span style="font-weight:600;color:#6c757d;">0%</span>';
+                                }
+                                
+                                const isPositive = growth > 0;
+                                const color = isPositive ? '#198754' : '#dc3545';
+                                const arrow = isPositive ? '↑' : '↓';
+                                
+                                return `<span style="font-weight:600;color:${color};">${arrow} ${Math.abs(growth).toFixed(0)}%</span>`;
+                            }
+                            
+                            // Fallback: calculate from L30 and L60
                             const rowData = cell.getRow().getData();
                             const l30 = parseNumber(rowData['L30 Sales'] || 0);
                             const l60 = parseNumber(rowData['L-60 Sales'] || 0);
@@ -1221,9 +1261,8 @@
                             const isPositive = growth > 0;
                             const color = isPositive ? '#198754' : '#dc3545';
                             const arrow = isPositive ? '↑' : '↓';
-                            const sign = isPositive ? '+' : '';
                             
-                            return `<span style="font-weight:600;color:${color};">${arrow} ${sign}${growth.toFixed(1)}%</span>`;
+                            return `<span style="font-weight:600;color:${color};">${arrow} ${Math.abs(growth).toFixed(0)}%</span>`;
                         },
                         bottomCalc: function(values, data) {
                             let sumL30 = 0;
@@ -1248,9 +1287,8 @@
                             const isPositive = growth > 0;
                             const color = isPositive ? '#198754' : '#dc3545';
                             const arrow = isPositive ? '↑' : '↓';
-                            const sign = isPositive ? '+' : '';
                             
-                            return `<strong style="color:${color};">${arrow} ${sign}${growth.toFixed(1)}%</strong>`;
+                            return `<strong style="color:${color};">${arrow} ${Math.abs(growth).toFixed(0)}%</strong>`;
                         }
                     },
                     {
@@ -1456,7 +1494,7 @@
                                 style = 'color:#e83e8c;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -1476,7 +1514,7 @@
                         },
                         bottomCalcFormatter: function(cell) {
                             const v = parseNumber(cell.getValue());
-                            return `<strong>${v.toFixed(1)}%</strong>`;
+                            return `<strong>${v.toFixed(0)}%</strong>`;
                         }
                     },
                     {
@@ -1629,7 +1667,7 @@
                                 style = 'color:#e83e8c;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -3058,6 +3096,7 @@
             function updateSummaryStats(data) {
                 let totalChannels = data.length;
                 let totalL30Sales = 0;
+                let totalYSales = 0;
                 let totalL30Orders = 0;
                 let totalQty = 0;
                 let totalClicks = 0;
@@ -3077,6 +3116,7 @@
                 data.forEach(row => {
                     const channel = (row['Channel '] || '').trim().toLowerCase();
                     const l30Sales = parseNumber(row['L30 Sales'] || 0);
+                    const ySales = parseNumber(row['Y Sales'] || 0);
                     const l30Orders = parseNumber(row['L30 Orders'] || 0);
                     const qty = parseNumber(row['Qty'] || 0);
                     const clicks = parseNumber(row['clicks'] || 0);
@@ -3094,6 +3134,7 @@
                     const views = parseNumber(row['Total Views'] || 0);
 
                     totalL30Sales += l30Sales;
+                    totalYSales += ySales;
                     totalL30Orders += l30Orders;
                     totalQty += qty;
                     totalClicks += clicks;
@@ -3134,6 +3175,7 @@
                 // Update badges
                 $('#total-channels').text(totalChannels);
                 $('#total-l30-sales').text('$' + Math.round(totalL30Sales).toLocaleString('en-US'));
+                $('#total-y-sales').text('$' + Math.round(totalYSales).toLocaleString('en-US'));
                 $('#total-l30-orders').text(Math.round(totalL30Orders).toLocaleString('en-US'));
                 $('#total-qty').text(Math.round(totalQty).toLocaleString('en-US'));
                 $('#total-clicks').text(Math.round(totalClicks).toLocaleString('en-US'));

@@ -4465,11 +4465,20 @@ class ChannelMasterController extends Controller
         // Get other metrics from marketplace_daily_metrics (PFT%, ROI, TACOS, ad spend, etc.)
         $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
         
-        // L60 data disabled (ShipHub) — growth vs prior period not available here
-        $l60Orders = 0;
-        $l60Sales = 0;
+        // Calculate L60 data (days 31-60) using date-based filtering
+        // L60 period: from 60 days ago to 30 days ago (previous 30-day period)
+        $sixtyDaysAgoPacific = $yesterdayPacific->copy()->subDays(59)->startOfDay();
+        $thirtyDaysAgoPacific = $yesterdayPacific->copy()->subDays(30)->endOfDay();
         
-        // DISABLED: L60 data from ShipHub - Amazon rolling window matches daily sales page
+        // L60 Sales (previous 30-day period: days 31-60)
+        $l60Sales = AmazonOrder::badgeTotalSalesByOrderDate($sixtyDaysAgoPacific, $thirtyDaysAgoPacific);
+        $l60Orders = (int) DB::table('amazon_orders as o')
+            ->where('o.order_date', '>=', $sixtyDaysAgoPacific)
+            ->where('o.order_date', '<=', $thirtyDaysAgoPacific)
+            ->where($activeAmazonOrders)
+            ->count(DB::raw('DISTINCT o.amazon_order_id'));
+        
+        // DISABLED: L60 data from ShipHub - now using date-based calculation from amazon_orders
         /*
         $latestDate = null;
         try {
@@ -4534,8 +4543,8 @@ class ChannelMasterController extends Controller
         $hlSpent = $metrics?->hl_spent ?? 0;
         $totalAdSpend = round($kwSpent + $ptSpent + $hlSpent, 2);
         
-        // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        // Calculate growth: ((L30 - L60) / L60) * 100
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage (still needs calculation if needed)
         $gprofitL60 = 0;
