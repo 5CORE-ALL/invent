@@ -1197,7 +1197,7 @@ class TaskController extends Controller
             $action = $request->input('action');
             $taskIdRule = $isAutomatedTask ? 'integer' : (($action === 'delete') ? 'integer' : 'exists:tasks,id');
             $rules = [
-                'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq',
+                'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq,group,task',
                 'task_ids' => 'required|array',
                 'task_ids.*' => $taskIdRule,
                 'is_automated' => 'nullable|boolean',
@@ -1212,6 +1212,8 @@ class TaskController extends Controller
                 'duplicate_group' => 'nullable|string|max:255',
                 'duplicate_title_suffix' => 'nullable|string|max:500',
                 'duplicate_assignor_id' => 'nullable|exists:users,id',
+                'group' => 'nullable|string|max:255',
+                'task_title' => 'nullable|string|max:500',
             ];
             $validated = $request->validate($rules);
 
@@ -1569,6 +1571,50 @@ class TaskController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => "$updated automated task(s) frequency updated to: " . $validated['freq']
+                ]);
+
+            case 'group':
+                // Bulk update group
+                $groupName = $validated['group'] ?? '';
+                
+                if ($isAutomatedTask) {
+                    $updated = \DB::table('automate_tasks')
+                        ->whereIn('id', $taskIds)
+                        ->update(['group' => $groupName, 'updated_at' => now()]);
+                } else {
+                    $updated = Task::whereIn('id', $taskIds)
+                        ->update(['group' => $groupName, 'updated_at' => now()]);
+                }
+                
+                $groupDisplay = empty($groupName) ? '(empty)' : $groupName;
+                return response()->json([
+                    'success' => true,
+                    'message' => "$updated task(s) group updated to: $groupDisplay"
+                ]);
+
+            case 'task':
+                // Bulk update task title
+                $taskTitle = $validated['task_title'] ?? '';
+                
+                if (empty($taskTitle)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Task title cannot be empty'
+                    ], 400);
+                }
+                
+                if ($isAutomatedTask) {
+                    $updated = \DB::table('automate_tasks')
+                        ->whereIn('id', $taskIds)
+                        ->update(['title' => $taskTitle, 'updated_at' => now()]);
+                } else {
+                    $updated = Task::whereIn('id', $taskIds)
+                        ->update(['title' => $taskTitle, 'updated_at' => now()]);
+                }
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => "$updated task(s) title updated!"
                 ]);
 
             default:

@@ -1978,6 +1978,14 @@
                         <i class="mdi mdi-calendar text-info me-2"></i>
                         <strong>Change TID Date</strong>
                     </a>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-group-btn">
+                        <i class="mdi mdi-folder-outline text-primary me-2"></i>
+                        <strong>Change Group</strong>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-task-title-btn">
+                        <i class="mdi mdi-text text-secondary me-2"></i>
+                        <strong>Change Task Title</strong>
+                    </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assignee-btn">
                         <i class="mdi mdi-account-arrow-right text-success me-2"></i>
                         <strong>Change Assignee</strong>
@@ -4801,6 +4809,36 @@
                 showBulkUpdateForm('Update ETC', html);
             });
 
+            // Bulk Update Group
+            $('#bulk-group-btn').on('click', function(e) {
+                e.preventDefault();
+                bulkActionType = 'group';
+                var html = `
+                    <p class="mb-3"><strong>Change group for ${selectedTasks.length} task(s):</strong></p>
+                    <div class="mb-3">
+                        <label for="bulk-group-input" class="form-label">Group:</label>
+                        <input type="text" class="form-control" id="bulk-group-input" placeholder="Enter group name (leave empty to clear)" maxlength="255">
+                        <small class="text-muted">Leave empty to clear the group</small>
+                    </div>
+                `;
+                showBulkUpdateForm('Change Group', html);
+            });
+
+            // Bulk Update Task Title
+            $('#bulk-task-title-btn').on('click', function(e) {
+                e.preventDefault();
+                bulkActionType = 'task';
+                var html = `
+                    <p class="mb-3"><strong>Change task title for ${selectedTasks.length} task(s):</strong></p>
+                    <div class="mb-3">
+                        <label for="bulk-task-title-input" class="form-label">Task Title:</label>
+                        <input type="text" class="form-control" id="bulk-task-title-input" placeholder="Enter new task title" maxlength="500" required>
+                        <small class="text-muted">This will replace the title for all selected tasks</small>
+                    </div>
+                `;
+                showBulkUpdateForm('Change Task Title', html);
+            });
+
             // Show Bulk Update Form
             function showBulkUpdateForm(title, content) {
                 $('#bulkActionsModal').modal('hide');
@@ -4835,6 +4873,16 @@
                         data.etc_minutes = $('#bulk-etc-input').val();
                         if (!data.etc_minutes || data.etc_minutes <= 0) {
                             alert('Please enter a valid ETC value');
+                            return;
+                        }
+                        break;
+                    case 'group':
+                        data.group = $('#bulk-group-input').val();
+                        break;
+                    case 'task':
+                        data.task_title = $('#bulk-task-title-input').val();
+                        if (!data.task_title || data.task_title.trim() === '') {
+                            alert('Please enter a task title');
                             return;
                         }
                         break;
