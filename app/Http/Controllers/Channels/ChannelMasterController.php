@@ -8406,24 +8406,91 @@ class ChannelMasterController extends Controller
                 return (float) $r->item_price * (int) ($r->quantity ?: 1);
             });
 
+            // Get product masters for COGS lookup
+            $productMasters = \App\Models\ProductMaster::all()->keyBy(function ($item) {
+                return strtoupper($item->sku);
+            });
+
             $rows = DepopSalesData::whereBetween('sale_date', [$l30Start, $l30End])->get();
+            
             foreach ($rows as $row) {
                 $quantity = (int) ($row->quantity ?: 1);
                 $unitPrice = (float) $row->item_price;
-                $l30Sales += $unitPrice * $quantity;
+                $revenue = $unitPrice * $quantity;
+                $l30Sales += $revenue;
                 $l30Orders++;
                 $totalQuantity += $quantity;
+
+                // Try to lookup COGS from Product Master using sku_code first
+                $sku = strtoupper($row->sku_code ?? '');
+                $lp = 0;
+                $ship = 0;
+                
+                $pm = $productMasters->get($sku);
+                if ($sku && $pm) {
+                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            if (strtolower($k) === 'lp') {
+                                $lp = floatval($v);
+                                break;
+                            }
+                        }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
+                    }
+                    if (is_array($values) && isset($values['ship'])) {
+                        $ship = floatval($values['ship']);
+                    } elseif (isset($pm->ship)) {
+                        $ship = floatval($pm->ship);
+                    }
+                }
+                
+                // If no SKU/COGS found, estimate COGS from actual Depop costs
+                // Depop margin of 87% means: Profit = Revenue - Depop Fee - Shipping - COGS
+                // So: COGS = Revenue - Profit - Depop Fee - Shipping
+                // Where Profit = Revenue * 87% (but this includes all costs)
+                // Better approach: Use actual fees from Depop data
+                $depopFee = (float) ($row->depop_fee ?? 0);
+                $uspsCost = (float) ($row->usps_cost ?? 0);
+                
+                if ($lp == 0) {
+                    // Estimate COGS: Assume 13% of revenue goes to COGS when not found
+                    // This is derived from 87% margin, meaning 13% for COGS approximately
+                    $lp = $revenue * 0.13 / $quantity;
+                }
+                
+                if ($ship == 0 && $uspsCost > 0) {
+                    $ship = $uspsCost;
+                }
+                
+                // Calculate COGS and profit
+                // Revenue = Item Price
+                // Costs = Depop Fee + USPS Cost + COGS(LP)
+                // Profit = Revenue - All Costs
+                $cogs = $lp * $quantity;
+                $totalShipping = $ship > 0 ? $ship : $uspsCost;
+                $totalFees = $depopFee;
+                
+                // Profit = Revenue - COGS - Shipping - Fees
+                $profit = $revenue - $cogs - $totalShipping - $totalFees;
+                
+                $totalCogs += $cogs;
+                $totalProfit += $profit;
             }
-            // No SKU / Product Master — PFT = sales × margin only
-            $totalProfit = $l30Sales * $margin;
-            $totalCogs = 0;
+            
             $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-            $gRoi = 0;
+            $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         }
 
-        $growth = 0;
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
         $mapMissCounts = $this->getMapAndMissCounts('depop');
         $channelData = ChannelMaster::where('channel', 'Depop')->first();
+
+        // N PFT and N ROI are same as G values since there's no ad spend
+        $nPft = $gProfitPct;
+        $nRoi = $gRoi;
 
         $result[] = [
             'Channel '   => 'Depop',
@@ -8438,8 +8505,8 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => 0,
             'Total PFT'  => round($totalProfit, 2),
-            'N PFT'      => round($gProfitPct, 2) . '%',
-            'N ROI'      => round($gRoi, 2),
+            'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'Ads%'       => 0,
             'TikTok Ad Spend' => 0,
             'KW Spent'   => 0,

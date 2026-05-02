@@ -21,6 +21,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonChannelSummary;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Carbon\Carbon;
 
 class ReverbController extends Controller
 {
@@ -721,7 +722,7 @@ class ReverbController extends Controller
     }
 
     /**
-     * Full-table totals from reverb_daily_data (matches ad-hoc SQL: all rows, not limited to SKUs on the pricing grid).
+     * Full-table totals from reverb_daily_data (L30 days - last 30 days including today).
      */
     public function reverbDailyDataTotalsJson(): JsonResponse
     {
@@ -736,7 +737,28 @@ class ReverbController extends Controller
             ]);
         }
 
+        // Get the latest order_date to calculate L30 range
+        $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
+        
+        if (!$latestRaw) {
+            return response()->json([
+                'row_count' => 0,
+                'sum_quantity' => 0,
+                'sum_quantity_x_product_subtotal' => 0,
+                'sum_quantity_x_amount' => 0,
+                'sum_product_subtotal' => 0,
+                'sum_amount' => 0,
+            ]);
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $l30EndDate = $latestPacific->toDateString();
+        $l30StartDate = $latestPacific->copy()->subDays(29)->toDateString();
+
         $agg = DB::table('reverb_daily_data')
+            ->whereNotNull('order_date')
+            ->where('order_date', '>=', $l30StartDate)
+            ->where('order_date', '<=', $l30EndDate)
             ->selectRaw('COUNT(*) as row_count')
             ->selectRaw('COALESCE(SUM(quantity), 0) as sum_quantity')
             ->selectRaw('COALESCE(SUM(quantity * COALESCE(product_subtotal, 0)), 0) as sum_qty_x_subtotal')
@@ -802,19 +824,32 @@ class ReverbController extends Controller
             ->keyBy("sku");
 
         // reverb_daily_data: per-SKU order aggregates (from Reverb API daily fetch, matched by sku)
+        // Filter to L30 days (last 30 days including today)
         $dailyBySku = collect();
         if ($skus !== [] && Schema::hasTable('reverb_daily_data')) {
-            $dailyBySku = DB::table('reverb_daily_data')
-                ->whereIn('sku', $skus)
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->groupBy('sku')
-                ->select('sku')
-                ->selectRaw('SUM(quantity) as rd_qty')
-                ->selectRaw('SUM(quantity * COALESCE(product_subtotal, 0)) as rd_qty_x_subtotal')
-                ->selectRaw('SUM(quantity * COALESCE(amount, 0)) as rd_qty_x_amount')
-                ->get()
-                ->keyBy('sku');
+            // Get the latest order_date to calculate L30 range
+            $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
+            
+            if ($latestRaw) {
+                $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+                $l30EndDate = $latestPacific->toDateString();
+                $l30StartDate = $latestPacific->copy()->subDays(29)->toDateString();
+                
+                $dailyBySku = DB::table('reverb_daily_data')
+                    ->whereIn('sku', $skus)
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->whereNotNull('order_date')
+                    ->where('order_date', '>=', $l30StartDate)
+                    ->where('order_date', '<=', $l30EndDate)
+                    ->groupBy('sku')
+                    ->select('sku')
+                    ->selectRaw('SUM(quantity) as rd_qty')
+                    ->selectRaw('SUM(quantity * COALESCE(product_subtotal, 0)) as rd_qty_x_subtotal')
+                    ->selectRaw('SUM(quantity * COALESCE(amount, 0)) as rd_qty_x_amount')
+                    ->get()
+                    ->keyBy('sku');
+            }
         }
 
         // Process data
