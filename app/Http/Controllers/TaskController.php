@@ -2460,7 +2460,9 @@ class TaskController extends Controller
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
 
-        $query = DeletedTask::query();
+        // Show only tasks deleted in the last 30 days
+        $query = DeletedTask::query()
+            ->where('deleted_at', '>=', now()->subDays(30));
         
         if (!$isAdmin) {
             $query->where(function($q) use ($user) {
@@ -2471,11 +2473,29 @@ class TaskController extends Controller
 
         $deletedTasks = $query->orderBy('deleted_at', 'desc')->get();
 
+        // Performance optimization: Fetch all users in one query instead of N+1 queries
+        $allEmails = [];
+        foreach ($deletedTasks as $task) {
+            if ($task->assignor) {
+                $allEmails[] = $task->assignor;
+            }
+            if ($task->assign_to) {
+                $allEmails[] = $task->assign_to;
+            }
+        }
+        $allEmails = array_unique(array_filter($allEmails));
+        
+        // Single query to fetch all users
+        $users = User::whereIn('email', $allEmails)
+            ->select('email', 'avatar')
+            ->get()
+            ->keyBy('email');
+
         // Add avatar URLs for assignor and assignee; compute TAT (days from deleted_at to start_date/tidDate)
         $defaultAvatar = asset('images/users/avatar-2.jpg');
-        $deletedTasks->each(function($task) use ($defaultAvatar) {
+        $deletedTasks->each(function($task) use ($defaultAvatar, $users) {
             if ($task->assignor) {
-                $assignorUser = User::where('email', $task->assignor)->first();
+                $assignorUser = $users->get($task->assignor);
                 $task->assignor_avatar = $assignorUser && $assignorUser->avatar
                     ? asset('storage/' . $assignorUser->avatar)
                     : $defaultAvatar;
@@ -2483,7 +2503,7 @@ class TaskController extends Controller
                 $task->assignor_avatar = null;
             }
             if ($task->assign_to) {
-                $assigneeUser = User::where('email', $task->assign_to)->first();
+                $assigneeUser = $users->get($task->assign_to);
                 $task->assignee_avatar = $assigneeUser && $assigneeUser->avatar
                     ? asset('storage/' . $assigneeUser->avatar)
                     : $defaultAvatar;
