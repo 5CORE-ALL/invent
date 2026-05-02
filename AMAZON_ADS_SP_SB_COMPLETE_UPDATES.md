@@ -20,6 +20,7 @@ Applied detailed tracking and reporting to both Sponsored Products (SP) and Spon
 1. **Detailed Skip Tracking** - Captures index, campaign ID, campaign name, value, and specific reason for each skip
 2. **Enhanced Error Messages** - Clear, actionable reasons for why campaigns were skipped
 3. **Summary Reports** - Shows total submitted, processed, and skipped counts
+
 4. **Skip Report Display** - Lists first 10 skipped campaigns with full details
 
 ### Skip Reasons Tracked:

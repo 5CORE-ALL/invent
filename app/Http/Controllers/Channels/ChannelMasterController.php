@@ -3064,9 +3064,12 @@ class ChannelMasterController extends Controller
             $acos = $adSales > 0 ? round(($totalAdSpend / $adSales) * 100, 2) : 0;
 
             // Recalculate Ads% with fresh Total Ad Spend (may have been overridden by fetchAdMetricsFromTables)
-            $l30SalesVal = (float) str_replace(['$', ',', '%'], '', $row['L30 Sales'] ?? 0);
-            $adsPercentage = $l30SalesVal > 0 ? ($totalAdSpend / $l30SalesVal) * 100 : 0;
-            $row['Ads%'] = round($adsPercentage, 2) . '%';
+            // Skip for Reverb - it uses Ads% for Bump% instead of traditional ad spend
+            if ($key !== 'reverb') {
+                $l30SalesVal = (float) str_replace(['$', ',', '%'], '', $row['L30 Sales'] ?? 0);
+                $adsPercentage = $l30SalesVal > 0 ? ($totalAdSpend / $l30SalesVal) * 100 : 0;
+                $row['Ads%'] = round($adsPercentage, 2) . '%';
+            }
 
             // Recalculate N PFT based on recalculated Ads% (NPFT% = GPFT% - Ads%)
             $gpftPercent = (float) str_replace(['$', ',', '%'], '', $row['Gprofit%'] ?? 0);
@@ -5775,13 +5778,14 @@ class ChannelMasterController extends Controller
         $rows = (clone $baseQuery)
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->select('sku', 'quantity', 'product_subtotal', 'amount')
+            ->select('sku', 'quantity', 'product_subtotal', 'amount', 'bump_fee')
             ->get();
 
         $totalQty = 0;
         $totalRev = 0.0;
         $totalProfit = 0.0;
         $totalCogs = 0.0;
+        $totalBumpFees = 0.0;
 
         foreach ($rows as $row) {
             $sku = strtoupper(trim((string) $row->sku));
@@ -5815,11 +5819,15 @@ class ChannelMasterController extends Controller
             
             // COGS (matching ReverbSalesController line 143)
             $lineCogs = $lp * $qty;
+            
+            // Bump Fees (matching frontend badge calculation)
+            $bumpFee = (float) ($row->bump_fee ?? 0);
 
             $totalQty += $qty;
             $totalRev += $lineTotal;
             $totalCogs += $lineCogs;
             $totalProfit += $tPft;
+            $totalBumpFees += $bumpFee;
         }
 
         return [
@@ -5827,6 +5835,7 @@ class ChannelMasterController extends Controller
             'sales' => $totalRev,
             'profit' => $totalProfit,
             'cogs' => $totalCogs,
+            'bump_fees' => $totalBumpFees,
         ];
     }
 
@@ -5969,6 +5978,15 @@ class ChannelMasterController extends Controller
             }
 
             $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+            
+            // Initialize $l30 array for fallback path (for consistency with daily data path)
+            $l30 = [
+                'sales' => $l30Sales,
+                'qty' => $l30Orders,
+                'profit' => $totalProfit,
+                'cogs' => $totalCogs,
+                'bump_fees' => 0, // Fallback path doesn't have bump_fee data
+            ];
         }
 
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
@@ -5978,6 +5996,10 @@ class ChannelMasterController extends Controller
         $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         // No Reverb ads on master: N ROI = G ROI (same as Macys / Tiendamia; N ROI = GROI - TCOS when spend > 0).
         $nRoi = $gRoi;
+        
+        // Calculate Bump % (matching frontend Bump badge: Bump Fees / Sales × 100)
+        $totalBumpFees = $l30['bump_fees'] ?? 0;
+        $bumpPercentage = $l30Sales > 0 ? ($totalBumpFees / $l30Sales) * 100 : 0;
 
         $channelData = ChannelMaster::where('channel', 'Reverb')->first();
         $mapMissCounts = $this->getReverbLiveMapMissNMapFromPricingData($request);
@@ -5993,8 +6015,8 @@ class ChannelMasterController extends Controller
             'Qty'        => (int) $totalQuantity,
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60'   => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'      => round($gRoiL60, 2),
+            'G Roi'      => round($gRoi, 0),
+            'G RoiL60'      => round($gRoiL60, 0),
             'Total PFT'  => round($totalProfit, 2),
             'N ROI'      => round($nRoi, 2),
             'N PFT'      => round($nPft, 2) . '%',
@@ -6005,6 +6027,7 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => 0,
+            'Ads%'       => round($bumpPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
