@@ -1172,6 +1172,35 @@
         </div>
     </div>
 
+    <!-- On Sea Transit Card -->
+    <div id="on-sea-transit-card" class="mt-2 mb-3 p-3 bg-white rounded shadow-sm border">
+        <div class="d-flex align-items-center mb-2">
+            <i class="fas fa-ship text-primary me-2" style="font-size: 24px;"></i>
+            <h6 class="mb-0">On Sea Transit</h6>
+            <!-- Debug info -->
+            <small class="ms-auto text-muted">
+                Debug: P={{ $onSeaPlanningCount ?? 'NULL' }} | 
+                R={{ $onSeaRemainingCount ?? 'NULL' }} | 
+                V={{ $onSeaTotalValue ?? 'NULL' }} | 
+                Pend={{ $onSeaPendingAmount ?? 'NULL' }}
+            </small>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('on.sea.transit') }}'" role="button">
+                <i class="fas fa-clipboard-list me-1"></i>Container Planning: <span id="on-sea-planning-count">{{ $onSeaPlanningCount ?? 0 }}</span>
+            </span>
+            <span class="badge bg-info text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('on.sea.transit') }}'" role="button">
+                <i class="fas fa-calculator me-1"></i>Remaining: <span id="on-sea-remaining-count">{{ $onSeaRemainingCount ?? 0 }}</span>
+            </span>
+            <span class="badge bg-success text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('on.sea.transit') }}'" role="button">
+                <i class="fas fa-dollar-sign me-1"></i>Total Value: $<span id="on-sea-total-value">{{ number_format($onSeaTotalValue ?? 0, 2) }}</span>
+            </span>
+            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('on.sea.transit') }}'" role="button">
+                <i class="fas fa-exclamation-circle me-1"></i>Pending: $<span id="on-sea-pending-amount">{{ number_format($onSeaPendingAmount ?? 0, 2) }}</span>
+            </span>
+        </div>
+    </div>
+
     <div class="row g-2 dashboard-charts-row align-items-stretch mb-1">
         <div class="col-12 col-md-4 col-lg-4 d-flex">
             <div class="card dashboard-chart-card dashboard-chart-card--pie w-100 h-100 border-0">

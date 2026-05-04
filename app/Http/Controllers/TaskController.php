@@ -457,7 +457,27 @@ class TaskController extends Controller
     {
         $taskDashboardStats = $this->getTaskDashboardAggregates();
 
-        return view('index', compact('taskDashboardStats'));
+        // Fetch On Sea Transit statistics directly (bypassing cache for now to debug)
+        $onSeaPlanningCount = \App\Models\OnSeaTransit::where('status', 'Planning')->count();
+        $onSeaTotalCount = \App\Models\OnSeaTransit::count();
+        $onSeaArrivedCount = \App\Models\OnSeaTransit::where('status', 'Arrived')->count();
+        $onSeaRemainingCount = $onSeaTotalCount - ($onSeaArrivedCount + $onSeaPlanningCount);
+        
+        // Total value - sum ALL invoice values
+        $onSeaTotalValue = \App\Models\OnSeaTransit::sum('invoice_value') ?? 0;
+        
+        // Total pending amount - sum ALL balances
+        $onSeaPendingAmount = \App\Models\OnSeaTransit::sum('balance') ?? 0;
+        
+        // Debug log
+        \Log::info('On Sea Transit Dashboard Data', [
+            'planning' => $onSeaPlanningCount,
+            'remaining' => $onSeaRemainingCount,
+            'total_value' => $onSeaTotalValue,
+            'pending' => $onSeaPendingAmount
+        ]);
+
+        return view('index', compact('taskDashboardStats', 'onSeaPlanningCount', 'onSeaRemainingCount', 'onSeaTotalValue', 'onSeaPendingAmount'));
     }
 
     /**

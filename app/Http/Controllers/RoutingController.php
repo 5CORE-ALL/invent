@@ -56,6 +56,14 @@ class RoutingController extends Controller
         $data = ['mode' => $mode, 'demo' => $demo];
         if ($first === 'index') {
             $data['taskDashboardStats'] = app(TaskController::class)->sharedTaskDashboardAggregates();
+            
+            // Add On Sea Transit statistics
+            $data['onSeaPlanningCount'] = \App\Models\OnSeaTransit::where('status', 'Planning')->count();
+            $onSeaTotalCount = \App\Models\OnSeaTransit::count();
+            $onSeaArrivedCount = \App\Models\OnSeaTransit::where('status', 'Arrived')->count();
+            $data['onSeaRemainingCount'] = $onSeaTotalCount - ($onSeaArrivedCount + $data['onSeaPlanningCount']);
+            $data['onSeaTotalValue'] = \App\Models\OnSeaTransit::sum('invoice_value') ?? 0;
+            $data['onSeaPendingAmount'] = \App\Models\OnSeaTransit::sum('balance') ?? 0;
         }
 
         return view($first, $data);

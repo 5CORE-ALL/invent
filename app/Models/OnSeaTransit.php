@@ -12,6 +12,7 @@ class OnSeaTransit extends Model
     protected $fillable = [
         'container_sl_no', 'bl_check', 'bl_link', 'isf', 'etd', 'port_arrival',
         'eta_date_ohio', 'status', 'isf_usa_agent', 'duty_calcu',
-        'invoice_send_to_dominic', 'arrival_notice_email', 'remarks'
+        'invoice_send_to_dominic', 'arrival_notice_email', 'remarks', 'invoice_value',
+        'paid', 'balance'
     ];
 }

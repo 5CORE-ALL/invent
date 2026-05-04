@@ -141,6 +141,9 @@ class CalculateChannelMasterData extends Command
                 // Calculate and store LQS data
                 $this->calculateAndStoreLqsData($calculatedAt);
                 
+                // Calculate and store On Sea Transit data
+                $this->calculateAndStoreOnSeaTransitData($calculatedAt);
+                
                 return 0;
                 
             } catch (\Exception $e) {
@@ -373,6 +376,43 @@ class CalculateChannelMasterData extends Command
         } catch (\Exception $e) {
             $this->error('Error calculating LQS data: ' . $e->getMessage());
             \Log::error('LQS calculation error: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Calculate and store On Sea Transit statistics
+     */
+    private function calculateAndStoreOnSeaTransitData($calculatedAt)
+    {
+        $this->info('Calculating On Sea Transit data...');
+        
+        try {
+            // Calculate On Sea Transit statistics
+            $onSeaPlanningCount = \App\Models\OnSeaTransit::where('status', 'Planning')->count();
+            $onSeaTotalCount = \App\Models\OnSeaTransit::count();
+            $onSeaArrivedCount = \App\Models\OnSeaTransit::where('status', 'Arrived')->count();
+            $onSeaRemainingCount = $onSeaTotalCount - ($onSeaArrivedCount + $onSeaPlanningCount);
+            
+            // Total value - sum ALL invoice values
+            $onSeaTotalValue = \App\Models\OnSeaTransit::sum('invoice_value') ?? 0;
+            
+            // Total pending amount - sum ALL balances
+            $onSeaPendingAmount = \App\Models\OnSeaTransit::sum('balance') ?? 0;
+            
+            // Store in cache for 24 hours
+            \Cache::put('on_sea_transit_stats', [
+                'planning_count' => $onSeaPlanningCount,
+                'remaining_count' => $onSeaRemainingCount,
+                'total_value' => round($onSeaTotalValue, 2),
+                'pending_amount' => round($onSeaPendingAmount, 2),
+                'calculated_at' => $calculatedAt
+            ], 86400);
+            
+            $this->info("✓ On Sea Transit data cached: Planning={$onSeaPlanningCount}, Remaining={$onSeaRemainingCount}, Total Value=\${$onSeaTotalValue}, Pending=\${$onSeaPendingAmount}");
+            
+        } catch (\Exception $e) {
+            $this->error('Error calculating On Sea Transit data: ' . $e->getMessage());
+            \Log::error('On Sea Transit calculation error: ' . $e->getMessage());
         }
     }
 }

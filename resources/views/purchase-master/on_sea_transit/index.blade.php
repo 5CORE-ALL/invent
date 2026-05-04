@@ -100,7 +100,21 @@
             <div class="card-body">
 
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="mb-0">On Sea Transit</h4>
+                    <h4 class="mb-0">
+                        On Sea Transit 
+                        <span class="badge bg-warning text-dark ms-2" style="font-size: 0.9rem;">
+                            <i class="fas fa-clipboard-list me-1"></i>Container Planning: {{ $planningCount }}
+                        </span>
+                        <span class="badge bg-info text-white ms-2" style="font-size: 0.9rem;">
+                            <i class="fas fa-calculator me-1"></i>Remaining: {{ $remainingCount }}
+                        </span>
+                        <span class="badge bg-success text-white ms-2" style="font-size: 0.9rem;">
+                            <i class="fas fa-dollar-sign me-1"></i>Total Value: $<span id="totalValueBadge">{{ number_format($totalInvoiceValue, 2) }}</span>
+                        </span>
+                        <span class="badge bg-danger text-white ms-2" style="font-size: 0.9rem;">
+                            <i class="fas fa-exclamation-circle me-1"></i>Pending: $<span id="totalPendingBadge">{{ number_format($totalPendingAmount ?? 0, 2) }}</span>
+                        </span>
+                    </h4>
                 </div>
 
                 <div id="on-sea-transit-table"></div>
@@ -135,6 +149,52 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const tableData = @json($onSeaTransitData);
     const chinaLoadMap = @json($chinaLoadMap);
+    
+    // Function to update badge counts
+    function updateBadgeCounts() {
+        const totalCount = tableData.length;
+        const planningCount = tableData.filter(item => item.status === 'Planning').length;
+        const arrivedCount = tableData.filter(item => item.status === 'Arrived').length;
+        const remainingCount = totalCount - (arrivedCount + planningCount);
+        
+        // Calculate total invoice value for containers excluding Arrived and Planning
+        const totalInvoiceValue = tableData
+            .filter(item => item.status !== 'Arrived' && item.status !== 'Planning')
+            .reduce((sum, item) => {
+                const value = parseFloat(item.invoice_value) || 0;
+                console.log(`Container ${item.container_sl_no}: status=${item.status}, invoice_value=${item.invoice_value}, parsed=${value}`);
+                return sum + value;
+            }, 0);
+        
+        // Calculate total pending amount (balance) for containers excluding Arrived and Planning
+        const totalPendingAmount = tableData
+            .filter(item => item.status !== 'Arrived' && item.status !== 'Planning')
+            .reduce((sum, item) => sum + (parseFloat(item.balance) || 0), 0);
+        
+        console.log('Total Invoice Value:', totalInvoiceValue);
+        console.log('Total Pending Amount:', totalPendingAmount);
+        
+        const planningBadge = document.querySelector('.badge.bg-warning');
+        if (planningBadge) {
+            planningBadge.innerHTML = `<i class="fas fa-clipboard-list me-1"></i>Container Planning: ${planningCount}`;
+        }
+        
+        const remainingBadge = document.querySelector('.badge.bg-info');
+        if (remainingBadge) {
+            remainingBadge.innerHTML = `<i class="fas fa-calculator me-1"></i>Remaining: ${remainingCount}`;
+        }
+        
+        const totalValueBadge = document.getElementById('totalValueBadge');
+        if (totalValueBadge) {
+            totalValueBadge.textContent = totalInvoiceValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+        
+        const totalPendingBadge = document.getElementById('totalPendingBadge');
+        if (totalPendingBadge) {
+            totalPendingBadge.textContent = totalPendingAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+    }
+    
     const table = new Tabulator("#on-sea-transit-table", {
         data: tableData,
         layout: "fitDataFill",
@@ -161,7 +221,48 @@ document.addEventListener('DOMContentLoaded', function () {
                         ${slNo} <i class="fas fa-info-circle ms-1 text-primary open-modal-btn" data-sl="${slNo}"></i>
                     `;
                 },
-                headerSort: false
+                headerSort: false,
+                width: 120
+            },
+            {
+                title: "MBL",
+                field: "mbl",
+                headerSort: false,
+                width: 150,
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    return value ? `<span class="text-dark fw-bold">${value}</span>` : '<span class="text-muted">-</span>';
+                }
+            },
+            {
+                title: "OBL",
+                field: "obl",
+                headerSort: false,
+                width: 150,
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    return value ? `<span class="text-dark fw-bold">${value}</span>` : '<span class="text-muted">-</span>';
+                }
+            },
+            {
+                title: "Container No",
+                field: "container_no",
+                headerSort: false,
+                width: 150,
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    return value ? `<span class="text-dark fw-bold">${value}</span>` : '<span class="text-muted">-</span>';
+                }
+            },
+            {
+                title: "Item",
+                field: "item",
+                headerSort: false,
+                width: 200,
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    return value ? `<span class="text-dark fw-bold">${value}</span>` : '<span class="text-muted">-</span>';
+                }
             },
             {
                 title: "BL check",
@@ -314,6 +415,50 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             },
             { 
+                title: "Invoice<br>Value ($)", 
+                field: "invoice_value", 
+                headerSort: false,
+                width: 120,
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    return `<input type="number" 
+                        class="form-control form-control-sm auto-save" 
+                        data-column="invoice_value" 
+                        value="${value ?? ''}" 
+                        placeholder="0.00"
+                        step="0.01"
+                        style="width: 100px;">`;
+                }
+            },
+            { 
+                title: "Paid ($)", 
+                field: "paid", 
+                headerSort: false,
+                width: 120,
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    return `<input type="number" 
+                        class="form-control form-control-sm auto-save" 
+                        data-column="paid" 
+                        value="${value ?? ''}" 
+                        placeholder="0.00"
+                        step="0.01"
+                        style="width: 100px;">`;
+                }
+            },
+            { 
+                title: "Pending<br>Payments ($)", 
+                field: "balance", 
+                headerSort: false,
+                width: 130,
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    const displayValue = value ?? 0;
+                    const colorClass = displayValue > 0 ? 'text-danger' : 'text-success';
+                    return `<span class="fw-bold ${colorClass}">$${parseFloat(displayValue).toFixed(2)}</span>`;
+                }
+            },
+            { 
                 title: "Status",
                 field: "status",
                 headerSort: false,
@@ -324,6 +469,9 @@ document.addEventListener('DOMContentLoaded', function () {
                             data-column="status"
                             style="min-width: 90px; background-color: #00ff00; color: black;width: 90px;">
                             <option value="">Select</option>
+                            <option value="Arrived" ${value === 'Arrived' ? 'selected' : ''}>Arrived</option>
+                            <option value="Planning" ${value === 'Planning' ? 'selected' : ''}>Planning</option>
+                            <option value="Landed" ${value === 'Landed' ? 'selected' : ''}>Landed</option>
                             <option value="On Sea Done" ${value === 'On Sea Done' ? 'selected' : ''}>On Sea Done</option>
                         </select>
                     `;
@@ -331,6 +479,10 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         ],
     });
+
+    // Initialize badge counts on page load
+    console.log('Table Data:', tableData);
+    updateBadgeCounts();
 
     // table.setFilter(function(data) {
     //     return data.status !== 'On Sea Done';
@@ -355,8 +507,33 @@ document.addEventListener('DOMContentLoaded', function () {
                     column,
                     value
                 })
-            }).then(response => {
-                if (response.ok) {
+            }).then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the row data in tableData array
+                    const dataIndex = tableData.findIndex(item => item.container_sl_no === rowData.container_sl_no);
+                    if (dataIndex !== -1) {
+                        tableData[dataIndex][column] = value;
+                        
+                        // Update balance in tableData if invoice_value or paid changed
+                        if ((column === 'invoice_value' || column === 'paid') && data.balance !== undefined) {
+                            tableData[dataIndex].balance = data.balance;
+                            
+                            // Update the balance cell in the table
+                            const balanceCell = row.getCell('balance');
+                            if (balanceCell) {
+                                const displayValue = data.balance ?? 0;
+                                const colorClass = displayValue > 0 ? 'text-danger' : 'text-success';
+                                balanceCell.getElement().innerHTML = `<span class="fw-bold ${colorClass}">$${parseFloat(displayValue).toFixed(2)}</span>`;
+                            }
+                        }
+                    }
+                    
+                    // Update badge counts if status, invoice_value, or paid column was changed
+                    if (column === 'status' || column === 'invoice_value' || column === 'paid') {
+                        updateBadgeCounts();
+                    }
+                    
                     if (column === 'bl_link') {
                         // Manually convert input to link icon after save
                         const linkHtml = `

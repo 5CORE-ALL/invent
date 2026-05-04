@@ -5081,3 +5081,23 @@ Route::get('/products/inventory', [ShopifyController::class, 'shopifyView'])
 // STEP 8: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
 // =============================================================================
 Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);
+
+// Temporary test route to debug On Sea Transit
+Route::get('/test-on-sea', function() {
+    $planning = \App\Models\OnSeaTransit::where('status', 'Planning')->count();
+    $total = \App\Models\OnSeaTransit::count();
+    $arrived = \App\Models\OnSeaTransit::where('status', 'Arrived')->count();
+    $remaining = $total - ($arrived + $planning);
+    $totalValue = \App\Models\OnSeaTransit::sum('invoice_value') ?? 0;
+    $pending = \App\Models\OnSeaTransit::sum('balance') ?? 0;
+    
+    return response()->json([
+        'total_records' => $total,
+        'planning' => $planning,
+        'arrived' => $arrived,
+        'remaining' => $remaining,
+        'total_value' => $totalValue,
+        'pending' => $pending,
+        'sample_record' => \App\Models\OnSeaTransit::first()
+    ]);
+});
