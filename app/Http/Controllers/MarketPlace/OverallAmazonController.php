@@ -1167,6 +1167,17 @@ class OverallAmazonController extends Controller
             $row['lmp_link'] = $lowestLmp->product_link ?? null;
             $row['lmp_asin'] = $lowestLmp->asin ?? null;
             $row['lmp_title'] = $lowestLmp->product_title ?? null;
+            
+            // Competitor sales data from JungleScout
+            $row['lmp_monthly_revenue'] = ($lowestLmp && isset($lowestLmp->monthly_revenue))
+                ? (is_numeric($lowestLmp->monthly_revenue) ? floatval($lowestLmp->monthly_revenue) : null)
+                : null;
+            $row['lmp_monthly_units'] = ($lowestLmp && isset($lowestLmp->monthly_units_sold))
+                ? intval($lowestLmp->monthly_units_sold)
+                : null;
+            $row['lmp_buy_box_owner'] = $lowestLmp->buy_box_owner ?? null;
+            $row['lmp_seller_type'] = $lowestLmp->seller_type_js ?? null;
+            
             $row['lmp_entries'] = $lmpEntries
                 ->map(function ($entry) {
                     return [
@@ -1174,8 +1185,23 @@ class OverallAmazonController extends Controller
                         'asin' => $entry->asin ?? null,
                         'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
                         'link' => $entry->product_link ?? null,
+                        'product_link' => $entry->product_link ?? null,
                         'title' => $entry->product_title ?? null,
+                        'product_title' => $entry->product_title ?? null,
+                        'image' => $entry->image ?? null,
+                        'seller_name' => $entry->seller_name ?? null,
                         'marketplace' => $entry->marketplace ?? 'US',
+                        'rating' => $entry->rating ?? null,
+                        'reviews' => $entry->reviews ?? null,
+                        'monthly_revenue' => ($entry->monthly_revenue && is_numeric($entry->monthly_revenue)) 
+                            ? floatval($entry->monthly_revenue) 
+                            : null,
+                        'monthly_units_sold' => ($entry->monthly_units_sold) 
+                            ? intval($entry->monthly_units_sold) 
+                            : null,
+                        'buy_box_owner' => $entry->buy_box_owner ?? null,
+                        'seller_type' => $entry->seller_type_js ?? null,
+                        'sales_data_updated_at' => $entry->sales_data_updated_at ?? null,
                     ];
                 })
                 ->toArray();
@@ -4628,12 +4654,20 @@ class OverallAmazonController extends Controller
                         'marketplace' => $comp->marketplace,
                         'image' => $image,
                         'product_link' => $comp->product_link,
+                        'link' => $comp->product_link,
                         'product_title' => $comp->product_title,
+                        'title' => $comp->product_title,
+                        'seller_name' => $comp->seller_name,
                         'price' => floatval($comp->price),
                         'rating' => $comp->rating !== null ? floatval($comp->rating) : null,
                         'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
                         'extracted_old_price' => $comp->extracted_old_price !== null ? floatval($comp->extracted_old_price) : null,
                         'delivery' => $delivery,
+                        'monthly_revenue' => $comp->monthly_revenue !== null ? floatval($comp->monthly_revenue) : null,
+                        'monthly_units_sold' => $comp->monthly_units_sold !== null ? (int) $comp->monthly_units_sold : null,
+                        'buy_box_owner' => $comp->buy_box_owner,
+                        'seller_type' => $comp->seller_type_js,
+                        'sales_data_updated_at' => $comp->sales_data_updated_at ? $comp->sales_data_updated_at->format('Y-m-d H:i:s') : null,
                         'created_at' => $comp->created_at ? $comp->created_at->format('Y-m-d H:i:s') : null,
                         'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
                     ];

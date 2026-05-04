@@ -5896,15 +5896,24 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     return;
                 }
                 
-                let html = '<div class="table-responsive"><table class="table table-hover table-bordered">';
+                let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">';
                 html += `
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 50px;">#</th>
-                            <th>ASIN</th>
-                            <th>Price</th>
-                            <th style="width: 80px;">Link</th>
-                            <th style="width: 100px;">Actions</th>
+                            <th style="width: 30px;">#</th>
+                            <th style="width: 60px;">Image</th>
+                            <th style="width: 100px;">ASIN</th>
+                            <th style="width: 250px;">Product Title</th>
+                            <th>Seller</th>
+                            <th style="width: 80px;">Price</th>
+                            <th style="width: 90px;">Revenue<br><small>(30d)</small></th>
+                            <th style="width: 70px;">Units<br><small>(30d)</small></th>
+                            <th style="width: 100px;">Buy Box</th>
+                            <th style="width: 60px;">Type</th>
+                            <th style="width: 70px;">Rating</th>
+                            <th style="width: 70px;">Reviews</th>
+                            <th style="width: 60px;">Link</th>
+                            <th style="width: 80px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -5915,18 +5924,39 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     const rowClass = isLowest ? 'table-success' : '';
                     const priceFormatted = '$' + parseFloat(item.price).toFixed(2);
                     const priceBadge = isLowest ? 
-                        `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i> LOWEST</span>` : 
+                        `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>` : 
                         `<strong>${priceFormatted}</strong>`;
                     
                     const productLink = item.link || item.product_link || '#';
+                    const productTitle = item.title || item.product_title || 'N/A';
+                    const sellerName = item.seller_name || '—';
+                    const imageUrl = item.image || '';
+                    const imageHtml = imageUrl ? `<img src="${imageUrl}" style="width: 50px; height: 50px; object-fit: contain;" />` : '<span style="color: #999;">—</span>';
+                    
+                    const revenue = item.monthly_revenue ? `<span style="color: #28a745; font-weight: 600;">$${parseFloat(item.monthly_revenue).toFixed(0)}</span>` : '<span style="color: #999;">—</span>';
+                    const units = item.monthly_units_sold ? `<span style="color: #007bff; font-weight: 600;">${parseInt(item.monthly_units_sold)}</span>` : '<span style="color: #999;">—</span>';
+                    const buyBox = item.buy_box_owner ? `<span style="font-size: 11px;">${item.buy_box_owner}</span>` : '<span style="color: #999;">—</span>';
+                    const sellerType = item.seller_type ? `<span class="badge bg-${item.seller_type === 'FBA' ? 'warning' : 'secondary'}">${item.seller_type}</span>` : '<span style="color: #999;">—</span>';
+                    
+                    const rating = item.rating ? `<span style="color: #ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>` : '<span style="color: #999;">—</span>';
+                    const reviews = item.reviews ? `<span>${parseInt(item.reviews).toLocaleString()}</span>` : '<span style="color: #999;">—</span>';
                     
                     html += `
                         <tr class="${rowClass}">
                             <td class="text-center"><strong>${index + 1}</strong></td>
+                            <td class="text-center">${imageHtml}</td>
                             <td>
-                                <span class="text-primary" style="font-weight: 600;">${item.asin || 'N/A'}</span>
+                                <span class="text-primary" style="font-weight: 600; font-size: 11px;">${item.asin || 'N/A'}</span>
                             </td>
+                            <td style="font-size: 11px;" title="${escAttr(productTitle)}">${productTitle.substring(0, 60)}${productTitle.length > 60 ? '...' : ''}</td>
+                            <td style="font-size: 11px;">${sellerName}</td>
                             <td><strong>${priceBadge}</strong></td>
+                            <td class="text-center">${revenue}</td>
+                            <td class="text-center">${units}</td>
+                            <td style="font-size: 11px;">${buyBox}</td>
+                            <td class="text-center">${sellerType}</td>
+                            <td class="text-center">${rating}</td>
+                            <td class="text-center">${reviews}</td>
                             <td class="text-center">
                                 <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on Amazon">
                                     <i class="fa fa-external-link"></i>

@@ -3619,6 +3619,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/aliexpress-column-visibility', [AliexpressController::class, 'saveAliexpressColumnVisibility'])->name('aliexpress.save.column.visibility');
     Route::get('/aliexpress-column-visibility', [AliexpressController::class, 'getAliexpressColumnVisibility'])->name('aliexpress.get.column.visibility');
 
+    // LQS Data
+    Route::get('/lqs-data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsDataView'])->name('lqs.data.view');
+    Route::get('/lqs/data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsData'])->name('lqs.data');
+    Route::get('/lqs/badge-chart-data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'badgeChartData'])->name('lqs.badge.chart');
+
     // ebay variation
     Route::get('/zero-ebayvariation', [EbayVariationZeroController::class, 'ebayVariationZeroview'])->name('zero.ebayvariation');
     Route::get('/zero_ebayvariation/view-data', [EbayVariationZeroController::class, 'getViewEbayVariationZeroData']);
@@ -4754,6 +4759,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/filter-options', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getFilterOptions'])->name('filter-options');
         Route::get('/skus', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSkus'])->name('skus');
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
+    
+    // =========================================================================
+    // JUNGLESCOUT COMPETITOR SALES ANALYSIS
+    // =========================================================================
+    Route::prefix('junglescout/competitor-sales')->name('junglescout.competitor-sales.')->group(function () {
+        Route::get('/asin', [\App\Http\Controllers\JungleScout\CompetitorSalesController::class, 'getCompetitorSales'])->name('asin');
+        Route::post('/compare', [\App\Http\Controllers\JungleScout\CompetitorSalesController::class, 'compareCompetitors'])->name('compare');
+        Route::get('/top-sellers', [\App\Http\Controllers\JungleScout\CompetitorSalesController::class, 'getTopSellers'])->name('top-sellers');
+        Route::get('/buy-box-stats', [\App\Http\Controllers\JungleScout\CompetitorSalesController::class, 'getBuyBoxStats'])->name('buy-box-stats');
     });
 
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');

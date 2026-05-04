@@ -6265,9 +6265,19 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // L60 will be 0 until we have historical data with proper dates
-        $l60Orders = 0;
-        $l60Sales = 0;
+        // Fetch L60 Sales and Orders from temu_daily_data_l60 table
+        if (Schema::hasTable('temu_daily_data_l60')) {
+            $l60Metrics = DB::table('temu_daily_data_l60')
+                ->selectRaw('COUNT(DISTINCT order_id) as orders')
+                ->selectRaw('SUM(base_price_total * quantity_purchased) as sales')
+                ->first();
+            
+            $l60Orders = (int) ($l60Metrics->orders ?? 0);
+            $l60Sales = (float) ($l60Metrics->sales ?? 0);
+        } else {
+            $l60Orders = 0;
+            $l60Sales = 0;
+        }
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
@@ -6285,8 +6295,8 @@ class ChannelMasterController extends Controller
         $temuAdMetrics = $this->fetchAdMetricsFromTables('temu');
         $totalAdSpend = (float) ($temuAdMetrics['Total Ad Spend'] ?? $this->fetchTotalAdSpendFromTables('temu'));
         
-        // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        // Calculate growth: ((L30 - L60) / L60) * 100
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage
         $gprofitL60 = 0;
@@ -6399,8 +6409,21 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        $l60Orders = 0;
-        $l60Sales = 0;
+        // Fetch L60 Sales and Orders from temu_daily_data_l60 table for Temu 2
+        if (Schema::hasTable('temu_daily_data_l60')) {
+            $l60Metrics = DB::table('temu_daily_data_l60')
+                ->where('temu_account', 'Temu 2')
+                ->selectRaw('COUNT(DISTINCT order_id) as orders')
+                ->selectRaw('SUM(base_price_total * quantity_purchased) as sales')
+                ->first();
+            
+            $l60Orders = (int) ($l60Metrics->orders ?? 0);
+            $l60Sales = (float) ($l60Metrics->sales ?? 0);
+        } else {
+            $l60Orders = 0;
+            $l60Sales = 0;
+        }
+        
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
         $totalQuantity = $metrics->total_quantity ?? 0;
@@ -6412,7 +6435,8 @@ class ChannelMasterController extends Controller
         $nPft = $metrics->n_pft ?? $gProfitPct;
         $nRoi = $metrics->n_roi ?? $gRoi;
         $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        // Calculate growth: ((L30 - L60) / L60) * 100
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $gprofitL60 = 0;
         $gRoiL60 = 0;
         $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;

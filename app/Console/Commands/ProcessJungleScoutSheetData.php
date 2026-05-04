@@ -23,7 +23,7 @@ class ProcessJungleScoutSheetData extends Command
      *
      * @var string
      */
-    protected $description = 'Fetch ASIN data from Google Sheet and process it';
+    protected $description = 'Fetch ASIN data from amazon_datsheets and process it with JungleScout API (includes competitor sales data)';
 
     /**
      * Execute the console command.
@@ -103,7 +103,23 @@ class ProcessJungleScoutSheetData extends Command
                             $attributes['width_value'] ?? '',
                             $attributes['height_value'] ?? ''
                         ]),
-                        'listing_quality_score' => $attributes['listing_quality_score'] ?? ''
+                        'listing_quality_score' => $attributes['listing_quality_score'] ?? '',
+                        
+                        // Competitor Sales Data (30-day estimates)
+                        'approximate_30_day_revenue' => $attributes['approximate_30_day_revenue'] ?? null,
+                        'approximate_30_day_units_sold' => $attributes['approximate_30_day_units_sold'] ?? null,
+                        
+                        // Competitor & Seller Info
+                        'number_of_sellers' => $attributes['number_of_sellers'] ?? null,
+                        'buy_box_owner' => $attributes['buy_box_owner'] ?? null,
+                        'buy_box_owner_seller_id' => $attributes['buy_box_owner_seller_id'] ?? null,
+                        'seller_type' => $attributes['seller_type'] ?? null,
+                        
+                        // Additional useful fields
+                        'is_variant' => $attributes['is_variant'] ?? null,
+                        'is_parent' => $attributes['is_parent'] ?? null,
+                        'variants' => $attributes['variants'] ?? null,
+                        'date_first_available' => $attributes['date_first_available'] ?? null,
                     ];
 
                     JungleScoutProductData::updateOrCreate(

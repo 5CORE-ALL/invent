@@ -21,6 +21,11 @@ class AmazonSkuCompetitor extends Model
         'reviews',
         'extracted_old_price',
         'delivery',
+        'monthly_revenue',
+        'monthly_units_sold',
+        'buy_box_owner',
+        'seller_type_js',
+        'sales_data_updated_at',
     ];
 
     protected $casts = [
@@ -29,6 +34,9 @@ class AmazonSkuCompetitor extends Model
         'reviews' => 'integer',
         'extracted_old_price' => 'decimal:2',
         'delivery' => 'array',
+        'monthly_revenue' => 'decimal:2',
+        'monthly_units_sold' => 'integer',
+        'sales_data_updated_at' => 'datetime',
     ];
 
     /**

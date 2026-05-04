@@ -1166,6 +1166,9 @@
             <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">
                 Seller review: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
             </span>
+            <span class="badge bg-purple fs-6 p-2 lqs-badge-chart" data-metric="avg_lqs" style="color: white; font-weight: bold; background-color: #6f42c1; cursor: pointer;" title="Average Listing Quality Score — click for history">
+                Avg LQS: <span id="dashboard-avg-lqs-badge">—</span>
+            </span>
         </div>
     </div>
 
@@ -1503,10 +1506,51 @@
             </div>
         </div>
     </div>
+
+    <!-- LQS Badge Chart Modal -->
+    <div class="modal fade p-0" id="lqsBadgeChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-purple text-white py-1 px-3" style="background-color: #6f42c1 !important;">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="ri-bar-chart-2-line me-1"></i>
+                        <span id="lqsChartModalTitle">LQS History</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="lqsChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="lqsChartContainer" style="height: 30vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="lqsChartCanvas"></canvas>
+                        </div>
+                    </div>
+                    <div id="lqsChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-1 text-muted small mb-0">Loading LQS history...</p>
+                    </div>
+                    <div id="lqsChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="ri-error-warning-line text-warning" style="font-size: 2rem;"></i>
+                        <p class="text-muted small mb-0">No LQS trend data available yet.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <script>
         // ============================================
         // DASHBOARD METRICS - Complete Fresh Implementation
@@ -3325,6 +3369,198 @@
             if (e.target === modal) {
                 closeMenuModal();
             }
+        });
+
+        // ============================================
+        // LQS BADGE AND CHART FUNCTIONALITY
+        // ============================================
+        let lqsChartInstance = null;
+
+        // Format chart values
+        function lqsFormatChartVal(metric, value) {
+            const v = parseFloat(value);
+            if (isNaN(v)) return '—';
+            
+            if (metric === 'total_inv' || metric === 'total_ov') {
+                return Math.round(v).toLocaleString();
+            } else if (metric === 'avg_dil' || metric === 'avg_lqs') {
+                return v.toFixed(1);
+            }
+            return v.toFixed(2);
+        }
+
+        // Render LQS charts
+        function lqsRenderCharts(metric, days, data) {
+            const container = document.getElementById('lqsChartContainer');
+            const loading = document.getElementById('lqsChartLoading');
+            const noData = document.getElementById('lqsChartNoData');
+            const canvas = document.getElementById('lqsChartCanvas');
+
+            if (!data || data.length === 0) {
+                container.style.display = 'none';
+                loading.style.display = 'none';
+                noData.style.display = 'block';
+                return;
+            }
+
+            container.style.display = 'flex';
+            loading.style.display = 'none';
+            noData.style.display = 'none';
+
+            const labels = data.map(d => {
+                const dt = new Date(d.date);
+                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+
+            let values = data.map(d => parseFloat(d.value) || 0);
+            let label = '';
+            let color = '#6f42c1';
+
+            switch (metric) {
+                case 'total_inv':
+                    label = 'Total INV';
+                    break;
+                case 'total_ov':
+                    label = 'Total OV L30';
+                    break;
+                case 'avg_dil':
+                    label = 'Avg DIL %';
+                    break;
+                case 'avg_lqs':
+                    label = 'Avg LQS';
+                    break;
+            }
+
+            if (lqsChartInstance) {
+                lqsChartInstance.destroy();
+            }
+
+            const ctx = canvas.getContext('2d');
+            lqsChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: values,
+                        borderColor: color,
+                        backgroundColor: color + '33',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        fill: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        datalabels: {
+                            display: true,
+                            align: 'top',
+                            color: '#333',
+                            font: { size: 10, weight: 'bold' },
+                            formatter: (value) => lqsFormatChartVal(metric, value)
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: (value) => lqsFormatChartVal(metric, value)
+                            }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+        }
+
+        // Load LQS chart
+        function lqsLoadChart(metric, days) {
+            const container = document.getElementById('lqsChartContainer');
+            const loading = document.getElementById('lqsChartLoading');
+            const noData = document.getElementById('lqsChartNoData');
+
+            container.style.display = 'none';
+            loading.style.display = 'block';
+            noData.style.display = 'none';
+
+            const url = '/lqs/badge-chart-data?metric=' + metric + '&days=' + days;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(response => {
+                    if (response.success && response.data) {
+                        lqsRenderCharts(metric, days, response.data);
+                    } else {
+                        container.style.display = 'none';
+                        loading.style.display = 'none';
+                        noData.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading LQS chart:', error);
+                    container.style.display = 'none';
+                    loading.style.display = 'none';
+                    noData.style.display = 'block';
+                });
+        }
+
+        // Load current LQS value on page load
+        function updateDashboardLQSBadge() {
+            console.log('Loading LQS badge data...');
+            fetch('/lqs/badge-chart-data?metric=avg_lqs&days=1')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(response => {
+                    console.log('LQS badge response:', response);
+                    const badge = document.getElementById('dashboard-avg-lqs-badge');
+                    if (response.success && response.data && response.data.length > 0) {
+                        const lqs = parseFloat(response.data[response.data.length - 1].value);
+                        console.log('Setting LQS badge to:', lqs);
+                        badge.textContent = isNaN(lqs) ? '—' : lqs.toFixed(1);
+                    } else {
+                        console.warn('No LQS data available');
+                        badge.textContent = '—';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading LQS badge:', error);
+                    document.getElementById('dashboard-avg-lqs-badge').textContent = '—';
+                });
+        }
+
+        // Event listener for LQS badge click
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load LQS badge value
+            updateDashboardLQSBadge();
+
+            // Badge click to open modal
+            document.querySelectorAll('.lqs-badge-chart').forEach(badge => {
+                badge.addEventListener('click', function() {
+                    const metric = this.getAttribute('data-metric');
+                    const days = document.getElementById('lqsChartRangeSelect').value || 30;
+                    
+                    const modal = new bootstrap.Modal(document.getElementById('lqsBadgeChartModal'));
+                    modal.show();
+                    
+                    lqsLoadChart(metric, days);
+                });
+            });
+
+            // Chart range change
+            document.getElementById('lqsChartRangeSelect')?.addEventListener('change', function() {
+                const metric = 'avg_lqs';
+                const days = this.value;
+                lqsLoadChart(metric, days);
+            });
         });
     </script>
 @endsection

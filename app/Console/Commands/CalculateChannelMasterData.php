@@ -5,7 +5,12 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\ChannelMasterCalculatedData;
 use App\Http\Controllers\Channels\ChannelMasterController;
+use App\Models\LqsHistory;
+use App\Models\ProductMaster;
+use App\Models\ShopifySku;
+use App\Models\JungleScoutProductData;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CalculateChannelMasterData extends Command
 {
@@ -30,7 +35,12 @@ class CalculateChannelMasterData extends Command
                               - Excludes empty SKU/order_number
                               - Revenue: product_subtotal (fallback to amount)
                               - Profit: (Revenue × 85% margin) - COGS
-                              - GPFT %: (Total Profit / L30 Sales) × 100';
+                              - GPFT %: (Total Profit / L30 Sales) × 100
+                              
+                              LQS Calculations:
+                              - Calculates Total INV, Total OV L30, Avg DIL%, Avg LQS
+                              - Stores daily snapshot in lqs_history table
+                              - Data displayed in dashboard LQS badges and trend charts';
 
     /**
      * Execute the console command.
@@ -127,6 +137,9 @@ class CalculateChannelMasterData extends Command
                 
                 // Store additional summary data
                 $this->storeSummaryData($response, $calculatedAt);
+                
+                // Calculate and store LQS data
+                $this->calculateAndStoreLqsData($calculatedAt);
                 
                 return 0;
                 
@@ -276,5 +289,90 @@ class CalculateChannelMasterData extends Command
             'ad_spend_by_color_by_channel' => $response['ad_spend_by_color_by_channel'] ?? [],
             'calculated_at' => $calculatedAt,
         ], 86400); // Cache for 24 hours
+    }
+    
+    /**
+     * Calculate and store LQS (Listing Quality Score) data
+     */
+    private function calculateAndStoreLqsData($calculatedAt)
+    {
+        $this->info('Calculating LQS data...');
+        
+        try {
+            // Query to get all SKUs with their inventory, OV L30, and LQS data
+            $skuData = ProductMaster::select(
+                    'product_master.parent as parent_sku',
+                    'product_master.sku as sku'
+                )
+                ->leftJoin('shopify_skus', function($join) {
+                    $join->on(DB::raw('TRIM(REPLACE(UPPER(product_master.sku), " ", ""))'), '=', 
+                              DB::raw('TRIM(REPLACE(UPPER(shopify_skus.sku), CHAR(160), ""))'));
+                })
+                ->leftJoin('junglescout_product_data', function($join) {
+                    $join->on(DB::raw('TRIM(REPLACE(UPPER(product_master.sku), " ", ""))'), '=', 
+                              DB::raw('TRIM(REPLACE(UPPER(junglescout_product_data.sku), CHAR(160), ""))'));
+                })
+                ->selectRaw('COALESCE(shopify_skus.inv, 0) as inv')
+                ->selectRaw('COALESCE(shopify_skus.quantity, 0) as ov_l30')
+                ->selectRaw('CAST(JSON_UNQUOTE(JSON_EXTRACT(junglescout_product_data.data, "$.listing_quality_score")) AS DECIMAL(10,2)) as lqs')
+                ->whereNotNull('product_master.parent')
+                ->get();
+
+            // Calculate totals and averages
+            $total_inv = 0;
+            $total_ov = 0;
+            $total_dil_weighted = 0;
+            $total_lqs_sum = 0;
+            $lqs_count = 0;
+            
+            $parentGroups = [];
+            
+            foreach ($skuData as $row) {
+                $parent = $row->parent_sku;
+                $inv = floatval($row->inv);
+                $ov = floatval($row->ov_l30);
+                $lqs = floatval($row->lqs);
+                
+                // Accumulate totals
+                $total_inv += $inv;
+                $total_ov += $ov;
+                
+                // For DIL calculation (weighted by inventory)
+                if ($ov > 0) {
+                    $dil = ($inv / $ov) * 100;
+                    $total_dil_weighted += ($dil * $inv);
+                }
+                
+                // For LQS average
+                if ($lqs > 0) {
+                    $total_lqs_sum += $lqs;
+                    $lqs_count++;
+                }
+            }
+            
+            // Calculate averages
+            $avg_dil = $total_inv > 0 ? $total_dil_weighted / $total_inv : 0;
+            $avg_lqs = $lqs_count > 0 ? $total_lqs_sum / $lqs_count : 0;
+            
+            // Store in lqs_history table
+            $today = now()->toDateString();
+            
+            LqsHistory::updateOrCreate(
+                ['date' => $today],
+                [
+                    'total_inv' => round($total_inv, 2),
+                    'total_ov' => round($total_ov, 2),
+                    'avg_dil' => round($avg_dil, 2),
+                    'avg_lqs' => round($avg_lqs, 2),
+                    'updated_at' => $calculatedAt
+                ]
+            );
+            
+            $this->info("✓ LQS data stored: Total INV={$total_inv}, Total OV={$total_ov}, Avg DIL={$avg_dil}%, Avg LQS={$avg_lqs}");
+            
+        } catch (\Exception $e) {
+            $this->error('Error calculating LQS data: ' . $e->getMessage());
+            \Log::error('LQS calculation error: ' . $e->getMessage());
+        }
     }
 }

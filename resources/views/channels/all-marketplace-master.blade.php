@@ -349,6 +349,9 @@
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Spend: <span id="total-ad-spend">$0</span>
                         </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #6610f2; color: white; font-weight: bold; cursor:pointer;" title="Average TACOS % = Total Ad Spend / Total L30 Sales × 100">
+                            TACOS: <span id="avg-ads-percent">0%</span>
+                        </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             views: <span id="total-views-badge">0</span>
                         </span>
@@ -3183,6 +3186,7 @@
                 $('#total-gross-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
                 $('#avg-groi').text(Math.round(avgGroi) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
+                $('#avg-ads-percent').text(avgAdsPercent.toFixed(1) + '%');
                 $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
                 // Listing CVR (overall): Σ L30 Orders / Σ Total Views — not ad conversion; see badge title
                 const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;

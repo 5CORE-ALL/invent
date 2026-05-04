@@ -126,18 +126,6 @@
             background-color: #bde0ff !important;
             font-weight: bold !important;
         }
-
-        /* Expand/collapse icon */
-        .parent-toggle-icon {
-            cursor: pointer;
-            margin-right: 8px;
-            color: #17a2b8;
-            font-size: 13px;
-        }
-
-        .parent-toggle-icon:hover {
-            color: #0d6efd;
-        }
     </style>
 @endsection
 
@@ -284,6 +272,22 @@
                         <option value="sku" selected>SKU Only</option>
                         <option value="parent">Parent Only</option>
                     </select>
+
+                    <!-- Play → shows Pause, enables Next/Prev; Pause → back to normal, disables Next/Prev -->
+                    <div class="btn-group align-items-center ms-2" role="group">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause - click to reset Play">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -572,10 +576,7 @@
                     }
                 }
             },
-            initialSort: [{
-                column: "dil_percent",
-                dir: "desc"
-            }],
+            initialSort: [{ column: "parent", dir: "asc" }],
             rowFormatter: function(row) {
                 const data = row.getData();
                 if (data.is_parent_summary === true) {
@@ -611,15 +612,6 @@
                         const sku = cell.getValue();
                         const rowData = cell.getRow().getData();
                         let html = '';
-                        
-                        // Add toggle icon for parent rows in "Parent Only" view
-                        if (rowData.is_parent_summary === true) {
-                            const isExpanded = rowData._expanded === true;
-                            const iconClass = isExpanded ? 'fa-chevron-up' : 'fa-chevron-down';
-                            html += `<i class="fas ${iconClass} parent-toggle-icon" 
-                                       data-parent="${rowData.parent}" 
-                                       title="Click to expand/collapse"></i>`;
-                        }
                         
                         html += `<span>${sku}</span>`;
                         html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
@@ -1048,97 +1040,235 @@
 
         // Store all data for parent expand/collapse
         let fullDataset = [];
-        let expandedParent = null;
+        // Play/Pause parent navigation (same as pricing master: show only current parent, ignore other filters)
+        let isPlayNavigationActive = false;
+        let currentPlayParentIndex = 0;
+        // Prevent dataLoaded side-effects for local setData operations
+        let suppressDataLoadedHandler = false;
 
-        // Parent toggle handler
-        $(document).on('click', '.parent-toggle-icon', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const clickedParent = $(this).data('parent');
-            
-            console.log('=== Parent Toggle Clicked ===');
-            console.log('Clicked parent:', clickedParent);
-            console.log('Current expandedParent:', expandedParent);
-            
-            // Toggle expanded state
-            if (expandedParent === clickedParent) {
-                expandedParent = null; // Collapse
-                console.log('→ Collapsing parent');
-            } else {
-                expandedParent = clickedParent; // Expand
-                console.log('→ Expanding parent:', clickedParent);
-            }
-            
-            // Rebuild parent view
-            buildParentView();
-            
-            return false; // Prevent default action and stop propagation
-        });
-
-        function buildParentView() {
-            console.log('=== Building Parent View ===');
-            console.log('fullDataset length:', fullDataset.length);
-            console.log('expandedParent:', expandedParent);
-            
-            if (!fullDataset || fullDataset.length === 0) {
-                console.error('❌ No data available in fullDataset');
-                return;
-            }
-            
-            const parentRows = fullDataset.filter(row => row.is_parent_summary === true);
-            const childRows = fullDataset.filter(row => row.is_parent_summary !== true);
-            
-            console.log('Parents found:', parentRows.length);
-            console.log('Children found:', childRows.length);
-            
-            // Debug: Show first few parent values
-            if (parentRows.length > 0) {
-                console.log('Sample parent values:', parentRows.slice(0, 3).map(p => p.parent));
-            }
-            
-            let displayData = [];
-            
-            // Build ordered list: parent, then its children if expanded
-            parentRows.forEach(parent => {
-                // Mark parent as expanded or not (for icon display)
-                parent._expanded = (expandedParent === parent.parent);
-                
-                // Add parent
-                displayData.push(parent);
-                
-                // Add children RIGHT AFTER parent if this parent is expanded
-                if (expandedParent !== null && expandedParent === parent.parent) {
-                    const children = childRows.filter(child => {
-                        const matches = child.parent === expandedParent;
-                        return matches;
-                    });
-                    console.log('✓ Parent matched! Adding', children.length, 'children for parent:', parent.parent);
-                    
-                    // Debug: show sample children
-                    if (children.length > 0) {
-                        console.log('Sample children SKUs:', children.slice(0, 3).map(c => c.sku));
-                    } else {
-                        console.warn('⚠ No children found for parent:', expandedParent);
-                        console.log('Looking for children with parent field =', expandedParent);
-                        console.log('Sample child parent values:', childRows.slice(0, 5).map(c => ({sku: c.sku, parent: c.parent})));
-                    }
-                    
-                    displayData = displayData.concat(children);
+        /** Reorder data so "10 FR" group is first, then other groups A-Z by parent; within each group children A-Z by SKU then parent row last. */
+        function reorderDataWith10FRFirst(data) {
+            if (!data || data.length === 0) return data;
+            const parentGroups = {};
+            data.forEach(row => {
+                const p = (row.parent || '').toString().trim();
+                if (!parentGroups[p]) parentGroups[p] = { children: [], parentRow: null };
+                if (row.is_parent_summary === true) {
+                    parentGroups[p].parentRow = row;
+                } else {
+                    parentGroups[p].children.push(row);
                 }
             });
             
-            console.log('Final display data length:', displayData.length);
-            console.log('Expected:', parentRows.length, '+ children if expanded');
+            // Sort children within each group by SKU (A-Z)
+            Object.values(parentGroups).forEach(group => {
+                group.children.sort((a, b) => (a.sku || '').localeCompare(b.sku || ''));
+            });
             
-            // Update table
+            // Sort parent groups: "10 FR" first, then others A-Z
+            const sortedParentKeys = Object.keys(parentGroups).sort((a, b) => {
+                if (a === '10 FR') return -1;
+                if (b === '10 FR') return 1;
+                return a.localeCompare(b);
+            });
+            
+            // Build final array: for each group, children first then parent row at bottom
+            const result = [];
+            sortedParentKeys.forEach(parentKey => {
+                const group = parentGroups[parentKey];
+                result.push(...group.children); // Children first
+                if (group.parentRow) result.push(group.parentRow); // Parent at bottom
+            });
+            
+            return result;
+        }
+
+        // ==================== NAVIGATE PARENTS (Play/Pause like pricing master) ====================
+        function getParentRows() {
+            if (!fullDataset || fullDataset.length === 0) return [];
+            const parents = fullDataset.filter(row => row.is_parent_summary === true);
+            
+            // Sort by CVR (avg_cvr) from lowest to highest
+            parents.sort((a, b) => {
+                const cvrA = parseFloat(a.avg_cvr) || 0;
+                const cvrB = parseFloat(b.avg_cvr) || 0;
+                return cvrA - cvrB; // Ascending order (lowest to highest)
+            });
+            
+            return parents;
+        }
+
+        /** Check if a parent has any children and has inventory > 0 */
+        function parentHasChildren(parentValue) {
+            if (!fullDataset || fullDataset.length === 0) return false;
+            
+            // Check if parent has inventory > 0
+            const parentRow = fullDataset.find(row => row.is_parent_summary === true && row.parent === parentValue);
+            if (parentRow) {
+                const inventory = parseFloat(parentRow.inventory) || 0;
+                if (inventory === 0) {
+                    return false; // Skip if inventory is 0
+                }
+            }
+            
+            // Check if has children
+            const childRows = fullDataset.filter(row => row.parent === parentValue && row.is_parent_summary !== true);
+            return childRows.length > 0;
+        }
+
+        /** Find next parent index with data (skips empty parents and inv=0) */
+        function findNextParentWithData(startIndex, direction = 1) {
+            const parentRows = getParentRows();
+            if (parentRows.length === 0) return -1;
+            
+            let index = startIndex;
+            let attempts = 0;
+            const maxAttempts = parentRows.length;
+            
+            while (attempts < maxAttempts) {
+                index += direction;
+                
+                // Wrap around or stop at boundaries
+                if (index < 0 || index >= parentRows.length) {
+                    return -1; // No more parents in this direction
+                }
+                
+                const parent = parentRows[index].parent;
+                if (parentHasChildren(parent)) {
+                    return index;
+                }
+                
+                attempts++;
+            }
+            
+            return -1; // No parent with data found
+        }
+
+        /** Show only current parent's rows (children first, parent row last – like pricing master). Always shows both SKU and parent in Play mode. */
+        function showCurrentParentPlayView() {
+            if (!fullDataset || fullDataset.length === 0) return;
+            const parentRows = getParentRows();
+            if (parentRows.length === 0) return;
+            
+            const currentParent = parentRows[currentPlayParentIndex].parent;
+            const childRows = fullDataset.filter(row => row.parent === currentParent && row.is_parent_summary !== true);
+            const parentRow = fullDataset.find(row => row.is_parent_summary === true && row.parent === currentParent);
+            
+            // If no children or inventory is 0, skip to next parent with data
+            if (childRows.length === 0 || (parentRow && parseFloat(parentRow.inventory || 0) === 0)) {
+                const nextIndex = findNextParentWithData(currentPlayParentIndex, 1);
+                if (nextIndex !== -1) {
+                    currentPlayParentIndex = nextIndex;
+                    showCurrentParentPlayView(); // Recursive call with new index
+                    return;
+                } else {
+                    // No more parents with data, stop play mode
+                    showToast('No more parents with data (CVR sorted)', 'info');
+                    stopPlayNavigation();
+                    return;
+                }
+            }
+            
+            // In Play mode, ALWAYS show both children and parent (like pricing master CVR)
+            // Children first, then parent row at the end (same order as pricing master)
+            const displayData = [...childRows];
+            if (parentRow) displayData.push(parentRow);
+            
+            suppressDataLoadedHandler = true;
+            table.clearSort(); // Keep our order: parent row last, don't re-sort by DIL% etc.
             table.setData(displayData).then(() => {
-                console.log('✓ Table updated successfully');
                 updateSummary();
-            }).catch(err => {
-                console.error('❌ Error updating table:', err);
+                updatePlayButtonStates();
             });
         }
+
+        function startPlayNavigation() {
+            const parentRows = getParentRows();
+            if (parentRows.length === 0) {
+                showToast('No parent data available', 'info');
+                return;
+            }
+            
+            isPlayNavigationActive = true;
+            
+            // Find first parent with data (sorted by CVR lowest to highest)
+            currentPlayParentIndex = -1;
+            const firstIndexWithData = findNextParentWithData(-1, 1);
+            
+            if (firstIndexWithData === -1) {
+                showToast('No parents with data found', 'info');
+                isPlayNavigationActive = false;
+                return;
+            }
+            
+            currentPlayParentIndex = firstIndexWithData;
+            showCurrentParentPlayView();
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            updatePlayButtonStates();
+        }
+
+        function stopPlayNavigation() {
+            isPlayNavigationActive = false;
+            currentPlayParentIndex = 0;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            $('#play-backward, #play-forward').prop('disabled', true);
+            if (fullDataset.length > 0) {
+                suppressDataLoadedHandler = true;
+                table.setData(fullDataset).then(applyFilters);
+            } else {
+                applyFilters();
+            }
+        }
+
+        function updatePlayButtonStates() {
+            const parentRows = getParentRows();
+            $('#play-backward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= parentRows.length - 1);
+            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Start parent navigation');
+            $('#play-pause').attr('title', 'Stop navigation and show all');
+        }
+
+        function playNextParent() {
+            if (!isPlayNavigationActive) return;
+            const parentRows = getParentRows();
+            if (currentPlayParentIndex >= parentRows.length - 1) {
+                showToast('Already at the last parent with data', 'info');
+                return;
+            }
+            
+            const nextIndex = findNextParentWithData(currentPlayParentIndex, 1);
+            if (nextIndex === -1) {
+                showToast('No more parents with data', 'info');
+                return;
+            }
+            
+            currentPlayParentIndex = nextIndex;
+            showCurrentParentPlayView();
+        }
+
+        function playPreviousParent() {
+            if (!isPlayNavigationActive) return;
+            if (currentPlayParentIndex <= 0) {
+                showToast('Already at the first parent', 'info');
+                return;
+            }
+            
+            const prevIndex = findNextParentWithData(currentPlayParentIndex, -1);
+            if (prevIndex === -1) {
+                showToast('No previous parents with data', 'info');
+                return;
+            }
+            
+            currentPlayParentIndex = prevIndex;
+            showCurrentParentPlayView();
+        }
+
+        $('#play-auto').on('click', startPlayNavigation);
+        $('#play-pause').on('click', stopPlayNavigation);
+        $('#play-forward').on('click', playNextParent);
+        $('#play-backward').on('click', playPreviousParent);
 
         // ==================== FILTER FUNCTIONS ====================
         
@@ -1172,6 +1302,12 @@
         });
 
         function applyFilters() {
+            // When Play navigation is active, ignore all filters and show only current parent (same as pricing master)
+            if (isPlayNavigationActive) {
+                showCurrentParentPlayView();
+                return;
+            }
+
             const inventoryFilter = $('#inventory-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuParentFilter = $('#sku-parent-filter').val();
@@ -1185,10 +1321,10 @@
                     return data.is_parent_summary !== true;
                 });
             } else if (skuParentFilter === 'parent') {
-                // Build parent view with proper ordering
-                expandedParent = null; // Reset expanded state when switching to parent view
-                buildParentView();
-                return; // Don't apply other filters yet
+                // Show only parent rows (hide SKU rows)
+                table.addFilter(function(data) {
+                    return data.is_parent_summary === true;
+                });
             }
             // If 'both', don't add any filter
 
@@ -1323,12 +1459,20 @@
 
         table.on('dataLoaded', function(data) {
             // Store full dataset for parent expand/collapse
-            fullDataset = data;
-            
-            setTimeout(function() {
-                applyFilters();
-                updateSummary();
-            }, 100);
+            if (!suppressDataLoadedHandler) {
+                // Reorder so "10 FR" group is first, then others A-Z; within group children A-Z then parent row last
+                const reordered = reorderDataWith10FRFirst(data);
+                fullDataset = reordered;
+                
+                suppressDataLoadedHandler = true;
+                table.setData(reordered).then(function() {
+                    suppressDataLoadedHandler = false;
+                    applyFilters();
+                    updateSummary();
+                });
+            } else {
+                suppressDataLoadedHandler = false;
+            }
         });
 
         table.on('renderComplete', function() {
