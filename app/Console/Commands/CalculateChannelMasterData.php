@@ -303,17 +303,18 @@ class CalculateChannelMasterData extends Command
         
         try {
             // Query to get all SKUs with their inventory, OV L30, and LQS data
+            // Fixed encoding issue by removing CHAR(160) replacement
             $skuData = ProductMaster::select(
                     'product_master.parent as parent_sku',
                     'product_master.sku as sku'
                 )
                 ->leftJoin('shopify_skus', function($join) {
                     $join->on(DB::raw('TRIM(REPLACE(UPPER(product_master.sku), " ", ""))'), '=', 
-                              DB::raw('TRIM(REPLACE(UPPER(shopify_skus.sku), CHAR(160), ""))'));
+                              DB::raw('TRIM(REPLACE(UPPER(shopify_skus.sku), " ", ""))'));
                 })
                 ->leftJoin('junglescout_product_data', function($join) {
                     $join->on(DB::raw('TRIM(REPLACE(UPPER(product_master.sku), " ", ""))'), '=', 
-                              DB::raw('TRIM(REPLACE(UPPER(junglescout_product_data.sku), CHAR(160), ""))'));
+                              DB::raw('TRIM(REPLACE(UPPER(junglescout_product_data.sku), " ", ""))'));
                 })
                 ->selectRaw('COALESCE(shopify_skus.inv, 0) as inv')
                 ->selectRaw('COALESCE(shopify_skus.quantity, 0) as ov_l30')
