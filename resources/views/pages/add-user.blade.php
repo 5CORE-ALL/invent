@@ -34,6 +34,39 @@
         .bg-gradient-info { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
         .bg-gradient-success { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
         .bg-gradient-warning { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+
+        /* Button group styling for import with templates */
+        .btn-group {
+            display: inline-flex;
+            border-radius: 0.25rem;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .btn-group .btn {
+            border-radius: 0;
+            margin: 0;
+        }
+
+        .btn-group .btn:first-child {
+            border-top-left-radius: 0.25rem;
+            border-bottom-left-radius: 0.25rem;
+        }
+
+        .btn-group .btn:last-child {
+            border-top-right-radius: 0.25rem;
+            border-bottom-right-radius: 0.25rem;
+            border-left: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 0.375rem 0.75rem;
+        }
+
+        .btn-group .btn-outline {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-group .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
     </style>
 @endsection
 
@@ -46,20 +79,30 @@
                 <p class="text-muted">View and manage users & performance</p>
             </div>
             @if($canEdit)
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-wrap">
                 <button type="button" class="btn btn-primary" id="copySalaryBtn">
                     <i class="ri-file-copy-line me-2"></i>Copy Salary LM → PP
                 </button>
-                <button type="button" class="btn btn-info" id="importBtn">
-                    <i class="ri-upload-2-line me-2"></i>Import Salary PP
-                </button>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-info" id="importBtn">
+                        <i class="ri-upload-2-line me-2"></i>Import Salary PP
+                    </button>
+                    <button type="button" class="btn btn-info btn-outline" id="downloadSalaryTemplateBtn" title="Download Salary PP Template">
+                        <i class="ri-file-download-line"></i>
+                    </button>
+                </div>
                 <input type="file" id="importFile" accept=".csv" style="display: none;">
-                <button type="button" class="btn btn-warning" id="importBanksBtn">
-                    <i class="ri-upload-2-line me-2"></i>Import Banks
-                </button>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-warning" id="importBanksBtn">
+                        <i class="ri-upload-2-line me-2"></i>Import Banks
+                    </button>
+                    <button type="button" class="btn btn-warning btn-outline" id="downloadBanksTemplateBtn" title="Download Banks Template">
+                        <i class="ri-file-download-line"></i>
+                    </button>
+                </div>
                 <input type="file" id="importBanksFile" accept=".csv" style="display: none;">
                 <button type="button" class="btn btn-success" id="exportBtn">
-                    <i class="ri-download-2-line me-2"></i>Export Data
+                    <i class="ri-download-2-line me-2"></i>Salary Sheet
                 </button>
             </div>
             @endif
@@ -2045,16 +2088,68 @@
                     const originalHTML = exportBtn.innerHTML;
                     exportBtn.disabled = true;
                     exportBtn.innerHTML = '<i class="ri-loader-4-line spin me-2"></i>Exporting...';
-                    
+
                     // Trigger server-side export
                     window.location.href = '{{ route("users.export") }}';
-                    
+
                     // Reset button after a delay
                     setTimeout(() => {
                         exportBtn.disabled = false;
                         exportBtn.innerHTML = originalHTML;
                         showToast('Data exported successfully! A copy has been saved to history.', 'success');
                     }, 2000);
+                });
+            }
+        });
+
+        // Download Salary PP Template
+        document.addEventListener('DOMContentLoaded', function() {
+            const downloadSalaryTemplateBtn = document.getElementById('downloadSalaryTemplateBtn');
+            if (downloadSalaryTemplateBtn) {
+                downloadSalaryTemplateBtn.addEventListener('click', function() {
+                    // Create CSV content with headers and sample row
+                    const csvContent = '"Name","Salary PP"\n"John Doe","50000"\n"Jane Smith","60000"';
+                    
+                    // Create blob and download
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(blob);
+                    
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'salary_pp_import_template.csv');
+                    link.style.visibility = 'hidden';
+                    
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    showToast('Template downloaded successfully!', 'success');
+                });
+            }
+        });
+
+        // Download Banks Template
+        document.addEventListener('DOMContentLoaded', function() {
+            const downloadBanksTemplateBtn = document.getElementById('downloadBanksTemplateBtn');
+            if (downloadBanksTemplateBtn) {
+                downloadBanksTemplateBtn.addEventListener('click', function() {
+                    // Create CSV content with headers and sample rows
+                    const csvContent = '"Name","Bank 1","Bank 2"\n"John Doe","Account 123456","Account 789012"\n"Jane Smith","Account 234567","Account 890123"';
+                    
+                    // Create blob and download
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(blob);
+                    
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'banks_import_template.csv');
+                    link.style.visibility = 'hidden';
+                    
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    showToast('Template downloaded successfully!', 'success');
                 });
             }
         });
