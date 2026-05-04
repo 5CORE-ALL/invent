@@ -85,18 +85,18 @@
                 </button>
                 <div class="btn-group">
                     <button type="button" class="btn btn-info" id="importBtn">
-                        <i class="ri-upload-2-line me-2"></i>Import Salary PP
+                        <i class="ri-upload-2-line me-2"></i>Import Salary Data
                     </button>
-                    <button type="button" class="btn btn-info btn-outline" id="downloadSalaryTemplateBtn" title="Download Salary PP Template">
+                    <button type="button" class="btn btn-info btn-outline" id="downloadSalaryTemplateBtn" title="Download Salary Data Template">
                         <i class="ri-file-download-line"></i>
                     </button>
                 </div>
                 <input type="file" id="importFile" accept=".csv" style="display: none;">
                 <div class="btn-group">
-                    <button type="button" class="btn btn-warning" id="importBanksBtn">
+                    <button type="button" class="btn btn-info" id="importBanksBtn">
                         <i class="ri-upload-2-line me-2"></i>Import Banks
                     </button>
-                    <button type="button" class="btn btn-warning btn-outline" id="downloadBanksTemplateBtn" title="Download Banks Template">
+                    <button type="button" class="btn btn-info btn-outline" id="downloadBanksTemplateBtn" title="Download Banks Template">
                         <i class="ri-file-download-line"></i>
                     </button>
                 </div>
@@ -2145,8 +2145,28 @@
             const downloadSalaryTemplateBtn = document.getElementById('downloadSalaryTemplateBtn');
             if (downloadSalaryTemplateBtn) {
                 downloadSalaryTemplateBtn.addEventListener('click', function() {
-                    // Create CSV content with headers and sample row
-                    const csvContent = '"Name","Salary PP"\n"John Doe","50000"\n"Jane Smith","60000"';
+                    // Get all active users with their salary data
+                    const activeUsersData = @json($users->map(function($user) {
+                        return [
+                            'name' => $user->name,
+                            'salary_pp' => $user->userSalary?->salary_pp ?? '',
+                            'increment' => $user->userSalary?->increment ?? '',
+                            'other' => $user->userSalary?->other ?? '',
+                            'adv_inc_other' => $user->userSalary?->adv_inc_other ?? ''
+                        ];
+                    }));
+                    
+                    // Create CSV content with headers
+                    let csvContent = '"Name","Salary PP","Increment","Other","Adv / Inc / Other"\n';
+                    
+                    // Add all active users with their current salary data or empty
+                    activeUsersData.forEach(user => {
+                        const salaryPP = user.salary_pp ? Math.round(parseFloat(user.salary_pp)) : '';
+                        const increment = user.increment ? Math.round(parseFloat(user.increment)) : '';
+                        const other = user.other ? Math.round(parseFloat(user.other)) : '';
+                        const advIncOther = user.adv_inc_other ? Math.round(parseFloat(user.adv_inc_other)) : '';
+                        csvContent += `"${user.name}","${salaryPP}","${increment}","${other}","${advIncOther}"\n`;
+                    });
                     
                     // Create blob and download
                     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -2154,7 +2174,7 @@
                     const url = URL.createObjectURL(blob);
                     
                     link.setAttribute('href', url);
-                    link.setAttribute('download', 'salary_pp_import_template.csv');
+                    link.setAttribute('download', 'salary_data_import_template.csv');
                     link.style.visibility = 'hidden';
                     
                     document.body.appendChild(link);
@@ -2171,22 +2191,36 @@
             const downloadBanksTemplateBtn = document.getElementById('downloadBanksTemplateBtn');
             if (downloadBanksTemplateBtn) {
                 downloadBanksTemplateBtn.addEventListener('click', function() {
-                    // Create CSV content with headers and sample rows
-                    const csvContent = '"Name","Bank 1","Bank 2"\n"John Doe","Account 123456","Account 789012"\n"Jane Smith","Account 234567","Account 890123"';
+                    // Get all active users with their bank data
+                    const activeUsersData = @json($users->map(function($user) {
+                        return [
+                            'name' => $user->name,
+                            'bank_1' => $user->userSalary?->bank_1 ?? '',
+                            'bank_2' => $user->userSalary?->bank_2 ?? ''
+                        ];
+                    }));
                     
+                    // Create CSV content with headers
+                    let csvContent = '"Name","Bank 1","Bank 2"\n';
+                    
+                    // Add all active users with their current bank data or empty
+                    activeUsersData.forEach(user => {
+                        csvContent += `"${user.name}","${user.bank_1}","${user.bank_2}"\n`;
+                    });
+
                     // Create blob and download
                     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                     const link = document.createElement('a');
                     const url = URL.createObjectURL(blob);
-                    
+
                     link.setAttribute('href', url);
                     link.setAttribute('download', 'banks_import_template.csv');
                     link.style.visibility = 'hidden';
-                    
+
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
-                    
+
                     showToast('Template downloaded successfully!', 'success');
                 });
             }

@@ -312,9 +312,12 @@ class UserController extends Controller
                 if (count($row) < 2) continue;
                 
                 $name = trim($row[0]);
-                $salaryPP = trim($row[1]);
+                $salaryPP = isset($row[1]) ? trim($row[1]) : '';
+                $increment = isset($row[2]) ? trim($row[2]) : '';
+                $other = isset($row[3]) ? trim($row[3]) : '';
+                $advIncOther = isset($row[4]) ? trim($row[4]) : '';
                 
-                if (empty($name) || empty($salaryPP)) continue;
+                if (empty($name)) continue;
                 
                 // Find user by name
                 $user = User::where('name', $name)
@@ -322,12 +325,21 @@ class UserController extends Controller
                     ->first();
                 
                 if ($user) {
-                    // Update or create salary
-                    $user->userSalary()->updateOrCreate(
-                        ['user_id' => $user->id],
-                        ['salary_pp' => $salaryPP]
-                    );
-                    $updated++;
+                    // Prepare data array with only non-empty values
+                    $salaryData = [];
+                    if ($salaryPP !== '') $salaryData['salary_pp'] = $salaryPP;
+                    if ($increment !== '') $salaryData['increment'] = $increment;
+                    if ($other !== '') $salaryData['other'] = $other;
+                    if ($advIncOther !== '') $salaryData['adv_inc_other'] = $advIncOther;
+                    
+                    // Update or create salary only if there's data to update
+                    if (!empty($salaryData)) {
+                        $user->userSalary()->updateOrCreate(
+                            ['user_id' => $user->id],
+                            $salaryData
+                        );
+                        $updated++;
+                    }
                 } else {
                     $notFound[] = $name;
                 }
