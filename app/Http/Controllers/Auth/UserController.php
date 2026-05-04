@@ -70,7 +70,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'required|email|max:255|unique:users,email,' . $user->id,
             'designation' => 'nullable|string|max:255',
-            'rr_role' => 'nullable|string|max:255',
+            'rr_role' => 'nullable|string|max:65535',
             'training' => 'nullable|string|max:65535',
             'resources' => 'nullable|string|max:65535',
             'salary_pp' => 'nullable|numeric|min:0',

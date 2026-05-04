@@ -1297,13 +1297,16 @@
                         }
 
                         // Show save/cancel, hide edit & delete
-                        row.querySelector('.edit-btn').classList.add('d-none');
+                        const editBtn = row.querySelector('.edit-btn');
+                        if (editBtn) editBtn.classList.add('d-none');
                         const userIconBtn = row.querySelector('.user-icon-btn');
                         if (userIconBtn) userIconBtn.classList.add('d-none');
                         const delBtn = row.querySelector('.delete-btn');
                         if (delBtn) delBtn.classList.add('d-none');
-                        row.querySelector('.save-btn').classList.remove('d-none');
-                        row.querySelector('.cancel-btn').classList.remove('d-none');
+                        const saveBtn = row.querySelector('.save-btn');
+                        if (saveBtn) saveBtn.classList.remove('d-none');
+                        const cancelBtn = row.querySelector('.cancel-btn');
+                        if (cancelBtn) cancelBtn.classList.remove('d-none');
                         row.classList.add('editing-row');
                         row.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
                     });
@@ -1401,13 +1404,16 @@
                         });
 
                         // Show edit & delete, hide save/cancel
-                        row.querySelector('.edit-btn').classList.remove('d-none');
+                        const editBtn2 = row.querySelector('.edit-btn');
+                        if (editBtn2) editBtn2.classList.remove('d-none');
                         const userIconBtn2 = row.querySelector('.user-icon-btn');
                         if (userIconBtn2) userIconBtn2.classList.remove('d-none');
                         const delBtn2 = row.querySelector('.delete-btn');
                         if (delBtn2) delBtn2.classList.remove('d-none');
-                        row.querySelector('.save-btn').classList.add('d-none');
-                        row.querySelector('.cancel-btn').classList.add('d-none');
+                        const saveBtn2 = row.querySelector('.save-btn');
+                        if (saveBtn2) saveBtn2.classList.add('d-none');
+                        const cancelBtn2 = row.querySelector('.cancel-btn');
+                        if (cancelBtn2) cancelBtn2.classList.add('d-none');
                         row.classList.remove('editing-row');
 
                         // Recalculate Salary LM and Amount LM after cancel
@@ -1472,21 +1478,35 @@
                         saveBtn.disabled = true;
                         saveBtn.innerHTML = '<i class="ri-loader-4-line spin"></i>';
                         
-                        // Collect updated data
+                        // Collect updated data (with null checks for optional fields)
+                        const nameInput = row.querySelector('[data-field="name"] .user-edit');
+                        const phoneInput = row.querySelector('[data-field="phone"] .user-edit') || row.querySelector('.salary-tab-phone');
+                        const emailInput = row.querySelector('[data-field="email"] .user-edit') || row.querySelector('.salary-tab-email');
+                        const designationInput = row.querySelector('[data-field="designation"] .user-edit') || row.querySelector('.salary-tab-designation');
+                        const rrRoleInput = row.querySelector('[data-field="rr_role"] .user-edit') || row.querySelector('.salary-tab-rr');
+                        const resourcesInput = row.querySelector('[data-field="resources"] textarea.user-edit') || row.querySelector('.salary-tab-resources');
+                        const trainingInput = row.querySelector('[data-field="training"] textarea.user-edit') || row.querySelector('.salary-tab-training');
+                        const salaryPpInput = row.querySelector('[data-field="salary_pp"] .user-edit');
+                        const incrementInput = row.querySelector('[data-field="increment"] .user-edit');
+                        const otherInput = row.querySelector('[data-field="other"] .user-edit');
+                        const advIncOtherInput = row.querySelector('[data-field="adv_inc_other"] .user-edit');
+                        const bank1Input = row.querySelector('[data-field="bank_1"] .user-edit');
+                        const bank2Input = row.querySelector('[data-field="bank_2"] .user-edit');
+                        
                         const data = {
-                            name: row.querySelector('[data-field="name"] .user-edit').value.trim(),
-                            phone: row.querySelector('[data-field="phone"] .user-edit').value.trim(),
-                            email: row.querySelector('[data-field="email"] .user-edit').value.trim(),
-                            designation: row.querySelector('[data-field="designation"] .user-edit').value.trim(),
-                            rr_role: row.querySelector('[data-field="rr_role"] .user-edit').value.trim(),
-                            resources: row.querySelector('[data-field="resources"] textarea.user-edit').value.trim(),
-                            training: row.querySelector('[data-field="training"] textarea.user-edit').value.trim(),
-                            salary_pp: row.querySelector('[data-field="salary_pp"] .user-edit').value.trim(),
-                            increment: row.querySelector('[data-field="increment"] .user-edit').value.trim(),
-                            other: row.querySelector('[data-field="other"] .user-edit').value.trim(),
-                            adv_inc_other: row.querySelector('[data-field="adv_inc_other"] .user-edit').value.trim(),
-                            bank_1: row.querySelector('[data-field="bank_1"] .user-edit').value.trim(),
-                            bank_2: row.querySelector('[data-field="bank_2"] .user-edit').value.trim(),
+                            name: nameInput ? nameInput.value.trim() : '',
+                            phone: phoneInput ? phoneInput.value.trim() : '',
+                            email: emailInput ? emailInput.value.trim() : '',
+                            designation: designationInput ? designationInput.value.trim() : '',
+                            rr_role: rrRoleInput ? rrRoleInput.value.trim() : '',
+                            resources: resourcesInput ? resourcesInput.value.trim() : '',
+                            training: trainingInput ? trainingInput.value.trim() : '',
+                            salary_pp: salaryPpInput ? salaryPpInput.value.trim() : '',
+                            increment: incrementInput ? incrementInput.value.trim() : '',
+                            other: otherInput ? otherInput.value.trim() : '',
+                            adv_inc_other: advIncOtherInput ? advIncOtherInput.value.trim() : '',
+                            bank_1: bank1Input ? bank1Input.value.trim() : '',
+                            bank_2: bank2Input ? bank2Input.value.trim() : '',
                             _token: '{{ csrf_token() }}',
                             _method: 'PUT'
                         };
@@ -1500,12 +1520,15 @@
                         formData.append('rr_role', data.rr_role);
                         formData.append('resources', data.resources);
                         formData.append('training', data.training);
-                        formData.append('salary_pp', data.salary_pp);
-                        formData.append('increment', data.increment);
-                        formData.append('other', data.other);
-                        formData.append('adv_inc_other', data.adv_inc_other);
-                        formData.append('bank_1', data.bank_1);
-                        formData.append('bank_2', data.bank_2);
+                        
+                        // Only append numeric fields if they exist in the current tab
+                        if (salaryPpInput) formData.append('salary_pp', data.salary_pp);
+                        if (incrementInput) formData.append('increment', data.increment);
+                        if (otherInput) formData.append('other', data.other);
+                        if (advIncOtherInput) formData.append('adv_inc_other', data.adv_inc_other);
+                        if (bank1Input) formData.append('bank_1', data.bank_1);
+                        if (bank2Input) formData.append('bank_2', data.bank_2);
+                        
                         formData.append('_token', '{{ csrf_token() }}');
                         formData.append('_method', 'PUT');
 
@@ -1543,23 +1566,33 @@
                                 const bank2Display = row.querySelector('[data-field="bank_2"] .user-display');
                                 const bank2Input = row.querySelector('[data-field="bank_2"] .user-edit');
                                 
-                                nameDisplay.textContent = result.user.name;
-                                renderPhoneDisplay(phoneDisplay, result.user.phone);
-                                renderEmailDisplay(emailDisplay, result.user.email);
+                                if (nameDisplay) {
+                                    nameDisplay.textContent = result.user.name;
+                                }
+                                if (phoneDisplay) {
+                                    renderPhoneDisplay(phoneDisplay, result.user.phone);
+                                }
+                                if (emailDisplay) {
+                                    renderEmailDisplay(emailDisplay, result.user.email);
+                                }
                                 
-                                if (result.user.designation) {
-                                    designationDisplay.textContent = result.user.designation;
-                                    designationDisplay.className = 'designation-badge user-display';
-                                } else {
-                                    designationDisplay.textContent = '-';
-                                    designationDisplay.className = 'user-display';
+                                if (designationDisplay) {
+                                    if (result.user.designation) {
+                                        designationDisplay.textContent = result.user.designation;
+                                        designationDisplay.className = 'designation-badge user-display';
+                                    } else {
+                                        designationDisplay.textContent = '-';
+                                        designationDisplay.className = 'user-display';
+                                    }
                                 }
 
                                 const rrCell = row.querySelector('.user-rr-cell');
                                 if (rrCell && typeof result.user.has_rr_portfolio === 'boolean') {
                                     rrCell.dataset.hasPortfolio = result.user.has_rr_portfolio ? '1' : '0';
                                 }
-                                renderRrRoleDisplay(rrRoleDisplay, result.user.rr_role);
+                                if (rrRoleDisplay) {
+                                    renderRrRoleDisplay(rrRoleDisplay, result.user.rr_role);
+                                }
 
                                 const res = result.user.resources || '';
                                 if (resourcesDisplay) {
@@ -1702,7 +1735,9 @@
 
                                 // Update avatar initial
                                 const avatar = row.querySelector('.avatar-circle');
-                                avatar.textContent = result.user.name.charAt(0).toUpperCase();
+                                if (avatar) {
+                                    avatar.textContent = result.user.name.charAt(0).toUpperCase();
+                                }
 
                                 // Hide inputs, show displays
                                 row.querySelectorAll('.user-edit').forEach(input => {
@@ -1743,13 +1778,16 @@
                                 updateChecklistCell(row);
 
                                 // Show edit & delete, hide save/cancel
-                                row.querySelector('.edit-btn').classList.remove('d-none');
+                                const editBtn3 = row.querySelector('.edit-btn');
+                                if (editBtn3) editBtn3.classList.remove('d-none');
                                 const userIconBtn3 = row.querySelector('.user-icon-btn');
                                 if (userIconBtn3) userIconBtn3.classList.remove('d-none');
                                 const delBtn3 = row.querySelector('.delete-btn');
                                 if (delBtn3) delBtn3.classList.remove('d-none');
-                                row.querySelector('.save-btn').classList.add('d-none');
-                                row.querySelector('.cancel-btn').classList.add('d-none');
+                                const saveBtn3 = row.querySelector('.save-btn');
+                                if (saveBtn3) saveBtn3.classList.add('d-none');
+                                const cancelBtn3 = row.querySelector('.cancel-btn');
+                                if (cancelBtn3) cancelBtn3.classList.add('d-none');
                                 row.classList.remove('editing-row');
                                 
                                 delete originalData[userId];
@@ -2207,6 +2245,13 @@
                                                         <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $user->name }}" data-field="name">
                                                     </div>
                                                 </div>
+                                                <!-- Hidden fields for required data not displayed in Salary tab -->
+                                                <input type="hidden" class="salary-tab-email" value="{{ $user->email }}" data-field="email">
+                                                <input type="hidden" class="salary-tab-phone" value="{{ $user->phone ?? '' }}" data-field="phone">
+                                                <input type="hidden" class="salary-tab-designation" value="{{ $user->designation ?? '' }}" data-field="designation">
+                                                <input type="hidden" class="salary-tab-rr" value="{{ $user->userRR?->role ?? '' }}" data-field="rr_role">
+                                                <input type="hidden" class="salary-tab-resources" value="{{ $user->userRR?->resources ?? '' }}" data-field="resources">
+                                                <input type="hidden" class="salary-tab-training" value="{{ $user->userRR?->training ?? '' }}" data-field="training">
                                             </td>
                                             <td>
                                                 @php $salaryPP = $user->userSalary?->salary_pp ?? ''; @endphp
