@@ -711,6 +711,18 @@
                 updateHistoryTotalCount();
             }
 
+            function formatDateToMonthDay(dateStr) {
+                if (!dateStr) return '';
+                const parts = String(dateStr).split(' ')[0].split('-');
+                if (parts.length >= 3) {
+                    const day = parseInt(parts[0], 10);
+                    const monthIndex = parseInt(parts[1], 10) - 1;
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return day + ' ' + months[monthIndex];
+                }
+                return dateStr;
+            }
+
             function normalizeRecord(row) {
                 return {
                     id: row?.id ?? null,
@@ -730,7 +742,7 @@
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
                     created_by: row?.created_by ?? 'System',
-                    created_at: row?.created_at_display ?? row?.created_at ?? '',
+                    created_at: formatDateToMonthDay(row?.created_at_display ?? row?.created_at ?? ''),
                 };
             }
 
@@ -757,7 +769,7 @@
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
                     created_by: row?.created_by ?? 'System',
-                    logged_at: row?.logged_at_display ?? row?.logged_at ?? '',
+                    logged_at: formatDateToMonthDay(row?.logged_at_display ?? row?.logged_at ?? ''),
                 };
             }
 
