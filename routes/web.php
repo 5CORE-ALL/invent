@@ -4887,6 +4887,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->whereNumber('id')
         ->name('users.restore');
 
+    Route::post('/users/import', [UserController::class, 'importData'])
+        ->middleware('auth')
+        ->name('users.import');
+
+    Route::post('/users/import-banks', [UserController::class, 'importBanksData'])
+        ->middleware('auth')
+        ->name('users.importBanks');
+
+    Route::get('/users/export', [UserController::class, 'exportData'])
+        ->middleware('auth')
+        ->name('users.export');
+
+    Route::post('/users/copy-salary-lm-to-pp', [UserController::class, 'copySalaryLmToPp'])
+        ->middleware('auth')
+        ->name('users.copySalaryLmToPp');
+
     // API endpoint for active users
     Route::get('/api/users/active', [UserController::class, 'getActiveUsers'])
         ->middleware('auth')

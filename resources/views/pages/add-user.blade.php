@@ -45,13 +45,82 @@
                 <h2 class="text-primary fw-bold mb-1">Team Management</h2>
                 <p class="text-muted">View and manage users & performance</p>
             </div>
+            @if($canEdit)
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-primary" id="copySalaryBtn">
+                    <i class="ri-file-copy-line me-2"></i>Copy Salary LM → PP
+                </button>
+                <button type="button" class="btn btn-info" id="importBtn">
+                    <i class="ri-upload-2-line me-2"></i>Import Salary PP
+                </button>
+                <input type="file" id="importFile" accept=".csv" style="display: none;">
+                <button type="button" class="btn btn-warning" id="importBanksBtn">
+                    <i class="ri-upload-2-line me-2"></i>Import Banks
+                </button>
+                <input type="file" id="importBanksFile" accept=".csv" style="display: none;">
+                <button type="button" class="btn btn-success" id="exportBtn">
+                    <i class="ri-download-2-line me-2"></i>Export Data
+                </button>
+            </div>
+            @endif
         </div>
+        
+        @if($canEdit)
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div></div>
+            @if($canEdit)
+            <div class="d-flex gap-3 flex-wrap">
+                <span class="badge bg-success fs-5 px-4 py-2">
+                    <i class="ri-money-dollar-circle-line me-2"></i>
+                    Total Salary PP: ₹{{ number_format($totalSalaryPP, 0) }}
+                </span>
+                <span class="badge bg-info fs-5 px-4 py-2">
+                    <i class="ri-funds-line me-2"></i>
+                    Total Increment: ₹{{ number_format($totalIncrement, 0) }}
+                </span>
+                <span class="badge bg-warning fs-5 px-4 py-2">
+                    <i class="ri-wallet-3-line me-2"></i>
+                    Total Salary LM: ₹{{ number_format($totalSalaryPP + $totalIncrement, 0) }}
+                </span>
+                <span class="badge bg-primary fs-5 px-4 py-2" title="{{ $previousMonth }}">
+                    <i class="ri-time-line me-2"></i>
+                    Total Hours ({{ date('M', strtotime($previousMonth)) }}): {{ array_sum(array_column($teamLoggerData, 'hours')) }}h
+                </span>
+                @php
+                    $totalAmountP = $users->sum(function($user) use ($teamLoggerData) {
+                        $userEmail = strtolower(trim($user->email));
+                        $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+                        $salaryPP = $user->userSalary?->salary_pp ?? 0;
+                        $other = $user->userSalary?->other ?? 0;
+                        return (($hoursLM * $salaryPP) / 200) - $other;
+                    });
+                    $totalAdvIncOther = $users->sum(function($user) {
+                        return $user->userSalary?->adv_inc_other ?? 0;
+                    });
+                @endphp
+                <span class="badge bg-secondary fs-5 px-4 py-2">
+                    <i class="ri-calculator-line me-2"></i>
+                    Total Amount P: ₹{{ number_format($totalAmountP, 0) }}
+                </span>
+                <span class="badge bg-dark fs-5 px-4 py-2">
+                    <i class="ri-file-list-3-line me-2"></i>
+                    Total Adv/Inc/Other: ₹{{ number_format($totalAdvIncOther, 0) }}
+                </span>
+            </div>
+            @endif
+        </div>
+        @endif
 
         <!-- Tabs Navigation -->
         <ul class="nav nav-tabs mb-4" id="userManagementTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-content" type="button" role="tab">
                     <i class="ri-user-line me-2"></i>Users
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="salary-tab" data-bs-toggle="tab" data-bs-target="#salary-content" type="button" role="tab">
+                    <i class="ri-money-dollar-circle-line me-2"></i>Salary
                 </button>
             </li>
             <li class="nav-item" role="presentation">
@@ -75,8 +144,8 @@
                         <span class="input-group-text bg-light border-0">
                             <i class="fas fa-search text-muted"></i>
                         </span>
-                        <input type="text" id="searchInput" class="form-control border-0 bg-light" 
-                            placeholder="Search by name, phone, email, designation, R&amp;R, resources, training, or checklist" onkeyup="filterTable()">
+                                <input type="text" id="searchInput" class="form-control border-0 bg-light" 
+                                    placeholder="Search by name, phone, email, designation, R&amp;R, resources, training, or checklist" onkeyup="filterTable()">
                     </div>
                 </div>
 
@@ -98,9 +167,7 @@
                                 <th>Resources</th>
                                 <th>Training</th>
                                 <th>Checklist</th>
-                                @if($canEdit)
-                                    <th>Action</th>
-                                @endif
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -206,33 +273,31 @@
                                             @endif
                                         </div>
                                     </td>
-                                    @if($canEdit)
-                                        <td>
-                                            <div class="action-buttons">
-                                                <button type="button" class="btn-action edit-btn" data-user-id="{{ $user->id }}" title="Edit">
-                                                    <i class="ri-edit-line"></i>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button type="button" class="btn-action edit-btn" data-user-id="{{ $user->id }}" title="Edit">
+                                                <i class="ri-edit-line"></i>
+                                            </button>
+                                            <button type="button" class="btn-action btn-user-icon user-icon-btn" data-user-id="{{ $user->id }}" title="User">
+                                                <i class="ri-user-line"></i>
+                                            </button>
+                                            @if($user->id !== auth()->id())
+                                                <button type="button" class="btn-action btn-danger-soft delete-btn" data-user-id="{{ $user->id }}" title="Deactivate user">
+                                                    <i class="ri-delete-bin-line"></i>
                                                 </button>
-                                                <button type="button" class="btn-action btn-user-icon user-icon-btn" data-user-id="{{ $user->id }}" title="User">
-                                                    <i class="ri-user-line"></i>
-                                                </button>
-                                                @if($user->id !== auth()->id())
-                                                    <button type="button" class="btn-action btn-danger-soft delete-btn" data-user-id="{{ $user->id }}" title="Deactivate user">
-                                                        <i class="ri-delete-bin-line"></i>
-                                                    </button>
-                                                @endif
-                                                <button type="button" class="btn-action btn-success save-btn d-none" data-user-id="{{ $user->id }}" title="Save">
-                                                    <i class="ri-check-line"></i>
-                                                </button>
-                                                <button type="button" class="btn-action btn-secondary cancel-btn d-none" data-user-id="{{ $user->id }}" title="Cancel">
-                                                    <i class="ri-close-line"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    @endif
+                                            @endif
+                                            <button type="button" class="btn-action btn-success save-btn d-none" data-user-id="{{ $user->id }}" title="Save">
+                                                <i class="ri-check-line"></i>
+                                            </button>
+                                            <button type="button" class="btn-action btn-secondary cancel-btn d-none" data-user-id="{{ $user->id }}" title="Cancel">
+                                                <i class="ri-close-line"></i>
+                                            </button>
+                                        </div>
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="{{ $canEdit ? '10' : '9' }}" class="text-center py-4 text-muted">No users found</td>
+                                    <td colspan="10" class="text-center py-4 text-muted">No users found</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -276,6 +341,16 @@
                                         <th>Resources</th>
                                         <th>Training</th>
                                         <th>Checklist</th>
+                                        <th>Salary PP</th>
+                                        <th>Increment</th>
+                                        <th>Salary LM</th>
+                                        <th>Hours LM</th>
+                                        <th>Other</th>
+                                        <th>Amount LM</th>
+                                        <th>Amount P</th>
+                                        <th>Adv / Inc / Other</th>
+                                        <th>Bank 1</th>
+                                        <th>Bank 2</th>
                                         <th>Deactivated at</th>
                                         <th>Action</th>
                                     </tr>
@@ -353,6 +428,99 @@
                                                 @else
                                                     <span class="text-muted">—</span>
                                                 @endif
+                                            </td>
+                                            <td>
+                                                @php $iuSalaryPP = $iu->userSalary?->salary_pp ?? ''; @endphp
+                                                @if($iuSalaryPP !== '')
+                                                    <span class="salary-badge">₹{{ number_format($iuSalaryPP, 0) }}</span>
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @php $iuIncrement = $iu->userSalary?->increment ?? ''; @endphp
+                                                @if($iuIncrement !== '')
+                                                    <span class="increment-badge">₹{{ number_format($iuIncrement, 0) }}</span>
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @php 
+                                                    $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
+                                                    $iuIncrementVal = $iu->userSalary?->increment ?? 0;
+                                                    $iuSalaryLM = $iuSalaryPPVal + $iuIncrementVal;
+                                                @endphp
+                                                @if($iuSalaryLM > 0)
+                                                    <span class="salary-lm-badge">₹{{ number_format($iuSalaryLM, 0) }}</span>
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @php 
+                                                    $iuEmail = strtolower(trim($iu->email));
+                                                    $iuHoursLM = $teamLoggerData[$iuEmail]['hours'] ?? 0;
+                                                @endphp
+                                                @if($iuHoursLM > 0)
+                                                    <span class="hours-lm-badge" title="{{ $previousMonth }}: {{ $iuHoursLM }} hours">{{ $iuHoursLM }}h</span>
+                                                @else
+                                                    <span class="text-muted" title="No hours logged in {{ $previousMonth }}">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @php $iuOther = $iu->userSalary?->other ?? 0; @endphp
+                                                @if($iuOther > 0)
+                                                    <span class="other-badge">₹{{ number_format($iuOther, 0) }}</span>
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @php 
+                                                    $iuEmail = strtolower(trim($iu->email));
+                                                    $iuHoursLM = $teamLoggerData[$iuEmail]['hours'] ?? 0;
+                                                    $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
+                                                    $iuIncrementVal = $iu->userSalary?->increment ?? 0;
+                                                    $iuSalaryLM = $iuSalaryPPVal + $iuIncrementVal;
+                                                    $iuOther = $iu->userSalary?->other ?? 0;
+                                                    $iuAmountLM = (($iuHoursLM * $iuSalaryLM) / 200) - $iuOther;
+                                                @endphp
+                                                @if($iuAmountLM != 0)
+                                                    <span class="amount-lm-badge">₹{{ number_format($iuAmountLM, 0) }}</span>
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @php 
+                                                    $iuEmail = strtolower(trim($iu->email));
+                                                    $iuHoursLM = $teamLoggerData[$iuEmail]['hours'] ?? 0;
+                                                    $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
+                                                    $iuOther = $iu->userSalary?->other ?? 0;
+                                                    $iuAmountP = (($iuHoursLM * $iuSalaryPPVal) / 200) - $iuOther;
+                                                @endphp
+                                                @if($iuAmountP != 0)
+                                                    <span class="amount-p-badge">₹{{ number_format($iuAmountP, 0) }}</span>
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @php $iuAdvIncOther = $iu->userSalary?->adv_inc_other ?? 0; @endphp
+                                                @if($iuAdvIncOther > 0)
+                                                    <span class="adv-inc-other-badge">₹{{ number_format($iuAdvIncOther, 0) }}</span>
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @php $iuBank1 = $iu->userSalary?->bank_1 ?? ''; @endphp
+                                                <span>{{ $iuBank1 ?: '—' }}</span>
+                                            </td>
+                                            <td>
+                                                @php $iuBank2 = $iu->userSalary?->bank_2 ?? ''; @endphp
+                                                <span>{{ $iuBank2 ?: '—' }}</span>
                                             </td>
                                             <td><span class="text-muted small">{{ $iu->deactivated_at?->format('Y-m-d H:i') ?? '—' }}</span></td>
                                             <td>
@@ -527,6 +695,22 @@
             box-shadow: 0 1px 0 #dee2e6;
         }
 
+        #salary-content .users-active-table-wrap {
+            overflow: auto;
+            max-height: calc(100dvh - 260px);
+            -webkit-overflow-scrolling: touch;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+
+        #salary-content .users-active-table-wrap .users-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 4;
+            background-color: #f8f9fa;
+            box-shadow: 0 1px 0 #dee2e6;
+        }
+
         /* Designation Badge */
         .designation-badge {
             display: inline-block;
@@ -536,6 +720,95 @@
             color: #1976d2;
             font-size: 13px;
             font-weight: 500;
+        }
+
+        /* Salary Badge */
+        .salary-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background-color: #d1f4e0;
+            color: #0d8a4d;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Increment Badge */
+        .increment-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background-color: #cfe2ff;
+            color: #084298;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Salary LM Badge */
+        .salary-lm-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background-color: #fff3cd;
+            color: #997404;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Hours LM Badge */
+        .hours-lm-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background-color: #d1ecf1;
+            color: #0c5460;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: help;
+        }
+
+        /* Other Badge */
+        .other-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background-color: #f8d7da;
+            color: #721c24;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Amount LM Badge */
+        .amount-lm-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background-color: #d4edda;
+            color: #155724;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Amount P Badge */
+        .amount-p-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background-color: #e7e8ea;
+            color: #383d41;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Adv/Inc/Other Badge */
+        .adv-inc-other-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background-color: #d1d3e2;
+            color: #2e2f45;
+            font-size: 13px;
+            font-weight: 600;
         }
 
         /* Action Button */
@@ -818,6 +1091,40 @@
             }
         }
 
+        function filterSalaryTable() {
+            const input = document.getElementById('searchSalaryInput');
+            if (!input) return;
+            const filter = input.value.toLowerCase();
+            const table = document.getElementById('salaryTable');
+            if (!table) return;
+            const rows = table.getElementsByTagName('tr');
+
+            for (let i = 1; i < rows.length; i++) {
+                const cells = rows[i].getElementsByTagName('td');
+                let match = false;
+
+                for (let j = 0; j < cells.length; j++) {
+                    if (cells[j]) {
+                        const text = cells[j].textContent || cells[j].innerText;
+                        if (text.toLowerCase().indexOf(filter) > -1) {
+                            match = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (match) {
+                    rows[i].style.display = '';
+                    rows[i].style.opacity = '1';
+                } else {
+                    rows[i].style.opacity = '0';
+                    setTimeout(() => {
+                        rows[i].style.display = 'none';
+                    }, 300);
+                }
+            }
+        }
+
         function filterInactiveTable() {
             const input = document.getElementById('searchInactiveInput');
             if (!input) return;
@@ -885,6 +1192,8 @@
                         // Store original values and show edit inputs
                         row.querySelectorAll('.user-display').forEach(display => {
                             const cell = display.closest('[data-field]');
+                            if (!cell) return; // Skip if no data-field parent (e.g., calculated fields)
+                            
                             const field = cell.dataset.field;
                             originalData[userId][field] = cell.dataset.original;
                             
@@ -909,6 +1218,38 @@
                             const ta = resourcesCellEdit.querySelector('textarea.user-edit');
                             if (ta) {
                                 originalData[userId]['resources'] = ta.value;
+                            }
+                        }
+
+                        const salaryCellEdit = row.querySelector('[data-field="salary_pp"]');
+                        if (salaryCellEdit) {
+                            const inp = salaryCellEdit.querySelector('input.user-edit');
+                            if (inp) {
+                                originalData[userId]['salary_pp'] = inp.value;
+                            }
+                        }
+
+                        const incrementCellEdit = row.querySelector('[data-field="increment"]');
+                        if (incrementCellEdit) {
+                            const inp = incrementCellEdit.querySelector('input.user-edit');
+                            if (inp) {
+                                originalData[userId]['increment'] = inp.value;
+                            }
+                        }
+
+                        const otherCellEdit = row.querySelector('[data-field="other"]');
+                        if (otherCellEdit) {
+                            const inp = otherCellEdit.querySelector('input.user-edit');
+                            if (inp) {
+                                originalData[userId]['other'] = inp.value;
+                            }
+                        }
+
+                        const advIncOtherCellEdit = row.querySelector('[data-field="adv_inc_other"]');
+                        if (advIncOtherCellEdit) {
+                            const inp = advIncOtherCellEdit.querySelector('input.user-edit');
+                            if (inp) {
+                                originalData[userId]['adv_inc_other'] = inp.value;
                             }
                         }
 
@@ -973,6 +1314,42 @@
                                         renderPhoneDisplay(display, originalData[userId][field]);
                                     } else if (field === 'email') {
                                         renderEmailDisplay(display, originalData[userId][field]);
+                                    } else if (field === 'salary_pp') {
+                                        const sv = originalData[userId][field] || '';
+                                        if (sv !== '') {
+                                            display.textContent = '₹' + Math.round(parseFloat(sv)).toLocaleString('en-IN');
+                                            display.className = 'user-display salary-badge';
+                                        } else {
+                                            display.textContent = '—';
+                                            display.className = 'user-display text-muted';
+                                        }
+                                    } else if (field === 'increment') {
+                                        const iv = originalData[userId][field] || '';
+                                        if (iv !== '') {
+                                            display.textContent = '₹' + Math.round(parseFloat(iv)).toLocaleString('en-IN');
+                                            display.className = 'user-display increment-badge';
+                                        } else {
+                                            display.textContent = '—';
+                                            display.className = 'user-display text-muted';
+                                        }
+                                    } else if (field === 'other') {
+                                        const ov = originalData[userId][field] || '';
+                                        if (ov !== '' && parseFloat(ov) > 0) {
+                                            display.textContent = '₹' + Math.round(parseFloat(ov)).toLocaleString('en-IN');
+                                            display.className = 'user-display other-badge';
+                                        } else {
+                                            display.textContent = '—';
+                                            display.className = 'user-display text-muted';
+                                        }
+                                    } else if (field === 'adv_inc_other') {
+                                        const aio = originalData[userId][field] || '';
+                                        if (aio !== '' && parseFloat(aio) > 0) {
+                                            display.textContent = '₹' + Math.round(parseFloat(aio)).toLocaleString('en-IN');
+                                            display.className = 'user-display adv-inc-other-badge';
+                                        } else {
+                                            display.textContent = '—';
+                                            display.className = 'user-display text-muted';
+                                        }
                                     } else {
                                         display.textContent = originalData[userId][field];
                                     }
@@ -989,6 +1366,50 @@
                         row.querySelector('.save-btn').classList.add('d-none');
                         row.querySelector('.cancel-btn').classList.add('d-none');
                         row.classList.remove('editing-row');
+
+                        // Recalculate Salary LM and Amount LM after cancel
+                        const salaryLMDisplay = row.querySelector('.user-salary-lm-cell .user-display');
+                        const salaryVal = parseFloat(originalData[userId]['salary_pp']) || 0;
+                        const incrementVal = parseFloat(originalData[userId]['increment']) || 0;
+                        const salaryLMValue = salaryVal + incrementVal;
+                        if (salaryLMDisplay) {
+                            if (salaryLMValue > 0) {
+                                salaryLMDisplay.textContent = '₹' + Math.round(salaryLMValue).toLocaleString('en-IN');
+                                salaryLMDisplay.className = 'user-display salary-lm-badge';
+                            } else {
+                                salaryLMDisplay.textContent = '—';
+                                salaryLMDisplay.className = 'user-display text-muted';
+                            }
+                        }
+
+                        // Recalculate Amount LM
+                        const amountLMDisplay = row.querySelector('.user-amount-lm-cell span');
+                        const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
+                        const hoursLM = hoursLMCell ? parseFloat(hoursLMCell.textContent) || 0 : 0;
+                        const otherVal = parseFloat(originalData[userId]['other']) || 0;
+                        const amountLM = ((hoursLM * salaryLMValue) / 200) - otherVal;
+                        if (amountLMDisplay) {
+                            if (amountLM != 0) {
+                                amountLMDisplay.textContent = '₹' + Math.round(amountLM).toLocaleString('en-IN');
+                                amountLMDisplay.className = 'amount-lm-badge';
+                            } else {
+                                amountLMDisplay.textContent = '—';
+                                amountLMDisplay.className = 'text-muted';
+                            }
+                        }
+
+                        // Recalculate Amount P
+                        const amountPDisplay = row.querySelector('.user-amount-p-cell span');
+                        const amountP = ((hoursLM * salaryVal) / 200) - otherVal;
+                        if (amountPDisplay) {
+                            if (amountP != 0) {
+                                amountPDisplay.textContent = '₹' + Math.round(amountP).toLocaleString('en-IN');
+                                amountPDisplay.className = 'amount-p-badge';
+                            } else {
+                                amountPDisplay.textContent = '—';
+                                amountPDisplay.className = 'text-muted';
+                            }
+                        }
 
                         updateChecklistCell(row);
                         
@@ -1017,6 +1438,12 @@
                             rr_role: row.querySelector('[data-field="rr_role"] .user-edit').value.trim(),
                             resources: row.querySelector('[data-field="resources"] textarea.user-edit').value.trim(),
                             training: row.querySelector('[data-field="training"] textarea.user-edit').value.trim(),
+                            salary_pp: row.querySelector('[data-field="salary_pp"] .user-edit').value.trim(),
+                            increment: row.querySelector('[data-field="increment"] .user-edit').value.trim(),
+                            other: row.querySelector('[data-field="other"] .user-edit').value.trim(),
+                            adv_inc_other: row.querySelector('[data-field="adv_inc_other"] .user-edit').value.trim(),
+                            bank_1: row.querySelector('[data-field="bank_1"] .user-edit').value.trim(),
+                            bank_2: row.querySelector('[data-field="bank_2"] .user-edit').value.trim(),
                             _token: '{{ csrf_token() }}',
                             _method: 'PUT'
                         };
@@ -1030,6 +1457,12 @@
                         formData.append('rr_role', data.rr_role);
                         formData.append('resources', data.resources);
                         formData.append('training', data.training);
+                        formData.append('salary_pp', data.salary_pp);
+                        formData.append('increment', data.increment);
+                        formData.append('other', data.other);
+                        formData.append('adv_inc_other', data.adv_inc_other);
+                        formData.append('bank_1', data.bank_1);
+                        formData.append('bank_2', data.bank_2);
                         formData.append('_token', '{{ csrf_token() }}');
                         formData.append('_method', 'PUT');
 
@@ -1054,6 +1487,18 @@
                                 const resourcesTextarea = row.querySelector('[data-field="resources"] textarea.user-edit');
                                 const trainingDisplay = row.querySelector('[data-field="training"] .user-display');
                                 const trainingTextarea = row.querySelector('[data-field="training"] textarea.user-edit');
+                                const salaryDisplay = row.querySelector('[data-field="salary_pp"] .user-display');
+                                const salaryInput = row.querySelector('[data-field="salary_pp"] .user-edit');
+                                const incrementDisplay = row.querySelector('[data-field="increment"] .user-display');
+                                const incrementInput = row.querySelector('[data-field="increment"] .user-edit');
+                                const otherDisplay = row.querySelector('[data-field="other"] .user-display');
+                                const otherInput = row.querySelector('[data-field="other"] .user-edit');
+                                const advIncOtherDisplay = row.querySelector('[data-field="adv_inc_other"] .user-display');
+                                const advIncOtherInput = row.querySelector('[data-field="adv_inc_other"] .user-edit');
+                                const bank1Display = row.querySelector('[data-field="bank_1"] .user-display');
+                                const bank1Input = row.querySelector('[data-field="bank_1"] .user-edit');
+                                const bank2Display = row.querySelector('[data-field="bank_2"] .user-display');
+                                const bank2Input = row.querySelector('[data-field="bank_2"] .user-edit');
                                 
                                 nameDisplay.textContent = result.user.name;
                                 renderPhoneDisplay(phoneDisplay, result.user.phone);
@@ -1099,6 +1544,119 @@
                                     trainingTextarea.value = trn;
                                 }
 
+                                const sal = result.user.salary_pp || '';
+                                if (salaryDisplay) {
+                                    if (sal !== '') {
+                                        salaryDisplay.textContent = '₹' + Math.round(parseFloat(sal)).toLocaleString('en-IN');
+                                        salaryDisplay.className = 'user-display salary-badge';
+                                    } else {
+                                        salaryDisplay.textContent = '—';
+                                        salaryDisplay.className = 'user-display text-muted';
+                                    }
+                                }
+                                if (salaryInput) {
+                                    salaryInput.value = sal !== '' ? Math.round(parseFloat(sal)) : '';
+                                }
+
+                                const inc = result.user.increment || '';
+                                if (incrementDisplay) {
+                                    if (inc !== '') {
+                                        incrementDisplay.textContent = '₹' + Math.round(parseFloat(inc)).toLocaleString('en-IN');
+                                        incrementDisplay.className = 'user-display increment-badge';
+                                    } else {
+                                        incrementDisplay.textContent = '—';
+                                        incrementDisplay.className = 'user-display text-muted';
+                                    }
+                                }
+                                if (incrementInput) {
+                                    incrementInput.value = inc !== '' ? Math.round(parseFloat(inc)) : '';
+                                }
+
+                                const oth = result.user.other || '';
+                                if (otherDisplay) {
+                                    if (oth !== '' && parseFloat(oth) > 0) {
+                                        otherDisplay.textContent = '₹' + Math.round(parseFloat(oth)).toLocaleString('en-IN');
+                                        otherDisplay.className = 'user-display other-badge';
+                                    } else {
+                                        otherDisplay.textContent = '—';
+                                        otherDisplay.className = 'user-display text-muted';
+                                    }
+                                }
+                                if (otherInput) {
+                                    otherInput.value = oth !== '' ? Math.round(parseFloat(oth)) : '';
+                                }
+
+                                const aio = result.user.adv_inc_other || '';
+                                if (advIncOtherDisplay) {
+                                    if (aio !== '' && parseFloat(aio) > 0) {
+                                        advIncOtherDisplay.textContent = '₹' + Math.round(parseFloat(aio)).toLocaleString('en-IN');
+                                        advIncOtherDisplay.className = 'user-display adv-inc-other-badge';
+                                    } else {
+                                        advIncOtherDisplay.textContent = '—';
+                                        advIncOtherDisplay.className = 'user-display text-muted';
+                                    }
+                                }
+                                if (advIncOtherInput) {
+                                    advIncOtherInput.value = aio !== '' ? Math.round(parseFloat(aio)) : '';
+                                }
+
+                                const b1 = result.user.bank_1 || '';
+                                if (bank1Display) {
+                                    bank1Display.textContent = b1 || '—';
+                                }
+                                if (bank1Input) {
+                                    bank1Input.value = b1;
+                                }
+
+                                const b2 = result.user.bank_2 || '';
+                                if (bank2Display) {
+                                    bank2Display.textContent = b2 || '—';
+                                }
+                                if (bank2Input) {
+                                    bank2Input.value = b2;
+                                }
+
+                                // Update Salary LM (calculated field)
+                                const salaryLMDisplay = row.querySelector('.user-salary-lm-cell .user-display');
+                                const salaryLMValue = (parseFloat(sal) || 0) + (parseFloat(inc) || 0);
+                                if (salaryLMDisplay) {
+                                    if (salaryLMValue > 0) {
+                                        salaryLMDisplay.textContent = '₹' + Math.round(salaryLMValue).toLocaleString('en-IN');
+                                        salaryLMDisplay.className = 'user-display salary-lm-badge';
+                                    } else {
+                                        salaryLMDisplay.textContent = '—';
+                                        salaryLMDisplay.className = 'user-display text-muted';
+                                    }
+                                }
+
+                                // Update Amount LM (calculated field)
+                                const amountLMDisplay = row.querySelector('.user-amount-lm-cell span');
+                                const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
+                                const hoursLM = hoursLMCell ? parseFloat(hoursLMCell.textContent) || 0 : 0;
+                                const amountLM = ((hoursLM * salaryLMValue) / 200) - (parseFloat(oth) || 0);
+                                if (amountLMDisplay) {
+                                    if (amountLM != 0) {
+                                        amountLMDisplay.textContent = '₹' + Math.round(amountLM).toLocaleString('en-IN');
+                                        amountLMDisplay.className = 'amount-lm-badge';
+                                    } else {
+                                        amountLMDisplay.textContent = '—';
+                                        amountLMDisplay.className = 'text-muted';
+                                    }
+                                }
+
+                                // Update Amount P (calculated field)
+                                const amountPDisplay = row.querySelector('.user-amount-p-cell span');
+                                const amountP = ((hoursLM * (parseFloat(sal) || 0)) / 200) - (parseFloat(oth) || 0);
+                                if (amountPDisplay) {
+                                    if (amountP != 0) {
+                                        amountPDisplay.textContent = '₹' + Math.round(amountP).toLocaleString('en-IN');
+                                        amountPDisplay.className = 'amount-p-badge';
+                                    } else {
+                                        amountPDisplay.textContent = '—';
+                                        amountPDisplay.className = 'text-muted';
+                                    }
+                                }
+
                                 // Update avatar initial
                                 const avatar = row.querySelector('.avatar-circle');
                                 avatar.textContent = result.user.name.charAt(0).toUpperCase();
@@ -1114,11 +1672,30 @@
                                 // Update original data
                                 row.querySelectorAll('[data-field]').forEach(cell => {
                                     const field = cell.dataset.field;
-                                    if (field === 'training' || field === 'resources') {
+                                    if (field === 'training' || field === 'resources' || field === 'salary_pp' || field === 'increment' || field === 'other' || field === 'adv_inc_other') {
                                         return;
                                     }
                                     cell.dataset.original = result.user[field] || '';
                                 });
+
+                                // Update data-original for salary fields
+                                const salaryCell = row.querySelector('[data-field="salary_pp"]');
+                                if (salaryCell) salaryCell.dataset.original = sal;
+                                
+                                const incrementCell = row.querySelector('[data-field="increment"]');
+                                if (incrementCell) incrementCell.dataset.original = inc;
+                                
+                                const otherCell = row.querySelector('[data-field="other"]');
+                                if (otherCell) otherCell.dataset.original = oth;
+                                
+                                const advIncOtherCell = row.querySelector('[data-field="adv_inc_other"]');
+                                if (advIncOtherCell) advIncOtherCell.dataset.original = aio;
+                                
+                                const bank1Cell = row.querySelector('[data-field="bank_1"]');
+                                if (bank1Cell) bank1Cell.dataset.original = b1;
+                                
+                                const bank2Cell = row.querySelector('[data-field="bank_2"]');
+                                if (bank2Cell) bank2Cell.dataset.original = b2;
 
                                 updateChecklistCell(row);
 
@@ -1133,6 +1710,9 @@
                                 row.classList.remove('editing-row');
                                 
                                 delete originalData[userId];
+
+                                // Update total salary PP and increment badges
+                                updateTotalBadges();
 
                                 // Show success message
                                 showToast(result.message, 'success');
@@ -1208,6 +1788,63 @@
             });
         }
 
+        function updateTotalBadges() {
+            let totalSalary = 0;
+            let totalIncrement = 0;
+            let totalAmountP = 0;
+            let totalAdvIncOther = 0;
+            
+            document.querySelectorAll('#usersTable tbody tr').forEach(row => {
+                const salaryCell = row.querySelector('[data-field="salary_pp"] .user-edit');
+                const salaryVal = (salaryCell && salaryCell.value) ? (parseFloat(salaryCell.value) || 0) : 0;
+                totalSalary += salaryVal;
+                
+                const incrementCell = row.querySelector('[data-field="increment"] .user-edit');
+                const incrementVal = (incrementCell && incrementCell.value) ? (parseFloat(incrementCell.value) || 0) : 0;
+                totalIncrement += incrementVal;
+                
+                // Calculate Amount P for this row
+                const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
+                const hoursLM = hoursLMCell ? (parseFloat(hoursLMCell.textContent) || 0) : 0;
+                const otherCell = row.querySelector('[data-field="other"] .user-edit');
+                const otherVal = (otherCell && otherCell.value) ? (parseFloat(otherCell.value) || 0) : 0;
+                const amountP = ((hoursLM * salaryVal) / 200) - otherVal;
+                totalAmountP += amountP;
+                
+                // Sum Adv/Inc/Other
+                const advIncOtherCell = row.querySelector('[data-field="adv_inc_other"] .user-edit');
+                const advIncOtherVal = (advIncOtherCell && advIncOtherCell.value) ? (parseFloat(advIncOtherCell.value) || 0) : 0;
+                totalAdvIncOther += advIncOtherVal;
+            });
+            
+            const totalSalaryLM = totalSalary + totalIncrement;
+            
+            const salaryBadge = document.querySelector('.badge.bg-success');
+            if (salaryBadge) {
+                salaryBadge.innerHTML = '<i class="ri-money-dollar-circle-line me-2"></i>Total Salary PP: ₹' + Math.round(totalSalary).toLocaleString('en-IN');
+            }
+            
+            const incrementBadge = document.querySelector('.badge.bg-info');
+            if (incrementBadge) {
+                incrementBadge.innerHTML = '<i class="ri-funds-line me-2"></i>Total Increment: ₹' + Math.round(totalIncrement).toLocaleString('en-IN');
+            }
+            
+            const salaryLMBadge = document.querySelector('.badge.bg-warning');
+            if (salaryLMBadge) {
+                salaryLMBadge.innerHTML = '<i class="ri-wallet-3-line me-2"></i>Total Salary LM: ₹' + Math.round(totalSalaryLM).toLocaleString('en-IN');
+            }
+            
+            const amountPBadge = document.querySelector('.badge.bg-secondary');
+            if (amountPBadge) {
+                amountPBadge.innerHTML = '<i class="ri-calculator-line me-2"></i>Total Amount P: ₹' + Math.round(totalAmountP).toLocaleString('en-IN');
+            }
+            
+            const advIncOtherBadge = document.querySelector('.badge.bg-dark');
+            if (advIncOtherBadge) {
+                advIncOtherBadge.innerHTML = '<i class="ri-file-list-3-line me-2"></i>Total Adv/Inc/Other: ₹' + Math.round(totalAdvIncOther).toLocaleString('en-IN');
+            }
+        }
+
         function showToast(message, type = 'success') {
             // Simple toast notification
             const toast = document.createElement('div');
@@ -1220,9 +1857,420 @@
                 toast.remove();
             }, 3000);
         }
+
+        // Import functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const importBtn = document.getElementById('importBtn');
+            const importFile = document.getElementById('importFile');
+            
+            if (importBtn && importFile) {
+                importBtn.addEventListener('click', function() {
+                    importFile.click();
+                });
+                
+                importFile.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    // Validate file type
+                    if (!file.name.endsWith('.csv')) {
+                        showToast('Please select a CSV file', 'error');
+                        return;
+                    }
+                    
+                    // Show loading state
+                    const originalHTML = importBtn.innerHTML;
+                    importBtn.disabled = true;
+                    importBtn.innerHTML = '<i class="ri-loader-4-line spin me-2"></i>Importing...';
+                    
+                    // Prepare form data
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('_token', '{{ csrf_token() }}');
+                    
+                    // Send to server
+                    fetch('{{ route("users.import") }}', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json'
+                        },
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        importBtn.disabled = false;
+                        importBtn.innerHTML = originalHTML;
+                        importFile.value = ''; // Reset file input
+                        
+                        if (result.success) {
+                            showToast(result.message, 'success');
+                            // Reload page to show updated values
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 2000);
+                        } else {
+                            showToast(result.message || 'Import failed', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        importBtn.disabled = false;
+                        importBtn.innerHTML = originalHTML;
+                        importFile.value = '';
+                        showToast('An error occurred while importing', 'error');
+                    });
+                });
+            }
+        });
+
+        // Import Banks functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const importBanksBtn = document.getElementById('importBanksBtn');
+            const importBanksFile = document.getElementById('importBanksFile');
+            
+            if (importBanksBtn && importBanksFile) {
+                importBanksBtn.addEventListener('click', function() {
+                    importBanksFile.click();
+                });
+                
+                importBanksFile.addEventListener('change', function() {
+                    const file = this.files[0];
+                    if (!file) return;
+                    
+                    // Validate file type
+                    if (!file.name.endsWith('.csv')) {
+                        showToast('Please select a CSV file', 'error');
+                        return;
+                    }
+                    
+                    // Show loading state
+                    const originalHTML = importBanksBtn.innerHTML;
+                    importBanksBtn.disabled = true;
+                    importBanksBtn.innerHTML = '<i class="ri-loader-4-line spin me-2"></i>Importing...';
+                    
+                    // Prepare form data
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('_token', '{{ csrf_token() }}');
+                    
+                    // Send to server
+                    fetch('{{ route("users.importBanks") }}', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json'
+                        },
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        importBanksBtn.disabled = false;
+                        importBanksBtn.innerHTML = originalHTML;
+                        importBanksFile.value = ''; // Reset file input
+                        
+                        if (result.success) {
+                            showToast(result.message, 'success');
+                            // Reload page to show updated values
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 2000);
+                        } else {
+                            showToast(result.message || 'Import failed', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        importBanksBtn.disabled = false;
+                        importBanksBtn.innerHTML = originalHTML;
+                        importBanksFile.value = '';
+                        showToast('An error occurred while importing', 'error');
+                    });
+                });
+            }
+        });
+
+        // Copy Salary LM to PP functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const copySalaryBtn = document.getElementById('copySalaryBtn');
+            if (copySalaryBtn) {
+                copySalaryBtn.addEventListener('click', function() {
+                    if (confirm('⚠️ WARNING: This will copy all Salary LM values to Salary PP and reset increments to 0 for all active users.\n\nThis action cannot be undone. Do you want to continue?')) {
+                        // Show loading state
+                        const originalHTML = copySalaryBtn.innerHTML;
+                        copySalaryBtn.disabled = true;
+                        copySalaryBtn.innerHTML = '<i class="ri-loader-4-line spin me-2"></i>Processing...';
+                        
+                        // Send request to server
+                        fetch('{{ route("users.copySalaryLmToPp") }}', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(result => {
+                            copySalaryBtn.disabled = false;
+                            copySalaryBtn.innerHTML = originalHTML;
+                            
+                            if (result.success) {
+                                showToast(result.message, 'success');
+                                // Reload page to show updated values
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 1500);
+                            } else {
+                                showToast(result.message || 'Operation failed', 'error');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            copySalaryBtn.disabled = false;
+                            copySalaryBtn.innerHTML = originalHTML;
+                            showToast('An error occurred while processing the request', 'error');
+                        });
+                    }
+                });
+            }
+        });
+
+        // Export functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const exportBtn = document.getElementById('exportBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function() {
+                    // Show loading state
+                    const originalHTML = exportBtn.innerHTML;
+                    exportBtn.disabled = true;
+                    exportBtn.innerHTML = '<i class="ri-loader-4-line spin me-2"></i>Exporting...';
+                    
+                    // Trigger server-side export
+                    window.location.href = '{{ route("users.export") }}';
+                    
+                    // Reset button after a delay
+                    setTimeout(() => {
+                        exportBtn.disabled = false;
+                        exportBtn.innerHTML = originalHTML;
+                        showToast('Data exported successfully! A copy has been saved to history.', 'success');
+                    }, 2000);
+                });
+            }
+        });
     </script>
             </div>
             <!-- End Users Tab -->
+
+            <!-- Salary Tab -->
+            <div class="tab-pane fade" id="salary-content" role="tabpanel">
+                @if($canEdit)
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <!-- Search Form -->
+                        <div class="mb-2">
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-0">
+                                    <i class="fas fa-search text-muted"></i>
+                                </span>
+                                <input type="text" id="searchSalaryInput" class="form-control border-0 bg-light" 
+                                    placeholder="Search by name, salary, increment, salary LM, hours LM, other, amount LM, amount P, adv/inc/other, or banks" onkeyup="filterSalaryTable()">
+                            </div>
+                        </div>
+
+                        <!-- Salary Table -->
+                        <div class="users-active-table-wrap">
+                            <table class="table users-table align-middle" id="salaryTable">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Name</th>
+                                        <th>Salary PP</th>
+                                        <th>Increment</th>
+                                        <th>Salary LM</th>
+                                        <th>Hours LM</th>
+                                        <th>Other</th>
+                                        <th>Amount LM</th>
+                                        <th>Amount P</th>
+                                        <th>Adv / Inc / Other</th>
+                                        <th>Bank 1</th>
+                                        <th>Bank 2</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @forelse($users as $index => $user)
+                                        <tr data-user-id="{{ $user->id }}">
+                                            <td>{{ $index + 1 }}</td>
+                                            <td>
+                                                <div class="d-flex align-items-center">
+                                                    <div class="avatar-circle me-3">
+                                                        {{ strtoupper(substr($user->name, 0, 1)) }}
+                                                    </div>
+                                                    <div class="user-name-cell" data-field="name" data-original="{{ $user->name }}">
+                                                        <span class="user-display user-name">{{ $user->name }}</span>
+                                                        <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $user->name }}" data-field="name">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php $salaryPP = $user->userSalary?->salary_pp ?? ''; @endphp
+                                                <div class="user-salary-cell" data-field="salary_pp">
+                                                    @if($salaryPP !== '')
+                                                        <span class="user-display salary-badge">₹{{ number_format($salaryPP, 0) }}</span>
+                                                    @else
+                                                        <span class="user-display text-muted">—</span>
+                                                    @endif
+                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $salaryPP !== '' ? round($salaryPP) : '' }}" data-field="salary_pp" placeholder="Salary PP">
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php $increment = $user->userSalary?->increment ?? ''; @endphp
+                                                <div class="user-increment-cell" data-field="increment">
+                                                    @if($increment !== '')
+                                                        <span class="user-display increment-badge">₹{{ number_format($increment, 0) }}</span>
+                                                    @else
+                                                        <span class="user-display text-muted">—</span>
+                                                    @endif
+                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $increment !== '' ? round($increment) : '' }}" data-field="increment" placeholder="Increment">
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php 
+                                                    $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
+                                                    $incrementVal = $user->userSalary?->increment ?? 0;
+                                                    $salaryLM = $salaryPPVal + $incrementVal;
+                                                @endphp
+                                                <div class="user-salary-lm-cell">
+                                                    @if($salaryLM > 0)
+                                                        <span class="user-display salary-lm-badge">₹{{ number_format($salaryLM, 0) }}</span>
+                                                    @else
+                                                        <span class="user-display text-muted">—</span>
+                                                    @endif
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php 
+                                                    $userEmail = strtolower(trim($user->email));
+                                                    $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+                                                @endphp
+                                                <div class="user-hours-lm-cell">
+                                                    @if($hoursLM > 0)
+                                                        <span class="hours-lm-badge" title="{{ $previousMonth }}: {{ $hoursLM }} hours">{{ $hoursLM }}h</span>
+                                                    @else
+                                                        <span class="text-muted" title="No hours logged in {{ $previousMonth }}">—</span>
+                                                    @endif
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php $other = $user->userSalary?->other ?? ''; @endphp
+                                                <div class="user-other-cell" data-field="other" data-original="{{ $other }}">
+                                                    @if($other !== '' && $other > 0)
+                                                        <span class="user-display other-badge">₹{{ number_format($other, 0) }}</span>
+                                                    @else
+                                                        <span class="user-display text-muted">—</span>
+                                                    @endif
+                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $other !== '' ? round($other) : '' }}" data-field="other" placeholder="Other">
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php 
+                                                    $userEmail = strtolower(trim($user->email));
+                                                    $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+                                                    $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
+                                                    $incrementVal = $user->userSalary?->increment ?? 0;
+                                                    $salaryLM = $salaryPPVal + $incrementVal;
+                                                    $other = $user->userSalary?->other ?? 0;
+                                                    $amountLM = (($hoursLM * $salaryLM) / 200) - $other;
+                                                @endphp
+                                                <div class="user-amount-lm-cell">
+                                                    @if($amountLM != 0)
+                                                        <span class="amount-lm-badge">₹{{ number_format($amountLM, 0) }}</span>
+                                                    @else
+                                                        <span class="text-muted">—</span>
+                                                    @endif
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php 
+                                                    $userEmail = strtolower(trim($user->email));
+                                                    $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+                                                    $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
+                                                    $other = $user->userSalary?->other ?? 0;
+                                                    $amountP = (($hoursLM * $salaryPPVal) / 200) - $other;
+                                                @endphp
+                                                <div class="user-amount-p-cell">
+                                                    @if($amountP != 0)
+                                                        <span class="amount-p-badge">₹{{ number_format($amountP, 0) }}</span>
+                                                    @else
+                                                        <span class="text-muted">—</span>
+                                                    @endif
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php $advIncOther = $user->userSalary?->adv_inc_other ?? ''; @endphp
+                                                <div class="user-adv-inc-other-cell" data-field="adv_inc_other" data-original="{{ $advIncOther }}">
+                                                    @if($advIncOther !== '' && $advIncOther > 0)
+                                                        <span class="user-display adv-inc-other-badge">₹{{ number_format($advIncOther, 0) }}</span>
+                                                    @else
+                                                        <span class="user-display text-muted">—</span>
+                                                    @endif
+                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $advIncOther !== '' ? round($advIncOther) : '' }}" data-field="adv_inc_other" placeholder="Adv / Inc / Other">
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php $bank1 = $user->userSalary?->bank_1 ?? ''; @endphp
+                                                <div class="user-bank-1-cell" data-field="bank_1" data-original="{{ $bank1 }}">
+                                                    <span class="user-display">{{ $bank1 ?: '—' }}</span>
+                                                    <input type="text" maxlength="100" class="form-control form-control-sm user-edit d-none" value="{{ $bank1 }}" data-field="bank_1" placeholder="Bank 1">
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php $bank2 = $user->userSalary?->bank_2 ?? ''; @endphp
+                                                <div class="user-bank-2-cell" data-field="bank_2" data-original="{{ $bank2 }}">
+                                                    <span class="user-display">{{ $bank2 ?: '—' }}</span>
+                                                    <input type="text" maxlength="100" class="form-control form-control-sm user-edit d-none" value="{{ $bank2 }}" data-field="bank_2" placeholder="Bank 2">
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="action-buttons">
+                                                    <button type="button" class="btn-action edit-btn" data-user-id="{{ $user->id }}" title="Edit">
+                                                        <i class="ri-edit-line"></i>
+                                                    </button>
+                                                    <button type="button" class="btn-action btn-user-icon user-icon-btn" data-user-id="{{ $user->id }}" title="User">
+                                                        <i class="ri-user-line"></i>
+                                                    </button>
+                                                    @if($user->id !== auth()->id())
+                                                        <button type="button" class="btn-action btn-danger-soft delete-btn" data-user-id="{{ $user->id }}" title="Deactivate user">
+                                                            <i class="ri-delete-bin-line"></i>
+                                                        </button>
+                                                    @endif
+                                                    <button type="button" class="btn-action btn-success save-btn d-none" data-user-id="{{ $user->id }}" title="Save">
+                                                        <i class="ri-check-line"></i>
+                                                    </button>
+                                                    <button type="button" class="btn-action btn-secondary cancel-btn d-none" data-user-id="{{ $user->id }}" title="Cancel">
+                                                        <i class="ri-close-line"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="13" class="text-center py-4 text-muted">No users found</td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                @else
+                    <div class="alert alert-warning">
+                        <i class="ri-lock-line me-2"></i>You don't have permission to view salary information.
+                    </div>
+                @endif
+            </div>
+            <!-- End Salary Tab -->
 
             <!-- Performance Management Tab -->
             <div class="tab-pane fade" id="performance-content" role="tabpanel">

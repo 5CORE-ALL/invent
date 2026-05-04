@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\RrPortfolioUser;
 use App\Models\User;
+use App\Services\TeamLoggerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Storage;
+use Carbon\Carbon;
 
 class UserController extends Controller
 {
@@ -17,7 +20,7 @@ class UserController extends Controller
         $users = User::query()
             ->where('is_active', true)
             ->select('id', 'name', 'phone', 'email', 'designation')
-            ->with('userRR')
+            ->with(['userRR', 'userSalary'])
             ->withCount('rrPortfolioAssignments')
             ->orderBy('name')
             ->get();
@@ -26,21 +29,36 @@ class UserController extends Controller
         $inactiveUsers = User::query()
             ->where('is_active', false)
             ->select('id', 'name', 'phone', 'email', 'designation', 'deactivated_at')
-            ->with('userRR')
+            ->with(['userRR', 'userSalary'])
             ->withCount('rrPortfolioAssignments')
             ->orderByDesc('deactivated_at')
             ->get();
 
-        // Check if current user has edit permission
-        $canEdit = auth()->check() && auth()->user()->email === 'president@5core.com';
+        // Calculate total salary PP for active users
+        $totalSalaryPP = $users->sum(function($user) {
+            return $user->userSalary?->salary_pp ?? 0;
+        });
 
-        return view('pages.add-user', compact('users', 'inactiveUsers', 'canEdit'));
+        // Calculate total increment for active users
+        $totalIncrement = $users->sum(function($user) {
+            return $user->userSalary?->increment ?? 0;
+        });
+
+        // Fetch TeamLogger data for previous month
+        $previousMonth = Carbon::now()->subMonth()->format('F Y');
+        $teamLoggerService = new TeamLoggerService();
+        $teamLoggerData = $teamLoggerService->fetchByMonth($previousMonth, true);
+
+        // Check if current user has edit permission
+        $canEdit = auth()->check() && in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com']);
+
+        return view('pages.add-user', compact('users', 'inactiveUsers', 'canEdit', 'totalSalaryPP', 'totalIncrement', 'teamLoggerData', 'previousMonth'));
     }
 
     public function update(Request $request, User $user)
     {
-        // Check permission - only president@5core.com can edit
-        if (auth()->user()->email !== 'president@5core.com') {
+        // Check permission - only president@5core.com and hr@5core.com can edit
+        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to edit user data.'
@@ -55,6 +73,12 @@ class UserController extends Controller
             'rr_role' => 'nullable|string|max:255',
             'training' => 'nullable|string|max:65535',
             'resources' => 'nullable|string|max:65535',
+            'salary_pp' => 'nullable|numeric|min:0',
+            'increment' => 'nullable|numeric|min:0',
+            'other' => 'nullable|numeric|min:0',
+            'adv_inc_other' => 'nullable|numeric|min:0',
+            'bank_1' => 'nullable|string|max:100',
+            'bank_2' => 'nullable|string|max:100',
         ]);
 
         if ($validator->fails()) {
@@ -81,6 +105,19 @@ class UserController extends Controller
         );
         $user->load('userRR');
 
+        $user->userSalary()->updateOrCreate(
+            ['user_id' => $user->id],
+            [
+                'salary_pp' => $request->input('salary_pp'),
+                'increment' => $request->input('increment'),
+                'other' => $request->input('other'),
+                'adv_inc_other' => $request->input('adv_inc_other'),
+                'bank_1' => $request->input('bank_1'),
+                'bank_2' => $request->input('bank_2'),
+            ]
+        );
+        $user->load('userSalary');
+
         return response()->json([
             'success' => true,
             'message' => 'User updated successfully.',
@@ -93,6 +130,12 @@ class UserController extends Controller
                 'rr_role' => $user->userRR->role ?? '',
                 'training' => $user->userRR->training ?? '',
                 'resources' => $user->userRR->resources ?? '',
+                'salary_pp' => $user->userSalary->salary_pp ?? '',
+                'increment' => $user->userSalary->increment ?? '',
+                'other' => $user->userSalary->other ?? '',
+                'adv_inc_other' => $user->userSalary->adv_inc_other ?? '',
+                'bank_1' => $user->userSalary->bank_1 ?? '',
+                'bank_2' => $user->userSalary->bank_2 ?? '',
                 'has_rr_portfolio' => RrPortfolioUser::where('user_id', $user->id)->exists(),
             ]
         ]);
@@ -100,7 +143,7 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
-        if (auth()->user()->email !== 'president@5core.com') {
+        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to delete users.'
@@ -130,7 +173,7 @@ class UserController extends Controller
     public function getActiveUsers()
     {
         $users = User::where('is_active', true)
-            ->with('userRR')
+            ->with(['userRR', 'userSalary'])
             ->select('id', 'name', 'phone', 'email', 'designation')
             ->orderBy('name')
             ->get()
@@ -144,6 +187,12 @@ class UserController extends Controller
                     'rr_role' => $user->userRR->role ?? '',
                     'training' => $user->userRR->training ?? '',
                     'resources' => $user->userRR->resources ?? '',
+                    'salary_pp' => $user->userSalary->salary_pp ?? '',
+                    'increment' => $user->userSalary->increment ?? '',
+                    'other' => $user->userSalary->other ?? '',
+                    'adv_inc_other' => $user->userSalary->adv_inc_other ?? '',
+                    'bank_1' => $user->userSalary->bank_1 ?? '',
+                    'bank_2' => $user->userSalary->bank_2 ?? '',
                 ];
             });
 
@@ -152,7 +201,7 @@ class UserController extends Controller
 
     public function restore(int $id)
     {
-        if (auth()->user()->email !== 'president@5core.com') {
+        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to restore users.'
@@ -163,7 +212,7 @@ class UserController extends Controller
         $user->is_active = true;
         $user->deactivated_at = null;
         $user->save();
-        $user->load('userRR');
+        $user->load(['userRR', 'userSalary']);
 
         return response()->json([
             'success' => true,
@@ -177,7 +226,286 @@ class UserController extends Controller
                 'rr_role' => $user->userRR->role ?? '',
                 'training' => $user->userRR->training ?? '',
                 'resources' => $user->userRR->resources ?? '',
+                'salary_pp' => $user->userSalary->salary_pp ?? '',
+                'increment' => $user->userSalary->increment ?? '',
+                'other' => $user->userSalary->other ?? '',
+                'adv_inc_other' => $user->userSalary->adv_inc_other ?? '',
+                'bank_1' => $user->userSalary->bank_1 ?? '',
+                'bank_2' => $user->userSalary->bank_2 ?? '',
             ]
         ]);
+    }
+
+    public function copySalaryLmToPp()
+    {
+        // Check permission
+        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to perform this operation.'
+            ], 403);
+        }
+
+        try {
+            // Get all active users with salaries
+            $users = User::query()
+                ->where('is_active', true)
+                ->with(['userSalary'])
+                ->get();
+
+            $updatedCount = 0;
+            foreach ($users as $user) {
+                if ($user->userSalary) {
+                    $salaryPP = $user->userSalary->salary_pp ?? 0;
+                    $increment = $user->userSalary->increment ?? 0;
+                    $salaryLM = $salaryPP + $increment;
+
+                    // Update Salary PP with Salary LM value
+                    if ($salaryLM > 0) {
+                        $user->userSalary->salary_pp = $salaryLM;
+                        $user->userSalary->increment = 0; // Reset increment
+                        $user->userSalary->save();
+                        $updatedCount++;
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Successfully updated {$updatedCount} user(s). Salary LM values copied to Salary PP and increments reset.",
+                'updated_count' => $updatedCount
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function importData(Request $request)
+    {
+        // Check permission
+        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to import data.'
+            ], 403);
+        }
+
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt|max:2048'
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $csvData = array_map('str_getcsv', file($file->getRealPath()));
+            
+            // Remove header row
+            $header = array_shift($csvData);
+            
+            $updated = 0;
+            $notFound = [];
+            $errors = [];
+            
+            foreach ($csvData as $row) {
+                if (count($row) < 2) continue;
+                
+                $name = trim($row[0]);
+                $salaryPP = trim($row[1]);
+                
+                if (empty($name) || empty($salaryPP)) continue;
+                
+                // Find user by name
+                $user = User::where('name', $name)
+                    ->where('is_active', true)
+                    ->first();
+                
+                if ($user) {
+                    // Update or create salary
+                    $user->userSalary()->updateOrCreate(
+                        ['user_id' => $user->id],
+                        ['salary_pp' => $salaryPP]
+                    );
+                    $updated++;
+                } else {
+                    $notFound[] = $name;
+                }
+            }
+            
+            $message = "Successfully updated {$updated} user(s).";
+            if (count($notFound) > 0) {
+                $message .= " " . count($notFound) . " user(s) not found: " . implode(', ', array_slice($notFound, 0, 5));
+                if (count($notFound) > 5) {
+                    $message .= " and " . (count($notFound) - 5) . " more...";
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'updated' => $updated,
+                'not_found' => count($notFound)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error processing file: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function importBanksData(Request $request)
+    {
+        // Check permission
+        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to import data.'
+            ], 403);
+        }
+
+        // Validate file
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt|max:2048',
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $content = file_get_contents($file->getRealPath());
+            $lines = explode("\n", $content);
+            
+            $updated = 0;
+            $errors = [];
+            $skipped = 0;
+            
+            foreach ($lines as $index => $line) {
+                // Skip header row
+                if ($index === 0) continue;
+                
+                // Skip empty lines
+                $line = trim($line);
+                if (empty($line)) continue;
+                
+                // Parse CSV line
+                $data = str_getcsv($line);
+                
+                // Validate format (need at least 3 columns: Name, Bank 1, Bank 2)
+                if (count($data) < 3) {
+                    $errors[] = "Row " . ($index + 1) . ": Invalid format";
+                    continue;
+                }
+                
+                $name = trim($data[0]);
+                $bank1 = trim($data[1]);
+                $bank2 = trim($data[2]);
+                
+                // Find user by name
+                $user = User::where('name', $name)->first();
+                
+                if (!$user) {
+                    $errors[] = "Row " . ($index + 1) . ": User '$name' not found";
+                    continue;
+                }
+                
+                // Update or create user salary record with bank data
+                $user->userSalary()->updateOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'bank_1' => $bank1,
+                        'bank_2' => $bank2,
+                    ]
+                );
+                
+                $updated++;
+            }
+            
+            // Prepare response message
+            $message = "Import completed: $updated user(s) updated";
+            if (count($errors) > 0) {
+                $message .= ". " . count($errors) . " error(s) occurred.";
+                if (count($errors) <= 5) {
+                    $message .= " (" . implode('; ', $errors) . ")";
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'stats' => [
+                    'updated' => $updated,
+                    'errors' => count($errors),
+                    'skipped' => $skipped
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error processing file: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function exportData()
+    {
+        // Check permission
+        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to export data.'
+            ], 403);
+        }
+
+        // Get active users with salary and TeamLogger data
+        $users = User::query()
+            ->where('is_active', true)
+            ->select('id', 'name', 'email')
+            ->with(['userSalary'])
+            ->orderBy('name')
+            ->get();
+
+        // Fetch TeamLogger data for previous month
+        $previousMonth = Carbon::now()->subMonth()->format('F Y');
+        $teamLoggerService = new TeamLoggerService();
+        $teamLoggerData = $teamLoggerService->fetchByMonth($previousMonth, true);
+
+        // Create CSV content
+        $csvData = [];
+        $csvData[] = ['Name', 'Amount P', 'Bank Column 1', 'Bank Column 2'];
+
+        foreach ($users as $user) {
+            $userEmail = strtolower(trim($user->email));
+            $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+            $salaryPP = $user->userSalary?->salary_pp ?? 0;
+            $other = $user->userSalary?->other ?? 0;
+            $amountP = (($hoursLM * $salaryPP) / 200) - $other;
+
+            $csvData[] = [
+                $user->name,
+                round($amountP),
+                $user->userSalary?->bank_1 ?? '',
+                $user->userSalary?->bank_2 ?? '',
+            ];
+        }
+
+        // Convert to CSV string
+        $csv = '';
+        foreach ($csvData as $row) {
+            $csv .= '"' . implode('","', $row) . '"' . "\n";
+        }
+
+        // Generate filename with timestamp and user
+        $timestamp = now()->format('Y-m-d_H-i-s');
+        $username = auth()->user()->name;
+        $filename = "team_export_{$timestamp}_{$username}.csv";
+
+        // Save to export history
+        Storage::put("export_history/{$filename}", $csv);
+
+        // Return file for download
+        return response($csv, 200)
+            ->header('Content-Type', 'text/csv')
+            ->header('Content-Disposition', "attachment; filename=\"{$filename}\"");
     }
 }

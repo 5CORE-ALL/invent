@@ -23,3 +23,41 @@
         }
     }
 }
+
+// Auto text color based on background lightness
+// Light backgrounds get dark text, dark backgrounds get white text
+
+.badge {
+    // Dark backgrounds - use white text
+    &.bg-primary,
+    &.bg-secondary,
+    &.bg-success,
+    &.bg-danger,
+    &.bg-dark,
+    &.bg-info {
+        color: #ffffff !important;
+    }
+    
+    // Light backgrounds - use dark text
+    &.bg-warning,
+    &.bg-light {
+        color: #000000 !important;
+    }
+}
+
+// For custom badge classes (performance badges, etc.)
+.performance-badge,
+.other-badge,
+.amount-lm-badge,
+.amount-p-badge,
+.adv-inc-other-badge {
+    &.badge-excellent,
+    &.badge-good,
+    &.badge-needs-improvement {
+        color: #ffffff !important;
+    }
+    
+    &.badge-average {
+        color: #000000 !important;
+    }
+}

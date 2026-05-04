@@ -73,6 +73,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the user's salary information.
+     */
+    public function userSalary()
+    {
+        return $this->hasOne(UserSalary::class);
+    }
+
+    /**
      * R&R portfolio document assignments (shared file may apply to many users).
      */
     public function rrPortfolioAssignments()

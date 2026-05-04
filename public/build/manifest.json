@@ -261,7 +261,7 @@
     "src": "resources/js/pages/chartjs-area.init.js"
   },
   "resources/js/pages/dashboard.js": {
-    "file": "assets/dashboard-74fd187d.js",
+    "file": "assets/dashboard-45545441.js",
     "imports": [
       "__commonjsHelpers-de833af9.js"
     ],
@@ -292,7 +292,7 @@
     "src": "resources/js/pages/fileupload.init.js"
   },
   "resources/js/pages/form-advanced.init.js": {
-    "file": "assets/form-advanced.init-460baa07.js",
+    "file": "assets/form-advanced.init-7f3968dd.js",
     "imports": [
       "__commonjsHelpers-de833af9.js",
       "_jquery-ef5d6b77.js",
@@ -393,7 +393,7 @@
     "src": "resources/js/pages/vector-maps.init.js"
   },
   "resources/scss/app.scss": {
-    "file": "assets/app-7c23fef1.css",
+    "file": "assets/app-35eae4b3.css",
     "isEntry": true,
     "src": "resources/scss/app.scss"
   },
