@@ -25,6 +25,7 @@ class OnSeaTransitController extends Controller
         $onSeaTransitData = OnSeaTransit::all()->map(function ($item) use ($chinaLoads) {
             $chinaLoad = $chinaLoads->firstWhere('container_sl_no', $item->container_sl_no);
             $invoiceValue = $item->invoice_value ?? 0;
+            $paid = $item->paid ?? 0;
             $balance = $invoiceValue - $paid;
             
             return [
