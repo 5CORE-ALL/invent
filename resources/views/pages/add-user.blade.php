@@ -67,6 +67,31 @@
         .btn-group .btn-outline:hover {
             background: rgba(255, 255, 255, 0.3);
         }
+
+        /* Make input fields wider and more visible when editing */
+        .users-table .user-edit {
+            min-width: 120px;
+            width: 100%;
+        }
+
+        .users-table input[type="text"].user-edit,
+        .users-table input[type="email"].user-edit,
+        .users-table input[type="number"].user-edit {
+            min-width: 120px;
+            padding: 0.375rem 0.75rem;
+        }
+
+        /* Specific width for bank and UPI fields */
+        .users-table [data-field="bank_1"] .user-edit,
+        .users-table [data-field="bank_2"] .user-edit,
+        .users-table [data-field="upi_id"] .user-edit {
+            min-width: 150px;
+        }
+
+        /* Make table cells accommodate larger inputs */
+        .users-table td {
+            min-width: 100px;
+        }
     </style>
 @endsection
 
@@ -1530,6 +1555,7 @@
                         if (advIncOtherInput) formData.append('adv_inc_other', data.adv_inc_other);
                         if (bank1Input) formData.append('bank_1', data.bank_1);
                         if (bank2Input) formData.append('bank_2', data.bank_2);
+                        if (upiIdInput) formData.append('upi_id', data.upi_id);
                         
                         formData.append('_token', '{{ csrf_token() }}');
                         formData.append('_method', 'PUT');

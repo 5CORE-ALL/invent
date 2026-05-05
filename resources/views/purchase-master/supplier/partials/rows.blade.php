@@ -194,7 +194,22 @@
     <td>
         @if(!empty($supplier->whatsapp))
             @php
+                // Remove all non-digit characters from WhatsApp number
                 $number = preg_replace('/\D/', '', $supplier->whatsapp);
+                
+                // If number doesn't start with a country code (e.g., less than 10 digits or doesn't start with common country codes)
+                // And country_code is available, prepend it
+                if (!empty($supplier->country_code) && strlen($number) < 10) {
+                    $countryCode = preg_replace('/\D/', '', $supplier->country_code);
+                    $number = $countryCode . $number;
+                } elseif (!empty($supplier->country_code) && !empty($supplier->phone)) {
+                    // Check if WhatsApp number is same as phone number (might be missing country code)
+                    $phoneDigits = preg_replace('/\D/', '', $supplier->phone);
+                    if ($number === $phoneDigits) {
+                        $countryCode = preg_replace('/\D/', '', $supplier->country_code);
+                        $number = $countryCode . $number;
+                    }
+                }
             @endphp
 
             <a href="#" onclick="openWhatsApp('{{ $number }}')" target="_blank"
@@ -569,7 +584,24 @@
                                         <span class="fw-semibold text-muted">WhatsApp:</span>
                                         <div>
                                             @if(!empty($supplier->whatsapp))
-                                                <a href="https://wa.me/{{ preg_replace('/\D/', '', $supplier->whatsapp) }}" target="_blank" class="text-success text-decoration-none">
+                                                @php
+                                                    // Remove all non-digit characters from WhatsApp number
+                                                    $waNumber = preg_replace('/\D/', '', $supplier->whatsapp);
+                                                    
+                                                    // If number doesn't start with a country code, prepend it
+                                                    if (!empty($supplier->country_code) && strlen($waNumber) < 10) {
+                                                        $countryCode = preg_replace('/\D/', '', $supplier->country_code);
+                                                        $waNumber = $countryCode . $waNumber;
+                                                    } elseif (!empty($supplier->country_code) && !empty($supplier->phone)) {
+                                                        // Check if WhatsApp number is same as phone number (might be missing country code)
+                                                        $phoneDigits = preg_replace('/\D/', '', $supplier->phone);
+                                                        if ($waNumber === $phoneDigits) {
+                                                            $countryCode = preg_replace('/\D/', '', $supplier->country_code);
+                                                            $waNumber = $countryCode . $waNumber;
+                                                        }
+                                                    }
+                                                @endphp
+                                                <a href="https://wa.me/{{ $waNumber }}" target="_blank" class="text-success text-decoration-none">
                                                     <i class="mdi mdi-whatsapp"></i> {{ $supplier->whatsapp }}
                                                 </a>
                                             @else
