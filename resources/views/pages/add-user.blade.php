@@ -160,7 +160,7 @@
                         $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
                         $salaryPP = $user->userSalary?->salary_pp ?? 0;
                         $other = $user->userSalary?->other ?? 0;
-                        return (($hoursLM * $salaryPP) / 200) - $other;
+                        return (($hoursLM * $salaryPP) / 200) + $other;
                     });
                     $totalAdvIncOther = $users->sum(function($user) {
                         return $user->userSalary?->adv_inc_other ?? 0;
@@ -566,7 +566,7 @@
                                                     $iuHoursLM = $teamLoggerData[$iuEmail]['hours'] ?? 0;
                                                     $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
                                                     $iuOther = $iu->userSalary?->other ?? 0;
-                                                    $iuAmountP = (($iuHoursLM * $iuSalaryPPVal) / 200) - $iuOther;
+                                                    $iuAmountP = (($iuHoursLM * $iuSalaryPPVal) / 200) + $iuOther;
                                                 @endphp
                                                 @if($iuAmountP != 0)
                                                     <span class="amount-p-badge">₹{{ number_format($iuAmountP, 0) }}</span>
@@ -1474,7 +1474,7 @@
 
                         // Recalculate Amount P
                         const amountPDisplay = row.querySelector('.user-amount-p-cell span');
-                        const amountP = ((hoursLM * salaryVal) / 200) - otherVal;
+                        const amountP = ((hoursLM * salaryVal) / 200) + otherVal;
                         if (amountPDisplay) {
                             if (amountP != 0) {
                                 amountPDisplay.textContent = '₹' + Math.round(amountP).toLocaleString('en-IN');
@@ -1730,6 +1730,21 @@
                                     upiIdInput.value = upi;
                                 }
 
+                                // Update avatar initial
+                                const avatar = row.querySelector('.avatar-circle');
+                                if (avatar) {
+                                    avatar.textContent = result.user.name.charAt(0).toUpperCase();
+                                }
+
+                                // Hide inputs, show displays FIRST
+                                row.querySelectorAll('.user-edit').forEach(input => {
+                                    input.classList.add('d-none');
+                                });
+                                row.querySelectorAll('.user-display').forEach(display => {
+                                    display.classList.remove('d-none');
+                                });
+
+                                // NOW update calculated fields AFTER display is visible
                                 // Update Salary LM (calculated field)
                                 const salaryLMDisplay = row.querySelector('.user-salary-lm-cell .user-display');
                                 const salaryLMValue = (parseFloat(sal) || 0) + (parseFloat(inc) || 0);
@@ -1760,7 +1775,7 @@
 
                                 // Update Amount P (calculated field)
                                 const amountPDisplay = row.querySelector('.user-amount-p-cell span');
-                                const amountP = ((hoursLM * (parseFloat(sal) || 0)) / 200) - (parseFloat(oth) || 0);
+                                const amountP = ((hoursLM * (parseFloat(sal) || 0)) / 200) + (parseFloat(oth) || 0);
                                 if (amountPDisplay) {
                                     if (amountP != 0) {
                                         amountPDisplay.textContent = '₹' + Math.round(amountP).toLocaleString('en-IN');
@@ -1770,20 +1785,6 @@
                                         amountPDisplay.className = 'text-muted';
                                     }
                                 }
-
-                                // Update avatar initial
-                                const avatar = row.querySelector('.avatar-circle');
-                                if (avatar) {
-                                    avatar.textContent = result.user.name.charAt(0).toUpperCase();
-                                }
-
-                                // Hide inputs, show displays
-                                row.querySelectorAll('.user-edit').forEach(input => {
-                                    input.classList.add('d-none');
-                                });
-                                row.querySelectorAll('.user-display').forEach(display => {
-                                    display.classList.remove('d-none');
-                                });
 
                                 // Update original data
                                 row.querySelectorAll('[data-field]').forEach(cell => {
@@ -1930,7 +1931,7 @@
                 const hoursLM = hoursLMCell ? (parseFloat(hoursLMCell.textContent) || 0) : 0;
                 const otherCell = row.querySelector('[data-field="other"] .user-edit');
                 const otherVal = (otherCell && otherCell.value) ? (parseFloat(otherCell.value) || 0) : 0;
-                const amountP = ((hoursLM * salaryVal) / 200) - otherVal;
+                const amountP = ((hoursLM * salaryVal) / 200) + otherVal;
                 totalAmountP += amountP;
                 
                 // Sum Adv/Inc/Other
@@ -2414,7 +2415,7 @@
                                                     $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
                                                     $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
                                                     $other = $user->userSalary?->other ?? 0;
-                                                    $amountP = (($hoursLM * $salaryPPVal) / 200) - $other;
+                                                    $amountP = (($hoursLM * $salaryPPVal) / 200) + $other;
                                                 @endphp
                                                 <div class="user-amount-p-cell">
                                                     @if($amountP != 0)
