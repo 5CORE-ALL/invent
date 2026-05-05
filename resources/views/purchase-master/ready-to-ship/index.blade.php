@@ -335,7 +335,7 @@
                 @php
                     $zoneClass = 'r2s-zone-cbm-badge--' . \Illuminate\Support\Str::slug($zoneLabel, '-');
                 @endphp
-                <span class="badge rounded-pill px-3 py-2 fs-6 r2s-zone-cbm-badge {{ $zoneClass }}" title="Sum of (Or. QTY × CBM) for rows in {{ $zoneLabel }}, excluding NR">
+                <span class="badge rounded-pill px-3 py-2 fs-6 r2s-zone-cbm-badge {{ $zoneClass }}" title="Sum of (Or. QTY × CBM) for visible rows in {{ $zoneLabel }} (updates based on active filters)">
                     {{ $zoneLabel }}
                     <span class="fw-bold ms-1">{{ number_format((float) $cbmSum, 2) }}</span>
                     <span class="opacity-90 fw-normal ms-1">m³</span>
@@ -1835,6 +1835,9 @@
             if (typeof updateFollowSupplierCount === 'function') {
                 updateFollowSupplierCount();
             }
+            if (typeof updateZoneCbmBadges === 'function') {
+                updateZoneCbmBadges();
+            }
         }
 
         window.filterByR2SStage = filterByR2SStage;
@@ -2728,6 +2731,7 @@
             calculateTotalOrderItems();
             updateFollowSupplierCount();
             updateSupplierCounts();
+            updateZoneCbmBadges();
         }, 300);
 
         function setupSupplierSelect() {
@@ -2777,6 +2781,7 @@
                     calculateTotalAmount();
                     calculateTotalOrderItems();
                     updateFollowSupplierCount();
+                    updateZoneCbmBadges();
                     return;
                 }
 
@@ -2802,6 +2807,7 @@
                     calculateTotalAmount();
                     calculateTotalOrderItems();
                     updateFollowSupplierCount();
+                    updateZoneCbmBadges();
                     return;
                 }
 
@@ -2863,6 +2869,7 @@
                 calculateTotalAmount();
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
+                updateZoneCbmBadges();
             });
 
 
@@ -3005,6 +3012,60 @@
         });
         const totalCbmEl = document.getElementById('total-cbm');
         if (totalCbmEl) totalCbmEl.textContent = totalCBM.toFixed(0);
+    }
+
+    function updateZoneCbmBadges() {
+        const zoneCbmTotals = {};
+        const zoneLabels = ['GHZ', 'Ningbo', 'Tianjin'];
+        
+        // Initialize all zones to 0
+        zoneLabels.forEach(zone => {
+            zoneCbmTotals[zone] = 0;
+        });
+
+        // Calculate CBM per zone from visible rows only
+        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            if (rowStage !== 'r2s') return;
+            if (row.style.display !== "none") {
+                // Get zone from Zone column (data-column="26") - it's a select element
+                const zoneSelect = row.querySelector('select[data-column="zone_x"]');
+                const rowZone = zoneSelect ? zoneSelect.value.trim() : '';
+                
+                // Get Total CBM from column 19
+                const totalCbmCell = row.querySelector('td[data-column="19"]');
+                if (totalCbmCell && rowZone) {
+                    const totalCbmText = totalCbmCell.textContent.trim();
+                    if (totalCbmText !== '' && totalCbmText !== 'N/A') {
+                        const value = parseFloat(totalCbmText.replace(/,/g, ''));
+                        if (!isNaN(value)) {
+                            // Find matching zone (case insensitive)
+                            zoneLabels.forEach(zone => {
+                                if (zone.toLowerCase() === rowZone.toLowerCase()) {
+                                    zoneCbmTotals[zone] += value;
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        });
+
+        // Update badge display
+        zoneLabels.forEach(zone => {
+            const badgeClass = 'r2s-zone-cbm-badge--' + zone.toLowerCase();
+            const badge = document.querySelector('.r2s-zone-cbm-badge.' + badgeClass);
+            if (badge) {
+                const valueSpan = badge.querySelector('.fw-bold');
+                if (valueSpan) {
+                    valueSpan.textContent = zoneCbmTotals[zone].toFixed(2);
+                }
+            }
+        });
     }
 
     function calculateTotalAmount() {
@@ -3222,6 +3283,7 @@
                 calculateTotalAmount();
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
+                updateZoneCbmBadges();
             }, 100);
         }
 
@@ -3250,6 +3312,7 @@
                 calculateTotalAmount();
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
+                updateZoneCbmBadges();
             }, 100);
         }
 
@@ -3289,6 +3352,7 @@
                 calculateTotalAmount();
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
+                updateZoneCbmBadges();
             } else if (targetElement.id === "play-forward" || (targetElement.closest("#play-forward") && targetElement.tagName === 'I')) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3308,6 +3372,7 @@
                         calculateTotalAmount();
                         calculateTotalOrderItems();
                         updateFollowSupplierCount();
+                        updateZoneCbmBadges();
                     }, 100);
                 }
             }
@@ -3354,6 +3419,7 @@
             calculateTotalOrderItems();
             updateFollowSupplierCount();
             updateSupplierCounts();
+            updateZoneCbmBadges();
         }, 500);
     });
 </script>
