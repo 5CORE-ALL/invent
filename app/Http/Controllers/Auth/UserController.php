@@ -44,21 +44,31 @@ class UserController extends Controller
             return $user->userSalary?->increment ?? 0;
         });
 
-        // Fetch TeamLogger data for previous month from database
+        // Fetch TeamLogger data for previous month
         $previousMonth = Carbon::now()->subMonth()->format('F Y');
         
-        // Get all TeamLogger hours from database for the previous month
+        // First, fetch from API to get all current data
+        $teamLoggerService = new TeamLoggerService();
+        $teamLoggerData = $teamLoggerService->fetchByMonth($previousMonth, true);
+        
+        // Then, get manually edited hours from database and override API data
         $teamLoggerHours = \App\Models\TeamLoggerHours::where('month', $previousMonth)->get();
         
-        // Convert to array format similar to TeamLoggerService output
-        $teamLoggerData = [];
+        // Override with database values for manually edited hours
         foreach ($teamLoggerHours as $record) {
-            $teamLoggerData[strtolower($record->employee_email)] = [
-                'hours' => $record->productive_hours,
-                'total_hours' => $record->total_hours,
-                'idle_hours' => $record->idle_hours,
-                'active_hours' => $record->active_hours,
-            ];
+            $email = strtolower($record->employee_email);
+            if (isset($teamLoggerData[$email])) {
+                // Keep API data but override productive_hours with database value
+                $teamLoggerData[$email]['hours'] = $record->productive_hours;
+            } else {
+                // If not in API data, add from database
+                $teamLoggerData[$email] = [
+                    'hours' => $record->productive_hours,
+                    'total_hours' => $record->total_hours ?? 0,
+                    'idle_hours' => $record->idle_hours ?? 0,
+                    'active_hours' => $record->active_hours ?? 0,
+                ];
+            }
         }
 
         // Email mapping: Map user email to TeamLogger email if different
@@ -145,7 +155,11 @@ class UserController extends Controller
 
         // Update TeamLogger hours if provided
         if ($request->has('hours_lm') && $request->input('hours_lm') !== '') {
-            $previousMonth = Carbon::now()->subMonth()->format('F Y');
+            $previousMonthDate = Carbon::now()->subMonth();
+            $previousMonth = $previousMonthDate->format('F Y');
+            $startDate = $previousMonthDate->startOfMonth()->format('Y-m-d');
+            $endDate = $previousMonthDate->endOfMonth()->format('Y-m-d');
+            
             $userEmail = strtolower(trim($user->email));
             
             // Email mapping
@@ -161,6 +175,8 @@ class UserController extends Controller
                 ],
                 [
                     'productive_hours' => $request->input('hours_lm'),
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
                 ]
             );
         }
