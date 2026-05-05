@@ -851,6 +851,19 @@
             color: #28a745;
             opacity: 1;
         }
+
+        /* Remove black backdrop completely */
+        .modal-backdrop {
+            display: none !important;
+        }
+        
+        .modal-backdrop.show {
+            display: none !important;
+        }
+        
+        .modal.show {
+            background-color: transparent !important;
+        }
     </style>
 @endsection
 

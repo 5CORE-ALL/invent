@@ -849,13 +849,17 @@
             padding: 0.42rem 0.65rem;
         }
 
-        /* Lighten modal backdrop */
+        /* Remove black backdrop completely */
         .modal-backdrop {
-            background-color: rgba(0, 0, 0, 0.15) !important;
+            display: none !important;
         }
-
+        
         .modal-backdrop.show {
-            opacity: 0.5 !important;
+            display: none !important;
+        }
+        
+        .modal.show {
+            background-color: transparent !important;
         }
     </style>
 @endsection
