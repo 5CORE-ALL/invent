@@ -172,7 +172,7 @@
                 </span>
                 <span class="badge bg-dark fs-5 px-4 py-2">
                     <i class="ri-file-list-3-line me-2"></i>
-                    Total Adv/Inc/Other: ₹{{ number_format($totalAdvIncOther, 0) }}
+                    Total Advance: ₹{{ number_format($totalAdvIncOther, 0) }}
                 </span>
             </div>
             @endif
@@ -416,7 +416,7 @@
                                         <th>Other</th>
                                         <th>Amount LM</th>
                                         <th>Amount P</th>
-                                        <th>Adv / Inc / Other</th>
+                                        <th>Advance</th>
                                         <th>Bank 1</th>
                                         <th>Bank 2</th>
                                         <th>Deactivated at</th>
@@ -552,7 +552,8 @@
                                                     $iuIncrementVal = $iu->userSalary?->increment ?? 0;
                                                     $iuSalaryLM = $iuSalaryPPVal + $iuIncrementVal;
                                                     $iuOther = $iu->userSalary?->other ?? 0;
-                                                    $iuAmountLM = (($iuHoursLM * $iuSalaryLM) / 200) - $iuOther;
+                                                    $iuAdvIncOther = $iu->userSalary?->adv_inc_other ?? 0;
+                                                    $iuAmountLM = (($iuHoursLM * $iuSalaryPPVal) / 200) - $iuAdvIncOther;
                                                 @endphp
                                                 @if($iuAmountLM != 0)
                                                     <span class="amount-lm-badge">₹{{ number_format($iuAmountLM, 0) }}</span>
@@ -1460,8 +1461,8 @@
                         const amountLMDisplay = row.querySelector('.user-amount-lm-cell span');
                         const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
                         const hoursLM = hoursLMCell ? parseFloat(hoursLMCell.textContent) || 0 : 0;
-                        const otherVal = parseFloat(originalData[userId]['other']) || 0;
-                        const amountLM = ((hoursLM * salaryLMValue) / 200) - otherVal;
+                        const advIncOtherVal = parseFloat(originalData[userId]['adv_inc_other']) || 0;
+                        const amountLM = ((hoursLM * salaryVal) / 200) - advIncOtherVal;
                         if (amountLMDisplay) {
                             if (amountLM != 0) {
                                 amountLMDisplay.textContent = '₹' + Math.round(amountLM).toLocaleString('en-IN');
@@ -1762,7 +1763,7 @@
                                 const amountLMDisplay = row.querySelector('.user-amount-lm-cell span');
                                 const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
                                 const hoursLM = hoursLMCell ? parseFloat(hoursLMCell.textContent) || 0 : 0;
-                                const amountLM = ((hoursLM * salaryLMValue) / 200) - (parseFloat(oth) || 0);
+                                const amountLM = ((hoursLM * (parseFloat(sal) || 0)) / 200) - (parseFloat(aio) || 0);
                                 if (amountLMDisplay) {
                                     if (amountLM != 0) {
                                         amountLMDisplay.textContent = '₹' + Math.round(amountLM).toLocaleString('en-IN');
@@ -1964,7 +1965,7 @@
             
             const advIncOtherBadge = document.querySelector('.badge.bg-dark');
             if (advIncOtherBadge) {
-                advIncOtherBadge.innerHTML = '<i class="ri-file-list-3-line me-2"></i>Total Adv/Inc/Other: ₹' + Math.round(totalAdvIncOther).toLocaleString('en-IN');
+                advIncOtherBadge.innerHTML = '<i class="ri-file-list-3-line me-2"></i>Total Advance: ₹' + Math.round(totalAdvIncOther).toLocaleString('en-IN');
             }
         }
 
@@ -2199,7 +2200,7 @@
                     })) !!};
                     
                     // Create CSV content with headers
-                    let csvContent = '"Name","Salary PP","Increment","Other","Adv / Inc / Other"\n';
+                    let csvContent = '"Name","Salary PP","Increment","Other","Advance"\n';
                     
                     // Add all active users with their current salary data or empty
                     activeUsersData.forEach(user => {
@@ -2284,7 +2285,7 @@
                                     <i class="fas fa-search text-muted"></i>
                                 </span>
                                 <input type="text" id="searchSalaryInput" class="form-control border-0 bg-light" 
-                                    placeholder="Search by name, salary, increment, salary LM, hours LM, other, amount LM, amount P, adv/inc/other, or banks" onkeyup="filterSalaryTable()">
+                                    placeholder="Search by name, salary, increment, salary LM, hours LM, other, amount LM, amount P, advance, or banks" onkeyup="filterSalaryTable()">
                             </div>
                         </div>
 
@@ -2302,7 +2303,7 @@
                                         <th>Other</th>
                                         <th>Amount LM</th>
                                         <th>Amount P</th>
-                                        <th>Adv / Inc / Other</th>
+                                        <th>Advance</th>
                                         <th>Bank 1</th>
                                         <th>Bank 2</th>
                                         <th>UPI ID</th>
@@ -2399,7 +2400,8 @@
                                                     $incrementVal = $user->userSalary?->increment ?? 0;
                                                     $salaryLM = $salaryPPVal + $incrementVal;
                                                     $other = $user->userSalary?->other ?? 0;
-                                                    $amountLM = (($hoursLM * $salaryLM) / 200) - $other;
+                                                    $advIncOther = $user->userSalary?->adv_inc_other ?? 0;
+                                                    $amountLM = (($hoursLM * $salaryPPVal) / 200) - $advIncOther;
                                                 @endphp
                                                 <div class="user-amount-lm-cell">
                                                     @if($amountLM != 0)
@@ -2433,7 +2435,7 @@
                                                     @else
                                                         <span class="user-display text-muted">—</span>
                                                     @endif
-                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $advIncOther !== '' ? round($advIncOther) : '' }}" data-field="adv_inc_other" placeholder="Adv / Inc / Other">
+                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $advIncOther !== '' ? round($advIncOther) : '' }}" data-field="adv_inc_other" placeholder="Advance">
                                                 </div>
                                             </td>
                                             <td>
