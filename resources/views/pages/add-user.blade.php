@@ -96,6 +96,13 @@
 @endsection
 
 @section('content')
+    @php
+    // Helper function to get the correct email for TeamLogger lookup
+    function getTeamLoggerEmail($userEmail, $mapping) {
+        $normalizedEmail = strtolower(trim($userEmail));
+        return $mapping[$normalizedEmail] ?? $normalizedEmail;
+    }
+    @endphp
     <div class="container-fluid team-management-page px-3 px-lg-4 px-xxl-5 mt-4">
         <!-- Page Header -->
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -155,9 +162,10 @@
                     Total Hours ({{ date('M', strtotime($previousMonth)) }}): {{ array_sum(array_column($teamLoggerData, 'hours')) }}h
                 </span>
                 @php
-                    $totalAmountP = $users->sum(function($user) use ($teamLoggerData) {
+                    $totalAmountP = $users->sum(function($user) use ($teamLoggerData, $emailMapping) {
                         $userEmail = strtolower(trim($user->email));
-                        $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+                        $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
+                        $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
                         $salaryPP = $user->userSalary?->salary_pp ?? 0;
                         $other = $user->userSalary?->other ?? 0;
                         return (($hoursLM * $salaryPP) / 200) + $other;
@@ -528,7 +536,8 @@
                                             <td>
                                                 @php 
                                                     $iuEmail = strtolower(trim($iu->email));
-                                                    $iuHoursLM = $teamLoggerData[$iuEmail]['hours'] ?? 0;
+                                                    $iuTeamLoggerEmail = getTeamLoggerEmail($iuEmail, $emailMapping);
+                                                    $iuHoursLM = $teamLoggerData[$iuTeamLoggerEmail]['hours'] ?? 0;
                                                 @endphp
                                                 @if($iuHoursLM > 0)
                                                     <span class="hours-lm-badge" title="{{ $previousMonth }}: {{ $iuHoursLM }} hours">{{ $iuHoursLM }}h</span>
@@ -547,7 +556,8 @@
                                             <td>
                                                 @php 
                                                     $iuEmail = strtolower(trim($iu->email));
-                                                    $iuHoursLM = $teamLoggerData[$iuEmail]['hours'] ?? 0;
+                                                    $iuTeamLoggerEmail = getTeamLoggerEmail($iuEmail, $emailMapping);
+                                                    $iuHoursLM = $teamLoggerData[$iuTeamLoggerEmail]['hours'] ?? 0;
                                                     $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
                                                     $iuIncrementVal = $iu->userSalary?->increment ?? 0;
                                                     $iuSalaryLM = $iuSalaryPPVal + $iuIncrementVal;
@@ -564,7 +574,8 @@
                                             <td>
                                                 @php 
                                                     $iuEmail = strtolower(trim($iu->email));
-                                                    $iuHoursLM = $teamLoggerData[$iuEmail]['hours'] ?? 0;
+                                                    $iuTeamLoggerEmail = getTeamLoggerEmail($iuEmail, $emailMapping);
+                                                    $iuHoursLM = $teamLoggerData[$iuTeamLoggerEmail]['hours'] ?? 0;
                                                     $iuSalaryPPVal = $iu->userSalary?->salary_pp ?? 0;
                                                     $iuOther = $iu->userSalary?->other ?? 0;
                                                     $iuAmountP = (($iuHoursLM * $iuSalaryPPVal) / 200) + $iuOther;
@@ -2371,7 +2382,8 @@
                                             <td>
                                                 @php 
                                                     $userEmail = strtolower(trim($user->email));
-                                                    $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+                                                    $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
+                                                    $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
                                                 @endphp
                                                 <div class="user-hours-lm-cell">
                                                     @if($hoursLM > 0)
@@ -2395,7 +2407,8 @@
                                             <td>
                                                 @php 
                                                     $userEmail = strtolower(trim($user->email));
-                                                    $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+                                                    $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
+                                                    $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
                                                     $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
                                                     $incrementVal = $user->userSalary?->increment ?? 0;
                                                     $salaryLM = $salaryPPVal + $incrementVal;
@@ -2414,7 +2427,8 @@
                                             <td>
                                                 @php 
                                                     $userEmail = strtolower(trim($user->email));
-                                                    $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+                                                    $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
+                                                    $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
                                                     $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
                                                     $other = $user->userSalary?->other ?? 0;
                                                     $amountP = (($hoursLM * $salaryPPVal) / 200) + $other;

@@ -49,10 +49,15 @@ class UserController extends Controller
         $teamLoggerService = new TeamLoggerService();
         $teamLoggerData = $teamLoggerService->fetchByMonth($previousMonth, true);
 
+        // Email mapping: Map user email to TeamLogger email if different
+        $emailMapping = [
+            'adexec1@5core.com' => 'support@prolightsounds.com',
+        ];
+
         // Check if current user has edit permission
         $canEdit = auth()->check() && in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com']);
 
-        return view('pages.add-user', compact('users', 'inactiveUsers', 'canEdit', 'totalSalaryPP', 'totalIncrement', 'teamLoggerData', 'previousMonth'));
+        return view('pages.add-user', compact('users', 'inactiveUsers', 'canEdit', 'totalSalaryPP', 'totalIncrement', 'teamLoggerData', 'previousMonth', 'emailMapping'));
     }
 
     public function update(Request $request, User $user)
