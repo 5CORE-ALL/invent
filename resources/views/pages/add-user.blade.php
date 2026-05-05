@@ -2146,15 +2146,15 @@
             if (downloadSalaryTemplateBtn) {
                 downloadSalaryTemplateBtn.addEventListener('click', function() {
                     // Get all active users with their salary data
-                    const activeUsersData = @json($users->map(function($user) {
-                        return [
+                    const activeUsersData = {!! json_encode($users->map(function($user) {
+                        return array(
                             'name' => $user->name,
                             'salary_pp' => $user->userSalary?->salary_pp ?? '',
                             'increment' => $user->userSalary?->increment ?? '',
                             'other' => $user->userSalary?->other ?? '',
                             'adv_inc_other' => $user->userSalary?->adv_inc_other ?? ''
-                        ];
-                    }));
+                        );
+                    })) !!};
                     
                     // Create CSV content with headers
                     let csvContent = '"Name","Salary PP","Increment","Other","Adv / Inc / Other"\n';
@@ -2192,13 +2192,13 @@
             if (downloadBanksTemplateBtn) {
                 downloadBanksTemplateBtn.addEventListener('click', function() {
                     // Get all active users with their bank data
-                    const activeUsersData = @json($users->map(function($user) {
-                        return [
+                    const activeUsersData = {!! json_encode($users->map(function($user) {
+                        return array(
                             'name' => $user->name,
                             'bank_1' => $user->userSalary?->bank_1 ?? '',
                             'bank_2' => $user->userSalary?->bank_2 ?? ''
-                        ];
-                    }));
+                        );
+                    })) !!};
                     
                     // Create CSV content with headers
                     let csvContent = '"Name","Bank 1","Bank 2"\n';
