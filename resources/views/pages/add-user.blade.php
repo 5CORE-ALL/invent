@@ -93,15 +93,99 @@
             min-width: 100px;
         }
 
-        /* Warning soft button for salary hide */
+        /* Blue button for salary hide */
         .btn-warning-soft {
-            background-color: #fff3cd;
-            color: #856404;
+            background-color: #084298!important;
+            color: #fff;
         }
 
         .btn-warning-soft:hover {
-            background-color: #ffc107;
-            color: #000;
+            background-color: #0a58ca;
+            color: #fff;
+        }
+
+        /* Compact Salary Table */
+        #salaryTable {
+            font-size: 11px;
+        }
+
+        #salaryTable th {
+            padding: 6px 4px !important;
+            font-size: 11px;
+            white-space: nowrap;
+            text-align: center;
+        }
+
+        #salaryTable td {
+            padding: 6px 4px !important;
+            font-size: 11px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        #salaryTable .badge,
+        #salaryTable .amount-lm-badge,
+        #salaryTable .amount-p-badge,
+        #salaryTable .adv-inc-other-badge,
+        #salaryTable .salary-badge,
+        #salaryTable .salary-lm-badge,
+        #salaryTable .hours-lm-badge,
+        #salaryTable .other-badge,
+        #salaryTable .increment-badge {
+            font-size: 11px;
+            padding: 0;
+            background: none !important;
+            color: inherit !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        #salaryTable .avatar-circle {
+            width: 28px;
+            height: 28px;
+            font-size: 12px;
+        }
+
+        #salaryTable .btn-action {
+            width: 28px;
+            height: 28px;
+            font-size: 12px;
+        }
+
+        #salaryTable .action-buttons {
+            gap: 4px;
+        }
+
+        /* Make salary table fit in viewport */
+        #salary-content .users-active-table-wrap {
+            zoom: 0.85;
+            -moz-transform: scale(0.85);
+            -moz-transform-origin: 0 0;
+        }
+
+        /* Adjust form controls in salary table */
+        #salaryTable .form-control-sm {
+            font-size: 11px;
+            padding: 4px 6px;
+        }
+
+        /* Hide serial number column in salary table */
+        #salaryTable th:first-child,
+        #salaryTable td:first-child {
+            display: none;
+        }
+
+        /* Reduce width of B1, B2, and UPI columns */
+        #salaryTable th:nth-last-child(4),
+        #salaryTable td:nth-last-child(4),
+        #salaryTable th:nth-last-child(3),
+        #salaryTable td:nth-last-child(3),
+        #salaryTable th:nth-last-child(2),
+        #salaryTable td:nth-last-child(2) {
+            width: 40px;
+            max-width: 40px;
+            padding: 6px 2px !important;
+            text-align: center;
         }
 
         /* Data indicator dots */
@@ -217,25 +301,24 @@
         </div>
         
         @if($canEdit)
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div></div>
+        <div class="mb-4">
             @if($canEdit)
-            <div class="d-flex gap-3 flex-wrap">
-                <span class="badge bg-success fs-5 px-4 py-2">
-                    <i class="ri-money-dollar-circle-line me-2"></i>
-                    Total Salary PP: ₹{{ number_format($totalSalaryPP, 0) }}
+            <div class="d-flex gap-2 flex-nowrap w-100 salary-badges-container">
+                <span class="badge bg-primary fs-6 px-2 py-2 flex-fill text-center">
+                    <i class="ri-team-line me-1"></i>
+                    Team: {{ $salaryUsers->count() }}
                 </span>
-                <span class="badge bg-info fs-5 px-4 py-2">
-                    <i class="ri-funds-line me-2"></i>
-                    Total Increment: ₹{{ number_format($totalIncrement, 0) }}
+                <span class="badge bg-success fs-6 px-2 py-2 flex-fill text-center">
+                    <i class="ri-money-dollar-circle-line me-1"></i>
+                    Salary PP: ₹{{ number_format($totalSalaryPP, 0) }}
                 </span>
-                <span class="badge bg-warning fs-5 px-4 py-2">
-                    <i class="ri-wallet-3-line me-2"></i>
-                    Total Salary LM: ₹{{ number_format($totalSalaryPP + $totalIncrement, 0) }}
+                <span class="badge bg-info fs-6 px-2 py-2 flex-fill text-center">
+                    <i class="ri-funds-line me-1"></i>
+                    Increment: ₹{{ number_format($totalIncrement, 0) }}
                 </span>
-                <span class="badge bg-primary fs-5 px-4 py-2" title="{{ $previousMonth }}">
-                    <i class="ri-time-line me-2"></i>
-                    Total Hours ({{ date('M', strtotime($previousMonth)) }}): {{ array_sum(array_column($teamLoggerData, 'hours')) }}h
+                <span class="badge bg-warning fs-6 px-2 py-2 flex-fill text-center">
+                    <i class="ri-wallet-3-line me-1"></i>
+                    Salary LM: ₹{{ number_format($totalSalaryPP + $totalIncrement, 0) }}
                 </span>
                 @php
                     $totalAmountP = $users->sum(function($user) use ($teamLoggerData, $emailMapping) {
@@ -250,13 +333,13 @@
                         return $user->userSalary?->adv_inc_other ?? 0;
                     });
                 @endphp
-                <span class="badge bg-secondary fs-5 px-4 py-2">
-                    <i class="ri-calculator-line me-2"></i>
-                    Total Amount P: ₹{{ number_format($totalAmountP, 0) }}
+                <span class="badge bg-secondary fs-6 px-2 py-2 flex-fill text-center">
+                    <i class="ri-calculator-line me-1"></i>
+                    Amount P: ₹{{ number_format($totalAmountP, 0) }}
                 </span>
-                <span class="badge bg-dark fs-5 px-4 py-2">
-                    <i class="ri-file-list-3-line me-2"></i>
-                    Total Advance: ₹{{ number_format($totalAdvIncOther, 0) }}
+                <span class="badge bg-dark fs-6 px-2 py-2 flex-fill text-center">
+                    <i class="ri-file-list-3-line me-1"></i>
+                    Advance: ₹{{ number_format($totalAdvIncOther, 0) }}
                 </span>
             </div>
             @endif
@@ -494,15 +577,15 @@
                                         <th>Training</th>
                                         <th>Checklist</th>
                                         <th>Salary PP</th>
-                                        <th>Increment</th>
+                                        <th>Incr</th>
                                         <th>Salary LM</th>
                                         <th>Hours LM</th>
                                         <th>Other</th>
-                                        <th>Amount LM</th>
-                                        <th>Amount P</th>
-                                        <th>Advance</th>
-                                        <th>Bank 1</th>
-                                        <th>Bank 2</th>
+                                        <th>Amt LM</th>
+                                        <th>Amt P</th>
+                                        <th>Adv</th>
+                                        <th>B1</th>
+                                        <th>B2</th>
                                         <th>Deactivated at</th>
                                         <th>Action</th>
                                     </tr>
@@ -934,6 +1017,21 @@
             font-weight: 600;
         }
 
+        /* Import Buttons - Black text and icons */
+        #importBtn,
+        #importBtn i,
+        #importBanksBtn,
+        #importBanksBtn i {
+            color: #000 !important;
+        }
+
+        /* Salary Badges Container - Increased Height */
+        .salary-badges-container .badge {
+            line-height: 1.5;
+            padding-top: 0.5rem !important;
+            padding-bottom: 0.5rem !important;
+        }
+
         /* Amount LM Badge */
         .amount-lm-badge {
             display: inline-block;
@@ -969,8 +1067,8 @@
 
         /* Action Button */
         .btn-action {
-            width: 36px;
-            height: 36px;
+            width: 32px;
+            height: 32px;
             padding: 0;
             border: none;
             border-radius: 4px;
@@ -981,7 +1079,8 @@
             transition: all 0.2s ease;
             background-color: #20c997;
             color: #fff;
-            font-size: 16px;
+            font-size: 14px;
+            flex-shrink: 0;
         }
 
         .btn-action:hover {
@@ -1055,8 +1154,11 @@
 
         .action-buttons {
             display: flex;
+            flex-direction: row;
             gap: 8px;
-            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: nowrap;
         }
 
         /* Edit Mode */
@@ -2085,27 +2187,27 @@
             
             const salaryBadge = document.querySelector('.badge.bg-success');
             if (salaryBadge) {
-                salaryBadge.innerHTML = '<i class="ri-money-dollar-circle-line me-2"></i>Total Salary PP: ₹' + Math.round(totalSalary).toLocaleString('en-IN');
+                salaryBadge.innerHTML = '<i class="ri-money-dollar-circle-line me-2"></i>Salary PP: ₹' + Math.round(totalSalary).toLocaleString('en-IN');
             }
             
             const incrementBadge = document.querySelector('.badge.bg-info');
             if (incrementBadge) {
-                incrementBadge.innerHTML = '<i class="ri-funds-line me-2"></i>Total Increment: ₹' + Math.round(totalIncrement).toLocaleString('en-IN');
+                incrementBadge.innerHTML = '<i class="ri-funds-line me-2"></i>Increment: ₹' + Math.round(totalIncrement).toLocaleString('en-IN');
             }
             
             const salaryLMBadge = document.querySelector('.badge.bg-warning');
             if (salaryLMBadge) {
-                salaryLMBadge.innerHTML = '<i class="ri-wallet-3-line me-2"></i>Total Salary LM: ₹' + Math.round(totalSalaryLM).toLocaleString('en-IN');
+                salaryLMBadge.innerHTML = '<i class="ri-wallet-3-line me-2"></i>Salary LM: ₹' + Math.round(totalSalaryLM).toLocaleString('en-IN');
             }
             
             const amountPBadge = document.querySelector('.badge.bg-secondary');
             if (amountPBadge) {
-                amountPBadge.innerHTML = '<i class="ri-calculator-line me-2"></i>Total Amount P: ₹' + Math.round(totalAmountP).toLocaleString('en-IN');
+                amountPBadge.innerHTML = '<i class="ri-calculator-line me-2"></i>Amount P: ₹' + Math.round(totalAmountP).toLocaleString('en-IN');
             }
             
             const advIncOtherBadge = document.querySelector('.badge.bg-dark');
             if (advIncOtherBadge) {
-                advIncOtherBadge.innerHTML = '<i class="ri-file-list-3-line me-2"></i>Total Advance: ₹' + Math.round(totalAdvIncOther).toLocaleString('en-IN');
+                advIncOtherBadge.innerHTML = '<i class="ri-file-list-3-line me-2"></i>Advance: ₹' + Math.round(totalAdvIncOther).toLocaleString('en-IN');
             }
         }
 
@@ -2340,7 +2442,7 @@
                     })) !!};
                     
                     // Create CSV content with headers
-                    let csvContent = '"Name","Salary PP","Increment","Other","Advance"\n';
+                    let csvContent = '"Name","Salary PP","Increment","Other","Adv"\n';
                     
                     // Add all active users with their current salary data or empty
                     activeUsersData.forEach(user => {
@@ -2385,7 +2487,7 @@
                     })) !!};
 
                     // Create CSV content with headers
-                    let csvContent = '"Name","Bank 1","Bank 2","UPI ID"\n';
+                    let csvContent = '"Name","B1","B2","UPI"\n';
 
                     // Add all active users with their current bank data or empty
                     activeUsersData.forEach(user => {
@@ -2437,16 +2539,16 @@
                                         <th>#</th>
                                         <th>Name</th>
                                         <th>Salary PP</th>
-                                        <th>Increment</th>
+                                        <th>Incr</th>
                                         <th>Salary LM</th>
                                         <th>Hours LM</th>
                                         <th>Other</th>
-                                        <th>Amount LM</th>
-                                        <th>Amount P</th>
-                                        <th>Advance</th>
-                                        <th>Bank 1</th>
-                                        <th>Bank 2</th>
-                                        <th>UPI ID</th>
+                                        <th>Amt LM</th>
+                                        <th>Amt P</th>
+                                        <th>Adv</th>
+                                        <th>B1</th>
+                                        <th>B2</th>
+                                        <th>UPI</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
@@ -2578,7 +2680,7 @@
                                                     @else
                                                         <span class="user-display text-muted">—</span>
                                                     @endif
-                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $advIncOther !== '' ? round($advIncOther) : '' }}" data-field="adv_inc_other" placeholder="Advance">
+                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $advIncOther !== '' ? round($advIncOther) : '' }}" data-field="adv_inc_other" placeholder="Adv">
                                                 </div>
                                             </td>
                                             <td>
@@ -2589,7 +2691,7 @@
                                                             <span class="tooltip-text">{{ $bank1 ?: 'No Bank 1 data' }}</span>
                                                         </span>
                                                     </span>
-                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank1 }}" data-field="bank_1" placeholder="Bank 1">
+                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank1 }}" data-field="bank_1" placeholder="B1">
                                                 </div>
                                             </td>
                                             <td>
@@ -2600,7 +2702,7 @@
                                                             <span class="tooltip-text">{{ $bank2 ?: 'No Bank 2 data' }}</span>
                                                         </span>
                                                     </span>
-                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank2 }}" data-field="bank_2" placeholder="Bank 2">
+                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank2 }}" data-field="bank_2" placeholder="B2">
                                                 </div>
                                             </td>
                                             <td>
@@ -2611,7 +2713,7 @@
                                                             <span class="tooltip-text">{{ $upiId ?: 'No UPI ID data' }}</span>
                                                         </span>
                                                     </span>
-                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $upiId }}" data-field="upi_id" placeholder="UPI ID">
+                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $upiId }}" data-field="upi_id" placeholder="UPI">
                                                 </div>
                                             </td>
                                             <td>
