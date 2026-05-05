@@ -4891,10 +4891,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->middleware('auth')
         ->name('users.import');
 
-    Route::post('/users/import-banks', [UserController::class, 'importBanksData'])
-        ->middleware('auth')
-        ->name('users.importBanks');
-
     Route::post('/users/{user}/toggle-salary-visibility', [UserController::class, 'toggleSalaryVisibility'])
         ->middleware('auth')
         ->name('users.toggleSalaryVisibility');

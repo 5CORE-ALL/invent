@@ -147,13 +147,13 @@
         }
 
         #salaryTable .btn-action {
-            width: 38px;
-            height: 38px;
-            font-size: 15px;
+            width: 28px;
+            height: 28px;
+            font-size: 11px;
         }
 
         #salaryTable .action-buttons {
-            gap: 8px;
+            gap: 4px;
         }
 
         /* Make salary table fit in viewport */
@@ -284,15 +284,6 @@
                     </button>
                 </div>
                 <input type="file" id="importFile" accept=".csv" style="display: none;">
-                <div class="btn-group">
-                    <button type="button" class="btn btn-info" id="importBanksBtn">
-                        <i class="ri-upload-2-line me-2"></i>Import Banks
-                    </button>
-                    <button type="button" class="btn btn-info btn-outline" id="downloadBanksTemplateBtn" title="Download Banks Template">
-                        <i class="ri-file-download-line"></i>
-                    </button>
-                </div>
-                <input type="file" id="importBanksFile" accept=".csv" style="display: none;">
                 <button type="button" class="btn btn-success" id="exportBtn">
                     <i class="ri-download-2-line me-2"></i>Salary Sheet
                 </button>
@@ -326,8 +317,11 @@
                         $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
                         $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
                         $salaryPP = $user->userSalary?->salary_pp ?? 0;
+                        $increment = $user->userSalary?->increment ?? 0;
+                        $salaryLM = $salaryPP + $increment;
                         $other = $user->userSalary?->other ?? 0;
-                        return (($hoursLM * $salaryPP) / 200) + $other;
+                        $advIncOther = $user->userSalary?->adv_inc_other ?? 0;
+                        return (($hoursLM * $salaryLM) / 200) + $other - $advIncOther;
                     });
                     $totalAdvIncOther = $users->sum(function($user) {
                         return $user->userSalary?->adv_inc_other ?? 0;
@@ -335,7 +329,7 @@
                 @endphp
                 <span class="badge bg-secondary fs-6 px-2 py-2 flex-fill text-center">
                     <i class="ri-calculator-line me-1"></i>
-                    Amount P: ₹{{ number_format($totalAmountP, 0) }}
+                    Amount P: ₹{{ number_format(round($totalAmountP / 100) * 100, 0) }}
                 </span>
                 <span class="badge bg-dark fs-6 px-2 py-2 flex-fill text-center">
                     <i class="ri-file-list-3-line me-1"></i>
@@ -740,7 +734,7 @@
                                                     $iuAmountP = (($iuHoursLM * $iuSalaryPPVal) / 200) + $iuOther;
                                                 @endphp
                                                 @if($iuAmountP != 0)
-                                                    <span class="amount-p-badge">₹{{ number_format($iuAmountP, 0) }}</span>
+                                                    <span class="amount-p-badge">₹{{ number_format(round($iuAmountP / 100) * 100, 0) }}</span>
                                                 @else
                                                     <span class="text-muted">—</span>
                                                 @endif
@@ -1019,9 +1013,7 @@
 
         /* Import Buttons - Black text and icons */
         #importBtn,
-        #importBtn i,
-        #importBanksBtn,
-        #importBanksBtn i {
+        #importBtn i {
             color: #000 !important;
         }
 
@@ -1650,8 +1642,7 @@
                         const amountLMDisplay = row.querySelector('.user-amount-lm-cell span');
                         const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
                         const hoursLM = hoursLMCell ? parseFloat(hoursLMCell.textContent) || 0 : 0;
-                        const advIncOtherVal = parseFloat(originalData[userId]['adv_inc_other']) || 0;
-                        const amountLM = ((hoursLM * salaryVal) / 200) - advIncOtherVal;
+                        const amountLM = ((hoursLM * salaryLMValue) / 200);
                         if (amountLMDisplay) {
                             if (amountLM != 0) {
                                 amountLMDisplay.textContent = '₹' + Math.round(amountLM).toLocaleString('en-IN');
@@ -1664,10 +1655,12 @@
 
                         // Recalculate Amount P
                         const amountPDisplay = row.querySelector('.user-amount-p-cell span');
-                        const amountP = ((hoursLM * salaryVal) / 200) + otherVal;
+                        const otherVal = parseFloat(originalData[userId]['other']) || 0;
+                        const advIncOtherVal = parseFloat(originalData[userId]['adv_inc_other']) || 0;
+                        const amountP = ((hoursLM * salaryLMValue) / 200) + otherVal - advIncOtherVal;
                         if (amountPDisplay) {
                             if (amountP != 0) {
-                                amountPDisplay.textContent = '₹' + Math.round(amountP).toLocaleString('en-IN');
+                                amountPDisplay.textContent = '₹' + (Math.round(amountP / 100) * 100).toLocaleString('en-IN');
                                 amountPDisplay.className = 'amount-p-badge';
                             } else {
                                 amountPDisplay.textContent = '—';
@@ -1967,7 +1960,7 @@
                                 const amountLMDisplay = row.querySelector('.user-amount-lm-cell span');
                                 const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
                                 const hoursLM = hoursLMCell ? parseFloat(hoursLMCell.textContent) || 0 : 0;
-                                const amountLM = ((hoursLM * (parseFloat(sal) || 0)) / 200) - (parseFloat(aio) || 0);
+                                const amountLM = ((hoursLM * salaryLMValue) / 200);
                                 if (amountLMDisplay) {
                                     if (amountLM != 0) {
                                         amountLMDisplay.textContent = '₹' + Math.round(amountLM).toLocaleString('en-IN');
@@ -1980,10 +1973,10 @@
 
                                 // Update Amount P (calculated field)
                                 const amountPDisplay = row.querySelector('.user-amount-p-cell span');
-                                const amountP = ((hoursLM * (parseFloat(sal) || 0)) / 200) + (parseFloat(oth) || 0);
+                                const amountP = ((hoursLM * salaryLMValue) / 200) + (parseFloat(oth) || 0) - (parseFloat(aio) || 0);
                                 if (amountPDisplay) {
                                     if (amountP != 0) {
-                                        amountPDisplay.textContent = '₹' + Math.round(amountP).toLocaleString('en-IN');
+                                        amountPDisplay.textContent = '₹' + (Math.round(amountP / 100) * 100).toLocaleString('en-IN');
                                         amountPDisplay.className = 'amount-p-badge';
                                     } else {
                                         amountPDisplay.textContent = '—';
@@ -2169,18 +2162,22 @@
                 const incrementVal = (incrementCell && incrementCell.value) ? (parseFloat(incrementCell.value) || 0) : 0;
                 totalIncrement += incrementVal;
                 
+                // Calculate Salary LM for this row
+                const salaryLMVal = salaryVal + incrementVal;
+                
                 // Calculate Amount P for this row
                 const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
                 const hoursLM = hoursLMCell ? (parseFloat(hoursLMCell.textContent) || 0) : 0;
                 const otherCell = row.querySelector('[data-field="other"] .user-edit');
                 const otherVal = (otherCell && otherCell.value) ? (parseFloat(otherCell.value) || 0) : 0;
-                const amountP = ((hoursLM * salaryVal) / 200) + otherVal;
-                totalAmountP += amountP;
                 
                 // Sum Adv/Inc/Other
                 const advIncOtherCell = row.querySelector('[data-field="adv_inc_other"] .user-edit');
                 const advIncOtherVal = (advIncOtherCell && advIncOtherCell.value) ? (parseFloat(advIncOtherCell.value) || 0) : 0;
                 totalAdvIncOther += advIncOtherVal;
+                
+                const amountP = ((hoursLM * salaryLMVal) / 200) + otherVal - advIncOtherVal;
+                totalAmountP += amountP;
             });
             
             const totalSalaryLM = totalSalary + totalIncrement;
@@ -2202,7 +2199,7 @@
             
             const amountPBadge = document.querySelector('.badge.bg-secondary');
             if (amountPBadge) {
-                amountPBadge.innerHTML = '<i class="ri-calculator-line me-2"></i>Amount P: ₹' + Math.round(totalAmountP).toLocaleString('en-IN');
+                amountPBadge.innerHTML = '<i class="ri-calculator-line me-2"></i>Amount P: ₹' + (Math.round(totalAmountP / 100) * 100).toLocaleString('en-IN');
             }
             
             const advIncOtherBadge = document.querySelector('.badge.bg-dark');
@@ -2284,72 +2281,6 @@
                         importBtn.disabled = false;
                         importBtn.innerHTML = originalHTML;
                         importFile.value = '';
-                        showToast('An error occurred while importing', 'error');
-                    });
-                });
-            }
-        });
-
-        // Import Banks functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            const importBanksBtn = document.getElementById('importBanksBtn');
-            const importBanksFile = document.getElementById('importBanksFile');
-            
-            if (importBanksBtn && importBanksFile) {
-                importBanksBtn.addEventListener('click', function() {
-                    importBanksFile.click();
-                });
-                
-                importBanksFile.addEventListener('change', function() {
-                    const file = this.files[0];
-                    if (!file) return;
-                    
-                    // Validate file type
-                    if (!file.name.endsWith('.csv')) {
-                        showToast('Please select a CSV file', 'error');
-                        return;
-                    }
-                    
-                    // Show loading state
-                    const originalHTML = importBanksBtn.innerHTML;
-                    importBanksBtn.disabled = true;
-                    importBanksBtn.innerHTML = '<i class="ri-loader-4-line spin me-2"></i>Importing...';
-                    
-                    // Prepare form data
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('_token', '{{ csrf_token() }}');
-                    
-                    // Send to server
-                    fetch('{{ route("users.importBanks") }}', {
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                            'Accept': 'application/json'
-                        },
-                        body: formData
-                    })
-                    .then(response => response.json())
-                    .then(result => {
-                        importBanksBtn.disabled = false;
-                        importBanksBtn.innerHTML = originalHTML;
-                        importBanksFile.value = ''; // Reset file input
-                        
-                        if (result.success) {
-                            showToast(result.message, 'success');
-                            // Reload page to show updated values
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 2000);
-                        } else {
-                            showToast(result.message || 'Import failed', 'error');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        importBanksBtn.disabled = false;
-                        importBanksBtn.innerHTML = originalHTML;
-                        importBanksFile.value = '';
                         showToast('An error occurred while importing', 'error');
                     });
                 });
@@ -2466,47 +2397,6 @@
                     link.click();
                     document.body.removeChild(link);
                     
-                    showToast('Template downloaded successfully!', 'success');
-                });
-            }
-        });
-
-        // Download Banks Template
-        document.addEventListener('DOMContentLoaded', function() {
-            const downloadBanksTemplateBtn = document.getElementById('downloadBanksTemplateBtn');
-            if (downloadBanksTemplateBtn) {
-                downloadBanksTemplateBtn.addEventListener('click', function() {
-                    // Get all active users with their bank data
-                    const activeUsersData = {!! json_encode($users->map(function($user) {
-                        return array(
-                            'name' => $user->name,
-                            'bank_1' => $user->userSalary?->bank_1 ?? '',
-                            'bank_2' => $user->userSalary?->bank_2 ?? '',
-                            'upi_id' => $user->userSalary?->upi_id ?? ''
-                        );
-                    })) !!};
-
-                    // Create CSV content with headers
-                    let csvContent = '"Name","B1","B2","UPI"\n';
-
-                    // Add all active users with their current bank data or empty
-                    activeUsersData.forEach(user => {
-                        csvContent += `"${user.name}","${user.bank_1}","${user.bank_2}","${user.upi_id}"\n`;
-                    });
-
-                    // Create blob and download
-                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                    const link = document.createElement('a');
-                    const url = URL.createObjectURL(blob);
-
-                    link.setAttribute('href', url);
-                    link.setAttribute('download', 'banks_import_template.csv');
-                    link.style.visibility = 'hidden';
-
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-
                     showToast('Template downloaded successfully!', 'success');
                 });
             }
@@ -2645,7 +2535,7 @@
                                                     $salaryLM = $salaryPPVal + $incrementVal;
                                                     $other = $user->userSalary?->other ?? 0;
                                                     $advIncOther = $user->userSalary?->adv_inc_other ?? 0;
-                                                    $amountLM = (($hoursLM * $salaryPPVal) / 200) - $advIncOther;
+                                                    $amountLM = (($hoursLM * $salaryLM) / 200);
                                                 @endphp
                                                 <div class="user-amount-lm-cell">
                                                     @if($amountLM != 0)
@@ -2661,12 +2551,15 @@
                                                     $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
                                                     $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
                                                     $salaryPPVal = $user->userSalary?->salary_pp ?? 0;
+                                                    $incrementVal = $user->userSalary?->increment ?? 0;
+                                                    $salaryLM = $salaryPPVal + $incrementVal;
                                                     $other = $user->userSalary?->other ?? 0;
-                                                    $amountP = (($hoursLM * $salaryPPVal) / 200) + $other;
+                                                    $advIncOther = $user->userSalary?->adv_inc_other ?? 0;
+                                                    $amountP = (($hoursLM * $salaryLM) / 200) + $other - $advIncOther;
                                                 @endphp
                                                 <div class="user-amount-p-cell">
                                                     @if($amountP != 0)
-                                                        <span class="amount-p-badge">₹{{ number_format($amountP, 0) }}</span>
+                                                        <span class="amount-p-badge">₹{{ number_format(round($amountP / 100) * 100, 0) }}</span>
                                                     @else
                                                         <span class="text-muted">—</span>
                                                     @endif

@@ -380,106 +380,6 @@ class UserController extends Controller
         }
     }
 
-    public function importBanksData(Request $request)
-    {
-        // Check permission
-        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You do not have permission to import data.'
-            ], 403);
-        }
-
-        // Validate file
-        $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:2048',
-        ]);
-
-        try {
-            $file = $request->file('file');
-            $content = file_get_contents($file->getRealPath());
-            $lines = explode("\n", $content);
-            
-            $updated = 0;
-            $errors = [];
-            $skipped = 0;
-            
-            foreach ($lines as $index => $line) {
-                // Skip header row
-                if ($index === 0) continue;
-                
-                // Skip empty lines
-                $line = trim($line);
-                if (empty($line)) continue;
-                
-                // Parse CSV line
-                $data = str_getcsv($line);
-                
-                // Validate format (need at least 3 columns: Name, Bank 1, Bank 2)
-                if (count($data) < 3) {
-                    $errors[] = "Row " . ($index + 1) . ": Invalid format";
-                    continue;
-                }
-                
-                $name = trim($data[0]);
-                $bank1 = trim($data[1]);
-                $bank2 = trim($data[2]);
-                $upiId = isset($data[3]) ? trim($data[3]) : '';
-                
-                // Find user by name
-                $user = User::where('name', $name)->first();
-                
-                if (!$user) {
-                    $errors[] = "Row " . ($index + 1) . ": User '$name' not found";
-                    continue;
-                }
-                
-                // Update or create user salary record with bank data
-                $updateData = [
-                    'bank_1' => $bank1,
-                    'bank_2' => $bank2,
-                ];
-                
-                // Only update UPI ID if it's provided
-                if ($upiId !== '') {
-                    $updateData['upi_id'] = $upiId;
-                }
-                
-                $user->userSalary()->updateOrCreate(
-                    ['user_id' => $user->id],
-                    $updateData
-                );
-                
-                $updated++;
-            }
-            
-            // Prepare response message
-            $message = "Import completed: $updated user(s) updated";
-            if (count($errors) > 0) {
-                $message .= ". " . count($errors) . " error(s) occurred.";
-                if (count($errors) <= 5) {
-                    $message .= " (" . implode('; ', $errors) . ")";
-                }
-            }
-            
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-                'stats' => [
-                    'updated' => $updated,
-                    'errors' => count($errors),
-                    'skipped' => $skipped
-                ]
-            ]);
-            
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error processing file: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
     public function exportData()
     {
         // Check permission
@@ -490,10 +390,11 @@ class UserController extends Controller
             ], 403);
         }
 
-        // Get active users with salary and TeamLogger data
+        // Get active users with salary and TeamLogger data (only those shown in salary tab)
         $users = User::query()
             ->where('is_active', true)
-            ->select('id', 'name', 'email')
+            ->where('show_in_salary', true)
+            ->select('id', 'name', 'email', 'show_in_salary')
             ->with(['userSalary'])
             ->orderBy('name')
             ->get();
@@ -503,22 +404,33 @@ class UserController extends Controller
         $teamLoggerService = new TeamLoggerService();
         $teamLoggerData = $teamLoggerService->fetchByMonth($previousMonth, true);
 
+        // Email mapping: Map user email to TeamLogger email if different
+        $emailMapping = [
+            'adexec1@5core.com' => 'support@prolightsounds.com',
+        ];
+
         // Create CSV content
         $csvData = [];
-        $csvData[] = ['Name', 'Amount P', 'Bank Column 1', 'Bank Column 2'];
+        $csvData[] = ['Name', 'Amount P', 'B1', 'B2', 'UPI'];
 
         foreach ($users as $user) {
             $userEmail = strtolower(trim($user->email));
-            $hoursLM = $teamLoggerData[$userEmail]['hours'] ?? 0;
+            $teamLoggerEmail = $emailMapping[$userEmail] ?? $userEmail;
+            $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
             $salaryPP = $user->userSalary?->salary_pp ?? 0;
+            $increment = $user->userSalary?->increment ?? 0;
+            $salaryLM = $salaryPP + $increment;
             $other = $user->userSalary?->other ?? 0;
-            $amountP = (($hoursLM * $salaryPP) / 200) - $other;
+            $advIncOther = $user->userSalary?->adv_inc_other ?? 0;
+            $amountP = (($hoursLM * $salaryLM) / 200) + $other - $advIncOther;
+            $amountPRounded = round($amountP / 100) * 100;
 
             $csvData[] = [
                 $user->name,
-                round($amountP),
+                $amountPRounded,
                 $user->userSalary?->bank_1 ?? '',
                 $user->userSalary?->bank_2 ?? '',
+                $user->userSalary?->upi_id ?? '',
             ];
         }
 
