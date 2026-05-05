@@ -19,7 +19,7 @@ class UserController extends Controller
         // select() must run before withCount(): a later select() replaces columns and drops the count subquery.
         $users = User::query()
             ->where('is_active', true)
-            ->select('id', 'name', 'phone', 'email', 'designation')
+            ->select('id', 'name', 'phone', 'email', 'designation', 'show_in_salary')
             ->with(['userRR', 'userSalary'])
             ->withCount('rrPortfolioAssignments')
             ->orderBy('name')
@@ -28,7 +28,7 @@ class UserController extends Controller
         // Get inactive users (is_active = false)
         $inactiveUsers = User::query()
             ->where('is_active', false)
-            ->select('id', 'name', 'phone', 'email', 'designation', 'deactivated_at')
+            ->select('id', 'name', 'phone', 'email', 'designation', 'deactivated_at', 'show_in_salary')
             ->with(['userRR', 'userSalary'])
             ->withCount('rrPortfolioAssignments')
             ->orderByDesc('deactivated_at')

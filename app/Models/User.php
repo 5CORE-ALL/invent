@@ -56,6 +56,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'is_active' => 'boolean',
+        'show_in_salary' => 'boolean',
         'deactivated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];

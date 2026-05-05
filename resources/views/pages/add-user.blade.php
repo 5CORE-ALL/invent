@@ -106,19 +106,19 @@
 
         /* Compact Salary Table */
         #salaryTable {
-            font-size: 11px;
+            font-size: 18px;
         }
 
         #salaryTable th {
-            padding: 6px 4px !important;
-            font-size: 11px;
+            padding: 10px 7px !important;
+            font-size: 14px;
             white-space: nowrap;
             text-align: center;
         }
 
         #salaryTable td {
-            padding: 6px 4px !important;
-            font-size: 11px;
+            padding: 10px 7px !important;
+            font-size: 15px;
             text-align: center;
             vertical-align: middle;
         }
@@ -132,7 +132,7 @@
         #salaryTable .hours-lm-badge,
         #salaryTable .other-badge,
         #salaryTable .increment-badge {
-            font-size: 11px;
+            font-size: 14px;
             padding: 0;
             background: none !important;
             color: inherit !important;
@@ -141,25 +141,25 @@
         }
 
         #salaryTable .avatar-circle {
-            width: 28px;
-            height: 28px;
-            font-size: 12px;
+            width: 38px;
+            height: 38px;
+            font-size: 16px;
         }
 
         #salaryTable .btn-action {
-            width: 28px;
-            height: 28px;
-            font-size: 12px;
+            width: 38px;
+            height: 38px;
+            font-size: 15px;
         }
 
         #salaryTable .action-buttons {
-            gap: 4px;
+            gap: 8px;
         }
 
         /* Make salary table fit in viewport */
         #salary-content .users-active-table-wrap {
-            zoom: 0.85;
-            -moz-transform: scale(0.85);
+            zoom: 0.90;
+            -moz-transform: scale(0.90);
             -moz-transform-origin: 0 0;
         }
 
