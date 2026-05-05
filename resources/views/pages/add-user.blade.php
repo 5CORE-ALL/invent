@@ -1492,7 +1492,8 @@
                         const advIncOtherInput = row.querySelector('[data-field="adv_inc_other"] .user-edit');
                         const bank1Input = row.querySelector('[data-field="bank_1"] .user-edit');
                         const bank2Input = row.querySelector('[data-field="bank_2"] .user-edit');
-                        
+                        const upiIdInput = row.querySelector('[data-field="upi_id"] .user-edit');
+
                         const data = {
                             name: nameInput ? nameInput.value.trim() : '',
                             phone: phoneInput ? phoneInput.value.trim() : '',
@@ -1507,6 +1508,7 @@
                             adv_inc_other: advIncOtherInput ? advIncOtherInput.value.trim() : '',
                             bank_1: bank1Input ? bank1Input.value.trim() : '',
                             bank_2: bank2Input ? bank2Input.value.trim() : '',
+                            upi_id: upiIdInput ? upiIdInput.value.trim() : '',
                             _token: '{{ csrf_token() }}',
                             _method: 'PUT'
                         };
@@ -1565,6 +1567,8 @@
                                 const bank1Input = row.querySelector('[data-field="bank_1"] .user-edit');
                                 const bank2Display = row.querySelector('[data-field="bank_2"] .user-display');
                                 const bank2Input = row.querySelector('[data-field="bank_2"] .user-edit');
+                                const upiIdDisplay = row.querySelector('[data-field="upi_id"] .user-display');
+                                const upiIdInput = row.querySelector('[data-field="upi_id"] .user-edit');
                                 
                                 if (nameDisplay) {
                                     nameDisplay.textContent = result.user.name;
@@ -1692,6 +1696,14 @@
                                     bank2Input.value = b2;
                                 }
 
+                                const upi = result.user.upi_id || '';
+                                if (upiIdDisplay) {
+                                    upiIdDisplay.textContent = upi || '—';
+                                }
+                                if (upiIdInput) {
+                                    upiIdInput.value = upi;
+                                }
+
                                 // Update Salary LM (calculated field)
                                 const salaryLMDisplay = row.querySelector('.user-salary-lm-cell .user-display');
                                 const salaryLMValue = (parseFloat(sal) || 0) + (parseFloat(inc) || 0);
@@ -1774,6 +1786,9 @@
                                 
                                 const bank2Cell = row.querySelector('[data-field="bank_2"]');
                                 if (bank2Cell) bank2Cell.dataset.original = b2;
+
+                                const upiIdCell = row.querySelector('[data-field="upi_id"]');
+                                if (upiIdCell) upiIdCell.dataset.original = upi;
 
                                 updateChecklistCell(row);
 
@@ -2196,16 +2211,17 @@
                         return array(
                             'name' => $user->name,
                             'bank_1' => $user->userSalary?->bank_1 ?? '',
-                            'bank_2' => $user->userSalary?->bank_2 ?? ''
+                            'bank_2' => $user->userSalary?->bank_2 ?? '',
+                            'upi_id' => $user->userSalary?->upi_id ?? ''
                         );
                     })) !!};
-                    
+
                     // Create CSV content with headers
-                    let csvContent = '"Name","Bank 1","Bank 2"\n';
-                    
+                    let csvContent = '"Name","Bank 1","Bank 2","UPI ID"\n';
+
                     // Add all active users with their current bank data or empty
                     activeUsersData.forEach(user => {
-                        csvContent += `"${user.name}","${user.bank_1}","${user.bank_2}"\n`;
+                        csvContent += `"${user.name}","${user.bank_1}","${user.bank_2}","${user.upi_id}"\n`;
                     });
 
                     // Create blob and download
@@ -2262,6 +2278,7 @@
                                         <th>Adv / Inc / Other</th>
                                         <th>Bank 1</th>
                                         <th>Bank 2</th>
+                                        <th>UPI ID</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
@@ -2396,14 +2413,21 @@
                                                 @php $bank1 = $user->userSalary?->bank_1 ?? ''; @endphp
                                                 <div class="user-bank-1-cell" data-field="bank_1" data-original="{{ $bank1 }}">
                                                     <span class="user-display">{{ $bank1 ?: '—' }}</span>
-                                                    <input type="text" maxlength="100" class="form-control form-control-sm user-edit d-none" value="{{ $bank1 }}" data-field="bank_1" placeholder="Bank 1">
+                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank1 }}" data-field="bank_1" placeholder="Bank 1">
                                                 </div>
                                             </td>
                                             <td>
                                                 @php $bank2 = $user->userSalary?->bank_2 ?? ''; @endphp
                                                 <div class="user-bank-2-cell" data-field="bank_2" data-original="{{ $bank2 }}">
                                                     <span class="user-display">{{ $bank2 ?: '—' }}</span>
-                                                    <input type="text" maxlength="100" class="form-control form-control-sm user-edit d-none" value="{{ $bank2 }}" data-field="bank_2" placeholder="Bank 2">
+                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank2 }}" data-field="bank_2" placeholder="Bank 2">
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @php $upiId = $user->userSalary?->upi_id ?? ''; @endphp
+                                                <div class="user-upi-id-cell" data-field="upi_id" data-original="{{ $upiId }}">
+                                                    <span class="user-display">{{ $upiId ?: '—' }}</span>
+                                                    <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $upiId }}" data-field="upi_id" placeholder="UPI ID">
                                                 </div>
                                             </td>
                                             <td>

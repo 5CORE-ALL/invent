@@ -77,8 +77,9 @@ class UserController extends Controller
             'increment' => 'nullable|numeric|min:0',
             'other' => 'nullable|numeric|min:0',
             'adv_inc_other' => 'nullable|numeric|min:0',
-            'bank_1' => 'nullable|string|max:100',
-            'bank_2' => 'nullable|string|max:100',
+            'bank_1' => 'nullable|string|max:65535',
+            'bank_2' => 'nullable|string|max:65535',
+            'upi_id' => 'nullable|string|max:65535',
         ]);
 
         if ($validator->fails()) {
@@ -114,6 +115,7 @@ class UserController extends Controller
                 'adv_inc_other' => $request->input('adv_inc_other'),
                 'bank_1' => $request->input('bank_1'),
                 'bank_2' => $request->input('bank_2'),
+                'upi_id' => $request->input('upi_id'),
             ]
         );
         $user->load('userSalary');
@@ -136,6 +138,7 @@ class UserController extends Controller
                 'adv_inc_other' => $user->userSalary->adv_inc_other ?? '',
                 'bank_1' => $user->userSalary->bank_1 ?? '',
                 'bank_2' => $user->userSalary->bank_2 ?? '',
+                'upi_id' => $user->userSalary->upi_id ?? '',
                 'has_rr_portfolio' => RrPortfolioUser::where('user_id', $user->id)->exists(),
             ]
         ]);
@@ -411,6 +414,7 @@ class UserController extends Controller
                 $name = trim($data[0]);
                 $bank1 = trim($data[1]);
                 $bank2 = trim($data[2]);
+                $upiId = isset($data[3]) ? trim($data[3]) : '';
                 
                 // Find user by name
                 $user = User::where('name', $name)->first();
@@ -421,12 +425,19 @@ class UserController extends Controller
                 }
                 
                 // Update or create user salary record with bank data
+                $updateData = [
+                    'bank_1' => $bank1,
+                    'bank_2' => $bank2,
+                ];
+                
+                // Only update UPI ID if it's provided
+                if ($upiId !== '') {
+                    $updateData['upi_id'] = $upiId;
+                }
+                
                 $user->userSalary()->updateOrCreate(
                     ['user_id' => $user->id],
-                    [
-                        'bank_1' => $bank1,
-                        'bank_2' => $bank2,
-                    ]
+                    $updateData
                 );
                 
                 $updated++;

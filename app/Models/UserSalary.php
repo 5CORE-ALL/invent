@@ -17,6 +17,7 @@ class UserSalary extends Model
         'adv_inc_other',
         'bank_1',
         'bank_2',
+        'upi_id',
     ];
 
     protected $casts = [
