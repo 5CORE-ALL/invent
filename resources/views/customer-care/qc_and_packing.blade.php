@@ -6,10 +6,17 @@
     $importCsvHeaders = $woOrderId
         ? ['sku', 'order_number', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1']
         : ['sku', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1'];
-    if (! $hideActionRemarkFlag) {
+    if (!$hideActionRemarkFlag) {
         $importCsvHeaders[] = 'action_1_remark';
     }
-    $tailFromReplacement = ['replacement_tracking', 'issue', 'issue_remark', 'c_action_1', 'c_action_1_remark', 'department'];
+    $tailFromReplacement = [
+        'replacement_tracking',
+        'issue',
+        'issue_remark',
+        'c_action_1',
+        'c_action_1_remark',
+        'department',
+    ];
     if ($showDispatchExtras ?? false) {
         $tailFromReplacement = array_merge(['tracking_number', 'issue_link'], $tailFromReplacement);
     }
@@ -18,7 +25,7 @@
     $importCsvSampleRow = $woOrderId
         ? ['SAMPLE-SKU-001', '112-1234567-8901234', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled']
         : ['SAMPLE-SKU-001', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled'];
-    if (! $hideActionRemarkFlag) {
+    if (!$hideActionRemarkFlag) {
         $importCsvSampleRow[] = '';
     }
     $sampleTail = ['TRK123', 'Quality Issue', '', 'Fixed', '', 'Dispatch'];
@@ -119,6 +126,7 @@
             min-width: 140px;
             max-width: 220px;
         }
+
         .orders-hold-table th.qc-ctn-instr-cell {
             width: 1%;
             min-width: 0;
@@ -129,11 +137,13 @@
             padding-left: 0.3rem;
             padding-right: 0.3rem;
         }
+
         .qc-ctn-instr-wrap .qc-ctn-instructions-input {
             min-width: 90px;
             max-width: 160px;
             font-size: 12px;
         }
+
         .qc-ctn-instr-wrap .qc-copy-ctn-instr {
             flex-shrink: 0;
             padding: 0 1px !important;
@@ -149,10 +159,12 @@
             background: #fff;
             color: #6c757d;
         }
+
         .qc-ctn-instr-wrap .qc-copy-ctn-instr:hover {
             color: #0d6efd;
             border-color: #0d6efd;
         }
+
         .qc-ctn-instr-wrap .qc-copy-ctn-instr i {
             font-size: 0.55rem;
             line-height: 1;
@@ -207,6 +219,7 @@
             padding-left: 0.3rem;
             padding-right: 0.3rem;
         }
+
         .orders-hold-table td.orders-hold-col-root-status {
             width: 1%;
             min-width: 2.25rem;
@@ -431,16 +444,30 @@
             vertical-align: middle;
         }
 
-        .copy-tracking-btn:hover { color: #0a58ca; }
-        .copy-tracking-btn.copied { color: #198754; }
+        .copy-tracking-btn:hover {
+            color: #0a58ca;
+        }
 
-        .tracking-cell:hover .tracking-dot  { display: none; }
-        .tracking-cell:hover .tracking-full { display: inline; }
-        .tracking-cell:hover .copy-tracking-btn { display: inline; }
+        .copy-tracking-btn.copied {
+            color: #198754;
+        }
+
+        .tracking-cell:hover .tracking-dot {
+            display: none;
+        }
+
+        .tracking-cell:hover .tracking-full {
+            display: inline;
+        }
+
+        .tracking-cell:hover .copy-tracking-btn {
+            display: inline;
+        }
 
         .issue-attach-cell {
             padding: 4px 2px !important;
         }
+
         .issue-img-thumb {
             max-height: 42px;
             max-width: 60px;
@@ -449,6 +476,7 @@
             vertical-align: middle;
             border: 1px solid #dee2e6;
         }
+
         .issue-modal-thumb {
             max-height: 48px;
             max-width: 72px;
@@ -585,6 +613,57 @@
             padding: 4px;
         }
 
+        /* Ensure modal body is scrollable - override Bootstrap defaults */
+        #ordersOnHoldIssueModal .modal-body {
+            max-height: calc(100vh - 240px) !important;
+            overflow-y: scroll !important;
+            overflow-x: hidden !important;
+            padding-right: 8px !important;
+        }
+
+        /* Override Bootstrap modal-dialog-scrollable behavior */
+        #ordersOnHoldIssueModal.modal .modal-dialog.modal-dialog-scrollable .modal-body {
+            max-height: calc(100vh - 240px) !important;
+            overflow-y: scroll !important;
+        }
+
+        /* Always show scrollbar for better visibility */
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar {
+            width: 14px !important;
+            display: block !important;
+        }
+
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-track {
+            background: #e9ecef !important;
+            border-radius: 0 !important;
+            border-left: 1px solid #dee2e6 !important;
+        }
+
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb {
+            background: #6c757d !important;
+            border-radius: 7px !important;
+            border: 2px solid #e9ecef !important;
+        }
+
+        #ordersOnHoldIssueModal .modal-body::-webkit-scrollbar-thumb:hover {
+            background: #495057 !important;
+        }
+
+        /* For Firefox - always show scrollbar */
+        #ordersOnHoldIssueModal .modal-body {
+            scrollbar-width: thin !important;
+            scrollbar-color: #6c757d #e9ecef !important;
+        }
+
+        /* Ensure modal content doesn't hide scrollbar */
+        #ordersOnHoldIssueModal .modal-content {
+            overflow: visible !important;
+        }
+
+        #ordersOnHoldIssueModal .modal-dialog {
+            overflow: visible !important;
+        }
+
         .action-icon-hints {
             margin-top: 6px;
             display: flex;
@@ -628,7 +707,7 @@
         }
 
         .l30-badge:hover {
-            box-shadow: 0 2px 8px rgba(224,82,82,.2);
+            box-shadow: 0 2px 8px rgba(224, 82, 82, .2);
         }
 
         .l30-issues-badge {
@@ -637,7 +716,7 @@
         }
 
         .l30-issues-badge:hover {
-            box-shadow: 0 2px 8px rgba(74,158,107,.2);
+            box-shadow: 0 2px 8px rgba(74, 158, 107, .2);
         }
 
         #l30-sparkline-container,
@@ -646,8 +725,13 @@
         }
 
         /* ── Period filter pills ──────────────────────────────────── */
-        .l30-period-pills { display: none; }
-        .l30-period-pill  { display: none; }
+        .l30-period-pills {
+            display: none;
+        }
+
+        .l30-period-pill {
+            display: none;
+        }
 
         /* Toolbar: full width; primary (buttons) left, secondary (badges) uses remaining space */
         .issues-toolbar-header .issues-toolbar-actions {
@@ -771,88 +855,109 @@
 
     <div class="row">
         <div class="col-12">
-            @if(!($hideIntroBanner ?? false))
-            <div class="card">
-                <div class="card-body">
-                    <p class="text-muted mb-0">{{ $introText ?? 'Use Add QC & Packing Issue to record SKU issues. SKU lookup auto-fills Parent and available QTY.' }}</p>
+            @if (!($hideIntroBanner ?? false))
+                <div class="card">
+                    <div class="card-body">
+                        <p class="text-muted mb-0">
+                            {{ $introText ?? 'Use Add QC & Packing Issue to record SKU issues. SKU lookup auto-fills Parent and available QTY.' }}
+                        </p>
+                    </div>
                 </div>
-            </div>
             @endif
 
             <div class="card mt-3">
                 <div class="card-header issues-toolbar-header py-2 py-md-3 border-bottom">
                     <div class="row g-2 g-md-3 align-items-center">
-                        @if(($recordsTitle ?? null) !== '')
-                        <div class="col-12 col-xl-auto">
-                            <h5 class="mb-0">{{ $recordsTitle ?? 'QC And Packing Records' }}</h5>
-                        </div>
+                        @if (($recordsTitle ?? null) !== '')
+                            <div class="col-12 col-xl-auto">
+                                <h5 class="mb-0">{{ $recordsTitle ?? 'QC And Packing Records' }}</h5>
+                            </div>
                         @endif
-                        <div class="col-12 @if(($recordsTitle ?? null) !== '') col-xl @else col-xl-12 @endif">
-                    <div class="issues-toolbar-actions d-flex flex-column flex-xl-row flex-wrap align-items-stretch align-items-xl-center gap-2 gap-xl-3">
-                        <div class="issues-toolbar-actions-primary d-flex flex-wrap align-items-center gap-2">
-                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#ordersOnHoldIssueModal">
-                            <i class="bi bi-plus-lg me-1"></i> {{ $addIssueButtonText ?? 'Add QC & Packing Issue' }}
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnShowHistory">
-                            <i class="bi bi-clock-history me-1"></i> History
-                        </button>
-                        <button type="button" class="btn btn-success btn-sm" id="btnExportCsv">
-                            <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
-                        </button>
-                        <button type="button" class="btn btn-outline-info btn-sm" id="btnImportCsv">
-                            <i class="bi bi-upload me-1"></i> Import CSV
-                        </button>
-                        @if($showDispatchExtras ?? false)
-                        <div id="l30-loss-badge" class="l30-badge" role="button"
-                             data-bs-toggle="modal" data-bs-target="#l30LossModal"
-                             title="Last 30 Days Loss — click for detail">
-                            <i class="bi bi-graph-down-arrow"></i>
-                            L30 Loss: <span id="l30-badge-total">…</span>
-                        </div>
-                        <div id="l30-issues-badge" class="l30-issues-badge" role="button"
-                             data-bs-toggle="modal" data-bs-target="#l30IssuesModal"
-                             title="Last 30 Days Issues — click for detail">
-                            <i class="bi bi-exclamation-circle"></i>
-                            <span id="l30-issues-badge-label">L30</span> Issues: <span id="l30-issues-badge-total">…</span>
-                        </div>
-                        @endif
-                        @if($showDispatchExtras ?? false)
-                        @if(!($hideDepartmentColumnAndFilter ?? false))
-                        @if(!empty($lockedDepartment ?? null))
-                        <span class="text-muted small text-nowrap">Dept: <strong>{{ $lockedDepartment }}</strong></span>
-                        @else
-                        <select id="dept-filter-select" class="form-select form-select-sm">
-                            <option value="">All Departments</option>
-                        </select>
-                        @endif
-                        @endif
-                        @endif
-                        </div>
-                        <div class="issues-toolbar-actions-secondary d-flex flex-wrap align-items-center gap-2 ms-xl-auto flex-xl-grow-1 min-w-0 @if($showClaimsSummaryBadges ?? false) issues-toolbar-actions-secondary--claims @endif">
-                        @if($showClaimsSummaryBadges ?? false)
-                        <div class="d-flex flex-wrap align-items-stretch gap-2 carrier-claims-summary-wrap carrier-claims-summary--fill flex-grow-1">
-                            <span class="badge carrier-claims-summary-badge carrier-claims-summary--filed text-wrap text-start" role="status">
-                                <span class="d-block fw-semibold small">Claims Filed</span>
-                                <span class="d-block carrier-claims-summary-line"><span id="carrierClaimsFiledCount">0</span> · $<span id="carrierClaimsFiledAmount">0.00</span></span>
-                            </span>
-                            <span class="badge carrier-claims-summary-badge carrier-claims-summary--pending text-wrap text-start" role="status">
-                                <span class="d-block fw-semibold small">Pending Claims</span>
-                                <span class="d-block carrier-claims-summary-line"><span id="carrierClaimsPendingCount">0</span> · $<span id="carrierClaimsPendingAmount">0.00</span></span>
-                            </span>
-                            <span class="badge carrier-claims-summary-badge carrier-claims-summary--received text-wrap text-start" role="status">
-                                <span class="d-block fw-semibold small">Claims Recd</span>
-                                <span class="d-block carrier-claims-summary-line"><span id="carrierClaimsReceivedCount">0</span> · $<span id="carrierClaimsReceivedAmount">0.00</span></span>
-                            </span>
-                        </div>
-                        @endif
-                        <span class="badge bg-light text-dark align-self-center flex-shrink-0" id="hold_issue_total_count">0</span>
-                        </div>
-                    </div>
+                        <div class="col-12 @if (($recordsTitle ?? null) !== '') col-xl @else col-xl-12 @endif">
+                            <div
+                                class="issues-toolbar-actions d-flex flex-column flex-xl-row flex-wrap align-items-stretch align-items-xl-center gap-2 gap-xl-3">
+                                <div class="issues-toolbar-actions-primary d-flex flex-wrap align-items-center gap-2">
+                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal"
+                                        data-bs-target="#ordersOnHoldIssueModal">
+                                        <i class="bi bi-plus-lg me-1"></i>
+                                        {{ $addIssueButtonText ?? 'Add QC & Packing Issue' }}
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnShowHistory">
+                                        <i class="bi bi-clock-history me-1"></i> History
+                                    </button>
+                                    <button type="button" class="btn btn-success btn-sm" id="btnExportCsv">
+                                        <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info btn-sm" id="btnImportCsv">
+                                        <i class="bi bi-upload me-1"></i> Import CSV
+                                    </button>
+                                    @if ($showDispatchExtras ?? false)
+                                        <div id="l30-loss-badge" class="l30-badge" role="button" data-bs-toggle="modal"
+                                            data-bs-target="#l30LossModal" title="Last 30 Days Loss — click for detail">
+                                            <i class="bi bi-graph-down-arrow"></i>
+                                            L30 Loss: <span id="l30-badge-total">…</span>
+                                        </div>
+                                        <div id="l30-issues-badge" class="l30-issues-badge" role="button"
+                                            data-bs-toggle="modal" data-bs-target="#l30IssuesModal"
+                                            title="Last 30 Days Issues — click for detail">
+                                            <i class="bi bi-exclamation-circle"></i>
+                                            <span id="l30-issues-badge-label">L30</span> Issues: <span
+                                                id="l30-issues-badge-total">…</span>
+                                        </div>
+                                    @endif
+                                    @if ($showDispatchExtras ?? false)
+                                        @if (!($hideDepartmentColumnAndFilter ?? false))
+                                            @if (!empty($lockedDepartment ?? null))
+                                                <span class="text-muted small text-nowrap">Dept:
+                                                    <strong>{{ $lockedDepartment }}</strong></span>
+                                            @else
+                                                <select id="dept-filter-select" class="form-select form-select-sm">
+                                                    <option value="">All Departments</option>
+                                                </select>
+                                            @endif
+                                        @endif
+                                    @endif
+                                </div>
+                                <div
+                                    class="issues-toolbar-actions-secondary d-flex flex-wrap align-items-center gap-2 ms-xl-auto flex-xl-grow-1 min-w-0 @if ($showClaimsSummaryBadges ?? false) issues-toolbar-actions-secondary--claims @endif">
+                                    @if ($showClaimsSummaryBadges ?? false)
+                                        <div
+                                            class="d-flex flex-wrap align-items-stretch gap-2 carrier-claims-summary-wrap carrier-claims-summary--fill flex-grow-1">
+                                            <span
+                                                class="badge carrier-claims-summary-badge carrier-claims-summary--filed text-wrap text-start"
+                                                role="status">
+                                                <span class="d-block fw-semibold small">Claims Filed</span>
+                                                <span class="d-block carrier-claims-summary-line"><span
+                                                        id="carrierClaimsFiledCount">0</span> · $<span
+                                                        id="carrierClaimsFiledAmount">0.00</span></span>
+                                            </span>
+                                            <span
+                                                class="badge carrier-claims-summary-badge carrier-claims-summary--pending text-wrap text-start"
+                                                role="status">
+                                                <span class="d-block fw-semibold small">Pending Claims</span>
+                                                <span class="d-block carrier-claims-summary-line"><span
+                                                        id="carrierClaimsPendingCount">0</span> · $<span
+                                                        id="carrierClaimsPendingAmount">0.00</span></span>
+                                            </span>
+                                            <span
+                                                class="badge carrier-claims-summary-badge carrier-claims-summary--received text-wrap text-start"
+                                                role="status">
+                                                <span class="d-block fw-semibold small">Claims Recd</span>
+                                                <span class="d-block carrier-claims-summary-line"><span
+                                                        id="carrierClaimsReceivedCount">0</span> · $<span
+                                                        id="carrierClaimsReceivedAmount">0.00</span></span>
+                                            </span>
+                                        </div>
+                                    @endif
+                                    <span class="badge bg-light text-dark align-self-center flex-shrink-0"
+                                        id="hold_issue_total_count">0</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                @if($showDispatchExtras ?? false)
-                <div id="dept-filter-bar" style="display:none;"></div>
+                @if ($showDispatchExtras ?? false)
+                    <div id="dept-filter-bar" style="display:none;"></div>
                 @endif
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -862,67 +967,72 @@
                                     <th class="orders-hold-col-idx">#</th>
                                     <th class="orders-hold-col-img"></th>
                                     <th class="orders-hold-col-sku">SKU</th>
-                                    @if($showDispatchExtras ?? false)
-                                    <th class="orders-hold-col-action">Ord</th>
-                                    <th class="orders-hold-col-action">Loss $</th>
+                                    @if ($showDispatchExtras ?? false)
+                                        <th class="orders-hold-col-action">Ord</th>
+                                        <th class="orders-hold-col-action">Loss $</th>
                                     @elseif($showOrderIdField ?? false)
-                                    <th class="orders-hold-col-action">{{ $orderIdFieldLabel ?? 'Order ID' }}</th>
+                                        <th class="orders-hold-col-action">{{ $orderIdFieldLabel ?? 'Order ID' }}</th>
                                     @endif
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-mp">MKT</th>
-                                    <th class="orders-hold-col-what @if($showDispatchExtras ?? false) dispatch-what-col @endif">Issue?</th>
-                                    <th class="orders-hold-col-action @if($showDispatchExtras ?? false) dispatch-action-col @endif">Action</th>
-                                    @if($showCarrierColumn ?? false)
-                                    <th class="orders-hold-col-carrier">Carrier</th>
+                                    <th
+                                        class="orders-hold-col-what @if ($showDispatchExtras ?? false) dispatch-what-col @endif">
+                                        Issue?</th>
+                                    <th
+                                        class="orders-hold-col-action @if ($showDispatchExtras ?? false) dispatch-action-col @endif">
+                                        Action</th>
+                                    @if ($showCarrierColumn ?? false)
+                                        <th class="orders-hold-col-carrier">Carrier</th>
                                     @endif
-                                    @if($showDispatchExtras ?? false)
-                                    <th class="orders-hold-col-action">Tracking</th>
+                                    @if ($showDispatchExtras ?? false)
+                                        <th class="orders-hold-col-action">Tracking</th>
                                     @endif
                                     <th class="orders-hold-col-action">Track R</th>
-                                    @if($showDispatchExtras ?? false)
-                                    <th class="orders-hold-col-action">Img 1</th>
-                                    <th class="orders-hold-col-action">Img 2</th>
-                                    <th class="orders-hold-col-action">Link</th>
+                                    @if ($showDispatchExtras ?? false)
+                                        <th class="orders-hold-col-action">Img 1</th>
+                                        <th class="orders-hold-col-action">Img 2</th>
+                                        <th class="orders-hold-col-action">Link</th>
                                     @endif
-                                    @if($createdAtColumnAfterTrack ?? false)
-                                    <th class="orders-hold-col-created-at">Created At</th>
-                                    @if($showClaimFiledColumn ?? false)
-                                    <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
+                                    @if ($createdAtColumnAfterTrack ?? false)
+                                        <th class="orders-hold-col-created-at">Created At</th>
+                                        @if ($showClaimFiledColumn ?? false)
+                                            <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
+                                        @endif
+                                        @if ($showAmpUsdColumn ?? false)
+                                            <th class="orders-hold-col-amp-usd text-center">AMT<br>$</th>
+                                        @endif
+                                        @if ($showClaimReceivedColumn ?? false)
+                                            <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
+                                        @endif
                                     @endif
-                                    @if($showAmpUsdColumn ?? false)
-                                    <th class="orders-hold-col-amp-usd text-center">AMT<br>$</th>
+                                    @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
+                                        <th class="orders-hold-col-root-status">Root Cause<br>Found</th>
+                                        <th class="qc-ctn-instr-cell">Instructions<br>CTN</th>
+                                        <th class="orders-hold-col-root-status">Root Cause<br>Fixed</th>
                                     @endif
-                                    @if($showClaimReceivedColumn ?? false)
-                                    <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
-                                    @endif
-                                    @endif
-                                    @if(!($hideRootCauseAndInstructionsCtnColumns ?? false))
-                                    <th class="orders-hold-col-root-status">Root Cause<br>Found</th>
-                                    <th class="qc-ctn-instr-cell">Instructions<br>CTN</th>
-                                    <th class="orders-hold-col-root-status">Root Cause<br>Fixed</th>
-                                    @endif
-                                    @if(!($hideDepartmentColumnAndFilter ?? false))
-                                    <th class="orders-hold-col-dept">Dept</th>
+                                    @if (!($hideDepartmentColumnAndFilter ?? false))
+                                        <th class="orders-hold-col-dept">Dept</th>
                                     @endif
                                     <th class="orders-hold-col-close">Close</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
-                                    @if(!($createdAtColumnAfterTrack ?? false))
-                                    <th class="orders-hold-col-created-at">Created At</th>
-                                    @if($showClaimFiledColumn ?? false)
-                                    <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
-                                    @endif
-                                    @if($showAmpUsdColumn ?? false)
-                                    <th class="orders-hold-col-amp-usd text-center">AMT<br>$</th>
-                                    @endif
-                                    @if($showClaimReceivedColumn ?? false)
-                                    <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
-                                    @endif
+                                    @if (!($createdAtColumnAfterTrack ?? false))
+                                        <th class="orders-hold-col-created-at">Created At</th>
+                                        @if ($showClaimFiledColumn ?? false)
+                                            <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
+                                        @endif
+                                        @if ($showAmpUsdColumn ?? false)
+                                            <th class="orders-hold-col-amp-usd text-center">AMT<br>$</th>
+                                        @endif
+                                        @if ($showClaimReceivedColumn ?? false)
+                                            <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
+                                        @endif
                                     @endif
                                 </tr>
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ (($showDispatchExtras ?? false) ? 22 : (($showOrderIdField ?? false) ? 17 : 16)) - (($hideDepartmentColumnAndFilter ?? false) ? 1 : 0) - (($hideRootCauseAndInstructionsCtnColumns ?? false) ? 3 : 0) + (($showClaimFiledColumn ?? false) ? 1 : 0) + (($showAmpUsdColumn ?? false) ? 1 : 0) + (($showClaimReceivedColumn ?? false) ? 1 : 0) + (($showCarrierColumn ?? false) ? 1 : 0) }}" class="text-center text-muted py-4">No records found.</td>
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 22 : ($showOrderIdField ?? false ? 17 : 16)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) }}"
+                                        class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -943,44 +1053,47 @@
                                     <th class="orders-hold-col-idx">#</th>
                                     <th class="orders-hold-col-img"></th>
                                     <th class="orders-hold-col-sku">SKU</th>
-                                    @if($showOrderIdField ?? false)
-                                    <th class="orders-hold-col-action">{{ $orderIdFieldLabel ?? 'Order ID' }}</th>
+                                    @if ($showOrderIdField ?? false)
+                                        <th class="orders-hold-col-action">{{ $orderIdFieldLabel ?? 'Order ID' }}</th>
                                     @endif
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-mp">MKT</th>
-                                    <th class="orders-hold-col-what @if($showDispatchExtras ?? false) dispatch-what-col @endif">Issue?</th>
+                                    <th
+                                        class="orders-hold-col-what @if ($showDispatchExtras ?? false) dispatch-what-col @endif">
+                                        Issue?</th>
                                     <th class="orders-hold-col-action">Action</th>
-                                    @if($showDispatchExtras ?? false)
-                                    <th class="orders-hold-col-action">Tracking</th>
+                                    @if ($showDispatchExtras ?? false)
+                                        <th class="orders-hold-col-action">Tracking</th>
                                     @endif
                                     <th class="orders-hold-col-action">Track R</th>
-                                    @if($showDispatchExtras ?? false)
-                                    <th class="orders-hold-col-action">Img 1</th>
-                                    <th class="orders-hold-col-action">Img 2</th>
-                                    <th class="orders-hold-col-action">Link</th>
+                                    @if ($showDispatchExtras ?? false)
+                                        <th class="orders-hold-col-action">Img 1</th>
+                                        <th class="orders-hold-col-action">Img 2</th>
+                                        <th class="orders-hold-col-action">Link</th>
                                     @endif
-                                    @if($createdAtColumnAfterTrack ?? false)
-                                    <th class="orders-hold-col-created-at">Logged At</th>
+                                    @if ($createdAtColumnAfterTrack ?? false)
+                                        <th class="orders-hold-col-created-at">Logged At</th>
                                     @endif
-                                    @if(!($hideRootCauseAndInstructionsCtnColumns ?? false))
-                                    <th class="orders-hold-col-root-status">Root Cause<br>Found</th>
-                                    <th class="qc-ctn-instr-cell">Instructions<br>CTN</th>
-                                    <th class="orders-hold-col-root-status">Root Cause<br>Fixed</th>
+                                    @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
+                                        <th class="orders-hold-col-root-status">Root Cause<br>Found</th>
+                                        <th class="qc-ctn-instr-cell">Instructions<br>CTN</th>
+                                        <th class="orders-hold-col-root-status">Root Cause<br>Fixed</th>
                                     @endif
-                                    @if(!($hideDepartmentColumnAndFilter ?? false))
-                                    <th class="orders-hold-col-dept">Dept</th>
+                                    @if (!($hideDepartmentColumnAndFilter ?? false))
+                                        <th class="orders-hold-col-dept">Dept</th>
                                     @endif
                                     <th class="orders-hold-col-action">Close</th>
                                     <th class="orders-hold-col-action">Event</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
-                                    @if(!($createdAtColumnAfterTrack ?? false))
-                                    <th class="orders-hold-col-created-at">Logged At</th>
+                                    @if (!($createdAtColumnAfterTrack ?? false))
+                                        <th class="orders-hold-col-created-at">Logged At</th>
                                     @endif
                                 </tr>
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ (($showOrderIdField ?? false) ? 18 : 17) + (($showDispatchExtras ?? false) ? 4 : 0) - (($hideDepartmentColumnAndFilter ?? false) ? 1 : 0) - (($hideRootCauseAndInstructionsCtnColumns ?? false) ? 3 : 0) }}" class="text-center text-muted py-4">No history found.</td>
+                                    <td colspan="{{ ($showOrderIdField ?? false ? 18 : 17) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) }}"
+                                        class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -991,7 +1104,8 @@
     </div>
 
     {{-- ── Import CSV Modal ── --}}
-    <div class="modal fade" id="importCsvModal" tabindex="-1" aria-labelledby="importCsvModalLabel" aria-hidden="true">
+    <div class="modal fade" id="importCsvModal" tabindex="-1" aria-labelledby="importCsvModalLabel"
+        aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
@@ -1002,14 +1116,21 @@
                     <div id="importCsvAlert" class="d-none mb-3"></div>
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
-                        <code>@if($showOrderIdField ?? false)
-                            sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1, what_happened, action_1@if(!($hideActionRemark ?? false)), action_1_remark@endif@if($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department
-                        @else
-                            sku, qty, order_qty, parent, marketplace_1, what_happened, action_1@if(!($hideActionRemark ?? false)), action_1_remark@endif@if($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department
-                        @endif</code>
+                        <code>
+                            @if ($showOrderIdField ?? false)
+                                sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1,
+                                what_happened, action_1@if (!($hideActionRemark ?? false)), action_1_remark@endif@if ($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1,
+                                    c_action_1_remark, department
+                                @else
+                                    sku, qty, order_qty, parent, marketplace_1, what_happened, action_1@if (!($hideActionRemark ?? false)), action_1_remark@endif@if ($showDispatchExtras ?? false), tracking_number, issue_link@endif, replacement_tracking, issue, issue_remark, c_action_1,
+                                        c_action_1_remark, department
+                                    @endif
+                        </code>
                     </p>
                     <p class="text-muted small mb-3">
-                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found), <strong>department</strong>. Use multiple departments separated by <strong>|</strong> or <strong>,</strong> (e.g. <code>Dispatch|QC</code>). Other columns are optional.
+                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found),
+                        <strong>department</strong>. Use multiple departments separated by <strong>|</strong> or
+                        <strong>,</strong> (e.g. <code>Dispatch|QC</code>). Other columns are optional.
                     </p>
                     <div class="mb-3">
                         <label for="importCsvFile" class="form-label">CSV File</label>
@@ -1017,13 +1138,15 @@
                     </div>
                     <div id="importCsvProgress" class="d-none">
                         <div class="progress mb-2">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width:100%"></div>
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                                style="width:100%"></div>
                         </div>
                         <p class="text-muted small text-center">Uploading…</p>
                     </div>
                     <div id="importCsvErrors" class="d-none">
                         <p class="fw-semibold small mb-1 text-warning">Skipped rows:</p>
-                        <ul id="importCsvErrorList" class="small text-warning mb-0" style="max-height:160px;overflow-y:auto;"></ul>
+                        <ul id="importCsvErrorList" class="small text-warning mb-0"
+                            style="max-height:160px;overflow-y:auto;"></ul>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1044,7 +1167,8 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">{{ $modalTitle ?? 'QC And Packing Issue' }}</h5>
+                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">{{ $modalTitle ?? 'QC And Packing Issue' }}
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form id="ordersOnHoldIssueForm" autocomplete="off">
@@ -1058,76 +1182,83 @@
                                     <div class="row g-2 align-items-end">
                                         <div class="col-md-8">
                                             <label class="form-label">SKU <span class="text-danger">*</span></label>
-                                            <input type="text" class="form-control sku-entry-input" id="hold_issue_sku" name="sku"
-                                                list="hold_issue_sku_datalist" placeholder="Search SKU" required autocomplete="off">
+                                            <input type="text" class="form-control sku-entry-input"
+                                                id="hold_issue_sku" name="sku" list="hold_issue_sku_datalist"
+                                                placeholder="Search SKU" required autocomplete="off">
                                             <datalist id="hold_issue_sku_datalist"></datalist>
                                             <div class="mt-1 d-none" id="hold_issue_sku_image_wrap">
-                                                <img src="" alt="SKU Image" id="hold_issue_sku_image" class="sku-image-preview">
+                                                <img src="" alt="SKU Image" id="hold_issue_sku_image"
+                                                    class="sku-image-preview">
                                             </div>
                                         </div>
                                         <div style="display:none;">
-                                            <input type="number" class="form-control sku-entry-qty" id="hold_issue_qty" name="qty" value="0" readonly>
+                                            <input type="number" class="form-control sku-entry-qty" id="hold_issue_qty"
+                                                name="qty" value="0" readonly>
                                         </div>
                                         <div class="col-md-4">
                                             <label class="form-label">QTY</label>
-                                            <input type="number" class="form-control sku-entry-order-qty" id="hold_issue_order_qty" name="order_qty"
-                                                min="0" step="1" placeholder="Qty">
+                                            <input type="number" class="form-control sku-entry-order-qty"
+                                                id="hold_issue_order_qty" name="order_qty" min="0" step="1"
+                                                placeholder="Qty">
                                         </div>
                                         <div style="display:none;">
-                                            <input type="text" class="form-control sku-entry-parent" id="hold_issue_parent" name="parent" readonly>
+                                            <input type="text" class="form-control sku-entry-parent"
+                                                id="hold_issue_parent" name="parent" readonly>
                                         </div>
                                     </div>
                                 </div>
-
-                                @if($showDispatchExtras ?? false)
-                                {{-- Extra SKU rows container (dispatch issues only) --}}
-                                <div id="extra-sku-rows-container" class="mt-2"></div>
-                                <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-add-sku-row">
-                                    <i class="bi bi-plus-circle me-1"></i> Add Another SKU
-                                </button>
-                                <div class="mt-1">
-                                    <small class="text-muted">Multiple SKUs for the same order are grouped and counted as <strong>1 error</strong>.</small>
-                                </div>
+                                @if ($showDispatchExtras ?? false)
+                                    {{-- Extra SKU rows container (dispatch issues only) --}}
+                                    <div id="extra-sku-rows-container" class="mt-2"></div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary mt-2"
+                                        id="btn-add-sku-row">
+                                        <i class="bi bi-plus-circle me-1"></i> Add Another SKU
+                                    </button>
+                                    <div class="mt-1">
+                                        <small class="text-muted">Multiple SKUs for the same order are grouped and counted
+                                            as <strong>1 error</strong>.</small>
+                                    </div>
                                 @endif
                             </div>
-
-                            @if($showDispatchExtras ?? false)
-                            <div class="@if($hideLossDollarInput ?? false) col-12 @else col-md-6 @endif">
-                                <label for="hold_issue_order_number" class="form-label">Order Number</label>
-                                <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
-                                    placeholder="Enter order number">
-                            </div>
-                            @if($hideLossDollarInput ?? false)
-                            <input type="hidden" id="hold_issue_total_loss" name="total_loss" value="">
-                            @else
-                            <div class="col-md-6">
-                                <label for="hold_issue_total_loss" class="form-label">Loss $</label>
-                                <input type="number" class="form-control" id="hold_issue_total_loss" name="total_loss"
-                                    step="0.01" placeholder="0.00">
-                            </div>
-                            @endif
+                            @if ($showDispatchExtras ?? false)
+                                <div class="@if ($hideLossDollarInput ?? false) col-12 @else col-md-6 @endif">
+                                    <label for="hold_issue_order_number" class="form-label">Order Number</label>
+                                    <input type="text" class="form-control" id="hold_issue_order_number"
+                                        name="order_number" placeholder="Enter order number">
+                                </div>
+                                @if ($hideLossDollarInput ?? false)
+                                    <input type="hidden" id="hold_issue_total_loss" name="total_loss" value="">
+                                @else
+                                    <div class="col-md-6">
+                                        <label for="hold_issue_total_loss" class="form-label">Loss $</label>
+                                        <input type="number" class="form-control" id="hold_issue_total_loss"
+                                            name="total_loss" step="0.01" placeholder="0.00">
+                                    </div>
+                                @endif
                             @elseif($showOrderIdField ?? false)
-                            <div class="col-md-6">
-                                <label for="hold_issue_order_number" class="form-label">{{ $orderIdFieldLabel ?? 'Order ID' }}</label>
-                                <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
-                                    placeholder="Enter order ID">
-                            </div>
+                                <div class="col-md-6">
+                                    <label for="hold_issue_order_number"
+                                        class="form-label">{{ $orderIdFieldLabel ?? 'Order ID' }}</label>
+                                    <input type="text" class="form-control" id="hold_issue_order_number"
+                                        name="order_number" placeholder="Enter order ID">
+                                </div>
                             @endif
 
                             <div class="col-md-6">
                                 <label for="hold_issue_marketplace_1" class="form-label">MKT</label>
-                                <input type="text" class="form-control" id="hold_issue_marketplace_1" name="marketplace_1"
-                                    list="hold_issue_marketplace_datalist" placeholder="Select Marketplace">
+                                <input type="text" class="form-control" id="hold_issue_marketplace_1"
+                                    name="marketplace_1" list="hold_issue_marketplace_datalist"
+                                    placeholder="Select Marketplace">
                             </div>
 
                             <div class="col-md-6">
                                 <label for="hold_issue_what_happened" class="form-label">Issue?</label>
-                                <input type="text" class="form-control" id="hold_issue_what_happened" name="what_happened"
-                                    maxlength="100" placeholder="e.g. 0 Stock, Damaged">
+                                <input type="text" class="form-control" id="hold_issue_what_happened"
+                                    name="what_happened" maxlength="100" placeholder="e.g. 0 Stock, Damaged">
                             </div>
 
                             <datalist id="hold_issue_marketplace_datalist">
-                                @foreach (($marketplaces ?? collect()) as $marketplace)
+                                @foreach ($marketplaces ?? collect() as $marketplace)
                                     <option value="{{ $marketplace }}"></option>
                                 @endforeach
                             </datalist>
@@ -1135,74 +1266,87 @@
                             <div class="col-md-6">
                                 <label for="hold_issue_action_1" class="form-label">Action</label>
                                 <input type="text" class="form-control" id="hold_issue_action_1" name="action_1"
-                                    list="hold_issue_action_datalist"
-                                    placeholder="Type or select action..." autocomplete="off">
+                                    list="hold_issue_action_datalist" placeholder="Type or select action..."
+                                    autocomplete="off">
                                 <datalist id="hold_issue_action_datalist">
                                     <option value="Offer Customer Alterntive / Updgrade"></option>
                                     <option value="Upgraded + Stock Alternate"></option>
                                     <option value="Alternate Sent + Stock Alternate"></option>
                                     <option value="Sent Wrong Item + Stock Outgoing"></option>
                                     <option value="Cancelled"></option>
+                                    <option value="Refund"></option>
+                                    <option value="RTS"></option>
+                                    <option value="NA"></option>
                                     <option value="Other"></option>
                                 </datalist>
                             </div>
 
-                            @unless($hideActionRemark ?? false)
-                            <div class="col-md-6" id="action1RemarkWrap">
-                                <label for="hold_issue_action_1_remark" class="form-label">Action Remark
-                                    <span id="action1RemarkRequiredStar" class="text-danger d-none" aria-hidden="true">*</span></label>
-                                <input type="text" class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
-                                    placeholder="Write action remark...">
-                            </div>
+                            @unless ($hideActionRemark ?? false)
+                                <div class="col-md-6" id="action1RemarkWrap">
+                                    <label for="hold_issue_action_1_remark" class="form-label">Action Remark
+                                        <span id="action1RemarkRequiredStar" class="text-danger d-none"
+                                            aria-hidden="true">*</span></label>
+                                    <input type="text" class="form-control" id="hold_issue_action_1_remark"
+                                        name="action_1_remark" placeholder="Write action remark...">
+                                </div>
                             @else
-                            <input type="hidden" id="hold_issue_action_1_remark" name="action_1_remark" value="">
+                                <input type="hidden" id="hold_issue_action_1_remark" name="action_1_remark" value="">
                             @endunless
 
-                            @if($showDispatchExtras ?? false)
-                            <div class="col-md-6">
-                                <label for="hold_issue_tracking_number" class="form-label">Tracking</label>
-                                <input type="text" class="form-control" id="hold_issue_tracking_number"
-                                    name="tracking_number" maxlength="50" placeholder="Optional tracking">
-                            </div>
-                            <div class="col-12">
-                                <label for="hold_issue_issue_link" class="form-label">Link</label>
-                                <input type="text" class="form-control" id="hold_issue_issue_link" name="issue_link"
-                                    maxlength="500" placeholder="https://… or paste any reference URL" autocomplete="off" inputmode="url">
-                            </div>
+                            @if ($showDispatchExtras ?? false)
+                                <div class="col-md-6">
+                                    <label for="hold_issue_tracking_number" class="form-label">Tracking</label>
+                                    <input type="text" class="form-control" id="hold_issue_tracking_number"
+                                        name="tracking_number" maxlength="50" placeholder="Optional tracking">
+                                </div>
+                                <div class="col-12">
+                                    <label for="hold_issue_issue_link" class="form-label">Link</label>
+                                    <input type="text" class="form-control" id="hold_issue_issue_link"
+                                        name="issue_link" maxlength="500"
+                                        placeholder="https://… or paste any reference URL" autocomplete="off"
+                                        inputmode="url">
+                                </div>
                             @endif
 
                             <div class="col-md-6">
-                                <label for="hold_issue_replacement_tracking" class="form-label">Replacement Tracking Number</label>
+                                <label for="hold_issue_replacement_tracking" class="form-label">Replacement Tracking
+                                    Number</label>
                                 <input type="text" class="form-control" id="hold_issue_replacement_tracking"
                                     name="replacement_tracking" maxlength="50" placeholder="Optional tracking number">
                             </div>
 
-                            @if($showDispatchExtras ?? false)
-                            <div class="col-md-6">
-                                <label for="hold_issue_image_1" class="form-label">Image 1</label>
-                                <input type="file" accept="image/*" class="form-control" id="hold_issue_image_1" autocomplete="off">
-                                <div id="hold_issue_image_1_existing" class="mt-1 d-none small"></div>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="hold_issue_image_2" class="form-label">Image 2</label>
-                                <input type="file" accept="image/*" class="form-control" id="hold_issue_image_2" autocomplete="off">
-                                <div id="hold_issue_image_2_existing" class="mt-1 d-none small"></div>
-                            </div>
-                            <div class="col-12">
-                                <p class="text-muted small mb-0">Attach screenshots or image files. You can also paste an image from the clipboard (Ctrl/Cmd+V) while this dialog is focused — it fills Image 1, then Image 2.</p>
-                            </div>
+                            @if ($showDispatchExtras ?? false)
+                                <div class="col-md-6">
+                                    <label for="hold_issue_image_1" class="form-label">Image 1</label>
+                                    <input type="file" accept="image/*" class="form-control" id="hold_issue_image_1"
+                                        autocomplete="off">
+                                    <div id="hold_issue_image_1_existing" class="mt-1 d-none small"></div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="hold_issue_image_2" class="form-label">Image 2</label>
+                                    <input type="file" accept="image/*" class="form-control" id="hold_issue_image_2"
+                                        autocomplete="off">
+                                    <div id="hold_issue_image_2_existing" class="mt-1 d-none small"></div>
+                                </div>
+                                <div class="col-12">
+                                    <p class="text-muted small mb-0">Attach screenshots or image files. You can also paste
+                                        an image from the clipboard (Ctrl/Cmd+V) while this dialog is focused — it fills
+                                        Image 1, then Image 2.</p>
+                                </div>
                             @endif
 
                             <div class="col-md-6">
-                                <label for="hold_issue_text" class="form-label">Root Cause Found <span class="text-danger">*</span></label>
+                                <label for="hold_issue_text" class="form-label">Root Cause Found <span
+                                        class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="hold_issue_text" name="issue"
-                                    list="hold_issue_root_cause_found_datalist"
-                                    placeholder="Type or select root cause..." autocomplete="off" required>
+                                    list="hold_issue_root_cause_found_datalist" placeholder="Type or select root cause..."
+                                    autocomplete="off" required>
                                 <datalist id="hold_issue_root_cause_found_datalist"></datalist>
                             </div>
 
                             <div class="col-12 d-none" id="rootCauseRemarkWrap">
-                                <label for="hold_issue_remark" class="form-label">Root Cause Remark <span class="text-danger">*</span></label>
+                                <label for="hold_issue_remark" class="form-label">Root Cause Remark <span
+                                        class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="hold_issue_remark" name="issue_remark"
                                     placeholder="Write remark for Other">
                             </div>
@@ -1210,37 +1354,40 @@
                             <div class="col-md-6">
                                 <label for="hold_issue_c_action_1" class="form-label">Root Cause Fixed</label>
                                 <input type="text" class="form-control" id="hold_issue_c_action_1" name="c_action_1"
-                                    list="hold_issue_root_cause_fixed_datalist"
-                                    placeholder="Type or select fix..." autocomplete="off">
+                                    list="hold_issue_root_cause_fixed_datalist" placeholder="Type or select fix..."
+                                    autocomplete="off">
                                 <datalist id="hold_issue_root_cause_fixed_datalist"></datalist>
                             </div>
 
-                            @if(!($hideDepartmentFieldInModal ?? false))
-                            <div class="col-md-6">
-                                <label for="hold_issue_department" class="form-label">Department <span class="text-danger">*</span></label>
-                                @if(!empty($lockedDepartment ?? null))
-                                <input type="hidden" name="department[]" value="{{ $lockedDepartment }}">
-                                @endif
-                                <select class="form-select" id="hold_issue_department"
-                                    @if(empty($lockedDepartment ?? null)) name="department[]" multiple size="5" @else disabled aria-readonly="true" @endif>
-                                    <option value="Dispatch" @selected(!empty($lockedDepartment ?? null))>Dispatch</option>
-                                    <option value="Shipping">Shipping</option>
-                                    <option value="Listing">Listing</option>
-                                    <option value="Carrier">Carrier and Claim</option>
-                                    <option value="Carrier Issue">Carrier Issue</option>
-                                    <option value="Customer Care">Customer Care</option>
-                                    <option value="Pricing">Pricing</option>
-                                    <option value="QC">QC</option>
-                                    <option value="Packaging">Packaging</option>
-                                </select>
-                                @if(empty($lockedDepartment ?? null))
-                                <div class="form-text">Select one or more. Hold <kbd>Ctrl</kbd> (Windows) or <kbd>⌘</kbd> (Mac) for multiple.</div>
-                                @endif
-                            </div>
+                            @if (!($hideDepartmentFieldInModal ?? false))
+                                <div class="col-md-6">
+                                    <label for="hold_issue_department" class="form-label">Department <span
+                                            class="text-danger">*</span></label>
+                                    @if (!empty($lockedDepartment ?? null))
+                                        <input type="hidden" name="department[]" value="{{ $lockedDepartment }}">
+                                    @endif
+                                    <select class="form-select" id="hold_issue_department"
+                                        @if (empty($lockedDepartment ?? null)) name="department[]" multiple size="5" @else disabled aria-readonly="true" @endif>
+                                        <option value="Dispatch" @selected(!empty($lockedDepartment ?? null))>Dispatch</option>
+                                        <option value="Shipping">Shipping</option>
+                                        <option value="Listing">Listing</option>
+                                        <option value="Carrier">Carrier and Claim</option>
+                                        <option value="Carrier Issue">Carrier Issue</option>
+                                        <option value="Customer Care">Customer Care</option>
+                                        <option value="Pricing">Pricing</option>
+                                        <option value="QC">QC</option>
+                                        <option value="Packaging">Packaging</option>
+                                    </select>
+                                    @if (empty($lockedDepartment ?? null))
+                                        <div class="form-text">Select one or more. Hold <kbd>Ctrl</kbd> (Windows) or
+                                            <kbd>⌘</kbd> (Mac) for multiple.</div>
+                                    @endif
+                                </div>
                             @endif
 
                             <div class="col-12 d-none" id="cAction1RemarkWrap">
-                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark <span class="text-danger">*</span></label>
+                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark <span
+                                        class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="hold_issue_c_action_1_remark"
                                     name="c_action_1_remark" placeholder="Write remark for Other">
                             </div>
@@ -1256,101 +1403,127 @@
         </div>
     </div>
 
-    @if($showDispatchExtras ?? false)
-    {{-- ── L30 Loss Modal ───────────────────────────────────────────────── --}}
-    <div class="modal fade" id="l30LossModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width:98vw;width:98vw;margin:10px auto 0;">
-            <div class="modal-content" style="border-radius:8px;overflow:hidden;">
-                <div class="modal-header bg-info text-white py-1 px-3">
-                    <h6 class="modal-title mb-0" style="font-size:13px;">
-                        <i class="bi bi-graph-down-arrow me-1"></i>
-                        L30 Loss
-                        <small id="l30-modal-range" style="font-size:10px;opacity:.8;"></small>
-                    </h6>
-                    <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body p-2">
-                    <div style="height:240px;display:flex;align-items:stretch;">
-                        <div style="flex:1;min-width:0;position:relative;">
-                            <canvas id="l30LossLineChart"></canvas>
-                        </div>
-                        <div style="width:90px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;">
-                            <div style="text-align:center;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">Highest</div>
-                                <div id="l30-loss-highest" style="font-size:14px;font-weight:700;color:#dc3545;">-</div>
-                            </div>
-                            <div style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">Median</div>
-                                <div id="l30-loss-median" style="font-size:14px;font-weight:700;color:#6c757d;">-</div>
-                            </div>
-                            <div style="text-align:center;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">Lowest</div>
-                                <div id="l30-loss-lowest" style="font-size:14px;font-weight:700;color:#198754;">-</div>
-                            </div>
-                        </div>
+    @if ($showDispatchExtras ?? false)
+        {{-- ── L30 Loss Modal ───────────────────────────────────────────────── --}}
+        <div class="modal fade" id="l30LossModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog shadow-none" style="max-width:98vw;width:98vw;margin:10px auto 0;">
+                <div class="modal-content" style="border-radius:8px;overflow:hidden;">
+                    <div class="modal-header bg-info text-white py-1 px-3">
+                        <h6 class="modal-title mb-0" style="font-size:13px;">
+                            <i class="bi bi-graph-down-arrow me-1"></i>
+                            L30 Loss
+                            <small id="l30-modal-range" style="font-size:10px;opacity:.8;"></small>
+                        </h6>
+                        <button type="button" class="btn-close btn-close-white" style="font-size:10px;"
+                            data-bs-dismiss="modal"></button>
                     </div>
-                    <div style="height:150px;margin-top:8px;">
-                        <canvas id="l30LossBarChart"></canvas>
+                    <div class="modal-body p-2">
+                        <div style="height:240px;display:flex;align-items:stretch;">
+                            <div style="flex:1;min-width:0;position:relative;">
+                                <canvas id="l30LossLineChart"></canvas>
+                            </div>
+                            <div
+                                style="width:90px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;">
+                                <div style="text-align:center;">
+                                    <div
+                                        style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">
+                                        Highest</div>
+                                    <div id="l30-loss-highest" style="font-size:14px;font-weight:700;color:#dc3545;">-
+                                    </div>
+                                </div>
+                                <div
+                                    style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
+                                    <div
+                                        style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">
+                                        Median</div>
+                                    <div id="l30-loss-median" style="font-size:14px;font-weight:700;color:#6c757d;">-
+                                    </div>
+                                </div>
+                                <div style="text-align:center;">
+                                    <div
+                                        style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">
+                                        Lowest</div>
+                                    <div id="l30-loss-lowest" style="font-size:14px;font-weight:700;color:#198754;">-
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="height:150px;margin-top:8px;">
+                            <canvas id="l30LossBarChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    {{-- ── L30 Issues Modal ─────────────────────────────────────────────── --}}
-    <div class="modal fade" id="l30IssuesModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width:98vw;width:98vw;margin:10px auto 0;">
-            <div class="modal-content" style="border-radius:8px;overflow:hidden;">
-                <div class="modal-header bg-info text-white py-1 px-3">
-                    <h6 class="modal-title mb-0" style="font-size:13px;">
-                        <i class="bi bi-exclamation-circle me-1"></i>
-                        L30 Issues
-                        <small id="l30-issues-modal-range" style="font-size:10px;opacity:.8;"></small>
-                    </h6>
-                    <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body p-2">
-                    <div style="height:240px;display:flex;align-items:stretch;">
-                        <div style="flex:1;min-width:0;position:relative;">
-                            <canvas id="l30IssuesLineChart"></canvas>
-                        </div>
-                        <div style="width:90px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;">
-                            <div style="text-align:center;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">Highest</div>
-                                <div id="l30-issues-highest" style="font-size:14px;font-weight:700;color:#dc3545;">-</div>
-                            </div>
-                            <div style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">Median</div>
-                                <div id="l30-issues-median" style="font-size:14px;font-weight:700;color:#6c757d;">-</div>
-                            </div>
-                            <div style="text-align:center;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">Lowest</div>
-                                <div id="l30-issues-lowest" style="font-size:14px;font-weight:700;color:#198754;">-</div>
-                            </div>
-                        </div>
+        {{-- ── L30 Issues Modal ─────────────────────────────────────────────── --}}
+        <div class="modal fade" id="l30IssuesModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog shadow-none" style="max-width:98vw;width:98vw;margin:10px auto 0;">
+                <div class="modal-content" style="border-radius:8px;overflow:hidden;">
+                    <div class="modal-header bg-info text-white py-1 px-3">
+                        <h6 class="modal-title mb-0" style="font-size:13px;">
+                            <i class="bi bi-exclamation-circle me-1"></i>
+                            L30 Issues
+                            <small id="l30-issues-modal-range" style="font-size:10px;opacity:.8;"></small>
+                        </h6>
+                        <button type="button" class="btn-close btn-close-white" style="font-size:10px;"
+                            data-bs-dismiss="modal"></button>
                     </div>
-                    <div style="height:150px;margin-top:8px;">
-                        <canvas id="l30IssuesBarChart"></canvas>
-                    </div>
-                    <hr class="my-2">
-                    <div class="table-responsive" style="max-height:220px;overflow-y:auto;">
-                        <table class="table table-sm table-striped table-hover mb-0">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th>Date</th>
-                                    <th class="text-end">Issues</th>
-                                </tr>
-                            </thead>
-                            <tbody id="l30-issues-table-body">
-                                <tr><td colspan="2" class="text-center text-muted py-3">Loading…</td></tr>
-                            </tbody>
-                            <tfoot id="l30-issues-table-foot"></tfoot>
-                        </table>
+                    <div class="modal-body p-2">
+                        <div style="height:240px;display:flex;align-items:stretch;">
+                            <div style="flex:1;min-width:0;position:relative;">
+                                <canvas id="l30IssuesLineChart"></canvas>
+                            </div>
+                            <div
+                                style="width:90px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;">
+                                <div style="text-align:center;">
+                                    <div
+                                        style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">
+                                        Highest</div>
+                                    <div id="l30-issues-highest" style="font-size:14px;font-weight:700;color:#dc3545;">-
+                                    </div>
+                                </div>
+                                <div
+                                    style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
+                                    <div
+                                        style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">
+                                        Median</div>
+                                    <div id="l30-issues-median" style="font-size:14px;font-weight:700;color:#6c757d;">-
+                                    </div>
+                                </div>
+                                <div style="text-align:center;">
+                                    <div
+                                        style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">
+                                        Lowest</div>
+                                    <div id="l30-issues-lowest" style="font-size:14px;font-weight:700;color:#198754;">-
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="height:150px;margin-top:8px;">
+                            <canvas id="l30IssuesBarChart"></canvas>
+                        </div>
+                        <hr class="my-2">
+                        <div class="table-responsive" style="max-height:220px;overflow-y:auto;">
+                            <table class="table table-sm table-striped table-hover mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th class="text-end">Issues</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="l30-issues-table-body">
+                                    <tr>
+                                        <td colspan="2" class="text-center text-muted py-3">Loading…</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot id="l30-issues-table-foot"></tfoot>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
     @endif
 
 @endsection
@@ -1462,7 +1635,9 @@
                     try {
                         const j = JSON.parse(s);
                         return Array.isArray(j) ? j.map(x => String(x).trim()).filter(Boolean) : [];
-                    } catch (e) { return []; }
+                    } catch (e) {
+                        return [];
+                    }
                 }
                 return [s];
             }
@@ -1488,7 +1663,9 @@
 
             function clearDepartmentMultiSelect() {
                 if (!departmentInput || lockedDepartment) return;
-                Array.from(departmentInput.options).forEach(o => { o.selected = false; });
+                Array.from(departmentInput.options).forEach(o => {
+                    o.selected = false;
+                });
             }
 
             function rowMatchesActiveDeptFilter(r) {
@@ -1583,10 +1760,12 @@
             function carrierSelectCellHtml(row) {
                 const v = String(row.issue_carrier ?? '').trim();
                 let html = '<td class="orders-hold-col-carrier">' +
-                    '<select class="form-select form-select-sm carrier-issue-carrier-select" data-issue-id="' + escAttr(String(row.id)) + '" aria-label="Carrier">';
+                    '<select class="form-select form-select-sm carrier-issue-carrier-select" data-issue-id="' + escAttr(
+                        String(row.id)) + '" aria-label="Carrier">';
                 html += '<option value=""' + (v === '' ? ' selected' : '') + '>—</option>';
                 issueCarrierOptions.forEach((opt) => {
-                    html += '<option value="' + escAttr(opt) + '"' + (v === opt ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+                    html += '<option value="' + escAttr(opt) + '"' + (v === opt ? ' selected' : '') + '>' +
+                        escapeHtml(opt) + '</option>';
                 });
                 html += '</select></td>';
                 return html;
@@ -1605,7 +1784,8 @@
                 const prev = r ? String(r.issue_carrier ?? '').trim() : '';
                 if (newV === prev) return;
                 try {
-                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) + '/issue-carrier', {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) +
+                    '/issue-carrier', {
                         method: 'PATCH',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1613,7 +1793,9 @@
                             'X-CSRF-TOKEN': csrfToken,
                             'X-Requested-With': 'XMLHttpRequest',
                         },
-                        body: JSON.stringify({ issue_carrier: newV.length ? newV : null }),
+                        body: JSON.stringify({
+                            issue_carrier: newV.length ? newV : null
+                        }),
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) {
@@ -1634,7 +1816,8 @@
                 return '<td class="text-center align-middle orders-hold-col-claim-filed">' +
                     '<button type="button" class="btn btn-link p-0 border-0 claim-filed-toggle" ' +
                     'data-issue-id="' + escAttr(String(row.id)) + '" data-claim-filed="' + (filed ? '1' : '0') + '" ' +
-                    'title="' + escAttr(filed ? 'Claim filed — click to mark as not filed' : 'Not filed — click when claim is filed') + '">' +
+                    'title="' + escAttr(filed ? 'Claim filed — click to mark as not filed' :
+                        'Not filed — click when claim is filed') + '">' +
                     '<span class="' + dotClass + '" aria-hidden="true"></span>' +
                     '</button></td>';
             }
@@ -1668,7 +1851,9 @@
                             'X-CSRF-TOKEN': csrfToken,
                             'X-Requested-With': 'XMLHttpRequest',
                         },
-                        body: JSON.stringify({ amp_usd: newV.length ? newV : null }),
+                        body: JSON.stringify({
+                            amp_usd: newV.length ? newV : null
+                        }),
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) {
@@ -1689,7 +1874,10 @@
                 if (Number.isNaN(num)) {
                     return '0.00';
                 }
-                return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return num.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
             }
 
             async function loadClaimsStats() {
@@ -1723,16 +1911,20 @@
                     apply('carrierClaimsFiledCount', 'carrierClaimsFiledAmount', f.count, f.amount);
                     apply('carrierClaimsPendingCount', 'carrierClaimsPendingAmount', p.count, p.amount);
                     apply('carrierClaimsReceivedCount', 'carrierClaimsReceivedAmount', r.count, r.amount);
-                } catch (e) { /* silent */ }
+                } catch (e) {
+                    /* silent */ }
             }
 
             function claimReceivedCellHtml(row) {
                 const received = !!row.claim_received;
-                const dotClass = received ? 'claim-received-dot claim-received-dot--on' : 'claim-received-dot claim-received-dot--off';
+                const dotClass = received ? 'claim-received-dot claim-received-dot--on' :
+                    'claim-received-dot claim-received-dot--off';
                 return '<td class="text-center align-middle orders-hold-col-claim-received">' +
                     '<button type="button" class="btn btn-link p-0 border-0 claim-received-toggle" ' +
-                    'data-issue-id="' + escAttr(String(row.id)) + '" data-claim-received="' + (received ? '1' : '0') + '" ' +
-                    'title="' + escAttr(received ? 'Claim Recd — click to mark as not received' : 'Not Recd — click when claim is received') + '">' +
+                    'data-issue-id="' + escAttr(String(row.id)) + '" data-claim-received="' + (received ? '1' : '0') +
+                    '" ' +
+                    'title="' + escAttr(received ? 'Claim Recd — click to mark as not received' :
+                        'Not Recd — click when claim is received') + '">' +
                     '<span class="' + dotClass + '" aria-hidden="true"></span>' +
                     '</button></td>';
             }
@@ -1742,7 +1934,8 @@
                 const current = btn.getAttribute('data-claim-received') === '1';
                 const next = !current;
                 try {
-                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) + '/claim-received', {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) +
+                    '/claim-received', {
                         method: 'PATCH',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1750,7 +1943,9 @@
                             'X-CSRF-TOKEN': csrfToken,
                             'X-Requested-With': 'XMLHttpRequest',
                         },
-                        body: JSON.stringify({ claim_received: next }),
+                        body: JSON.stringify({
+                            claim_received: next
+                        }),
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) {
@@ -1762,7 +1957,8 @@
                         dot.classList.toggle('claim-received-dot--on', next);
                         dot.classList.toggle('claim-received-dot--off', !next);
                     }
-                    btn.title = next ? 'Claim Recd — click to mark as not received' : 'Not Recd — click when claim is received';
+                    btn.title = next ? 'Claim Recd — click to mark as not received' :
+                        'Not Recd — click when claim is received';
                     const r = holdIssueRows.find(x => String(x.id) === String(id));
                     if (r) {
                         r.claim_received = next;
@@ -1786,7 +1982,9 @@
                             'X-CSRF-TOKEN': csrfToken,
                             'X-Requested-With': 'XMLHttpRequest',
                         },
-                        body: JSON.stringify({ claim_filed: next }),
+                        body: JSON.stringify({
+                            claim_filed: next
+                        }),
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) {
@@ -1798,7 +1996,8 @@
                         dot.classList.toggle('claim-filed-dot--on', next);
                         dot.classList.toggle('claim-filed-dot--off', !next);
                     }
-                    btn.title = next ? 'Claim filed — click to mark as not filed' : 'Not filed — click when claim is filed';
+                    btn.title = next ? 'Claim filed — click to mark as not filed' :
+                        'Not filed — click when claim is filed';
                     const r = holdIssueRows.find(x => String(x.id) === String(id));
                     if (r) {
                         r.claim_filed = next;
@@ -1815,7 +2014,8 @@
                 const titleVal = tip || (!isAvailable ? 'No data' : '');
                 const titleAttr = titleVal ? ' title="' + escAttr(titleVal) + '"' : '';
                 const aria = isAvailable ? 'Has data' : 'No data';
-                return '<span class="status-dot-indicator ' + cls + '"' + titleAttr + ' role="img" aria-label="' + escAttr(aria) + '"></span>';
+                return '<span class="status-dot-indicator ' + cls + '"' + titleAttr + ' role="img" aria-label="' +
+                    escAttr(aria) + '"></span>';
             }
 
             function qcCtnInstrCell(row, listKind) {
@@ -1837,8 +2037,10 @@
                 return '<td class="qc-ctn-instr-cell">' +
                     '<div class="qc-ctn-instr-wrap d-flex align-items-center justify-content-center gap-1 flex-nowrap">' +
                     dotHtml +
-                    '<input type="text" class="form-control form-control-sm qc-ctn-instructions-input" maxlength="100" value="' + valEsc + '" ' +
-                    'data-product-id="' + escAttr(String(pid)) + '" data-sku="' + escAttr(row.sku || '') + '" data-parent="' + escAttr(row.parent || '') + '" ' +
+                    '<input type="text" class="form-control form-control-sm qc-ctn-instructions-input" maxlength="100" value="' +
+                    valEsc + '" ' +
+                    'data-product-id="' + escAttr(String(pid)) + '" data-sku="' + escAttr(row.sku || '') +
+                    '" data-parent="' + escAttr(row.parent || '') + '" ' +
                     'data-ctn-list="' + escAttr(listKind) + '" data-ctn-row-id="' + escAttr(rowId) + '">' +
                     '<button type="button" class="qc-copy-ctn-instr" title="Copy Instructions CTN" aria-label="Copy Instructions CTN"><i class="bi bi-clipboard"></i></button>' +
                     '</div></td>';
@@ -1898,9 +2100,9 @@
                     }
                 } catch (e) {
                     alert(e.message || 'Could not save Instructions CTN');
-                    const r = listKind === 'history'
-                        ? holdIssueHistoryRows.find(x => x.id === rowId)
-                        : holdIssueRows.find(x => x.id === rowId);
+                    const r = listKind === 'history' ?
+                        holdIssueHistoryRows.find(x => x.id === rowId) :
+                        holdIssueRows.find(x => x.id === rowId);
                     input.value = r ? String(r.ctn_instructions || '') : '';
                 }
             }
@@ -1924,7 +2126,9 @@
                         ta.value = text;
                         document.body.appendChild(ta);
                         ta.select();
-                        try { document.execCommand('copy'); } catch (err) {}
+                        try {
+                            document.execCommand('copy');
+                        } catch (err) {}
                         document.body.removeChild(ta);
                     });
                 } else {
@@ -1932,7 +2136,9 @@
                     ta.value = text;
                     document.body.appendChild(ta);
                     ta.select();
-                    try { document.execCommand('copy'); } catch (err2) {}
+                    try {
+                        document.execCommand('copy');
+                    } catch (err2) {}
                     document.body.removeChild(ta);
                 }
             }
@@ -1962,12 +2168,13 @@
 
             async function fetchDropdownOptions(fieldType) {
                 try {
-                    const response = await fetch(`${dropdownOptionsListUrl}?field_type=${encodeURIComponent(fieldType)}`, {
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                    });
+                    const response = await fetch(
+                        `${dropdownOptionsListUrl}?field_type=${encodeURIComponent(fieldType)}`, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                        });
                     const data = await response.json();
                     if (!response.ok) {
                         return [];
@@ -1990,7 +2197,10 @@
                     body: JSON.stringify(payload),
                 });
                 const data = await response.json();
-                return { response, data };
+                return {
+                    response,
+                    data
+                };
             }
 
             function trackingCellHtml(value) {
@@ -1999,7 +2209,8 @@
                 return '<span class="tracking-cell">' +
                     '<span class="tracking-dot">•</span>' +
                     '<span class="tracking-full">' + escapeHtml(text) + '</span>' +
-                    '<button class="copy-tracking-btn" data-copy="' + escAttr(text) + '" title="Copy tracking"><i class="bi bi-clipboard"></i></button>' +
+                    '<button class="copy-tracking-btn" data-copy="' + escAttr(text) +
+                    '" title="Copy tracking"><i class="bi bi-clipboard"></i></button>' +
                     '</span>';
             }
 
@@ -2016,7 +2227,8 @@
                 if (!text) return '<td class="issue-link-cell">—</td>';
                 const href = linkHrefFromText(text);
                 return '<td class="issue-link-cell">' +
-                    '<a href="' + escAttr(href) + '" target="_blank" rel="noopener noreferrer" class="issue-link-icon" ' +
+                    '<a href="' + escAttr(href) +
+                    '" target="_blank" rel="noopener noreferrer" class="issue-link-icon" ' +
                     'title="' + escAttr(text) + '" aria-label="Open link">' +
                     '<i class="bi bi-link-45deg fs-5" aria-hidden="true"></i>' +
                     '</a></td>';
@@ -2045,7 +2257,8 @@
                     payload.skus.forEach((row, i) => {
                         fd.append('skus[' + i + '][sku]', row.sku ?? '');
                         fd.append('skus[' + i + '][qty]', String(row.qty ?? 0));
-                        fd.append('skus[' + i + '][order_qty]', row.order_qty == null || row.order_qty === '' ? '' : String(row.order_qty));
+                        fd.append('skus[' + i + '][order_qty]', row.order_qty == null || row.order_qty === '' ?
+                            '' : String(row.order_qty));
                         fd.append('skus[' + i + '][parent]', row.parent ?? '');
                     });
                 }
@@ -2159,7 +2372,10 @@
                 if (!value) return;
 
                 try {
-                    const { response, data } = await postDropdownOption(dropdownOptionsStoreUrl, {
+                    const {
+                        response,
+                        data
+                    } = await postDropdownOption(dropdownOptionsStoreUrl, {
                         field_type: fieldType,
                         option_value: value,
                     });
@@ -2175,7 +2391,9 @@
                         dl.appendChild(opt);
                     }
                     inputEl.value = value;
-                    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    inputEl.dispatchEvent(new Event('input', {
+                        bubbles: true
+                    }));
                 } catch (error) {
                     showAlert('Unable to add option.');
                 }
@@ -2192,7 +2410,10 @@
                 }
 
                 try {
-                    const { response, data } = await postDropdownOption(dropdownOptionsDeleteUrl, {
+                    const {
+                        response,
+                        data
+                    } = await postDropdownOption(dropdownOptionsDeleteUrl, {
                         field_type: fieldType,
                         option_value: selected,
                     });
@@ -2207,7 +2428,9 @@
                         if (opt) opt.remove();
                     }
                     inputEl.value = '';
-                    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    inputEl.dispatchEvent(new Event('input', {
+                        bubbles: true
+                    }));
                 } catch (error) {
                     showAlert('Unable to delete option.');
                 }
@@ -2227,8 +2450,13 @@
                 let errorCount = 0;
                 filtered.forEach(r => {
                     if (r.group_id) {
-                        if (!seenGroups.has(r.group_id)) { seenGroups.add(r.group_id); errorCount++; }
-                    } else { errorCount++; }
+                        if (!seenGroups.has(r.group_id)) {
+                            seenGroups.add(r.group_id);
+                            errorCount++;
+                        }
+                    } else {
+                        errorCount++;
+                    }
                 });
                 totalCountEl.textContent = String(errorCount);
             }
@@ -2248,87 +2476,109 @@
                 const dataRowsHtml = filtered.map((row, index) => {
                     const buttonsHtml =
                         '<div class="hold-close-actions">' +
-                        '<button type="button" class="btn btn-sm hold-action-btn hold-edit-btn" data-id="' + row.id +
+                        '<button type="button" class="btn btn-sm hold-action-btn hold-edit-btn" data-id="' + row
+                        .id +
                         '" title="Edit"><i class="bi bi-pencil-fill"></i></button>' +
                         '<br>' +
                         (currentUserEmail === 'president@5core.com' ?
-                            '<button type="button" class="btn btn-sm hold-action-btn hold-archive-btn" data-id="' + row.id +
-                            '" title="Archive"><i class="bi bi-archive-fill"></i></button>'
-                        : '') +
+                            '<button type="button" class="btn btn-sm hold-action-btn hold-archive-btn" data-id="' +
+                            row.id +
+                            '" title="Archive"><i class="bi bi-archive-fill"></i></button>' :
+                            '') +
                         '</div>';
                     // Group badge: show small colored pill for multi-SKU groups
-                    const groupBadge = row.group_id
-                        ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.7rem;" title="Grouped entry (1 error)">G</span>'
-                        : '';
+                    const groupBadge = row.group_id ?
+                        '<span class="badge bg-warning text-dark ms-1" style="font-size:0.7rem;" title="Grouped entry (1 error)">G</span>' :
+                        '';
                     return '<tr>' +
                         '<td>' + escapeHtml(row.id) + '</td>' +
-                        '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row.image_url) + '" class="sku-thumb" alt="">' : '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') + '</td>' +
-                        '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) + '</span>' + groupBadge + '</td>' +
-                        @if($showDispatchExtras ?? false)
-                        '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
-                        '<td class="orders-hold-loss-cell">' + (row.total_loss != null && row.total_loss !== '' ? '$' + Math.round(parseFloat(row.total_loss)) : '—') + '</td>' +
-                        @elseif($showOrderIdField ?? false)
-                        '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
+                        '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row
+                                .image_url) + '" class="sku-thumb" alt="">' :
+                            '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') +
+                        '</td>' +
+                        '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) +
+                        '</span>' + groupBadge + '</td>' +
+                        @if ($showDispatchExtras ?? false)
+                            '<td class="order-num-cell">' + (row.order_number ?
+                                '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) +
+                                '" title="' + escAttr(row.order_number) +
+                                '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' +
+                                escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
+                            '<td class="orders-hold-loss-cell">' + (row.total_loss != null && row.total_loss !==
+                                '' ? '$' + Math.round(parseFloat(row.total_loss)) : '—') + '</td>' +
+                        @elseif ($showOrderIdField ?? false)
+                            '<td class="order-num-cell">' + (row.order_number ?
+                                '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) +
+                                '" title="' + escAttr(row.order_number) +
+                                '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' +
+                                escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
                         @endif
-                        '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') + '</td>' +
-                        '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
-                        @if($showDispatchExtras ?? false)
-                        '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml(row.what_happened) + '</span></td>' +
+                    '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') +
+                    '</td>' +
+                    '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
+                        @if ($showDispatchExtras ?? false)
+                            '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml
+                                (row.what_happened) + '</span></td>' +
                         @else
-                        '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
+                            '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         @endif
-                        @if($showDispatchExtras ?? false)
-                        '<td class="dispatch-action-cell"><span class="action-cell-wrap">' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</span></td>' +
-                        @else
-                        '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</td>' +
-                        @endif
-@if($showCarrierColumn ?? false)
+                    @if ($showDispatchExtras ?? false)
+                        '<td class="dispatch-action-cell"><span class="action-cell-wrap">' + action1DisplayHtml(
+                                row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</span></td>' +
+                    @else
+                        '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
+                            '</td>' +
+                    @endif
+                    @if ($showDispatchExtras ?? (false && $showCarrierColumn ?? false))
                         carrierSelectCellHtml(row) +
-@endif
-@if($showDispatchExtras ?? false)
+                    @endif
+                    @if ($showDispatchExtras ?? false)
                         '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
-@endif
-                        '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
-@if($showDispatchExtras ?? false)
-                        '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_1_url) + '</td>' +
-                        '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_2_url) + '</td>' +
-                        linkCellHtml(row.issue_link) +
-@endif
-@if($createdAtColumnAfterTrack ?? false)
+                    @endif
+                    '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
+                        @if ($showDispatchExtras ?? false)
+                            '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_1_url) + '</td>' +
+                                '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_2_url) +
+                                '</td>' +
+                                linkCellHtml(row.issue_link) +
+                        @endif
+                    @if ($createdAtColumnAfterTrack ?? false)
                         issueRecordDateTdHtml(row.created_at) +
-@endif
-@if(($showClaimFiledColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
+                    @endif
+                    @if (($showClaimFiledColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimFiledCellHtml(row) +
-@endif
-@if(($showAmpUsdColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
+                    @endif
+                    @if (($showAmpUsdColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         ampUsdCellHtml(row) +
-@endif
-@if(($showClaimReceivedColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
+                    @endif
+                    @if (($showClaimReceivedColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimReceivedCellHtml(row) +
-@endif
-@if(!($hideRootCauseAndInstructionsCtnColumns ?? false))
-                        '<td class="orders-hold-col-root-status text-center align-middle">' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
-                        qcCtnInstrCell(row, 'main') +
-                        '<td class="orders-hold-col-root-status text-center align-middle">' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
-@endif
-@if(!($hideDepartmentColumnAndFilter ?? false))
+                    @endif
+                    @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
+                        '<td class="orders-hold-col-root-status text-center align-middle">' +
+                        rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
+                            qcCtnInstrCell(row, 'main') +
+                            '<td class="orders-hold-col-root-status text-center align-middle">' +
+                            rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
+                    @endif
+                    @if (!($hideDepartmentColumnAndFilter ?? false))
                         '<td>' + escapeHtml(row.department || '—') + '</td>' +
-@endif
-                        '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
+                    @endif
+                    '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
                         '<td>' + escapeHtml(row.created_by) + '</td>' +
-@if(!($createdAtColumnAfterTrack ?? false))
-                        issueRecordDateTdHtml(row.created_at) +
-@endif
-@if(($showClaimFiledColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
+                        @if (!($createdAtColumnAfterTrack ?? false))
+                            issueRecordDateTdHtml(row.created_at) +
+                        @endif
+                    @if (($showClaimFiledColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimFiledCellHtml(row) +
-@endif
-@if(($showAmpUsdColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
+                    @endif
+                    @if (($showAmpUsdColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         ampUsdCellHtml(row) +
-@endif
-@if(($showClaimReceivedColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
+                    @endif
+                    @if (($showClaimReceivedColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimReceivedCellHtml(row) +
-@endif
-                        '</tr>';
+                    @endif
+                    '</tr>';
                 }).join('');
 
                 tableBody.innerHTML = (emptyRow ? emptyRow.outerHTML : '') + dataRowsHtml;
@@ -2357,46 +2607,60 @@
                 const dataRowsHtml = holdIssueHistoryRows.map((row, index) => {
                     return '<tr>' +
                         '<td>' + escapeHtml(row.issue_ref || row.orders_on_hold_issue_id || row.id) + '</td>' +
-                        '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row.image_url) + '" class="sku-thumb" alt="">' : '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') + '</td>' +
-                        '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) + '</span></td>' +
-                        @if($showOrderIdField ?? false)
-                        '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
+                        '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row
+                                .image_url) + '" class="sku-thumb" alt="">' :
+                            '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') +
+                        '</td>' +
+                        '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) +
+                        '</span></td>' +
+                        @if ($showOrderIdField ?? false)
+                            '<td class="order-num-cell">' + (row.order_number ?
+                                '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) +
+                                '" title="' + escAttr(row.order_number) +
+                                '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' +
+                                escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
                         @endif
-                        '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') + '</td>' +
-                        '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
-                        @if($showDispatchExtras ?? false)
-                        '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml(row.what_happened) + '</span></td>' +
+                    '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') +
+                    '</td>' +
+                    '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
+                        @if ($showDispatchExtras ?? false)
+                            '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml
+                                (row.what_happened) + '</span></td>' +
                         @else
-                        '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
+                            '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         @endif
-                        '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</td>' +
-@if($showDispatchExtras ?? false)
-                        '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
-@endif
-                        '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
-@if($showDispatchExtras ?? false)
-                        '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_1_url) + '</td>' +
-                        '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_2_url) + '</td>' +
-                        linkCellHtml(row.issue_link) +
-@endif
-@if($createdAtColumnAfterTrack ?? false)
+                    '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
+                        '</td>' +
+                        @if ($showDispatchExtras ?? false)
+                            '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+                        @endif
+                    '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
+                        @if ($showDispatchExtras ?? false)
+                            '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_1_url) + '</td>' +
+                                '<td class="issue-attach-cell">' + issueImageThumbCell(row.image_2_url) +
+                                '</td>' +
+                                linkCellHtml(row.issue_link) +
+                        @endif
+                    @if ($createdAtColumnAfterTrack ?? false)
                         issueRecordDateTdHtml(row.logged_at) +
-@endif
-@if(!($hideRootCauseAndInstructionsCtnColumns ?? false))
-                        '<td class="orders-hold-col-root-status text-center align-middle">' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
-                        qcCtnInstrCell(row, 'history') +
-                        '<td class="orders-hold-col-root-status text-center align-middle">' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
-@endif
-@if(!($hideDepartmentColumnAndFilter ?? false))
+                    @endif
+                    @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
+                        '<td class="orders-hold-col-root-status text-center align-middle">' +
+                        rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
+                            qcCtnInstrCell(row, 'history') +
+                            '<td class="orders-hold-col-root-status text-center align-middle">' +
+                            rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
+                    @endif
+                    @if (!($hideDepartmentColumnAndFilter ?? false))
                         '<td>' + escapeHtml(row.department || '—') + '</td>' +
-@endif
-                        '<td>' + escapeHtml(row.close_note) + '</td>' +
+                    @endif
+                    '<td>' + escapeHtml(row.close_note) + '</td>' +
                         '<td>' + escapeHtml(row.event_type) + '</td>' +
                         '<td>' + escapeHtml(row.created_by) + '</td>' +
-@if(!($createdAtColumnAfterTrack ?? false))
-                        issueRecordDateTdHtml(row.logged_at) +
-@endif
-                        '</tr>';
+                        @if (!($createdAtColumnAfterTrack ?? false))
+                            issueRecordDateTdHtml(row.logged_at) +
+                        @endif
+                    '</tr>';
                 }).join('');
 
                 historyTableBody.innerHTML = (historyEmptyRow ? historyEmptyRow.outerHTML : '') + dataRowsHtml;
@@ -2429,7 +2693,8 @@
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
                     department: row?.department ?? '',
-                    departments: Array.isArray(row?.departments) ? row.departments : parseDepartmentList(row?.department),
+                    departments: Array.isArray(row?.departments) ? row.departments : parseDepartmentList(row
+                        ?.department),
                     created_by: row?.created_by ?? 'System',
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
                     order_number: row?.order_number ?? '',
@@ -2439,7 +2704,8 @@
                     claim_filed: !!row?.claim_filed,
                     amp_usd: row?.amp_usd != null && row?.amp_usd !== '' ? String(row.amp_usd).slice(0, 6) : '',
                     claim_received: !!row?.claim_received,
-                    issue_carrier: row?.issue_carrier != null && row?.issue_carrier !== '' ? String(row.issue_carrier).trim() : '',
+                    issue_carrier: row?.issue_carrier != null && row?.issue_carrier !== '' ? String(row.issue_carrier)
+                        .trim() : '',
                 };
             }
 
@@ -2470,7 +2736,8 @@
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
                     department: row?.department ?? '',
-                    departments: Array.isArray(row?.departments) ? row.departments : parseDepartmentList(row?.department),
+                    departments: Array.isArray(row?.departments) ? row.departments : parseDepartmentList(row
+                        ?.department),
                     created_by: row?.created_by ?? 'System',
                     logged_at: row?.logged_at_display ?? row?.logged_at ?? '',
                     order_number: row?.order_number ?? '',
@@ -2521,20 +2788,23 @@
                 form.reset();
                 editingIssueId = null;
                 const submitBtn = form.querySelector('button[type="submit"]');
-                if (submitBtn) submitBtn.textContent = 'Save';                qtyInput.value = '';
+                if (submitBtn) submitBtn.textContent = 'Save';
+                qtyInput.value = '';
                 orderQtyInput.value = '';
                 parentInput.value = '';
                 resetSkuImage();
                 marketplace1Input.value = '';
                 whatHappenedInput.value = '';
-                @if(($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
-                if (document.getElementById('hold_issue_order_number')) document.getElementById('hold_issue_order_number').value = '';
+                @if (($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
+                    if (document.getElementById('hold_issue_order_number')) document.getElementById(
+                        'hold_issue_order_number').value = '';
                 @endif
-                @if($showDispatchExtras ?? false)
-                if (document.getElementById('hold_issue_total_loss')) document.getElementById('hold_issue_total_loss').value = '';
-                // Clear all extra SKU rows
-                const extraContainer = document.getElementById('extra-sku-rows-container');
-                if (extraContainer) extraContainer.innerHTML = '';
+                @if ($showDispatchExtras ?? false)
+                    if (document.getElementById('hold_issue_total_loss')) document.getElementById(
+                        'hold_issue_total_loss').value = '';
+                    // Clear all extra SKU rows
+                    const extraContainer = document.getElementById('extra-sku-rows-container');
+                    if (extraContainer) extraContainer.innerHTML = '';
                 @endif
                 issueRemarkInput.value = '';
                 toggleRootCauseRemarkField();
@@ -2544,17 +2814,20 @@
                 if (trackingNumberInput) trackingNumberInput.value = '';
                 if (issueLinkInput) issueLinkInput.value = '';
                 replacementTrackingInput.value = '';
-                @if($showDispatchExtras ?? false)
-                (function() {
-                    const hi1 = document.getElementById('hold_issue_image_1');
-                    const hi2 = document.getElementById('hold_issue_image_2');
-                    if (hi1) hi1.value = '';
-                    if (hi2) hi2.value = '';
-                    ['hold_issue_image_1_existing', 'hold_issue_image_2_existing'].forEach(function(id) {
-                        const el = document.getElementById(id);
-                        if (el) { el.classList.add('d-none'); el.innerHTML = ''; }
-                    });
-                })();
+                @if ($showDispatchExtras ?? false)
+                    (function() {
+                        const hi1 = document.getElementById('hold_issue_image_1');
+                        const hi2 = document.getElementById('hold_issue_image_2');
+                        if (hi1) hi1.value = '';
+                        if (hi2) hi2.value = '';
+                        ['hold_issue_image_1_existing', 'hold_issue_image_2_existing'].forEach(function(id) {
+                            const el = document.getElementById(id);
+                            if (el) {
+                                el.classList.add('d-none');
+                                el.innerHTML = '';
+                            }
+                        });
+                    })();
                 @endif
                 cAction1Input.value = '';
                 cAction1RemarkInput.value = '';
@@ -2587,16 +2860,17 @@
                 marketplace1Input.value = record.marketplace_1 || '';
                 whatHappenedInput.value = record.what_happened || '';
                 issueInput.value = record.issue || '';
-                @if(($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
-                if (document.getElementById('hold_issue_order_number')) document.getElementById('hold_issue_order_number').value = record.order_number || '';
+                @if (($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
+                    if (document.getElementById('hold_issue_order_number')) document.getElementById(
+                        'hold_issue_order_number').value = record.order_number || '';
                 @endif
-                @if($showDispatchExtras ?? false)
-                if (document.getElementById('hold_issue_total_loss')) {
-                    const tl = record.total_loss;
-                    document.getElementById('hold_issue_total_loss').value = (tl != null && tl !== '')
-                        ? String(Math.round(parseFloat(tl)))
-                        : '';
-                }
+                @if ($showDispatchExtras ?? false)
+                    if (document.getElementById('hold_issue_total_loss')) {
+                        const tl = record.total_loss;
+                        document.getElementById('hold_issue_total_loss').value = (tl != null && tl !== '') ?
+                            String(Math.round(parseFloat(tl))) :
+                            '';
+                    }
                 @endif
                 issueRemarkInput.value = record.issue_remark || '';
                 toggleRootCauseRemarkField();
@@ -2608,31 +2882,35 @@
                 if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
                 if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
                 replacementTrackingInput.value = record.replacement_tracking || '';
-                @if($showDispatchExtras ?? false)
-                (function() {
-                    const hi1 = document.getElementById('hold_issue_image_1');
-                    const hi2 = document.getElementById('hold_issue_image_2');
-                    const e1 = document.getElementById('hold_issue_image_1_existing');
-                    const e2 = document.getElementById('hold_issue_image_2_existing');
-                    if (hi1) hi1.value = '';
-                    if (hi2) hi2.value = '';
-                    if (e1 && e2) {
-                        if (record.image_1_url) {
-                            e1.innerHTML = '<span class="text-muted small me-1">Current:</span><a href="' + escAttr(record.image_1_url) + '" target="_blank" rel="noopener"><img src="' + escAttr(record.image_1_url) + '" class="issue-modal-thumb" alt="Preview"></a>';
-                            e1.classList.remove('d-none');
-                        } else {
-                            e1.innerHTML = '';
-                            e1.classList.add('d-none');
+                @if ($showDispatchExtras ?? false)
+                    (function() {
+                        const hi1 = document.getElementById('hold_issue_image_1');
+                        const hi2 = document.getElementById('hold_issue_image_2');
+                        const e1 = document.getElementById('hold_issue_image_1_existing');
+                        const e2 = document.getElementById('hold_issue_image_2_existing');
+                        if (hi1) hi1.value = '';
+                        if (hi2) hi2.value = '';
+                        if (e1 && e2) {
+                            if (record.image_1_url) {
+                                e1.innerHTML = '<span class="text-muted small me-1">Current:</span><a href="' +
+                                    escAttr(record.image_1_url) + '" target="_blank" rel="noopener"><img src="' +
+                                    escAttr(record.image_1_url) + '" class="issue-modal-thumb" alt="Preview"></a>';
+                                e1.classList.remove('d-none');
+                            } else {
+                                e1.innerHTML = '';
+                                e1.classList.add('d-none');
+                            }
+                            if (record.image_2_url) {
+                                e2.innerHTML = '<span class="text-muted small me-1">Current:</span><a href="' +
+                                    escAttr(record.image_2_url) + '" target="_blank" rel="noopener"><img src="' +
+                                    escAttr(record.image_2_url) + '" class="issue-modal-thumb" alt="Preview"></a>';
+                                e2.classList.remove('d-none');
+                            } else {
+                                e2.innerHTML = '';
+                                e2.classList.add('d-none');
+                            }
                         }
-                        if (record.image_2_url) {
-                            e2.innerHTML = '<span class="text-muted small me-1">Current:</span><a href="' + escAttr(record.image_2_url) + '" target="_blank" rel="noopener"><img src="' + escAttr(record.image_2_url) + '" class="issue-modal-thumb" alt="Preview"></a>';
-                            e2.classList.remove('d-none');
-                        } else {
-                            e2.innerHTML = '';
-                            e2.classList.add('d-none');
-                        }
-                    }
-                })();
+                    })();
                 @endif
                 cAction1Input.value = record.c_action_1 || '';
                 cAction1RemarkInput.value = record.c_action_1_remark || '';
@@ -2650,14 +2928,15 @@
             async function archiveRecord(recordId) {
                 if (!confirm('Archive this record?')) return;
                 try {
-                    const response = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(recordId) + '/archive', {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'X-CSRF-TOKEN': csrfToken,
-                        },
-                    });
+                    const response = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(recordId) +
+                        '/archive', {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                        });
                     const data = await response.json();
                     if (!response.ok) {
                         showAlert(data?.message || 'Unable to archive record.');
@@ -2694,7 +2973,8 @@
                         const sku = item?.sku ?? '';
                         const parent = item?.parent ?? '';
                         const label = parent ? (parent + ' · ' + sku) : sku;
-                        return '<option value="' + escAttr(sku) + '" label="' + escAttr(label) + '"></option>';
+                        return '<option value="' + escAttr(sku) + '" label="' + escAttr(label) +
+                            '"></option>';
                     }).join('');
                 } catch (e) {
                     skuDatalist.innerHTML = '';
@@ -2744,10 +3024,10 @@
             skuInput.addEventListener('blur', fillSkuDetails);
 
             issueInput.addEventListener('input', toggleRootCauseRemarkField);
-            addRootCauseFoundOptionBtn?.addEventListener('click', function () {
+            addRootCauseFoundOptionBtn?.addEventListener('click', function() {
                 addRootCauseOption(issueInput, 'root_cause_found', 'hold_issue_root_cause_found_datalist');
             });
-            deleteRootCauseFoundOptionBtn?.addEventListener('click', function () {
+            deleteRootCauseFoundOptionBtn?.addEventListener('click', function() {
                 deleteRootCauseOption(issueInput, 'root_cause_found', 'hold_issue_root_cause_found_datalist');
             });
 
@@ -2756,11 +3036,12 @@
 
             cAction1Input.addEventListener('input', toggleCAction1RemarkField);
             cAction1Input.addEventListener('change', toggleCAction1RemarkField);
-            addRootCauseFixedOptionBtn?.addEventListener('click', function () {
+            addRootCauseFixedOptionBtn?.addEventListener('click', function() {
                 addRootCauseOption(cAction1Input, 'root_cause_fixed', 'hold_issue_root_cause_fixed_datalist');
             });
-            deleteRootCauseFixedOptionBtn?.addEventListener('click', function () {
-                deleteRootCauseOption(cAction1Input, 'root_cause_fixed', 'hold_issue_root_cause_fixed_datalist');
+            deleteRootCauseFixedOptionBtn?.addEventListener('click', function() {
+                deleteRootCauseOption(cAction1Input, 'root_cause_fixed',
+                'hold_issue_root_cause_fixed_datalist');
             });
 
             form.addEventListener('submit', async (event) => {
@@ -2780,7 +3061,8 @@
                     issueInput.focus();
                     return;
                 }
-                if (!hideActionRemark && action1Input.value.trim() === 'Other' && action1RemarkInput && action1RemarkInput.value.trim() === '') {
+                if (!hideActionRemark && action1Input.value.trim() === 'Other' && action1RemarkInput &&
+                    action1RemarkInput.value.trim() === '') {
                     showAlert('Please enter Action remark when Action is Other.');
                     action1RemarkInput.focus();
                     return;
@@ -2804,25 +3086,28 @@
 
                 try {
                     // ── Collect extra SKU rows (dispatch issues only) ──────────────────
-                    const extraSkuRows = document.querySelectorAll('#extra-sku-rows-container .extra-sku-row');
+                    const extraSkuRows = document.querySelectorAll(
+                        '#extra-sku-rows-container .extra-sku-row');
                     const isMultiSku = extraSkuRows.length > 0;
 
                     const sharedFields = {
                         issue: issue,
-                        @if(($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
-                        order_number: (document.getElementById('hold_issue_order_number')?.value || '').trim(),
+                        @if (($showDispatchExtras ?? false) || ($showOrderIdField ?? false))
+                            order_number: (document.getElementById('hold_issue_order_number')?.value ||
+                                '').trim(),
                         @endif
-                        @if($showDispatchExtras ?? false)
-                        total_loss: document.getElementById('hold_issue_total_loss')?.value || '',
+                        @if ($showDispatchExtras ?? false)
+                            total_loss: document.getElementById('hold_issue_total_loss')?.value || '',
                         @endif
                         marketplace_1: marketplace1Input.value.trim(),
                         what_happened: whatHappenedInput.value.trim(),
                         issue_remark: issueRemarkInput.value.trim(),
                         action_1: action1Input.value.trim(),
-                        action_1_remark: hideActionRemark ? '' : (action1RemarkInput?.value || '').trim(),
-                        @if($showDispatchExtras ?? false)
-                        tracking_number: (trackingNumberInput?.value || '').trim(),
-                        issue_link: (issueLinkInput?.value || '').trim(),
+                        action_1_remark: hideActionRemark ? '' : (action1RemarkInput?.value || '')
+                        .trim(),
+                        @if ($showDispatchExtras ?? false)
+                            tracking_number: (trackingNumberInput?.value || '').trim(),
+                            issue_link: (issueLinkInput?.value || '').trim(),
                         @endif
                         replacement_tracking: replacementTrackingInput.value.trim(),
                         c_action_1: cAction1Input.value.trim(),
@@ -2836,23 +3121,32 @@
                         const skus = [{
                             sku: sku,
                             qty: qtyInput.value === '' ? 0 : Number(qtyInput.value),
-                            order_qty: orderQtyInput.value === '' ? null : Number(orderQtyInput.value),
+                            order_qty: orderQtyInput.value === '' ? null : Number(orderQtyInput
+                                .value),
                             parent: parentInput.value.trim(),
                         }];
                         extraSkuRows.forEach(rowEl => {
-                            const skuVal = rowEl.querySelector('.extra-sku-input')?.value?.trim() || '';
+                            const skuVal = rowEl.querySelector('.extra-sku-input')?.value?.trim() ||
+                                '';
                             if (skuVal) {
                                 skus.push({
                                     sku: skuVal,
-                                    qty: Number(rowEl.querySelector('.extra-sku-qty')?.value || 0),
-                                    order_qty: rowEl.querySelector('.extra-sku-order-qty')?.value !== ''
-                                        ? Number(rowEl.querySelector('.extra-sku-order-qty')?.value)
-                                        : null,
-                                    parent: rowEl.querySelector('.extra-sku-parent')?.value?.trim() || '',
+                                    qty: Number(rowEl.querySelector('.extra-sku-qty')
+                                        ?.value || 0),
+                                    order_qty: rowEl.querySelector('.extra-sku-order-qty')
+                                        ?.value !== '' ?
+                                        Number(rowEl.querySelector('.extra-sku-order-qty')
+                                            ?.value) :
+                                        null,
+                                    parent: rowEl.querySelector('.extra-sku-parent')?.value
+                                        ?.trim() || '',
                                 });
                             }
                         });
-                        payload = { ...sharedFields, skus };
+                        payload = {
+                            ...sharedFields,
+                            skus
+                        };
                     } else {
                         payload = {
                             sku: sku,
@@ -2864,9 +3158,9 @@
                     }
 
                     const isEdit = editingIssueId !== null;
-                    const targetUrl = isEdit
-                        ? recordsUpdateBaseUrl + '/' + encodeURIComponent(editingIssueId)
-                        : recordsStoreUrl;
+                    const targetUrl = isEdit ?
+                        recordsUpdateBaseUrl + '/' + encodeURIComponent(editingIssueId) :
+                        recordsStoreUrl;
 
                     let response;
                     if (showDispatchExtras) {
@@ -2922,7 +3216,8 @@
                         renderRows();
                     }
                     loadHoldIssueHistoryRows();
-                    showAlert(data?.message || (isEdit ? 'Hold issue updated successfully.' : 'Hold issue saved successfully.'), 'success');
+                    showAlert(data?.message || (isEdit ? 'Hold issue updated successfully.' :
+                        'Hold issue saved successfully.'), 'success');
 
                     const modalInstance = window.bootstrap?.Modal?.getInstance(modalEl);
                     if (modalInstance) {
@@ -3063,7 +3358,9 @@
                 }
 
                 function downloadCsv(content, filename) {
-                    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+                    const blob = new Blob([content], {
+                        type: 'text/csv;charset=utf-8;'
+                    });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
@@ -3087,7 +3384,8 @@
                 if (showDispatchExtras) {
                     activeHeaders.push('Tracking', 'Link');
                 }
-                activeHeaders.push('Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed', 'Root Cause Fixed Remark');
+                activeHeaders.push('Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
+                    'Root Cause Fixed Remark');
                 if (!hideDepartmentColumnAndFilter) {
                     activeHeaders.push('Dept');
                 }
@@ -3116,8 +3414,9 @@
                     return row;
                 });
 
-                const pageTitle = document.querySelector('h4.page-title, h1.page-title, .page-title h4, .page-title h1')?.textContent?.trim()
-                    || document.title || 'export';
+                const pageTitle = document.querySelector(
+                        'h4.page-title, h1.page-title, .page-title h4, .page-title h1')?.textContent?.trim() ||
+                    document.title || 'export';
                 const safeTitle = pageTitle.replace(/[^a-z0-9_\-]/gi, '_').toLowerCase();
                 const dateStr = new Date().toISOString().slice(0, 10);
 
@@ -3137,22 +3436,27 @@
             document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
                 e.preventDefault();
                 const headers = @json($importCsvHeaders);
-                const sample  = @json($importCsvSampleRow);
+                const sample = @json($importCsvSampleRow);
                 const csv = [headers.join(','), sample.join(',')].join('\r\n');
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const blob = new Blob([csv], {
+                    type: 'text/csv;charset=utf-8;'
+                });
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url;
+                const a = document.createElement('a');
+                a.href = url;
                 a.download = 'import_sample.csv';
-                document.body.appendChild(a); a.click();
-                document.body.removeChild(a); URL.revokeObjectURL(url);
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
             });
 
             document.getElementById('importCsvSubmitBtn').addEventListener('click', async () => {
                 const fileInput = document.getElementById('importCsvFile');
-                const alertEl  = document.getElementById('importCsvAlert');
+                const alertEl = document.getElementById('importCsvAlert');
                 const progressEl = document.getElementById('importCsvProgress');
                 const errorsEl = document.getElementById('importCsvErrors');
-                const errList  = document.getElementById('importCsvErrorList');
+                const errList = document.getElementById('importCsvErrorList');
 
                 if (!fileInput.files.length) {
                     alertEl.className = 'alert alert-warning mb-3';
@@ -3160,7 +3464,7 @@
                     return;
                 }
 
-                const importUrl = '{{ $importUrl ?? "" }}';
+                const importUrl = '{{ $importUrl ?? '' }}';
                 if (!importUrl) {
                     alertEl.className = 'alert alert-danger mb-3';
                     alertEl.textContent = 'Import URL is not configured for this page.';
@@ -3177,7 +3481,10 @@
                 document.getElementById('importCsvSubmitBtn').disabled = true;
 
                 try {
-                    const res = await fetch(importUrl, { method: 'POST', body: formData });
+                    const res = await fetch(importUrl, {
+                        method: 'POST',
+                        body: formData
+                    });
                     const data = await res.json();
                     progressEl.classList.add('d-none');
 
@@ -3205,7 +3512,7 @@
             // ── Multi-SKU: Add Another SKU row (dispatch issues only) ────────────
             const btnAddSkuRow = document.getElementById('btn-add-sku-row');
             if (btnAddSkuRow) {
-                btnAddSkuRow.addEventListener('click', function () {
+                btnAddSkuRow.addEventListener('click', function() {
                     const container = document.getElementById('extra-sku-rows-container');
                     if (!container) return;
 
@@ -3238,10 +3545,10 @@
 
                     // Wire up SKU lookup for this new row
                     const skuInput = rowEl.querySelector('.extra-sku-input');
-                    const qtyInp   = rowEl.querySelector('.extra-sku-qty');
+                    const qtyInp = rowEl.querySelector('.extra-sku-qty');
                     const parentInp = rowEl.querySelector('.extra-sku-parent');
-                    const imgWrap  = rowEl.querySelector('.extra-sku-image-wrap');
-                    const imgEl    = imgWrap?.querySelector('img');
+                    const imgWrap = rowEl.querySelector('.extra-sku-image-wrap');
+                    const imgEl = imgWrap?.querySelector('img');
 
                     let timer = null;
                     async function fetchAndFill(skuVal) {
@@ -3252,30 +3559,34 @@
                         if (!s) return;
                         try {
                             const res = await fetch(skuDetailsUrl + '?sku=' + encodeURIComponent(s), {
-                                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'X-Requested-With': 'XMLHttpRequest'
+                                }
                             });
                             const d = await res.json();
                             if (d.found) {
-                                qtyInp.value   = d.qty ?? 0;
+                                qtyInp.value = d.qty ?? 0;
                                 parentInp.value = d.parent ?? '';
                                 if (d.image_url && imgEl && imgWrap) {
                                     imgEl.src = d.image_url;
                                     imgWrap.classList.remove('d-none');
                                 }
                             }
-                        } catch (e) { /* ignore */ }
+                        } catch (e) {
+                            /* ignore */ }
                     }
                     skuInput.addEventListener('input', () => {
                         clearTimeout(timer);
                         timer = setTimeout(() => refreshSkuSuggestions(skuInput.value), 220);
                     });
                     skuInput.addEventListener('change', () => fetchAndFill(skuInput.value));
-                    skuInput.addEventListener('blur',   () => fetchAndFill(skuInput.value));
+                    skuInput.addEventListener('blur', () => fetchAndFill(skuInput.value));
                     skuInput.focus();
                 });
 
                 // Remove a row when × is clicked
-                document.getElementById('extra-sku-rows-container')?.addEventListener('click', function (e) {
+                document.getElementById('extra-sku-rows-container')?.addEventListener('click', function(e) {
                     const removeBtn = e.target.closest('.remove-extra-sku-row');
                     if (removeBtn) {
                         removeBtn.closest('.extra-sku-row')?.remove();
@@ -3292,248 +3603,416 @@
             renderHistoryRows();
             loadHoldIssueRows();
 
-            @if($showDispatchExtras ?? false)
-            // ── L30 Loss Badge ────────────────────────────────────────────────────
-            const l30LossUrl = @json(route('customer.care.dispatch.issues.l30.loss'));
-            let l30Data = null;
-            let l30SparkChart = null;
-            let l30FullChart  = null;
+            @if ($showDispatchExtras ?? false)
+                // ── L30 Loss Badge ────────────────────────────────────────────────────
+                const l30LossUrl = @json(route('customer.care.dispatch.issues.l30.loss'));
+                let l30Data = null;
+                let l30SparkChart = null;
+                let l30FullChart = null;
 
-            async function loadL30Loss() {
-                try {
-                    let url = l30LossUrl;
-                    if (activeDeptFilter) url += '?department=' + encodeURIComponent(activeDeptFilter);
-                    const res = await fetch(url, {
-                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    });
-                    if (!res.ok) return;
-                    const json = await res.json();
-                    l30Data = json;
-
-                    const totalEl = document.getElementById('l30-badge-total');
-                    if (totalEl) {
-                        totalEl.textContent = '$' + Math.round(json.total || 0);
-                    }
-                    renderL30Sparkline(json.daily || []);
-                } catch (e) { /* silent */ }
-            }
-
-            function renderL30Sparkline(daily) { /* sparklines hidden */ }
-
-            function _l30CalcStats(vals) {
-                const sorted = [...vals].sort((a, b) => a - b);
-                const mid = Math.floor(sorted.length / 2);
-                const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-                return { min: sorted[0] ?? 0, max: sorted[sorted.length - 1] ?? 0, median };
-            }
-
-            const _medianLinePlugin = {
-                id: 'l30MedianLine',
-                afterDraw(chart) {
-                    const median = chart._l30Median;
-                    if (median == null) return;
-                    const yScale = chart.scales.y, xScale = chart.scales.x, ctx = chart.ctx;
-                    const yPixel = yScale.getPixelForValue(median);
-                    ctx.save();
-                    ctx.setLineDash([6, 4]);
-                    ctx.strokeStyle = '#6c757d';
-                    ctx.lineWidth = 1.2;
-                    ctx.beginPath();
-                    ctx.moveTo(xScale.left, yPixel);
-                    ctx.lineTo(xScale.right, yPixel);
-                    ctx.stroke();
-                    ctx.restore();
-                }
-            };
-
-            function _makeValueLabelsPlugin(vals, fmt) {
-                return {
-                    id: 'l30ValueLabels',
-                    afterDatasetsDraw(chart) {
-                        const meta = chart.getDatasetMeta(0);
-                        const ctx = chart.ctx;
-                        ctx.save();
-                        ctx.font = 'bold 10px Inter,system-ui,sans-serif';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'bottom';
-                        meta.data.forEach((pt, i) => {
-                            const v = vals[i];
-                            const color = i === 0 ? '#6c757d' : v > vals[i-1] ? '#28a745' : v < vals[i-1] ? '#dc3545' : '#6c757d';
-                            ctx.fillStyle = color;
-                            const offsetY = (i % 2 === 0) ? -10 : -20;
-                            ctx.fillText(fmt(v), pt.x, pt.y + offsetY);
+                async function loadL30Loss() {
+                    try {
+                        let url = l30LossUrl;
+                        if (activeDeptFilter) url += '?department=' + encodeURIComponent(activeDeptFilter);
+                        const res = await fetch(url, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
                         });
+                        if (!res.ok) return;
+                        const json = await res.json();
+                        l30Data = json;
+
+                        const totalEl = document.getElementById('l30-badge-total');
+                        if (totalEl) {
+                            totalEl.textContent = '$' + Math.round(json.total || 0);
+                        }
+                        renderL30Sparkline(json.daily || []);
+                    } catch (e) {
+                        /* silent */ }
+                }
+
+                function renderL30Sparkline(daily) {
+                    /* sparklines hidden */ }
+
+                function _l30CalcStats(vals) {
+                    const sorted = [...vals].sort((a, b) => a - b);
+                    const mid = Math.floor(sorted.length / 2);
+                    const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                    return {
+                        min: sorted[0] ?? 0,
+                        max: sorted[sorted.length - 1] ?? 0,
+                        median
+                    };
+                }
+
+                const _medianLinePlugin = {
+                    id: 'l30MedianLine',
+                    afterDraw(chart) {
+                        const median = chart._l30Median;
+                        if (median == null) return;
+                        const yScale = chart.scales.y,
+                            xScale = chart.scales.x,
+                            ctx = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        ctx.save();
+                        ctx.setLineDash([6, 4]);
+                        ctx.strokeStyle = '#6c757d';
+                        ctx.lineWidth = 1.2;
+                        ctx.beginPath();
+                        ctx.moveTo(xScale.left, yPixel);
+                        ctx.lineTo(xScale.right, yPixel);
+                        ctx.stroke();
                         ctx.restore();
                     }
                 };
-            }
 
-            function _buildLineChart(canvasId, labels, vals, fmt, color, lineChart) {
-                const canvas = document.getElementById(canvasId);
-                if (!canvas) return null;
-                if (lineChart) { lineChart.destroy(); lineChart = null; }
-                const { min, max, median } = _l30CalcStats(vals);
-                const range = max - min || 1;
-                const dotColors = vals.map((v, i) => i === 0 ? '#6c757d' : v > vals[i-1] ? '#28a745' : v < vals[i-1] ? '#dc3545' : '#6c757d');
-                const chart = new Chart(canvas.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels,
-                        datasets: [{ data: vals, backgroundColor: color + '18', borderColor: '#adb5bd',
-                            borderWidth: 1.5, fill: true, tension: 0.3, pointRadius: 3, pointHoverRadius: 5,
-                            pointBackgroundColor: dotColors, pointBorderColor: dotColors, pointBorderWidth: 1.5 }]
-                    },
-                    plugins: [_medianLinePlugin, _makeValueLabelsPlugin(vals, fmt)],
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        layout: { padding: { top: 28, left: 2, right: 2, bottom: 2 } },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { titleFont: { size: 10 }, bodyFont: { size: 10 }, padding: 6,
-                                callbacks: { label: ctx => {
-                                    const parts = ['Value: ' + fmt(ctx.raw)];
-                                    if (ctx.dataIndex > 0) {
-                                        const diff = ctx.raw - vals[ctx.dataIndex - 1];
-                                        parts.push('vs Yesterday: ' + (diff > 0 ? '▲' : diff < 0 ? '▼' : '▬') + ' ' + fmt(Math.abs(diff)));
-                                    }
-                                    return parts;
-                                }
-                            }}
+                function _makeValueLabelsPlugin(vals, fmt) {
+                    return {
+                        id: 'l30ValueLabels',
+                        afterDatasetsDraw(chart) {
+                            const meta = chart.getDatasetMeta(0);
+                            const ctx = chart.ctx;
+                            ctx.save();
+                            ctx.font = 'bold 10px Inter,system-ui,sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                            meta.data.forEach((pt, i) => {
+                                const v = vals[i];
+                                const color = i === 0 ? '#6c757d' : v > vals[i - 1] ? '#28a745' : v < vals[i -
+                                    1] ? '#dc3545' : '#6c757d';
+                                ctx.fillStyle = color;
+                                const offsetY = (i % 2 === 0) ? -10 : -20;
+                                ctx.fillText(fmt(v), pt.x, pt.y + offsetY);
+                            });
+                            ctx.restore();
+                        }
+                    };
+                }
+
+                function _buildLineChart(canvasId, labels, vals, fmt, color, lineChart) {
+                    const canvas = document.getElementById(canvasId);
+                    if (!canvas) return null;
+                    if (lineChart) {
+                        lineChart.destroy();
+                        lineChart = null;
+                    }
+                    const {
+                        min,
+                        max,
+                        median
+                    } = _l30CalcStats(vals);
+                    const range = max - min || 1;
+                    const dotColors = vals.map((v, i) => i === 0 ? '#6c757d' : v > vals[i - 1] ? '#28a745' : v < vals[
+                        i - 1] ? '#dc3545' : '#6c757d');
+                    const chart = new Chart(canvas.getContext('2d'), {
+                        type: 'line',
+                        data: {
+                            labels,
+                            datasets: [{
+                                data: vals,
+                                backgroundColor: color + '18',
+                                borderColor: '#adb5bd',
+                                borderWidth: 1.5,
+                                fill: true,
+                                tension: 0.3,
+                                pointRadius: 3,
+                                pointHoverRadius: 5,
+                                pointBackgroundColor: dotColors,
+                                pointBorderColor: dotColors,
+                                pointBorderWidth: 1.5
+                            }]
                         },
-                        scales: {
-                            y: { min: Math.max(0, min - range * 0.1), max: max + range * 0.1,
-                                ticks: { font: { size: 9 }, callback: v => fmt(v) } },
-                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 8 }, autoSkip: labels.length > 20, maxTicksLimit: 31 } }
+                        plugins: [_medianLinePlugin, _makeValueLabelsPlugin(vals, fmt)],
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: {
+                                    top: 28,
+                                    left: 2,
+                                    right: 2,
+                                    bottom: 2
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    titleFont: {
+                                        size: 10
+                                    },
+                                    bodyFont: {
+                                        size: 10
+                                    },
+                                    padding: 6,
+                                    callbacks: {
+                                        label: ctx => {
+                                            const parts = ['Value: ' + fmt(ctx.raw)];
+                                            if (ctx.dataIndex > 0) {
+                                                const diff = ctx.raw - vals[ctx.dataIndex - 1];
+                                                parts.push('vs Yesterday: ' + (diff > 0 ? '▲' : diff < 0 ?
+                                                    '▼' : '▬') + ' ' + fmt(Math.abs(diff)));
+                                            }
+                                            return parts;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    min: Math.max(0, min - range * 0.1),
+                                    max: max + range * 0.1,
+                                    ticks: {
+                                        font: {
+                                            size: 9
+                                        },
+                                        callback: v => fmt(v)
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        font: {
+                                            size: 8
+                                        },
+                                        autoSkip: labels.length > 20,
+                                        maxTicksLimit: 31
+                                    }
+                                }
+                            }
                         }
-                    }
-                });
-                chart._l30Median = median;
-                return chart;
-            }
-
-            function _buildBarChart(canvasId, labels, vals, fmt, color, barChart) {
-                const canvas = document.getElementById(canvasId);
-                if (!canvas) return null;
-                if (barChart) { barChart.destroy(); barChart = null; }
-                return new Chart(canvas.getContext('2d'), {
-                    type: 'bar',
-                    data: { labels, datasets: [{ data: vals, backgroundColor: color + 'cc', borderColor: color, borderWidth: 1 }] },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        layout: { padding: { top: 4, left: 2, right: 2, bottom: 16 } },
-                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } } },
-                        scales: {
-                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 7 }, autoSkip: false, maxTicksLimit: 31 } },
-                            y: { ticks: { font: { size: 9 }, callback: v => fmt(v) } }
-                        }
-                    }
-                });
-            }
-
-            function renderL30FullChart(daily) {
-                const labels = daily.map(d => d.date);
-                const vals   = daily.map(d => parseFloat(d.loss) || 0);
-                const fmt    = v => '$' + Math.round(v).toLocaleString('en-US');
-                l30FullChart = _buildLineChart('l30LossLineChart', labels, vals, fmt, '#dc3545', l30FullChart);
-                if (l30FullChart) {
-                    const { min, max, median } = _l30CalcStats(vals);
-                    document.getElementById('l30-loss-highest').textContent = fmt(max);
-                    document.getElementById('l30-loss-median').textContent  = fmt(median);
-                    document.getElementById('l30-loss-lowest').textContent  = fmt(min);
-                }
-                _buildBarChart('l30LossBarChart', labels, vals, fmt, '#dc3545', null);
-            }
-
-            function renderL30Table(daily) { /* removed */ }
-
-            loadL30Loss();
-
-            document.getElementById('l30LossModal')?.addEventListener('show.bs.modal', () => {
-                const daily = l30Data?.daily || [];
-                const rangeEl = document.getElementById('l30-modal-range');
-                if (rangeEl && l30Data) rangeEl.textContent = ' (' + l30Data.from + ' → ' + l30Data.to + ')';
-                renderL30FullChart(daily);
-            });
-
-            // ── L30 Issues Badge ──────────────────────────────────────────────────
-            const l30IssuesUrl = @json(route('customer.care.dispatch.issues.l30.issues'));
-            let l30IssuesData       = null;
-            let l30IssuesSparkChart = null;
-            let l30IssuesFullChart  = null;
-            let l30IssuesDays       = 30;
-
-            async function loadL30Issues() {
-                try {
-                    let url = l30IssuesUrl + '?days=' + l30IssuesDays;
-                    if (activeDeptFilter) url += '&department=' + encodeURIComponent(activeDeptFilter);
-                    const res = await fetch(url, {
-                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     });
-                    if (!res.ok) return;
-                    const json = await res.json();
-                    l30IssuesData = json;
-
-                    const totalEl = document.getElementById('l30-issues-badge-total');
-                    if (totalEl) totalEl.textContent = json.total || 0;
-                    const labelEl = document.getElementById('l30-issues-badge-label');
-                    if (labelEl) labelEl.textContent = 'L' + l30IssuesDays;
-                    renderL30IssuesSparkline(json.daily || []);
-                } catch (e) { /* silent */ }
-            }
-
-            function renderL30IssuesSparkline(daily) { /* sparklines hidden */ }
-
-            function renderL30IssuesFullChart(daily) {
-                const labels = daily.map(d => d.date);
-                const vals   = daily.map(d => d.count);
-                const fmt    = v => Math.round(v).toLocaleString('en-US');
-                l30IssuesFullChart = _buildLineChart('l30IssuesLineChart', labels, vals, fmt, '#0d6efd', l30IssuesFullChart);
-                if (l30IssuesFullChart) {
-                    const { min, max, median } = _l30CalcStats(vals);
-                    document.getElementById('l30-issues-highest').textContent = fmt(max);
-                    document.getElementById('l30-issues-median').textContent  = fmt(median);
-                    document.getElementById('l30-issues-lowest').textContent  = fmt(min);
+                    chart._l30Median = median;
+                    return chart;
                 }
-                _buildBarChart('l30IssuesBarChart', labels, vals, fmt, '#0d6efd', null);
-            }
 
-            function renderL30IssuesTable(daily) {
-                const tbody = document.getElementById('l30-issues-table-body');
-                const tfoot = document.getElementById('l30-issues-table-foot');
-                if (!tbody) return;
-                if (!daily.length) {
-                    tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-3">No data.</td></tr>';
-                    if (tfoot) tfoot.innerHTML = '';
-                    return;
+                function _buildBarChart(canvasId, labels, vals, fmt, color, barChart) {
+                    const canvas = document.getElementById(canvasId);
+                    if (!canvas) return null;
+                    if (barChart) {
+                        barChart.destroy();
+                        barChart = null;
+                    }
+                    return new Chart(canvas.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [{
+                                data: vals,
+                                backgroundColor: color + 'cc',
+                                borderColor: color,
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            layout: {
+                                padding: {
+                                    top: 4,
+                                    left: 2,
+                                    right: 2,
+                                    bottom: 16
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: ctx => fmt(ctx.raw)
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        font: {
+                                            size: 7
+                                        },
+                                        autoSkip: false,
+                                        maxTicksLimit: 31
+                                    }
+                                },
+                                y: {
+                                    ticks: {
+                                        font: {
+                                            size: 9
+                                        },
+                                        callback: v => fmt(v)
+                                    }
+                                }
+                            }
+                        }
+                    });
                 }
-                tbody.innerHTML = daily.slice().reverse().map(d =>
-                    '<tr><td>' + escapeHtml(d.date) + '</td><td class="text-end fw-semibold">' + d.count + '</td></tr>'
-                ).join('');
-                const total = daily.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
-                if (tfoot) tfoot.innerHTML = '<tr class="table-primary fw-bold"><td>Total (L' + l30IssuesDays + ')</td><td class="text-end">' + total + '</td></tr>';
-            }
 
-            loadL30Issues();
+                function renderL30FullChart(daily) {
+                    const labels = daily.map(d => d.date);
+                    const vals = daily.map(d => parseFloat(d.loss) || 0);
+                    const fmt = v => '$' + Math.round(v).toLocaleString('en-US');
+                    l30FullChart = _buildLineChart('l30LossLineChart', labels, vals, fmt, '#dc3545', l30FullChart);
+                    if (l30FullChart) {
+                        const {
+                            min,
+                            max,
+                            median
+                        } = _l30CalcStats(vals);
+                        document.getElementById('l30-loss-highest').textContent = fmt(max);
+                        document.getElementById('l30-loss-median').textContent = fmt(median);
+                        document.getElementById('l30-loss-lowest').textContent = fmt(min);
+                    }
+                    _buildBarChart('l30LossBarChart', labels, vals, fmt, '#dc3545', null);
+                }
 
-            // Period pill clicks
-            document.getElementById('l30-issues-period-pills')?.addEventListener('click', (e) => {
-                const pill = e.target.closest('.l30-period-pill');
-                if (!pill) return;
-                e.stopPropagation();
-                l30IssuesDays = parseInt(pill.getAttribute('data-days')) || 30;
-                document.querySelectorAll('#l30-issues-period-pills .l30-period-pill').forEach(p => p.classList.remove('active'));
-                pill.classList.add('active');
+                function renderL30Table(daily) {
+                    /* removed */ }
+
+                loadL30Loss();
+
+                document.getElementById('l30LossModal')?.addEventListener('show.bs.modal', () => {
+                    const daily = l30Data?.daily || [];
+                    const rangeEl = document.getElementById('l30-modal-range');
+                    if (rangeEl && l30Data) rangeEl.textContent = ' (' + l30Data.from + ' → ' + l30Data.to +
+                    ')';
+                    renderL30FullChart(daily);
+                });
+
+                // ── L30 Issues Badge ──────────────────────────────────────────────────
+                const l30IssuesUrl = @json(route('customer.care.dispatch.issues.l30.issues'));
+                let l30IssuesData = null;
+                let l30IssuesSparkChart = null;
+                let l30IssuesFullChart = null;
+                let l30IssuesDays = 30;
+
+                async function loadL30Issues() {
+                    try {
+                        let url = l30IssuesUrl + '?days=' + l30IssuesDays;
+                        if (activeDeptFilter) url += '&department=' + encodeURIComponent(activeDeptFilter);
+                        const res = await fetch(url, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                        });
+                        if (!res.ok) return;
+                        const json = await res.json();
+                        l30IssuesData = json;
+
+                        const totalEl = document.getElementById('l30-issues-badge-total');
+                        if (totalEl) totalEl.textContent = json.total || 0;
+                        const labelEl = document.getElementById('l30-issues-badge-label');
+                        if (labelEl) labelEl.textContent = 'L' + l30IssuesDays;
+                        renderL30IssuesSparkline(json.daily || []);
+                    } catch (e) {
+                        /* silent */ }
+                }
+
+                function renderL30IssuesSparkline(daily) {
+                    /* sparklines hidden */ }
+
+                function renderL30IssuesFullChart(daily) {
+                    const labels = daily.map(d => d.date);
+                    const vals = daily.map(d => d.count);
+                    const fmt = v => Math.round(v).toLocaleString('en-US');
+                    l30IssuesFullChart = _buildLineChart('l30IssuesLineChart', labels, vals, fmt, '#0d6efd',
+                        l30IssuesFullChart);
+                    if (l30IssuesFullChart) {
+                        const {
+                            min,
+                            max,
+                            median
+                        } = _l30CalcStats(vals);
+                        document.getElementById('l30-issues-highest').textContent = fmt(max);
+                        document.getElementById('l30-issues-median').textContent = fmt(median);
+                        document.getElementById('l30-issues-lowest').textContent = fmt(min);
+                    }
+                    _buildBarChart('l30IssuesBarChart', labels, vals, fmt, '#0d6efd', null);
+                }
+
+                function renderL30IssuesTable(daily) {
+                    const tbody = document.getElementById('l30-issues-table-body');
+                    const tfoot = document.getElementById('l30-issues-table-foot');
+                    if (!tbody) return;
+                    if (!daily.length) {
+                        tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-3">No data.</td></tr>';
+                        if (tfoot) tfoot.innerHTML = '';
+                        return;
+                    }
+                    tbody.innerHTML = daily.slice().reverse().map(d =>
+                        '<tr><td>' + escapeHtml(d.date) + '</td><td class="text-end fw-semibold">' + d.count +
+                        '</td></tr>'
+                    ).join('');
+                    const total = daily.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
+                    if (tfoot) tfoot.innerHTML = '<tr class="table-primary fw-bold"><td>Total (L' + l30IssuesDays +
+                        ')</td><td class="text-end">' + total + '</td></tr>';
+                }
+
                 loadL30Issues();
-            });
 
-            document.getElementById('l30IssuesModal')?.addEventListener('show.bs.modal', () => {
-                const daily = l30IssuesData?.daily || [];
-                const rangeEl = document.getElementById('l30-issues-modal-range');
-                if (rangeEl && l30IssuesData) rangeEl.textContent = ' (' + l30IssuesData.from + ' → ' + l30IssuesData.to + ')';
-                renderL30IssuesFullChart(daily);
-                renderL30IssuesTable(daily);
-            });
+                // Period pill clicks
+                document.getElementById('l30-issues-period-pills')?.addEventListener('click', (e) => {
+                    const pill = e.target.closest('.l30-period-pill');
+                    if (!pill) return;
+                    e.stopPropagation();
+                    l30IssuesDays = parseInt(pill.getAttribute('data-days')) || 30;
+                    document.querySelectorAll('#l30-issues-period-pills .l30-period-pill').forEach(p => p
+                        .classList.remove('active'));
+                    pill.classList.add('active');
+                    loadL30Issues();
+                });
+
+                document.getElementById('l30IssuesModal')?.addEventListener('show.bs.modal', () => {
+                    const daily = l30IssuesData?.daily || [];
+                    const rangeEl = document.getElementById('l30-issues-modal-range');
+                    if (rangeEl && l30IssuesData) rangeEl.textContent = ' (' + l30IssuesData.from + ' → ' +
+                        l30IssuesData.to + ')';
+                    renderL30IssuesFullChart(daily);
+                    renderL30IssuesTable(daily);
+                });
             @endif
+
+            // ── Auto-scroll modal when tabbing through fields ─────────────────────
+            const modal = document.getElementById('ordersOnHoldIssueModal');
+            const modalBody = modal?.querySelector('.modal-body');
+
+            if (modal && modalBody) {
+                // Add focus listener to all form inputs in the modal
+                modal.addEventListener('focusin', (event) => {
+                    const target = event.target;
+                    if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target
+                            .tagName === 'TEXTAREA')) {
+                        // Small delay to ensure the field is focused
+                        setTimeout(() => {
+                            const rect = target.getBoundingClientRect();
+                            const modalBodyRect = modalBody.getBoundingClientRect();
+
+                            // Check if element is not fully visible in modal body
+                            if (rect.bottom > modalBodyRect.bottom || rect.top < modalBodyRect.top) {
+                                // Calculate scroll position to center the element
+                                const elementTop = target.offsetTop;
+                                const elementHeight = target.offsetHeight;
+                                const modalBodyHeight = modalBody.clientHeight;
+
+                                // Scroll to show the element with some padding
+                                const scrollTo = elementTop - (modalBodyHeight / 2) + (elementHeight /
+                                    2);
+                                modalBody.scrollTo({
+                                    top: Math.max(0, scrollTo),
+                                    behavior: 'smooth'
+                                });
+                            }
+                        }, 50);
+                    }
+                });
+            }
         })();
     </script>
 @endsection

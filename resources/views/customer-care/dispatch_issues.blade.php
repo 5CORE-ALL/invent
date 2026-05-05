@@ -1,4 +1,4 @@
-{!! view('customer-care.qc_and_packing', [
+@include('customer-care.qc_and_packing', [
     'pageTitle' => 'All Issues',
     'addIssueButtonText' => 'All Issues',
     'hideIntroBanner' => true,
@@ -15,4 +15,4 @@
     'importUrl' => route('customer.care.dispatch.issues.import'),
     'marketplaces' => $marketplaces ?? collect(),
     'showDispatchExtras' => true,
-])->render() !!}
+])
