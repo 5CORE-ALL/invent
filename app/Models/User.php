@@ -31,6 +31,7 @@ class User extends Authenticatable
         'role',
         'designation',
         'is_active',
+        'show_in_salary',
         'deactivated_at',
         'logined',
         'resource_department_id',

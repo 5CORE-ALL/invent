@@ -54,10 +54,15 @@ class UserController extends Controller
             'adexec1@5core.com' => 'support@prolightsounds.com',
         ];
 
+        // Filter users for salary tab (only show users with show_in_salary = true)
+        $salaryUsers = $users->filter(function($user) {
+            return $user->show_in_salary !== false;
+        });
+
         // Check if current user has edit permission
         $canEdit = auth()->check() && in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com']);
 
-        return view('pages.add-user', compact('users', 'inactiveUsers', 'canEdit', 'totalSalaryPP', 'totalIncrement', 'teamLoggerData', 'previousMonth', 'emailMapping'));
+        return view('pages.add-user', compact('users', 'salaryUsers', 'inactiveUsers', 'canEdit', 'totalSalaryPP', 'totalIncrement', 'teamLoggerData', 'previousMonth', 'emailMapping'));
     }
 
     public function update(Request $request, User $user)
@@ -535,5 +540,26 @@ class UserController extends Controller
         return response($csv, 200)
             ->header('Content-Type', 'text/csv')
             ->header('Content-Disposition', "attachment; filename=\"{$filename}\"");
+    }
+
+    public function toggleSalaryVisibility(Request $request, User $user)
+    {
+        // Check permission
+        if (!in_array(auth()->user()->email, ['president@5core.com', 'hr@5core.com'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to perform this action.'
+            ], 403);
+        }
+
+        // Toggle the show_in_salary status
+        $user->show_in_salary = !$user->show_in_salary;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => $user->show_in_salary ? 'User will now appear in salary tab' : 'User hidden from salary tab',
+            'show_in_salary' => $user->show_in_salary
+        ]);
     }
 }

@@ -92,6 +92,82 @@
         .users-table td {
             min-width: 100px;
         }
+
+        /* Warning soft button for salary hide */
+        .btn-warning-soft {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .btn-warning-soft:hover {
+            background-color: #ffc107;
+            color: #000;
+        }
+
+        /* Data indicator dots */
+        .data-indicator {
+            position: relative;
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .data-indicator:hover {
+            transform: scale(1.3);
+        }
+
+        /* Green dot for filled data */
+        .indicator-filled {
+            background-color: #28a745;
+            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.2);
+        }
+
+        /* Red dot for empty data */
+        .indicator-empty {
+            background-color: #dc3545;
+            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
+        }
+
+        /* Tooltip styling */
+        .data-indicator .tooltip-text {
+            visibility: hidden;
+            position: absolute;
+            z-index: 1000;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            padding: 8px 12px;
+            border-radius: 6px;
+            white-space: nowrap;
+            font-size: 12px;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        /* Tooltip arrow */
+        .data-indicator .tooltip-text::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+
+        /* Show tooltip on hover */
+        .data-indicator:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
     </style>
 @endsection
 
@@ -1720,7 +1796,12 @@
 
                                 const b1 = result.user.bank_1 || '';
                                 if (bank1Display) {
-                                    bank1Display.textContent = b1 || '—';
+                                    const indicator = bank1Display.querySelector('.data-indicator');
+                                    const tooltipText = bank1Display.querySelector('.tooltip-text');
+                                    if (indicator && tooltipText) {
+                                        indicator.className = `data-indicator ${b1 ? 'indicator-filled' : 'indicator-empty'}`;
+                                        tooltipText.textContent = b1 || 'No Bank 1 data';
+                                    }
                                 }
                                 if (bank1Input) {
                                     bank1Input.value = b1;
@@ -1728,7 +1809,12 @@
 
                                 const b2 = result.user.bank_2 || '';
                                 if (bank2Display) {
-                                    bank2Display.textContent = b2 || '—';
+                                    const indicator = bank2Display.querySelector('.data-indicator');
+                                    const tooltipText = bank2Display.querySelector('.tooltip-text');
+                                    if (indicator && tooltipText) {
+                                        indicator.className = `data-indicator ${b2 ? 'indicator-filled' : 'indicator-empty'}`;
+                                        tooltipText.textContent = b2 || 'No Bank 2 data';
+                                    }
                                 }
                                 if (bank2Input) {
                                     bank2Input.value = b2;
@@ -1736,7 +1822,12 @@
 
                                 const upi = result.user.upi_id || '';
                                 if (upiIdDisplay) {
-                                    upiIdDisplay.textContent = upi || '—';
+                                    const indicator = upiIdDisplay.querySelector('.data-indicator');
+                                    const tooltipText = upiIdDisplay.querySelector('.tooltip-text');
+                                    if (indicator && tooltipText) {
+                                        indicator.className = `data-indicator ${upi ? 'indicator-filled' : 'indicator-empty'}`;
+                                        tooltipText.textContent = upi || 'No UPI ID data';
+                                    }
                                 }
                                 if (upiIdInput) {
                                     upiIdInput.value = upi;
@@ -1890,6 +1981,44 @@
                             }
                         })
                         .catch(() => showToast('Delete failed', 'error'));
+                    });
+                });
+
+                // Hide from Salary
+                document.querySelectorAll('.salary-hide-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const userId = this.dataset.userId;
+                        const row = this.closest('tr');
+                        
+                        if (!confirm('Hide this user from Salary tab? You can show them again later.')) return;
+
+                        fetch(`/users/${userId}/toggle-salary-visibility`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
+                        })
+                        .then(r => r.json())
+                        .then(result => {
+                            if (result.success) {
+                                showToast(result.message, 'success');
+                                // Remove the row from the table with fade effect
+                                row.style.opacity = '0';
+                                row.style.transition = 'opacity 0.3s';
+                                setTimeout(() => {
+                                    row.remove();
+                                    // Update row numbers
+                                    document.querySelectorAll('#salaryTable tbody tr').forEach((tr, idx) => {
+                                        tr.querySelector('td:first-child').textContent = idx + 1;
+                                    });
+                                }, 300);
+                            } else {
+                                showToast(result.message || 'Failed to hide user', 'error');
+                            }
+                        })
+                        .catch(() => showToast('Failed to hide user', 'error'));
                     });
                 });
 
@@ -2322,8 +2451,8 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @forelse($users as $index => $user)
-                                        <tr data-user-id="{{ $user->id }}">
+                                    @forelse($salaryUsers as $index => $user)
+                                        <tr data-user-id="{{ $user->id }}" data-show-in-salary="{{ $user->show_in_salary ? 'true' : 'false' }}">
                                             <td>{{ $index + 1 }}</td>
                                             <td>
                                                 <div class="d-flex align-items-center">
@@ -2455,21 +2584,33 @@
                                             <td>
                                                 @php $bank1 = $user->userSalary?->bank_1 ?? ''; @endphp
                                                 <div class="user-bank-1-cell" data-field="bank_1" data-original="{{ $bank1 }}">
-                                                    <span class="user-display">{{ $bank1 ?: '—' }}</span>
+                                                    <span class="user-display">
+                                                        <span class="data-indicator {{ $bank1 ? 'indicator-filled' : 'indicator-empty' }}" data-tooltip="{{ $bank1 ?: 'No data' }}">
+                                                            <span class="tooltip-text">{{ $bank1 ?: 'No Bank 1 data' }}</span>
+                                                        </span>
+                                                    </span>
                                                     <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank1 }}" data-field="bank_1" placeholder="Bank 1">
                                                 </div>
                                             </td>
                                             <td>
                                                 @php $bank2 = $user->userSalary?->bank_2 ?? ''; @endphp
                                                 <div class="user-bank-2-cell" data-field="bank_2" data-original="{{ $bank2 }}">
-                                                    <span class="user-display">{{ $bank2 ?: '—' }}</span>
+                                                    <span class="user-display">
+                                                        <span class="data-indicator {{ $bank2 ? 'indicator-filled' : 'indicator-empty' }}" data-tooltip="{{ $bank2 ?: 'No data' }}">
+                                                            <span class="tooltip-text">{{ $bank2 ?: 'No Bank 2 data' }}</span>
+                                                        </span>
+                                                    </span>
                                                     <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $bank2 }}" data-field="bank_2" placeholder="Bank 2">
                                                 </div>
                                             </td>
                                             <td>
                                                 @php $upiId = $user->userSalary?->upi_id ?? ''; @endphp
                                                 <div class="user-upi-id-cell" data-field="upi_id" data-original="{{ $upiId }}">
-                                                    <span class="user-display">{{ $upiId ?: '—' }}</span>
+                                                    <span class="user-display">
+                                                        <span class="data-indicator {{ $upiId ? 'indicator-filled' : 'indicator-empty' }}" data-tooltip="{{ $upiId ?: 'No data' }}">
+                                                            <span class="tooltip-text">{{ $upiId ?: 'No UPI ID data' }}</span>
+                                                        </span>
+                                                    </span>
                                                     <input type="text" class="form-control form-control-sm user-edit d-none" value="{{ $upiId }}" data-field="upi_id" placeholder="UPI ID">
                                                 </div>
                                             </td>
@@ -2484,6 +2625,11 @@
                                                     @if($user->id !== auth()->id())
                                                         <button type="button" class="btn-action btn-danger-soft delete-btn" data-user-id="{{ $user->id }}" title="Deactivate user">
                                                             <i class="ri-delete-bin-line"></i>
+                                                        </button>
+                                                    @endif
+                                                    @if($canEdit)
+                                                        <button type="button" class="btn-action btn-warning-soft salary-hide-btn" data-user-id="{{ $user->id }}" title="Hide from Salary">
+                                                            <i class="ri-eye-off-line"></i>
                                                         </button>
                                                     @endif
                                                     <button type="button" class="btn-action btn-success save-btn d-none" data-user-id="{{ $user->id }}" title="Save">
