@@ -1696,6 +1696,7 @@
                         const trainingInput = row.querySelector('[data-field="training"] textarea.user-edit') || row.querySelector('.salary-tab-training');
                         const salaryPpInput = row.querySelector('[data-field="salary_pp"] .user-edit');
                         const incrementInput = row.querySelector('[data-field="increment"] .user-edit');
+                        const hoursLmInput = row.querySelector('[data-field="hours_lm"] .user-edit');
                         const otherInput = row.querySelector('[data-field="other"] .user-edit');
                         const advIncOtherInput = row.querySelector('[data-field="adv_inc_other"] .user-edit');
                         const bank1Input = row.querySelector('[data-field="bank_1"] .user-edit');
@@ -1712,6 +1713,7 @@
                             training: trainingInput ? trainingInput.value.trim() : '',
                             salary_pp: salaryPpInput ? salaryPpInput.value.trim() : '',
                             increment: incrementInput ? incrementInput.value.trim() : '',
+                            hours_lm: hoursLmInput ? hoursLmInput.value.trim() : '',
                             other: otherInput ? otherInput.value.trim() : '',
                             adv_inc_other: advIncOtherInput ? advIncOtherInput.value.trim() : '',
                             bank_1: bank1Input ? bank1Input.value.trim() : '',
@@ -1734,6 +1736,7 @@
                         // Only append numeric fields if they exist in the current tab
                         if (salaryPpInput) formData.append('salary_pp', data.salary_pp);
                         if (incrementInput) formData.append('increment', data.increment);
+                        if (hoursLmInput) formData.append('hours_lm', data.hours_lm);
                         if (otherInput) formData.append('other', data.other);
                         if (advIncOtherInput) formData.append('adv_inc_other', data.adv_inc_other);
                         if (bank1Input) formData.append('bank_1', data.bank_1);
@@ -1956,10 +1959,22 @@
                                     }
                                 }
 
+                                // Update Hours LM display with saved value
+                                const hoursLMDisplay = row.querySelector('.user-hours-lm-cell .user-display');
+                                const hoursLMValue = parseFloat(data.hours_lm) || 0;
+                                if (hoursLMDisplay) {
+                                    if (hoursLMValue > 0) {
+                                        hoursLMDisplay.textContent = hoursLMValue + 'h';
+                                        hoursLMDisplay.className = 'user-display hours-lm-badge';
+                                    } else {
+                                        hoursLMDisplay.textContent = '—';
+                                        hoursLMDisplay.className = 'user-display text-muted';
+                                    }
+                                }
+
                                 // Update Amount LM (calculated field)
                                 const amountLMDisplay = row.querySelector('.user-amount-lm-cell span');
-                                const hoursLMCell = row.querySelector('.user-hours-lm-cell .hours-lm-badge');
-                                const hoursLM = hoursLMCell ? parseFloat(hoursLMCell.textContent) || 0 : 0;
+                                const hoursLM = hoursLMValue;
                                 const amountLM = ((hoursLM * salaryLMValue) / 200);
                                 if (amountLMDisplay) {
                                     if (amountLM != 0) {
@@ -2037,6 +2052,13 @@
 
                                 // Show success message
                                 showToast(result.message, 'success');
+                                
+                                // Reload page if Hours LM was edited to fetch fresh TeamLogger data
+                                if (hoursLmInput && data.hours_lm) {
+                                    setTimeout(() => {
+                                        window.location.reload();
+                                    }, 1000);
+                                }
                             } else {
                                 showToast(result.message || 'Failed to update user', 'error');
                                 saveBtn.disabled = false;
@@ -2506,12 +2528,13 @@
                                                     $teamLoggerEmail = getTeamLoggerEmail($userEmail, $emailMapping);
                                                     $hoursLM = $teamLoggerData[$teamLoggerEmail]['hours'] ?? 0;
                                                 @endphp
-                                                <div class="user-hours-lm-cell">
+                                                <div class="user-hours-lm-cell" data-field="hours_lm">
                                                     @if($hoursLM > 0)
-                                                        <span class="hours-lm-badge" title="{{ $previousMonth }}: {{ $hoursLM }} hours">{{ $hoursLM }}h</span>
+                                                        <span class="user-display hours-lm-badge" title="{{ $previousMonth }}: {{ $hoursLM }} hours">{{ $hoursLM }}h</span>
                                                     @else
-                                                        <span class="text-muted" title="No hours logged in {{ $previousMonth }}">—</span>
+                                                        <span class="user-display text-muted" title="No hours logged in {{ $previousMonth }}">—</span>
                                                     @endif
+                                                    <input type="number" step="1" min="0" class="form-control form-control-sm user-edit d-none" value="{{ $hoursLM }}" data-field="hours_lm" placeholder="Hours">
                                                 </div>
                                             </td>
                                             <td>

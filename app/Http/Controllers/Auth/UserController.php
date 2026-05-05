@@ -44,10 +44,22 @@ class UserController extends Controller
             return $user->userSalary?->increment ?? 0;
         });
 
-        // Fetch TeamLogger data for previous month
+        // Fetch TeamLogger data for previous month from database
         $previousMonth = Carbon::now()->subMonth()->format('F Y');
-        $teamLoggerService = new TeamLoggerService();
-        $teamLoggerData = $teamLoggerService->fetchByMonth($previousMonth, true);
+        
+        // Get all TeamLogger hours from database for the previous month
+        $teamLoggerHours = \App\Models\TeamLoggerHours::where('month', $previousMonth)->get();
+        
+        // Convert to array format similar to TeamLoggerService output
+        $teamLoggerData = [];
+        foreach ($teamLoggerHours as $record) {
+            $teamLoggerData[strtolower($record->employee_email)] = [
+                'hours' => $record->productive_hours,
+                'total_hours' => $record->total_hours,
+                'idle_hours' => $record->idle_hours,
+                'active_hours' => $record->active_hours,
+            ];
+        }
 
         // Email mapping: Map user email to TeamLogger email if different
         $emailMapping = [
@@ -85,6 +97,7 @@ class UserController extends Controller
             'resources' => 'nullable|string|max:65535',
             'salary_pp' => 'nullable|numeric|min:0',
             'increment' => 'nullable|numeric|min:0',
+            'hours_lm' => 'nullable|numeric|min:0',
             'other' => 'nullable|numeric|min:0',
             'adv_inc_other' => 'nullable|numeric|min:0',
             'bank_1' => 'nullable|string|max:65535',
@@ -129,6 +142,28 @@ class UserController extends Controller
             ]
         );
         $user->load('userSalary');
+
+        // Update TeamLogger hours if provided
+        if ($request->has('hours_lm') && $request->input('hours_lm') !== '') {
+            $previousMonth = Carbon::now()->subMonth()->format('F Y');
+            $userEmail = strtolower(trim($user->email));
+            
+            // Email mapping
+            $emailMapping = [
+                'adexec1@5core.com' => 'support@prolightsounds.com',
+            ];
+            $teamLoggerEmail = $emailMapping[$userEmail] ?? $userEmail;
+            
+            \App\Models\TeamLoggerHours::updateOrCreate(
+                [
+                    'employee_email' => $teamLoggerEmail,
+                    'month' => $previousMonth,
+                ],
+                [
+                    'productive_hours' => $request->input('hours_lm'),
+                ]
+            );
+        }
 
         return response()->json([
             'success' => true,
