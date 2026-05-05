@@ -54,18 +54,19 @@
         .orders-hold-table th,
         .orders-hold-table td {
             padding: 0.45rem 0.4rem;
-            vertical-align: middle;
             border: 1px solid #dee2e6;
             text-align: center;
         }
 
         .orders-hold-table th {
             white-space: nowrap;
+            vertical-align: middle;
         }
 
         .orders-hold-table td {
             word-break: break-word;
             white-space: normal;
+            vertical-align: top;
         }
 
         .orders-hold-col-idx {
@@ -304,10 +305,12 @@
 
         .orders-hold-col-created-by {
             width: 8%;
+            min-width: 90px;
         }
 
         .orders-hold-col-created-at {
             width: 9%;
+            min-width: 110px;
         }
 
         .orders-hold-col-action {
@@ -517,6 +520,7 @@
 
         .orders-hold-col-close {
             width: 7%;
+            min-width: 80px;
             text-align: center;
         }
 
@@ -843,6 +847,15 @@
         .issues-toolbar-actions-secondary #hold_issue_total_count {
             font-size: 1.05rem;
             padding: 0.42rem 0.65rem;
+        }
+
+        /* Lighten modal backdrop */
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.15) !important;
+        }
+
+        .modal-backdrop.show {
+            opacity: 0.5 !important;
         }
     </style>
 @endsection
@@ -1813,7 +1826,7 @@
             function claimFiledCellHtml(row) {
                 const filed = !!row.claim_filed;
                 const dotClass = filed ? 'claim-filed-dot claim-filed-dot--on' : 'claim-filed-dot claim-filed-dot--off';
-                return '<td class="text-center align-middle orders-hold-col-claim-filed">' +
+                return '<td class="text-center orders-hold-col-claim-filed">' +
                     '<button type="button" class="btn btn-link p-0 border-0 claim-filed-toggle" ' +
                     'data-issue-id="' + escAttr(String(row.id)) + '" data-claim-filed="' + (filed ? '1' : '0') + '" ' +
                     'title="' + escAttr(filed ? 'Claim filed — click to mark as not filed' :
@@ -1919,7 +1932,7 @@
                 const received = !!row.claim_received;
                 const dotClass = received ? 'claim-received-dot claim-received-dot--on' :
                     'claim-received-dot claim-received-dot--off';
-                return '<td class="text-center align-middle orders-hold-col-claim-received">' +
+                return '<td class="text-center orders-hold-col-claim-received">' +
                     '<button type="button" class="btn btn-link p-0 border-0 claim-received-toggle" ' +
                     'data-issue-id="' + escAttr(String(row.id)) + '" data-claim-received="' + (received ? '1' : '0') +
                     '" ' +
@@ -2030,7 +2043,7 @@
                     dotHtml = statusDotCellHtml(has, has ? instrRaw : 'No instructions');
                 }
                 if (!pid) {
-                    return '<td class="qc-ctn-instr-cell text-center align-middle">' + dotHtml + '</td>';
+                    return '<td class="qc-ctn-instr-cell text-center">' + dotHtml + '</td>';
                 }
                 const valEsc = escAttr(instrRaw);
                 const rowId = String(row.id);
@@ -2529,7 +2542,7 @@
                         '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                             '</td>' +
                     @endif
-                    @if ($showDispatchExtras ?? (false && $showCarrierColumn ?? false))
+                    @if ($showCarrierColumn ?? false)
                         carrierSelectCellHtml(row) +
                     @endif
                     @if ($showDispatchExtras ?? false)
@@ -2555,10 +2568,10 @@
                         claimReceivedCellHtml(row) +
                     @endif
                     @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
-                        '<td class="orders-hold-col-root-status text-center align-middle">' +
+                        '<td class="orders-hold-col-root-status text-center">' +
                         rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                             qcCtnInstrCell(row, 'main') +
-                            '<td class="orders-hold-col-root-status text-center align-middle">' +
+                            '<td class="orders-hold-col-root-status text-center">' +
                             rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                     @endif
                     @if (!($hideDepartmentColumnAndFilter ?? false))
@@ -2645,10 +2658,10 @@
                         issueRecordDateTdHtml(row.logged_at) +
                     @endif
                     @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
-                        '<td class="orders-hold-col-root-status text-center align-middle">' +
+                        '<td class="orders-hold-col-root-status text-center">' +
                         rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                             qcCtnInstrCell(row, 'history') +
-                            '<td class="orders-hold-col-root-status text-center align-middle">' +
+                            '<td class="orders-hold-col-root-status text-center">' +
                             rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                     @endif
                     @if (!($hideDepartmentColumnAndFilter ?? false))
