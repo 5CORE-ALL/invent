@@ -1,7 +1,8 @@
 @extends('layouts.vertical', ['title' => 'A+ Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
@@ -632,6 +633,8 @@
                         const value = (cell.getValue() || '').toLowerCase();
                         if (value === 'active') {
                             return '<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #28a745;" title="Active"></span>';
+                        } else if (value === 'upcoming') {
+                            return '<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #ffc107;" title="Upcoming"></span>';
                         }
                         return value || '-';
                     }
@@ -663,7 +666,7 @@
                 {
                     title: "Dil",
                     field: "dil",
-                    width: 80,
+                    width: 50,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -687,7 +690,7 @@
                 {
                     title: "B/S",
                     field: "buyer_seller",
-                    width: 80,
+                    width: 45,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -720,7 +723,7 @@
                 {
                     title: "Comp",
                     field: "comp",
-                    width: 80,
+                    width: 45,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU;
@@ -807,7 +810,7 @@
                 {
                     title: "History",
                     field: "history",
-                    width: 80,
+                    width: 45,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU;
@@ -817,7 +820,7 @@
                 {
                     title: "Action",
                     field: "status_toggle",
-                    width: 100,
+                    width: 45,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU;
