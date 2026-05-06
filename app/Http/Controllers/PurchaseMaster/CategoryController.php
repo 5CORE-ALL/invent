@@ -4160,15 +4160,22 @@ PROMPT;
                 'image_file' => 'required|file|mimes:jpeg,jpg,png,gif,bmp,webp,svg|max:10240', // max 10MB
             ]);
 
-            // Find product by SKU
-            $product = ProductMaster::where('sku', $validated['sku'])
-                ->where('sku', 'NOT LIKE', 'PARENT %')
-                ->first();
+            // Normalize the SKU (replace non-breaking spaces with regular spaces)
+            $normalizedSku = str_replace("\u{00a0}", ' ', $validated['sku']);
+            
+            // Find product by SKU (including PARENT SKUs)
+            $product = ProductMaster::where('sku', $normalizedSku)->first();
+            
+            // If not found with normalized SKU, try the original SKU
+            if (!$product) {
+                $product = ProductMaster::where('sku', $validated['sku'])->first();
+            }
 
             if (!$product) {
+                \Log::error('Product not found for SKU: ' . $validated['sku'] . ' (normalized: ' . $normalizedSku . ')');
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found',
+                    'message' => 'Product not found for SKU: ' . $validated['sku'],
                 ], 404);
             }
 
@@ -4224,15 +4231,22 @@ PROMPT;
                 'status' => 'required|in:red,green',
             ]);
 
-            // Find product by SKU
-            $product = ProductMaster::where('sku', $validated['sku'])
-                ->where('sku', 'NOT LIKE', 'PARENT %')
-                ->first();
+            // Normalize the SKU (replace non-breaking spaces with regular spaces)
+            $normalizedSku = str_replace("\u{00a0}", ' ', $validated['sku']);
+            
+            // Find product by SKU (including PARENT SKUs)
+            $product = ProductMaster::where('sku', $normalizedSku)->first();
+            
+            // If not found with normalized SKU, try the original SKU
+            if (!$product) {
+                $product = ProductMaster::where('sku', $validated['sku'])->first();
+            }
 
             if (!$product) {
+                \Log::error('Product not found for SKU: ' . $validated['sku'] . ' (normalized: ' . $normalizedSku . ')');
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found',
+                    'message' => 'Product not found for SKU: ' . $validated['sku'],
                 ], 404);
             }
 
