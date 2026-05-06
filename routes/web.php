@@ -3311,6 +3311,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/a-plus-images-master-data-view', [CategoryController::class, 'getAPlusImagesMasterData'])->name('a.plus.images.master.data');
     Route::post('/a-plus-images-master/store', [CategoryController::class, 'storeAPlusImagesMaster'])->name('a.plus.images.master.store');
     Route::post('/a-plus-images-master/import', [CategoryController::class, 'importAPlusImagesMaster'])->name('a.plus.images.master.import');
+    Route::post('/a-plus-images-master/update-audit-suggestion', [CategoryController::class, 'updateAuditSuggestion'])->name('a.plus.images.master.update.audit');
+    Route::post('/a-plus-images-master/upload-image', [CategoryController::class, 'uploadImage'])->name('a.plus.images.master.upload.image');
+    Route::get('/a-plus-images-master/audit-history/{sku}', [CategoryController::class, 'getAuditHistory'])->name('a.plus.images.master.audit.history');
+    Route::post('/a-plus-images-master/toggle-status', [CategoryController::class, 'toggleStatus'])->name('a.plus.images.master.toggle.status');
+    Route::get('/a-plus-images-master/status-history/{sku}', [CategoryController::class, 'getStatusHistory'])->name('a.plus.images.master.status.history');
+    Route::post('/a-plus-images-master/push', [CategoryController::class, 'pushData'])->name('a.plus.images.master.push');
     Route::get('/keywords-master', [CategoryController::class, 'keywordsMaster'])->name('keywords.master');
     Route::get('/keywords-master-data-view', [CategoryController::class, 'getKeywordsMasterData'])->name('keywords.master.data');
     Route::post('/keywords-master/store', [CategoryController::class, 'storeKeywordsMaster'])->name('keywords.master.store');

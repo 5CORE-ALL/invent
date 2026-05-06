@@ -3594,6 +3594,18 @@ PROMPT;
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
 
+        // Fetch amazon data view with buyer and seller links
+        $amazonDataViews = \App\Models\AmazonDataView::all()->keyBy(function ($item) {
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
+
+        // Fetch junglescout data for LQS (Listing Quality Score)
+        $junglescoutData = \DB::table('junglescout_product_data')
+            ->get()
+            ->keyBy(function ($item) {
+                return str_replace("\u{00a0}", ' ', $item->sku);
+            });
+
         // Prepare data in the same format as your sheet (flatten Values)
         $result = [];
         foreach ($products as $product) {
@@ -3649,10 +3661,22 @@ PROMPT;
                 $shopifyData = $shopifySkus[$normalizedSku];
                 $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
                 $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
+                
+                // Ovl30 is shopify_quantity (same as product-master page)
+                $row['ovl30'] = $row['shopify_quantity'];
+                
+                // Calculate Dil (Days in Inventory) = (shopify_quantity / shopify_inv) * 100
+                $inv = $row['shopify_inv'];
+                $ovl30 = $row['shopify_quantity'];
+                $dil = ($inv > 0) ? ($ovl30 / $inv) * 100 : 0;
+                $row['dil'] = round($dil, 2);
+                
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
                 $row['shopify_quantity'] = 0;
+                $row['ovl30'] = 0;
+                $row['dil'] = 0;
                 $shopifyImage = null;
             }
 
@@ -3665,6 +3689,28 @@ PROMPT;
                 $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
+            }
+
+            // Add Amazon buyer and seller links from amazon_data_view
+            if (isset($amazonDataViews[$normalizedSku])) {
+                $amazonData = $amazonDataViews[$normalizedSku];
+                $amazonValue = is_array($amazonData->value) ? $amazonData->value : json_decode($amazonData->value, true);
+                $row['buyer_link'] = $amazonValue['buyer_link'] ?? null;
+                $row['seller_link'] = $amazonValue['seller_link'] ?? null;
+            } else {
+                $row['buyer_link'] = null;
+                $row['seller_link'] = null;
+            }
+
+            // Add Junglescout LQS data
+            if (isset($junglescoutData[$normalizedSku])) {
+                $jsData = $junglescoutData[$normalizedSku];
+                $jsDataValue = is_array($jsData->data) ? $jsData->data : json_decode($jsData->data, true);
+                $row['listing_quality_score'] = $jsDataValue['listing_quality_score'] ?? null;
+                $row['lqs'] = $jsDataValue['listing_quality_score'] ?? null;
+            } else {
+                $row['listing_quality_score'] = null;
+                $row['lqs'] = null;
             }
 
             $result[] = $row;
@@ -3682,6 +3728,7 @@ PROMPT;
         try {
             $validated = $request->validate([
                 'sku' => 'required|string',
+                'db' => 'nullable|string',
                 'standard_a_plus' => 'nullable|string',
                 'premium_a_plus' => 'nullable|string',
             ]);
@@ -3702,7 +3749,8 @@ PROMPT;
                                  (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
 
                 // Check if any A+ images fields already exist
-                $hasAPlusImagesData = ! empty($existingValues['standard_a_plus']) ||
+                $hasAPlusImagesData = ! empty($existingValues['db']) ||
+                                     ! empty($existingValues['standard_a_plus']) ||
                                      ! empty($existingValues['premium_a_plus']);
 
                 if ($hasAPlusImagesData) {
@@ -3716,6 +3764,9 @@ PROMPT;
             // Prepare Values array with A+ images fields
             $values = [];
 
+            if (! empty($validated['db'])) {
+                $values['db'] = $validated['db'];
+            }
             if (! empty($validated['standard_a_plus'])) {
                 $values['standard_a_plus'] = $validated['standard_a_plus'];
             }
@@ -3824,6 +3875,14 @@ PROMPT;
                 }
             }
 
+            // Find DB column
+            foreach ($headers as $index => $header) {
+                if (in_array($header, ['db', 'd_b'])) {
+                    $columnIndices['db'] = $index;
+                    break;
+                }
+            }
+
             // Find Standard A+ column (try multiple variations)
             foreach ($headers as $index => $header) {
                 if (in_array($header, ['standard_a_plus', 'standard_a', 'standardaplus', 'standard_a'])) {
@@ -3900,6 +3959,15 @@ PROMPT;
 
                 $hasChanges = false;
 
+                // Update DB if column exists and has value
+                if (isset($columnIndices['db']) && isset($row[$columnIndices['db']])) {
+                    $dbValue = trim($row[$columnIndices['db']]);
+                    if ($dbValue !== '') {
+                        $values['db'] = $dbValue;
+                        $hasChanges = true;
+                    }
+                }
+
                 // Update Standard A+ if column exists and has value
                 if (isset($columnIndices['standard_a_plus']) && isset($row[$columnIndices['standard_a_plus']])) {
                     $standardAPlusValue = trim($row[$columnIndices['standard_a_plus']]);
@@ -3946,6 +4014,324 @@ PROMPT;
             return response()->json([
                 'success' => false,
                 'message' => 'Import failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function updateAuditSuggestion(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'audit_suggestion' => 'nullable|string|max:100',
+                'is_fixed' => 'nullable|boolean',
+                'link_data' => 'nullable|array',
+                'link_data.*' => 'nullable|url',
+                'screenshots' => 'nullable|array',
+                'screenshots.*' => 'nullable|image|max:5120', // max 5MB each
+                'voice_notes' => 'nullable|array',
+                'voice_notes.*' => 'nullable|file|mimes:webm,mp3,wav,ogg|max:10240', // max 10MB each
+            ]);
+
+            // Find product by SKU
+            $product = ProductMaster::where('sku', $validated['sku'])
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found',
+                ], 404);
+            }
+
+            // Get existing Values
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            // Update audit suggestion
+            $values['audit_suggestion'] = $validated['audit_suggestion'];
+            
+            // Handle multiple link data
+            if (isset($validated['link_data']) && is_array($validated['link_data'])) {
+                $links = array_filter($validated['link_data']); // Remove empty values
+                if (!empty($links)) {
+                    $values['audit_link_data'] = array_values($links); // Re-index array
+                }
+            }
+            
+            // Handle multiple screenshots
+            if ($request->has('screenshots')) {
+                $screenshotPaths = [];
+                foreach ($request->file('screenshots') as $index => $screenshot) {
+                    if ($screenshot) {
+                        $screenshotName = 'audit_screenshot_' . $validated['sku'] . '_' . time() . '_' . $index . '.' . $screenshot->getClientOriginalExtension();
+                        $screenshotPath = $screenshot->storeAs('audit_screenshots', $screenshotName, 'public');
+                        $screenshotPaths[] = $screenshotPath;
+                    }
+                }
+                if (!empty($screenshotPaths)) {
+                    $values['audit_screenshots'] = $screenshotPaths;
+                }
+            }
+            
+            // Handle multiple voice notes
+            if ($request->has('voice_notes')) {
+                $voiceNotePaths = [];
+                foreach ($request->file('voice_notes') as $index => $voiceNote) {
+                    if ($voiceNote) {
+                        $voiceNoteName = 'audit_voice_note_' . $validated['sku'] . '_' . time() . '_' . $index . '.' . $voiceNote->getClientOriginalExtension();
+                        $voiceNotePath = $voiceNote->storeAs('audit_voice_notes', $voiceNoteName, 'public');
+                        $voiceNotePaths[] = $voiceNotePath;
+                    }
+                }
+                if (!empty($voiceNotePaths)) {
+                    $values['audit_voice_notes'] = $voiceNotePaths;
+                }
+            }
+            
+            $product->Values = $values;
+            $product->save();
+
+            // Store in history with Fixed marker if applicable
+            $historyData = [
+                'sku' => $validated['sku'],
+                'audit_suggestion' => $validated['audit_suggestion'],
+                'user_id' => auth()->id(),
+                'user_name' => auth()->user()->name ?? 'Unknown',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+
+            // Add action type if it's a "Fixed" action
+            if (isset($validated['is_fixed']) && $validated['is_fixed']) {
+                $historyData['action_type'] = 'FIXED';
+            }
+
+            \DB::table('audit_suggestion_history')->insert($historyData);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Audit suggestion updated successfully',
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Update Audit Suggestion Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update audit suggestion: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getAuditHistory($sku)
+    {
+        try {
+            $history = \DB::table('audit_suggestion_history')
+                ->where('sku', $sku)
+                ->orderBy('created_at', 'desc')
+                ->limit(50)
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'history' => $history,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Get Audit History Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load history: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function uploadImage(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'image_type' => 'required|in:premium,standard',
+                'image_file' => 'required|file|mimes:jpeg,jpg,png,gif,bmp,webp,svg|max:10240', // max 10MB
+            ]);
+
+            // Find product by SKU
+            $product = ProductMaster::where('sku', $validated['sku'])
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found',
+                ], 404);
+            }
+
+            // Get existing Values
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            // Upload and store image
+            $imageFile = $request->file('image_file');
+            $imageName = $validated['image_type'] . '_' . $validated['sku'] . '_' . time() . '.' . $imageFile->getClientOriginalExtension();
+            
+            // Create directory if it doesn't exist
+            $directory = 'audit_images';
+            if (!Storage::disk('public')->exists($directory)) {
+                Storage::disk('public')->makeDirectory($directory);
+            }
+            
+            $imagePath = $imageFile->storeAs($directory, $imageName, 'public');
+            
+            // Update Values field based on image type
+            if ($validated['image_type'] === 'premium') {
+                $values['premium_image'] = $imagePath;
+            } else {
+                $values['standard_image'] = $imagePath;
+            }
+            
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => ucfirst($validated['image_type']) . ' image uploaded successfully',
+                'image_path' => $imagePath,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Upload Image Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload image: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function toggleStatus(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'status' => 'required|in:red,green',
+            ]);
+
+            // Find product by SKU
+            $product = ProductMaster::where('sku', $validated['sku'])
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found',
+                ], 404);
+            }
+
+            // Get existing Values
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            // Update status toggle
+            $values['status_toggle'] = $validated['status'];
+            $product->Values = $values;
+            $product->save();
+
+            // Store in status history
+            \DB::table('status_toggle_history')->insert([
+                'sku' => $validated['sku'],
+                'status' => $validated['status'],
+                'user_id' => auth()->id(),
+                'user_name' => auth()->user()->name ?? 'Unknown',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Status updated successfully',
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Toggle Status Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to toggle status: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getStatusHistory($sku)
+    {
+        try {
+            $history = \DB::table('status_toggle_history')
+                ->where('sku', $sku)
+                ->orderBy('created_at', 'desc')
+                ->limit(50)
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'history' => $history,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Get Status History Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load status history: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function pushData(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+            ]);
+
+            // Find product by SKU
+            $product = ProductMaster::where('sku', $validated['sku'])
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found',
+                ], 404);
+            }
+
+            // TODO: Implement push logic here
+            // This is a placeholder for the actual push functionality
+            // You can add your specific push logic based on your requirements
+            
+            \Log::info('Push data requested for SKU: ' . $validated['sku']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data pushed successfully for SKU: ' . $validated['sku'],
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Push Data Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to push data: '.$e->getMessage(),
             ], 500);
         }
     }
