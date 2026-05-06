@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'A+ Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Infographics Image Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -125,8 +125,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'A+ Masters',
-        'sub_title' => 'A+ Images Master Data',
+        'page_title' => 'Infographics Images Masters',
+        'sub_title' => 'Infographics Images Master Data',
     ])
     
     <div class="toast-container"></div>
@@ -134,7 +134,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>A+ Images Master</h4>
+                <h4>Infographics Images Master</h4>
                 
                 <!-- Control Bar -->
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
@@ -176,25 +176,9 @@
                     </button>
 
                     <!-- Action Buttons -->
-                    <button type="button" class="btn btn-sm btn-primary" id="addAPlusImagesBtn">
-                        <i class="fas fa-plus"></i> Add
-                    </button>
-                    <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#importAPlusImagesModal">
-                        <i class="fas fa-upload"></i> Import
-                    </button>
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-download"></i> Export
                     </button>
-                </div>
-
-                <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary fs-6 p-2" id="total-items-badge">Total: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="parent-count-badge">Parents: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="sku-count-badge">SKUs: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="db-missing-badge">DB Missing: 0</span>
-                    </div>
                 </div>
             </div>
             
@@ -216,152 +200,7 @@
                     </div>
                     
                     <!-- Table -->
-                    <div id="aplus-table" style="flex: 1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add A+ Images Modal -->
-    <div class="modal fade" id="addAPlusImagesModal" tabindex="-1" aria-labelledby="addAPlusImagesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="addAPlusImagesModalLabel">Add A+ Images Data</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="addAPlusImagesForm">
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label for="addAPlusImagesSku" class="form-label">SKU <span class="text-danger">*</span></label>
-                                <select class="form-control" id="addAPlusImagesSku" name="sku" required>
-                                    <option value="">Select SKU</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label for="addDB" class="form-label">DB</label>
-                                <input type="text" class="form-control" id="addDB" name="db" placeholder="Enter DB Link">
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveAddAPlusImagesBtn">
-                        <i class="fas fa-save me-2"></i> Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Import Modal -->
-    <div class="modal fade" id="importAPlusImagesModal" tabindex="-1" aria-labelledby="importAPlusImagesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
-                    <h5 class="modal-title" id="importAPlusImagesModalLabel">
-                        <i class="fas fa-upload me-2"></i>Import A+ Images Data
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>Instructions:</strong>
-                        <ol class="mb-0 mt-2">
-                            <li>Download the sample file below</li>
-                            <li>Fill in the A+ images data (DB links)</li>
-                            <li>Upload the completed file</li>
-                        </ol>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleAPlusImagesBtn">
-                            <i class="fas fa-download me-2"></i>Download Sample File
-                        </button>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="aPlusImagesImportFile" class="form-label fw-bold">Select Excel File</label>
-                        <input type="file" class="form-control" id="aPlusImagesImportFile" accept=".xlsx,.xls,.csv">
-                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
-                        <div id="aPlusImagesFileError" class="text-danger mt-2" style="display: none;"></div>
-                    </div>
-
-                    <div id="aPlusImagesImportProgress" class="progress mb-3" style="display: none;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                    </div>
-
-                    <div id="aPlusImagesImportResult" class="alert" style="display: none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="importAPlusImagesBtn" disabled>
-                        <i class="fas fa-upload me-2"></i>Import
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Audit Modal -->
-    <div class="modal fade" id="editAuditSuggestionModal" tabindex="-1" aria-labelledby="editAuditSuggestionModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
-                    <h5 class="modal-title" id="editAuditSuggestionModalLabel">
-                        <i class="fas fa-edit me-2"></i>Edit Audit
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="editAuditSuggestionForm">
-                        <input type="hidden" id="editAuditSku" name="sku">
-                        <div class="mb-3">
-                            <label for="editAuditSuggestion" class="form-label">Audit Suggestion</label>
-                            <textarea class="form-control" id="editAuditSuggestion" name="audit_suggestion" rows="3"></textarea>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveEditAuditBtn">
-                        <i class="fas fa-save me-2"></i> Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Audit History Modal -->
-    <div class="modal fade" id="auditHistoryModal" tabindex="-1" aria-labelledby="auditHistoryModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="auditHistoryModalLabel">Audit History</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="auditHistoryContent"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Status History Modal -->
-    <div class="modal fade" id="statusHistoryModal" tabindex="-1" aria-labelledby="statusHistoryModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="statusHistoryModalLabel">Status History</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="statusHistoryContent"></div>
+                    <div id="infographics-table" style="flex: 1;"></div>
                 </div>
             </div>
         </div>
@@ -430,82 +269,11 @@
             </div>
         </div>
     </div>
-
-    <!-- DB Link Modal -->
-    <div class="modal fade" id="dbLinkModal" tabindex="-1" aria-labelledby="dbLinkModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
-                    <h5 class="modal-title" id="dbLinkModalLabel">
-                        <i class="fas fa-link me-2"></i><span id="dbModalTitle">Add DB Link</span>
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="dbLinkForm">
-                        <input type="hidden" id="dbLinkSku" name="sku">
-                        <div class="mb-3">
-                            <label for="dbLinkInput" class="form-label fw-bold">
-                                <i class="fas fa-database text-primary me-1"></i>DB Link
-                            </label>
-                            <input type="url" class="form-control" id="dbLinkInput" name="db_link" placeholder="https://example.com/db-link" required>
-                            <div class="form-text">Enter the full URL for the DB link</div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveDBLinkBtn">
-                        <i class="fas fa-save me-2"></i>Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Image Upload Modal -->
-    <div class="modal fade" id="imageUploadModal" tabindex="-1" aria-labelledby="imageUploadModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
-                    <h5 class="modal-title" id="imageUploadModalLabel">
-                        <i class="fas fa-upload me-2"></i>Upload <span id="imageTypeLabel"></span> Image
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="imageUploadForm">
-                        <input type="hidden" id="imageUploadSku" name="sku">
-                        <input type="hidden" id="imageUploadType" name="image_type">
-                        <div class="mb-3">
-                            <label for="imageFileInput" class="form-label fw-bold">
-                                <i class="fas fa-image text-primary me-1"></i>Select Image File
-                            </label>
-                            <input type="file" class="form-control" id="imageFileInput" name="image_file" accept="image/*" required>
-                            <div class="form-text">Accepted formats: JPG, PNG, GIF, BMP, WEBP, SVG, etc.</div>
-                        </div>
-                        <div id="imagePreviewContainer" style="display: none;">
-                            <label class="form-label fw-bold">Preview:</label>
-                            <div class="text-center">
-                                <img id="imagePreview" src="" alt="Preview" style="max-width: 100%; max-height: 300px; border: 1px solid #ddd; border-radius: 4px; padding: 5px;">
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveImageBtn">
-                        <i class="fas fa-save me-2"></i>Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script-bottom')
 <script>
-    const COLUMN_VIS_KEY = "aplus_tabulator_column_visibility";
+    const COLUMN_VIS_KEY = "infographics_tabulator_column_visibility";
     let table = null;
     let tableData = [];
     let lqsPlayInterval = null;
@@ -553,8 +321,8 @@
         
         // Initialize Tabulator
         console.log("Initializing Tabulator...");
-        table = new Tabulator("#aplus-table", {
-            ajaxURL: "/a-plus-images-master-data-view",
+        table = new Tabulator("#infographics-table", {
+            ajaxURL: "/infographics-images-master-data-view",
             ajaxSorting: false,
             layout: "fitData",
             pagination: true,
@@ -641,37 +409,6 @@
                     }
                 },
                 {
-                    title: "LQS",
-                    field: "lqs",
-                    width: 80,
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (!value) return '-';
-                        const score = parseInt(value);
-                        let color = '#dc3545';
-                        if (score >= 8) color = '#28a745';
-                        else if (score >= 6) color = '#ffc107';
-                        return `<span class="badge" style="background-color: ${color}; color: ${score >= 6 && score < 8 ? 'black' : 'white'};">${score}</span>`;
-                    }
-                },
-                {
-                    title: "Status",
-                    field: "status",
-                    width: 80,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const value = (cell.getValue() || '').toLowerCase();
-                        if (value === 'active') {
-                            return '<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #28a745;" title="Active"></span>';
-                        } else if (value === 'upcoming') {
-                            return '<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #ffc107;" title="Upcoming"></span>';
-                        }
-                        return value || '-';
-                    }
-                },
-                {
                     title: "INV",
                     field: "shopify_inv",
                     width: 80,
@@ -720,6 +457,22 @@
                     }
                 },
                 {
+                    title: "LQS",
+                    field: "lqs",
+                    width: 80,
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '-';
+                        const score = parseInt(value);
+                        let color = '#dc3545';
+                        if (score >= 8) color = '#28a745';
+                        else if (score >= 6) color = '#ffc107';
+                        return `<span class="badge" style="background-color: ${color}; color: ${score >= 6 && score < 8 ? 'black' : 'white'};">${score}</span>`;
+                    }
+                },
+                {
                     title: "B/S",
                     field: "buyer_seller",
                     width: 45,
@@ -738,34 +491,6 @@
                     }
                 },
                 {
-                    title: "DB",
-                    field: "db",
-                    width: 80,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const value = cell.getValue() || cell.getRow().getData()['DB'] || '';
-                        const sku = cell.getRow().getData().SKU;
-                        const cleanUrl = value ? value.trim() : '';
-                        
-                        if (cleanUrl && cleanUrl.match(/^https?:\/\//i)) {
-                            return `
-                                <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                                    <a href="${cleanUrl}" target="_blank" class="text-decoration-none" style="color: #2c6ed5;" title="Open DB Link">
-                                        <i class="fas fa-link"></i>
-                                    </a>
-                                    <button class="btn btn-sm btn-link p-0" onclick="openDBModal('${sku}', '${cleanUrl.replace(/'/g, "\\'")}')" title="Edit DB Link" style="color: #6c757d;">
-                                        <i class="fas fa-edit" style="font-size: 12px;"></i>
-                                    </button>
-                                </div>
-                            `;
-                        } else {
-                            return `<button class="btn btn-sm btn-link p-0" onclick="openDBModal('${sku}', '')" title="Add DB Link" style="color: #28a745;">
-                                <i class="fas fa-plus"></i>
-                            </button>`;
-                        }
-                    }
-                },
-                {
                     title: "Comp",
                     field: "comp",
                     width: 45,
@@ -773,115 +498,6 @@
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU;
                         return `<button class="btn btn-sm btn-info" onclick="viewCompetitors('${sku}')" title="View Competitors"><i class="fas fa-search"></i></button>`;
-                    }
-                },
-                {
-                    title: "Audit",
-                    field: "audit_suggestion",
-                    width: 100,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        const sku = cell.getRow().getData().SKU;
-                        if (value && value.trim()) {
-                            return `
-                                <div style="display: inline-flex; align-items: center; gap: 5px;">
-                                    <div class="audit-dot" onclick="editAudit('${sku}', '${value.replace(/'/g, "\\'")}')" title="${value}"></div>
-                                    <button class="btn btn-sm btn-link p-0" onclick="viewAuditHistory('${sku}')" title="View History">
-                                        <i class="fas fa-history"></i>
-                                    </button>
-                                </div>
-                            `;
-                        }
-                        return `<button class="btn btn-sm btn-link p-0" onclick="editAudit('${sku}', '')" title="Add Audit"><i class="fas fa-plus"></i></button>`;
-                    }
-                },
-                {
-                    title: "A+(P)",
-                    field: "premium_image",
-                    width: 100,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const premiumImage = cell.getValue();
-                        const sku = cell.getRow().getData().SKU;
-                        
-                        if (premiumImage && premiumImage.trim()) {
-                            return `
-                                <div style="display: inline-flex; align-items: center; gap: 5px;">
-                                    <img src="/storage/${premiumImage}" 
-                                         style="width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;" 
-                                         onclick="window.open('/storage/${premiumImage}', '_blank')"
-                                         title="Click to view full size">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="openImageUploadModal('${sku}', 'premium')" title="Edit Image">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                </div>
-                            `;
-                        } else {
-                            return `<button class="btn btn-sm btn-outline-success" onclick="openImageUploadModal('${sku}', 'premium')" title="Upload Image">
-                                <i class="fas fa-upload"></i>
-                            </button>`;
-                        }
-                    }
-                },
-                {
-                    title: "A+(S)",
-                    field: "standard_image",
-                    width: 100,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const standardImage = cell.getValue();
-                        const sku = cell.getRow().getData().SKU;
-                        
-                        if (standardImage && standardImage.trim()) {
-                            return `
-                                <div style="display: inline-flex; align-items: center; gap: 5px;">
-                                    <img src="/storage/${standardImage}" 
-                                         style="width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;" 
-                                         onclick="window.open('/storage/${standardImage}', '_blank')"
-                                         title="Click to view full size">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="openImageUploadModal('${sku}', 'standard')" title="Edit Image">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                </div>
-                            `;
-                        } else {
-                            return `<button class="btn btn-sm btn-outline-success" onclick="openImageUploadModal('${sku}', 'standard')" title="Upload Image">
-                                <i class="fas fa-upload"></i>
-                            </button>`;
-                        }
-                    }
-                },
-                {
-                    title: "History",
-                    field: "history",
-                    width: 45,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const sku = cell.getRow().getData().SKU;
-                        return `<button class="btn btn-sm btn-secondary" onclick="viewStatusHistory('${sku}')" title="View Status History"><i class="fas fa-history"></i></button>`;
-                    }
-                },
-                {
-                    title: "Action",
-                    field: "status_toggle",
-                    width: 45,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const sku = cell.getRow().getData().SKU;
-                        const statusToggle = cell.getValue() || 'red';
-                        const statusClass = statusToggle === 'green' ? 'green' : 'red';
-                        return `<button class="status-toggle-btn ${statusClass}" data-sku="${sku}" onclick="toggleStatus('${sku}', '${statusToggle}')" title="Toggle Status"></button>`;
-                    }
-                },
-                {
-                    title: "Push",
-                    field: "push",
-                    width: 80,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const sku = cell.getRow().getData().SKU;
-                        return `<button class="btn btn-sm btn-primary" onclick="pushData('${sku}')" title="Push"><i class="fas fa-paper-plane"></i></button>`;
                     }
                 }
             ]
@@ -909,19 +525,11 @@
         // Update summary
         function updateSummary() {
             const data = table.getData("active");
-            const totalItems = data.length;
-            const parentCount = data.filter(item => item.Parent).length;
-            const skuCount = data.filter(item => item.SKU).length;
-            const dbMissingCount = data.filter(item => !item.db && !item.DB).length;
             
             // Calculate LQS average
             const lqsValues = data.filter(item => item.lqs).map(item => parseFloat(item.lqs));
             const lqsAvg = lqsValues.length > 0 ? (lqsValues.reduce((a, b) => a + b, 0) / lqsValues.length).toFixed(1) : '-';
-            
-            $('#total-items-badge').text('Total: ' + totalItems);
-            $('#parent-count-badge').text('Parents: ' + parentCount);
-            $('#sku-count-badge').text('SKUs: ' + skuCount);
-            $('#db-missing-badge').text('DB Missing: ' + dbMissingCount);
+
             $('#lqsAvg').text(lqsAvg);
         }
 
@@ -1071,281 +679,7 @@
             table.scrollToRow(currentItem.SKU, "center", true);
         }
 
-        // Add functionality
-        $('#addAPlusImagesBtn').on('click', function() {
-            $('#addAPlusImagesModal').modal('show');
-        });
-
-        $('#saveAddAPlusImagesBtn').on('click', async function() {
-            const sku = $('#addAPlusImagesSku').val();
-            const db = $('#addDB').val();
-            
-            if (!sku) {
-                showToast('Please select a SKU', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch('/a-plus-images-master/store', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ sku, db })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showToast('Data added successfully', 'success');
-                    $('#addAPlusImagesModal').modal('hide');
-                    table.setData('/a-plus-images-master-data-view');
-                } else {
-                    showToast(result.message || 'Failed to add data', 'error');
-                }
-            } catch (error) {
-                showToast('Error: ' + error.message, 'error');
-            }
-        });
-
-        // Import functionality
-        $('#aPlusImagesImportFile').on('change', function() {
-            $('#importAPlusImagesBtn').prop('disabled', !this.files.length);
-        });
-
-        $('#downloadSampleAPlusImagesBtn').on('click', function() {
-            const data = [['SKU', 'DB']];
-            const ws = XLSX.utils.aoa_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Sample");
-            XLSX.writeFile(wb, "aplus_import_sample.xlsx");
-        });
-
-        $('#importAPlusImagesBtn').on('click', async function() {
-            const file = $('#aPlusImagesImportFile')[0].files[0];
-            if (!file) return;
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            $('#aPlusImagesImportProgress').show().find('.progress-bar').css('width', '50%');
-
-            try {
-                const response = await fetch('/a-plus-images-master/import', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: formData
-                });
-
-                const result = await response.json();
-                $('#aPlusImagesImportProgress').find('.progress-bar').css('width', '100%');
-                
-                if (result.success) {
-                    $('#aPlusImagesImportResult')
-                        .removeClass('alert-danger')
-                        .addClass('alert-success')
-                        .html(`<i class="fa fa-check-circle me-2"></i>${result.message}`)
-                        .show();
-                    showToast('Import completed successfully', 'success');
-                    setTimeout(() => {
-                        $('#importAPlusImagesModal').modal('hide');
-                        table.setData('/a-plus-images-master-data-view');
-                    }, 2000);
-                } else {
-                    $('#aPlusImagesImportResult')
-                        .removeClass('alert-success')
-                        .addClass('alert-danger')
-                        .html(`<i class="fa fa-exclamation-circle me-2"></i>${result.message}`)
-                        .show();
-                    showToast('Import failed', 'error');
-                }
-            } catch (error) {
-                showToast('Error: ' + error.message, 'error');
-            }
-        });
     });
-
-    // Global functions for button actions
-    function openDBModal(sku, currentValue) {
-        $('#dbLinkSku').val(sku);
-        $('#dbLinkInput').val(currentValue);
-        $('#dbModalTitle').text(currentValue ? 'Edit DB Link' : 'Add DB Link');
-        $('#dbLinkModal').modal('show');
-    }
-
-    function editAudit(sku, currentValue) {
-        $('#editAuditSku').val(sku);
-        $('#editAuditSuggestion').val(currentValue);
-        $('#editAuditSuggestionModal').modal('show');
-    }
-
-    $('#saveDBLinkBtn').on('click', async function() {
-        const sku = $('#dbLinkSku').val();
-        const dbLink = $('#dbLinkInput').val();
-
-        if (!dbLink || !dbLink.trim()) {
-            showToast('Please enter a DB link', 'error');
-            return;
-        }
-
-        try {
-            const response = await fetch('/a-plus-images-master/update-db-link', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ sku, db: dbLink })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                showToast('DB link updated successfully', 'success');
-                $('#dbLinkModal').modal('hide');
-                table.setData('/a-plus-images-master-data-view');
-            } else {
-                showToast(result.message || 'Failed to update DB link', 'error');
-            }
-        } catch (error) {
-            showToast('Error: ' + error.message, 'error');
-        }
-    });
-
-    $('#saveEditAuditBtn').on('click', async function() {
-        const sku = $('#editAuditSku').val();
-        const auditSuggestion = $('#editAuditSuggestion').val();
-
-        try {
-            const response = await fetch('/a-plus-images-master/update-audit-suggestion', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ sku, audit_suggestion: auditSuggestion })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                showToast('Audit updated successfully', 'success');
-                $('#editAuditSuggestionModal').modal('hide');
-                table.setData('/a-plus-images-master-data-view');
-            } else {
-                showToast(result.message || 'Failed to update audit', 'error');
-            }
-        } catch (error) {
-            showToast('Error: ' + error.message, 'error');
-        }
-    });
-
-    async function viewAuditHistory(sku) {
-        try {
-            const response = await fetch(`/a-plus-images-master/audit-history/${encodeURIComponent(sku)}`);
-            const result = await response.json();
-            
-            if (result.success && result.data) {
-                let html = '<table class="table table-sm"><thead><tr><th>Date</th><th>Audit</th></tr></thead><tbody>';
-                result.data.forEach(item => {
-                    html += `<tr><td>${item.date}</td><td>${item.audit_suggestion}</td></tr>`;
-                });
-                html += '</tbody></table>';
-                $('#auditHistoryContent').html(html);
-            } else {
-                $('#auditHistoryContent').html('<p>No history found</p>');
-            }
-            
-            $('#auditHistoryModal').modal('show');
-        } catch (error) {
-            showToast('Error loading history: ' + error.message, 'error');
-        }
-    }
-
-    async function viewStatusHistory(sku) {
-        try {
-            const response = await fetch(`/a-plus-images-master/status-history/${encodeURIComponent(sku)}`);
-            const result = await response.json();
-            
-            if (result.success && result.data) {
-                let html = '<table class="table table-sm"><thead><tr><th>Date</th><th>Status</th></tr></thead><tbody>';
-                result.data.forEach(item => {
-                    html += `<tr><td>${item.date}</td><td>${item.status}</td></tr>`;
-                });
-                html += '</tbody></table>';
-                $('#statusHistoryContent').html(html);
-            } else {
-                $('#statusHistoryContent').html('<p>No history found</p>');
-            }
-            
-            $('#statusHistoryModal').modal('show');
-        } catch (error) {
-            showToast('Error loading history: ' + error.message, 'error');
-        }
-    }
-
-    async function toggleStatus(sku, currentStatus) {
-        const button = document.querySelector(`.status-toggle-btn[data-sku="${sku}"]`);
-        if (!button || button.classList.contains('loading')) return;
-        
-        const newStatus = currentStatus === 'green' ? 'red' : 'green';
-        
-        try {
-            button.classList.add('loading');
-            
-            const response = await fetch('/a-plus-images-master/toggle-status', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ 
-                    sku: sku,
-                    status: newStatus
-                })
-            });
-
-            const result = await response.json();
-            
-            if (result.success) {
-                // Update button appearance
-                button.classList.remove('red', 'green', 'loading');
-                button.classList.add(newStatus);
-                button.setAttribute('onclick', `toggleStatus('${sku}', '${newStatus}')`);
-                
-                showToast('Status updated successfully', 'success');
-            } else {
-                showToast(result.message || 'Failed to toggle status', 'error');
-                button.classList.remove('loading');
-            }
-        } catch (error) {
-            console.error('Error toggling status:', error);
-            showToast('Error: ' + error.message, 'error');
-            button.classList.remove('loading');
-        }
-    }
-
-    async function pushData(sku) {
-        try {
-            const response = await fetch('/a-plus-images-master/push', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ sku })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                showToast('Data pushed successfully', 'success');
-            } else {
-                showToast(result.message || 'Failed to push data', 'error');
-            }
-        } catch (error) {
-            showToast('Error: ' + error.message, 'error');
-        }
-    }
 
     // View Competitors function
     async function viewCompetitors(sku) {
@@ -1597,96 +931,5 @@
         }
     }
 
-    // Image Upload Functions
-    function openImageUploadModal(sku, type) {
-        $('#imageUploadSku').val(sku);
-        $('#imageUploadType').val(type);
-        $('#imageTypeLabel').text(type.charAt(0).toUpperCase() + type.slice(1));
-        $('#imageFileInput').val('');
-        $('#imagePreviewContainer').hide();
-        $('#imageUploadModal').modal('show');
-    }
-
-    // Preview image when selected
-    $('#imageFileInput').on('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                $('#imagePreview').attr('src', e.target.result);
-                $('#imagePreviewContainer').show();
-            };
-            reader.readAsDataURL(file);
-        }
-    });
-
-    // Save Image
-    $('#saveImageBtn').on('click', async function() {
-        const fileInput = $('#imageFileInput')[0];
-        const file = fileInput.files[0];
-        
-        if (!file) {
-            showToast('Please select an image file', 'error');
-            return;
-        }
-
-        const sku = $('#imageUploadSku').val();
-        const imageType = $('#imageUploadType').val();
-
-        if (!sku) {
-            showToast('SKU is missing', 'error');
-            return;
-        }
-
-        console.log('Uploading image:', { sku, imageType, fileName: file.name });
-
-        const formData = new FormData();
-        formData.append('sku', sku);
-        formData.append('image_type', imageType);
-        formData.append('image_file', file);
-        formData.append('_token', '{{ csrf_token() }}');
-
-        // Disable button during upload
-        const saveBtn = $('#saveImageBtn');
-        const originalText = saveBtn.html();
-        saveBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Uploading...');
-
-        try {
-            const response = await fetch('/a-plus-images-master/upload-image', {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: formData
-            });
-
-            console.log('Response status:', response.status);
-            
-            let result;
-            try {
-                result = await response.json();
-                console.log('Response data:', result);
-            } catch (parseError) {
-                const text = await response.text();
-                console.error('Failed to parse JSON response:', text);
-                throw new Error('Invalid response from server');
-            }
-
-            if (response.ok && result.success) {
-                showToast('Image uploaded successfully!', 'success');
-                $('#imageUploadModal').modal('hide');
-                table.setData('/a-plus-images-master-data-view');
-            } else {
-                const errorMsg = result.message || result.error || 'Failed to upload image';
-                console.error('Upload failed:', errorMsg);
-                showToast(errorMsg, 'error');
-            }
-        } catch (error) {
-            console.error('Error uploading image:', error);
-            showToast('Error: ' + error.message, 'error');
-        } finally {
-            saveBtn.prop('disabled', false).html(originalText);
-        }
-    });
 </script>
 @endsection

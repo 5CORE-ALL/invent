@@ -4127,6 +4127,61 @@ PROMPT;
         }
     }
 
+    public function updateDBLink(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'db' => 'nullable|string|url',
+            ]);
+
+            // Normalize SKU
+            $normalizedSku = str_replace("\u{00a0}", ' ', $validated['sku']);
+
+            // Find product by SKU
+            $product = ProductMaster::where('sku', $normalizedSku)->first();
+
+            // Fallback to original SKU if normalized one didn't work
+            if (!$product) {
+                $product = ProductMaster::where('sku', $validated['sku'])->first();
+            }
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found',
+                ], 404);
+            }
+
+            // Get existing Values
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            // Update DB link
+            $values['db'] = $validated['db'];
+            $values['DB'] = $validated['db']; // Also update uppercase version for compatibility
+
+            // Save to database
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'DB link updated successfully',
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Update DB Link Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update DB link: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function getAuditHistory($sku)
     {
         try {
