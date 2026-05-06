@@ -108,6 +108,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SyncAmazonProducts::class,
         \App\Console\Commands\AmazonDebugSku::class,
         \App\Console\Commands\AliExpressApiTestCommand::class,
+        \App\Console\Commands\InventorySnapshot::class,
     ];
 
     /**
@@ -1234,6 +1235,19 @@ class Kernel extends ConsoleKernel
             ->dailyAt('01:00')
             ->timezone('America/Los_Angeles')
             ->name('stock-mapping-daily-update')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | INVENTORY HISTORY SNAPSHOT
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('inventory:snapshot')
+            ->dailyAt('12:00')
+            ->timezone('America/Los_Angeles')
+            ->name('inventory-snapshot-daily')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);

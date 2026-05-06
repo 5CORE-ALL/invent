@@ -47,12 +47,46 @@
         }
 
         .audit-dot {
-            width: 10px;
-            height: 10px;
-            background-color: #ffc107;
+            width: 12px;
+            height: 12px;
+            background-color: #dc3545;
             border-radius: 50%;
             display: inline-block;
             cursor: pointer;
+            transition: transform 0.2s ease;
+            box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+        }
+
+        .audit-dot:hover {
+            transform: scale(1.3);
+            box-shadow: 0 3px 6px rgba(220, 53, 69, 0.5);
+        }
+
+        /* Voice Recording Animations */
+        #voiceNoteStatus {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        #voiceNoteRecordBtn.btn-danger {
+            animation: blink 1s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
         }
 
         .toast-container {
@@ -173,6 +207,11 @@
                     
                     <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
                         <i class="fa fa-eye"></i> Show All
+                    </button>
+
+                    <!-- Audit Filter -->
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="auditFilterBtn" title="Show only rows with Audit">
+                        <i class="fas fa-filter"></i> Audit
                     </button>
 
                     <!-- Action Buttons -->
@@ -321,14 +360,64 @@
                 <div class="modal-body">
                     <form id="editAuditSuggestionForm">
                         <input type="hidden" id="editAuditSku" name="sku">
+                        
+                        <!-- Audit Suggestion with Voice-to-Text -->
                         <div class="mb-3">
-                            <label for="editAuditSuggestion" class="form-label">Audit Suggestion</label>
-                            <textarea class="form-control" id="editAuditSuggestion" name="audit_suggestion" rows="3"></textarea>
+                            <label for="editAuditSuggestion" class="form-label fw-bold">
+                                Audit Suggestion (Max 100 characters)
+                                <button type="button" class="btn btn-sm btn-danger ms-2" id="voiceToTextBtn" title="Voice to Text">
+                                    <i class="fas fa-microphone"></i>
+                                </button>
+                                <span id="voiceStatus" class="badge bg-warning ms-2" style="display: none;">Listening...</span>
+                            </label>
+                            <textarea class="form-control" id="editAuditSuggestion" name="audit_suggestion" rows="3" maxlength="100" placeholder="Enter audit suggestion or click microphone to speak..."></textarea>
+                            <div class="form-text">
+                                <span id="charCount">0</span> / 100 characters
+                            </div>
+                        </div>
+                        
+                        <!-- Link Data -->
+                        <div class="mb-3">
+                            <label for="auditLinkData" class="form-label fw-bold">
+                                <i class="fas fa-link text-danger me-1"></i>Link Data
+                            </label>
+                            <input type="url" class="form-control" id="auditLinkData" name="link_data" placeholder="Enter URL...">
+                            <div class="form-text">Add a related link (will appear as red link icon)</div>
+                        </div>
+                        
+                        <!-- Screenshot (Snippet) -->
+                        <div class="mb-3">
+                            <label for="auditScreenshot" class="form-label fw-bold">
+                                <i class="fas fa-camera text-primary me-1"></i>Screenshot (Snippet)
+                            </label>
+                            <input type="file" class="form-control" id="auditScreenshot" name="screenshot" accept="image/*">
+                            <div class="form-text">Upload a screenshot or image snippet</div>
+                            <div id="screenshotPreview" class="mt-2"></div>
+                        </div>
+                        
+                        <!-- Voice Note -->
+                        <div class="mb-3">
+                            <label for="auditVoiceNote" class="form-label fw-bold">
+                                <i class="fas fa-microphone-alt text-success me-1"></i>Voice Note
+                            </label>
+                            <div>
+                                <button type="button" class="btn btn-sm btn-success" id="voiceNoteRecordBtn" title="Click to record voice note">
+                                    <i class="fas fa-circle"></i> Record
+                                </button>
+                                <span id="voiceNoteStatus" class="badge bg-danger ms-2" style="display: none;">
+                                    Recording... <span id="voiceNoteTimer">0:00</span>
+                                </span>
+                            </div>
+                            <div id="voiceNotePreview" class="mt-2"></div>
+                            <div class="form-text">Click the button to record an audio note (max 2 minutes)</div>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" id="fixedAuditBtn">
+                        <i class="fas fa-check-circle me-2"></i>Fixed
+                    </button>
                     <button type="button" class="btn btn-primary" id="saveEditAuditBtn">
                         <i class="fas fa-save me-2"></i> Save
                     </button>
@@ -657,7 +746,7 @@
                     }
                 },
                 {
-                    title: "Status",
+                    title: "Stat",
                     field: "status",
                     width: 80,
                     hozAlign: "center",
@@ -853,16 +942,6 @@
                     }
                 },
                 {
-                    title: "History",
-                    field: "history",
-                    width: 45,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const sku = cell.getRow().getData().SKU;
-                        return `<button class="btn btn-sm btn-secondary" onclick="viewStatusHistory('${sku}')" title="View Status History"><i class="fas fa-history"></i></button>`;
-                    }
-                },
-                {
                     title: "Action",
                     field: "status_toggle",
                     width: 45,
@@ -1001,6 +1080,28 @@
             table.getColumns().forEach(col => col.show());
             buildColumnDropdown();
             saveColumnVisibility();
+        });
+
+        // Audit Filter
+        let auditFilterActive = false;
+        document.getElementById("auditFilterBtn").addEventListener("click", function() {
+            auditFilterActive = !auditFilterActive;
+            const btn = this;
+            
+            if (auditFilterActive) {
+                // Filter to show only rows with audit suggestions
+                table.setFilter("audit_suggestion", "!=", "");
+                table.setFilter("audit_suggestion", "!=", null);
+                btn.classList.remove('btn-outline-danger');
+                btn.classList.add('btn-danger');
+                btn.innerHTML = '<i class="fas fa-filter"></i> Audit (Active)';
+            } else {
+                // Clear filter
+                table.clearFilter();
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-outline-danger');
+                btn.innerHTML = '<i class="fas fa-filter"></i> Audit';
+            }
         });
 
         // Export
@@ -1218,13 +1319,35 @@
         const auditSuggestion = $('#editAuditSuggestion').val();
 
         try {
+            // Use FormData to support file uploads
+            const formData = new FormData();
+            formData.append('sku', sku);
+            formData.append('audit_suggestion', auditSuggestion);
+            
+            // Add link data if present
+            const linkData = $('#auditLinkData').val();
+            if (linkData) {
+                formData.append('link_data', linkData);
+            }
+            
+            // Add screenshot if present
+            const screenshot = $('#auditScreenshot')[0].files[0];
+            if (screenshot) {
+                formData.append('screenshot', screenshot);
+            }
+            
+            // Add voice note if present
+            if (window.audioBlob) {
+                const voiceNoteFile = new File([window.audioBlob], `voice_note_${Date.now()}.webm`, { type: 'audio/webm' });
+                formData.append('voice_note', voiceNoteFile);
+            }
+
             const response = await fetch('/a-plus-images-master/update-audit-suggestion', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
-                body: JSON.stringify({ sku, audit_suggestion: auditSuggestion })
+                body: formData
             });
 
             const result = await response.json();
@@ -1232,6 +1355,13 @@
                 showToast('Audit updated successfully', 'success');
                 $('#editAuditSuggestionModal').modal('hide');
                 table.setData('/a-plus-images-master-data-view');
+                
+                // Reset form
+                $('#auditLinkData').val('');
+                $('#auditScreenshot').val('');
+                $('#screenshotPreview').html('');
+                $('#voiceNotePreview').html('');
+                window.audioBlob = null;
             } else {
                 showToast(result.message || 'Failed to update audit', 'error');
             }
@@ -1240,25 +1370,195 @@
         }
     });
 
+    // Character counter for audit suggestion
+    $('#editAuditSuggestion').on('input', function() {
+        $('#charCount').text(this.value.length);
+    });
+
+    // Fixed button functionality
+    $('#fixedAuditBtn').on('click', async function() {
+        const sku = $('#editAuditSku').val();
+        
+        try {
+            const formData = new FormData();
+            formData.append('sku', sku);
+            formData.append('audit_suggestion', ''); // Clear audit
+            formData.append('is_fixed', '1');
+
+            const response = await fetch('/a-plus-images-master/update-audit-suggestion', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                showToast('Marked as Fixed successfully!', 'success');
+                $('#editAuditSuggestionModal').modal('hide');
+                table.setData('/a-plus-images-master-data-view');
+            } else {
+                showToast(result.message || 'Failed to mark as fixed', 'error');
+            }
+        } catch (error) {
+            showToast('Error: ' + error.message, 'error');
+        }
+    });
+
+    // Voice to Text functionality
+    $('#voiceToTextBtn').on('click', function() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            showToast('Speech recognition not supported in this browser', 'error');
+            return;
+        }
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        
+        recognition.onstart = function() {
+            $('#voiceStatus').show();
+        };
+        
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            const currentText = $('#editAuditSuggestion').val();
+            $('#editAuditSuggestion').val(currentText + (currentText ? ' ' : '') + transcript);
+            $('#charCount').text($('#editAuditSuggestion').val().length);
+        };
+        
+        recognition.onerror = function(event) {
+            showToast('Speech recognition error: ' + event.error, 'error');
+            $('#voiceStatus').hide();
+        };
+        
+        recognition.onend = function() {
+            $('#voiceStatus').hide();
+        };
+        
+        recognition.start();
+    });
+
+    // Screenshot preview
+    $('#auditScreenshot').on('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                $('#screenshotPreview').html(`
+                    <img src="${e.target.result}" class="img-thumbnail" style="max-width: 200px; max-height: 200px;">
+                `);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            $('#screenshotPreview').html('');
+        }
+    });
+
+    // Voice Note Recording
+    let mediaRecorder;
+    let audioChunks = [];
+    let recordingStartTime;
+    let recordingInterval;
+
+    $('#voiceNoteRecordBtn').on('click', async function() {
+        if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+            // Start recording
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    window.audioBlob = audioBlob;
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    $('#voiceNotePreview').html(`
+                        <audio controls class="w-100 mt-2">
+                            <source src="${audioUrl}" type="audio/webm">
+                        </audio>
+                    `);
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                
+                mediaRecorder.start();
+                recordingStartTime = Date.now();
+                $('#voiceNoteRecordBtn').html('<i class="fas fa-stop"></i> Stop');
+                $('#voiceNoteRecordBtn').removeClass('btn-success').addClass('btn-danger');
+                $('#voiceNoteStatus').show();
+                
+                // Update timer
+                recordingInterval = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    $('#voiceNoteTimer').text(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+                    
+                    // Auto-stop after 2 minutes
+                    if (elapsed >= 120) {
+                        $('#voiceNoteRecordBtn').click();
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                showToast('Microphone access denied: ' + error.message, 'error');
+            }
+        } else {
+            // Stop recording
+            mediaRecorder.stop();
+            $('#voiceNoteRecordBtn').html('<i class="fas fa-circle"></i> Record');
+            $('#voiceNoteRecordBtn').removeClass('btn-danger').addClass('btn-success');
+            $('#voiceNoteStatus').hide();
+            clearInterval(recordingInterval);
+        }
+    });
+
     async function viewAuditHistory(sku) {
         try {
             const response = await fetch(`/a-plus-images-master/audit-history/${encodeURIComponent(sku)}`);
             const result = await response.json();
             
-            if (result.success && result.data) {
-                let html = '<table class="table table-sm"><thead><tr><th>Date</th><th>Audit</th></tr></thead><tbody>';
+            if (result.success && result.data && result.data.length > 0) {
+                let html = '<div class="list-group">';
                 result.data.forEach(item => {
-                    html += `<tr><td>${item.date}</td><td>${item.audit_suggestion}</td></tr>`;
+                    const date = new Date(item.created_at || item.date).toLocaleString();
+                    const actionType = item.action_type === 'FIXED' ? '<span class="badge bg-success ms-2">FIXED</span>' : '';
+                    const userName = item.user_name || 'Unknown User';
+                    const auditText = item.audit_suggestion || '<em class="text-muted">Cleared</em>';
+                    
+                    html += `
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between align-items-center">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">
+                                        <i class="fas fa-user me-2"></i>${userName}
+                                        ${actionType}
+                                    </h6>
+                                    <p class="mb-1">${auditText}</p>
+                                </div>
+                                <small class="text-muted">${date}</small>
+                            </div>
+                        </div>
+                    `;
                 });
-                html += '</tbody></table>';
+                html += '</div>';
                 $('#auditHistoryContent').html(html);
             } else {
-                $('#auditHistoryContent').html('<p>No history found</p>');
+                $('#auditHistoryContent').html('<div class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No history found for this SKU.</div>');
             }
             
             $('#auditHistoryModal').modal('show');
         } catch (error) {
             showToast('Error loading history: ' + error.message, 'error');
+            $('#auditHistoryContent').html('<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>Failed to load history</div>');
         }
     }
 

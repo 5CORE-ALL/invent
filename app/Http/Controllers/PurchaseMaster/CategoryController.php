@@ -4193,7 +4193,7 @@ PROMPT;
 
             return response()->json([
                 'success' => true,
-                'history' => $history,
+                'data' => $history,
             ]);
 
         } catch (\Exception $e) {

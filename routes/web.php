@@ -87,6 +87,7 @@ use App\Http\Controllers\InventoryManagement\StockBalanceController;
 use App\Http\Controllers\InventoryManagement\StockTransferController;
 use App\Http\Controllers\InventoryManagement\VerificationAdjustmentController;
 use App\Http\Controllers\InventoryWarehouseController;
+use App\Http\Controllers\InventoryHistoryController;
 use App\Http\Controllers\ListingMaster\AmzListingController;
 use App\Http\Controllers\MarketingMaster\EbayCvrLqsController;
 use App\Http\Controllers\MarketingMaster\FacebookAddsManagerController;
@@ -3439,6 +3440,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/inventory-warehouse/push-single', [InventoryWarehouseController::class, 'pushSingleItem'])->name('inventory.push.single');
     Route::get('/inventory-warehouse', [InventoryWarehouseController::class, 'index'])->name('inventory.index');
     Route::get('/inventory-warehouse/check-pushed', [InventoryWarehouseController::class, 'checkPushed']);
+
+    Route::get('/inventory-history', [InventoryHistoryController::class, 'index'])->name('inventory-history.index');
+    Route::get('/inventory-history/get-data', [InventoryHistoryController::class, 'getData'])->name('inventory-history.get-data');
+    Route::get('/inventory-history/get-stats', [InventoryHistoryController::class, 'getStats'])->name('inventory-history.get-stats');
+    Route::post('/inventory-history/run-snapshot', [InventoryHistoryController::class, 'runSnapshot'])->name('inventory-history.run-snapshot');
 
     Route::controller(ArrivedContainerController::class)->group(function () {
         Route::get('/arrived/container', 'index')->name('arrived.container');
