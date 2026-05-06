@@ -452,8 +452,30 @@ class UserController extends Controller
 
         // Fetch TeamLogger data for previous month
         $previousMonth = Carbon::now()->subMonth()->format('F Y');
+        
+        // First, fetch from API to get all current data
         $teamLoggerService = new TeamLoggerService();
         $teamLoggerData = $teamLoggerService->fetchByMonth($previousMonth, true);
+        
+        // Then, get manually edited hours from database and override API data
+        $teamLoggerHours = \App\Models\TeamLoggerHours::where('month', $previousMonth)->get();
+        
+        // Override with database values for manually edited hours
+        foreach ($teamLoggerHours as $record) {
+            $email = strtolower($record->employee_email);
+            if (isset($teamLoggerData[$email])) {
+                // Keep API data but override productive_hours with database value
+                $teamLoggerData[$email]['hours'] = $record->productive_hours;
+            } else {
+                // If not in API data, add from database
+                $teamLoggerData[$email] = [
+                    'hours' => $record->productive_hours,
+                    'total_hours' => $record->total_hours ?? 0,
+                    'idle_hours' => $record->idle_hours ?? 0,
+                    'active_hours' => $record->active_hours ?? 0,
+                ];
+            }
+        }
 
         // Email mapping: Map user email to TeamLogger email if different
         $emailMapping = [
@@ -462,7 +484,7 @@ class UserController extends Controller
 
         // Create CSV content
         $csvData = [];
-        $csvData[] = ['Name', 'Amount P', 'B1', 'B2', 'UPI'];
+        $csvData[] = ['Name', 'Hours LM', 'Amount P', 'B1', 'B2', 'UPI'];
 
         foreach ($users as $user) {
             $userEmail = strtolower(trim($user->email));
@@ -478,6 +500,7 @@ class UserController extends Controller
 
             $csvData[] = [
                 $user->name,
+                $hoursLM . 'h',
                 $amountPRounded,
                 $user->userSalary?->bank_1 ?? '',
                 $user->userSalary?->bank_2 ?? '',

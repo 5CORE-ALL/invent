@@ -125,6 +125,33 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.12);
         }
 
+        /* Enhanced Select2 styling for SKU search */
+        .select2-container .select2-selection--single {
+            height: 38px !important;
+            padding: 4px 0;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 30px !important;
+            color: #495057;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 36px !important;
+        }
+        .select2-dropdown {
+            border: 1px solid #ced4da;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .select2-results__option {
+            padding: 8px 12px;
+        }
+        .select2-results__option--highlighted {
+            background-color: #2c6ed5 !important;
+        }
+        .select2-search--dropdown .select2-search__field {
+            border: 1px solid #ced4da;
+            padding: 6px 12px;
+        }
+
     </style>
 @endsection
 
@@ -299,15 +326,19 @@
                                     </div>
 
                                     <div class="modal-body">
+                                        <div class="alert alert-info mb-3">
+                                            <i class="fas fa-info-circle me-2"></i>
+                                            <strong>{{ count($skus ?? []) }} SKUs</strong> available. Use the SKU dropdown to search by typing any part of the SKU name.
+                                        </div>
                                         <div id="incoming-errors" class="mb-2 text-danger"></div>
 
                                         <div id="outgoing-rows-container">
                                             <div class="outgoing-row border rounded p-3 mb-3" data-row="0">
                                                 <div class="row mb-2">
                                                     <div class="col-md-8">
-                                                        <label for="sku_0" class="form-label fw-bold">SKU</label>
+                                                        <label for="sku_0" class="form-label fw-bold">SKU <small class="text-muted">(Type to search)</small></label>
                                                         <select class="form-select row-sku" id="sku_0" name="sku[]" required>
-                                                            <option selected disabled>Select SKU</option>
+                                                            <option value="" selected disabled>Type to search SKU...</option>
                                                             @foreach($skus as $item)
                                                                 <option value="{{ $item->sku }}">{{ $item->sku }}</option>
                                                             @endforeach
@@ -899,9 +930,49 @@
                 var $modal = $('#refundsModal');
                 $('#sku_0').select2({
                     dropdownParent: $modal,
-                    placeholder: "Select SKU",
-                    allowClear: true
+                    placeholder: "Type to search SKU...",
+                    allowClear: true,
+                    width: '100%',
+                    matcher: function(params, data) {
+                        if ($.trim(params.term) === '') {
+                            return data;
+                        }
+                        if (typeof data.text === 'undefined') {
+                            return null;
+                        }
+                        var searchTerm = params.term.toLowerCase().replace(/\s+/g, '');
+                        var dataText = data.text.toLowerCase().replace(/\s+/g, '');
+                        if (dataText.indexOf(searchTerm) > -1) {
+                            return data;
+                        }
+                        var words = params.term.toLowerCase().split(/\s+/);
+                        var allWordsFound = true;
+                        for (var i = 0; i < words.length; i++) {
+                            if (data.text.toLowerCase().indexOf(words[i]) === -1) {
+                                allWordsFound = false;
+                                break;
+                            }
+                        }
+                        if (allWordsFound) {
+                            return data;
+                        }
+                        return null;
+                    }
                 });
+
+                // Debug: Log all SKUs containing "PNB" to help find the exact SKU
+                var allSkus = [];
+                $('#sku_0 option').each(function() {
+                    var sku = $(this).val();
+                    if (sku && sku.trim() !== '') {
+                        allSkus.push(sku);
+                        if (sku.toUpperCase().indexOf('PNB') > -1) {
+                            console.log('Found PNB SKU:', sku);
+                        }
+                    }
+                });
+                console.log('Total SKUs loaded:', allSkus.length);
+                console.log('Search for "PNB WD HD PNK" in Select2 dropdown using the search box');
                 $('#channel_master_id').select2({
                     dropdownParent: $modal,
                     placeholder: 'Search channel...',

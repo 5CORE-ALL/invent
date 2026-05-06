@@ -25,6 +25,8 @@ class RefundController extends Controller
     public function index()
     {
         $skus = ProductMaster::select('product_master.id', 'product_master.parent', 'product_master.sku')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->orderBy('product_master.sku')
             ->get();
 
