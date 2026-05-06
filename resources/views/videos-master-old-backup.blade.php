@@ -1,67 +1,76 @@
 @extends('layouts.vertical', ['title' => 'Videos Master', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
-<link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
-
-    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
+    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     <style>
-        .tabulator-col .tabulator-col-sorter {
-            display: none !important;
+        .table-responsive {
+            position: relative;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            max-height: 600px;
+            overflow-y: auto;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            background-color: white;
         }
-        
-        /* Vertical Column Headers - Same as Hero Images Master */
-        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            white-space: nowrap;
-            transform: rotate(180deg);
-            height: 100px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
+
+        .table-responsive thead th {
+            position: sticky;
+            top: 0;
+            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
+            color: white;
+            z-index: 10;
+            padding: 15px 18px;
             font-weight: 600;
-        }
-        
-        .tabulator .tabulator-header .tabulator-col {
-            height: 100px !important;
-        }
-
-        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
-            padding-right: 0px !important;
-        }
-
-        .tabulator-paginator label {
-            margin-right: 5px;
-        }
-
-        .parent-row {
-            background-color: #fffacd !important;
-        }
-
-        .copy-sku-btn {
-            cursor: pointer;
-            padding: 2px 5px;
-            margin-left: 5px;
-        }
-
-        /* Video Link Icon Styling */
-        .video-link-icon {
-            display: inline-block;
-            color: #17a2b8;
-            font-size: 24px;
-            text-decoration: none;
+            border-bottom: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
             transition: all 0.2s ease;
         }
 
-        .video-link-icon:hover {
-            color: #138496;
-            transform: scale(1.15);
+        .table-responsive thead th:hover {
+            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%) !important;
+        }
+
+        .table-responsive thead input {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 4px;
+            color: #333;
+            padding: 6px 10px;
+            margin-top: 8px;
+            font-size: 12px;
+            width: 100%;
+            transition: all 0.2s;
+        }
+
+        .table-responsive thead input:focus {
+            background-color: white;
+            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.3);
+            outline: none;
+        }
+
+        .table-responsive tbody td {
+            padding: 12px 18px;
+            vertical-align: middle;
+            border-bottom: 1px solid #edf2f9;
+            font-size: 13px;
+            color: #495057;
+        }
+
+        .table-responsive tbody tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+
+        .table-responsive tbody tr:hover {
+            background-color: #e8f0fe;
         }
 
         .action-btn {
@@ -145,62 +154,108 @@
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h4 class="card-title mb-0">Videos Master</h4>
-                    <div class="btn-group">
-                        <button id="addVideoBtn" class="btn btn-sm btn-success">
-                            <i class="fas fa-plus"></i> Add
-                        </button>
-                        <button id="importBtn" class="btn btn-sm btn-info">
-                            <i class="fas fa-upload"></i> Import
-                        </button>
-                        <button id="exportBtn" class="btn btn-sm btn-primary">
-                            <i class="fas fa-download"></i> Export
-                        </button>
-                        <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
-                    </div>
-                </div>
-                
-                <div class="card-body" style="padding: 0;">
-                    <div id="videos-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                        <!-- Search Bar -->
-                        <div class="p-2 bg-light border-bottom">
-                            <div class="row g-2">
-                                <div class="col-md-4">
-                                    <input type="text" id="general-search" class="form-control form-control-sm" placeholder="Search all columns...">
-                                </div>
-                                <div class="col-md-3">
-                                    <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search Parent... (0)">
-                                </div>
-                                <div class="col-md-3">
-                                    <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU... (0)">
-                                </div>
-                                <div class="col-md-2">
-                                    <select id="filterVideos" class="form-control form-control-sm">
-                                        <option value="all">All Videos</option>
-                                        <option value="missing">Missing Only</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <!-- Missing Counts -->
-                            <div class="mt-2">
-                                <small class="text-muted">
-                                    <strong>Missing:</strong>
-                                    PO: <span id="productOverviewMissingCount" class="text-danger fw-bold">0</span> | 
-                                    Shop: <span id="unboxingMissingCount" class="text-danger fw-bold">0</span> | 
-                                    HowTo: <span id="howToMissingCount" class="text-danger fw-bold">0</span> | 
-                                    Setup: <span id="setupMissingCount" class="text-danger fw-bold">0</span> | 
-                                    TS: <span id="troubleshootingMissingCount" class="text-danger fw-bold">0</span> | 
-                                    BS: <span id="brandStoryMissingCount" class="text-danger fw-bold">0</span> | 
-                                    PB: <span id="productBenefitsMissingCount" class="text-danger fw-bold">0</span>
-                                </small>
-                            </div>
+                <div class="card-body">
+                    <div class="mb-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <button id="addVideoBtn" class="btn btn-success">
+                                <i class="fas fa-plus"></i> Add Videos
+                            </button>
+                            <button id="exportBtn" class="btn btn-primary ms-2">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                            <button id="importBtn" class="btn btn-info ms-2">
+                                <i class="fas fa-upload"></i> Import
+                            </button>
+                            <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
                         </div>
-                        
-                        <!-- Table -->
-                        <div id="videos-master-table" style="flex: 1;"></div>
                     </div>
-                </div>
+
+                    <div class="table-responsive">
+                        <table id="videos-master-table" class="table dt-responsive nowrap w-100">
+                            <thead>
+                                <tr>
+                                    <th>Images</th>
+                                    <th>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <span>Parent</span>
+                                            <span id="parentCount">(0)</span>
+                                        </div>
+                                        <input type="text" id="parentSearch" class="form-control-sm"
+                                            placeholder="Search Parent">
+                                    </th>
+                                    <th>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <span>SKU</span>
+                                            <span id="skuCount">(0)</span>
+                                        </div>
+                                        <input type="text" id="skuSearch" class="form-control-sm"
+                                            placeholder="Search SKU">
+                                    </th>
+                                    <th>
+                                        <div>Shopify Inv</div>
+                                    </th>
+                                    <th>
+                                        <div>Product Overview <span id="productOverviewMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
+                                        <select id="filterProductOverview" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Shoppable <span id="unboxingMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
+                                        <select id="filterUnboxing" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>How To <span id="howToMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
+                                        <select id="filterHowTo" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Setup <span id="setupMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
+                                        <select id="filterSetup" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Troubleshooting <span id="troubleshootingMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
+                                        <select id="filterTroubleshooting" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Brand Story <span id="brandStoryMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
+                                        <select id="filterBrandStory" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Product Benefits <span id="productBenefitsMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
+                                        <select id="filterProductBenefits" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body"></tbody>
+                        </table>
+                    </div>
 
                     <div id="rainbow-loader" class="rainbow-loader">
                         <div class="spinner-border text-primary" role="status">
@@ -324,8 +379,6 @@
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
@@ -333,31 +386,13 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         let tableData = [];
         let videoModal;
-        let table; // Tabulator instance
-        let editButtonsSetup = false;
-
-        // Copy to clipboard function
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                showToast(`SKU "${text}" copied to clipboard!`, 'success');
-            }).catch(err => {
-                console.error('Failed to copy:', err);
-                alert('Failed to copy SKU');
-            });
-        }
-
-        // Toast notification function
-        function showToast(message, type = 'info') {
-            // Simple alert for now - can be enhanced with Bootstrap toast
-            console.log(`[${type.toUpperCase()}] ${message}`);
-        }
 
         document.addEventListener('DOMContentLoaded', function() {
             videoModal = new bootstrap.Modal(document.getElementById('videoModal'));
-            initializeTabulator();
+            loadVideoData();
             setupSearchHandlers();
             setupButtonHandlers();
-            setupEditButtons();
+            setupVideoStatusDropdownHandlers();
         });
 
         function setupButtonHandlers() {
@@ -391,10 +426,7 @@
         }
 
         function setupVideoStatusDropdownHandlers() {
-            if (videoStatusHandlersSetup) return;
-            videoStatusHandlersSetup = true;
-            
-            document.getElementById('videos-master-table').addEventListener('change', function(e) {
+            document.getElementById('table-body').addEventListener('change', function(e) {
                 if (!e.target.classList.contains('video-status-select')) return;
                 const sku = e.target.getAttribute('data-sku');
                 const field = e.target.getAttribute('data-field');
@@ -437,302 +469,137 @@
             });
         }
 
-        function initializeTabulator() {
+        function loadVideoData() {
             document.getElementById('rainbow-loader').style.display = 'block';
-
-            // Helper function for video column formatter
-            function videoColumnFormatter(cell, fieldName) {
-                const item = cell.getData();
-                
-                if (item[fieldName]) {
-                    return `<a href="${escapeHtml(item[fieldName])}" target="_blank" class="video-link-icon" title="Click to watch video">
-                        <i class="fas fa-play-circle"></i>
-                    </a>`;
-                } else {
-                    return '<span class="text-muted" style="font-size: 18px;">—</span>';
-                }
-            }
-
-            table = new Tabulator("#videos-master-table", {
-                ajaxURL: "/videos-master-data-view",
-                ajaxSorting: false,
-                ajaxResponse: function(url, params, response) {
-                    console.log("AJAX Response received:", response);
-                    console.log("Response type:", typeof response);
+            
+            fetch('/product-master-data-view')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(response => {
+                    const data = response.data ? response.data : response;
                     
-                    if (response && response.data && Array.isArray(response.data)) {
-                        console.log("Data array length:", response.data.length);
-                        tableData = response.data;
-                        
-                        // Debug: Check specific SKU
-                        const testSku = tableData.find(item => item.SKU === 'FR 15190 17 AL');
-                        if (testSku) {
-                            console.log("Found SKU 'FR 15190 17 AL':", testSku);
-                            console.log("Video fields for this SKU:", {
-                                video_product_overview: testSku.video_product_overview,
-                                video_unboxing: testSku.video_unboxing,
-                                video_how_to: testSku.video_how_to,
-                                video_setup: testSku.video_setup,
-                                video_troubleshooting: testSku.video_troubleshooting,
-                                video_brand_story: testSku.video_brand_story,
-                                video_product_benefits: testSku.video_product_benefits
-                            });
-                        } else {
-                            console.log("SKU 'FR 15190 17 AL' not found in data");
-                        }
-                        
+                    if (data && Array.isArray(data)) {
+                        tableData = data;
+                        renderTable(tableData);
                         updateCounts();
-                        const loader = document.getElementById('rainbow-loader');
-                        if (loader) loader.style.display = 'none';
-                        return response.data;
+                    } else {
+                        console.error('Invalid data:', response);
+                        showError('Invalid data format received from server');
                     }
-                    
-                    console.error("Invalid response format:", response);
-                    const loader = document.getElementById('rainbow-loader');
-                    if (loader) loader.style.display = 'none';
-                    return [];
-                },
-                ajaxError: function(error) {
-                    console.error('AJAX Error:', error);
-                    alert('Failed to load product data. Check console for details.');
-                    const loader = document.getElementById('rainbow-loader');
-                    if (loader) loader.style.display = 'none';
-                },
-                layout: "fitData",
-                pagination: true,
-                paginationSize: 100,
-                paginationSizeSelector: [25, 50, 100, 200, 500],
-                paginationCounter: "rows",
-                dataLoaded: function(data) {
-                    console.log("Data loaded successfully:", data.length, "rows");
-                },
-                rowFormatter: function(row) {
-                    const data = row.getData();
-                    if (data.SKU && data.SKU.toUpperCase().includes('PARENT')) {
-                        row.getElement().classList.add('parent-row');
-                    }
-                },
-                langs: {
-                    "default": {
-                        "pagination": {
-                            "page_size": "Show",
-                            "counter": {
-                                "showing": "Showing",
-                                "of": "of",
-                                "rows": "rows"
-                            }
-                        }
-                    }
-                },
-                columns: [
-                    {
-                        title: "Image",
-                        field: "image_path",
-                        width: 80,
-                        frozen: true,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (!value) return '-';
-                            return `<img src="${value}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`;
-                        }
-                    },
-                    {
-                        title: "Parent",
-                        field: "Parent",
-                        width: 150,
-                        frozen: true
-                    },
-                    {
-                        title: "SKU",
-                        field: "SKU",
-                        width: 200,
-                        frozen: true,
-                        formatter: function(cell) {
-                            const sku = cell.getValue();
-                            if (!sku) return '-';
-                            return `
-                                <div style="display: flex; align-items: center; gap: 5px;">
-                                    <span>${sku}</span>
-                                    <button class="btn btn-sm btn-link p-0 copy-sku-btn" onclick="copyToClipboard('${sku}')" title="Copy SKU">
-                                        <i class="fas fa-copy"></i>
-                                    </button>
-                                </div>
-                            `;
-                        }
-                    },
-                    {
-                        title: "INV",
-                        field: "shopify_inv",
-                        width: 80,
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === 0 || value === "0") return "0";
-                            if (value === null || value === undefined || value === "") return "-";
-                            return String(value);
-                        }
-                    },
-                    {
-                        title: "Ovl30",
-                        field: "ovl30",
-                        width: 80,
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            return (value === null || value === undefined || value === '') ? '0' : String(value);
-                        }
-                    },
-                    {
-                        title: "Dil",
-                        field: "dil",
-                        width: 50,
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            let dilText = '0%';
-                            let dilColor = '#a00211';
-                            
-                            if (value !== null && value !== undefined && value !== '') {
-                                const dilNum = parseFloat(value);
-                                dilText = Math.round(dilNum) + '%';
-                                
-                                if (dilNum < 16.7) dilColor = '#a00211';
-                                else if (dilNum >= 16.7 && dilNum < 25) dilColor = '#ffc107';
-                                else if (dilNum >= 25 && dilNum < 50) dilColor = '#28a745';
-                                else if (dilNum >= 50) dilColor = '#e83e8c';
-                            }
-                            
-                            return `<span style="color: ${dilColor}; font-weight: bold;">${dilText}</span>`;
-                        }
-                    },
-                    {
-                        title: "LQS",
-                        field: "lqs",
-                        width: 80,
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (!value) return '-';
-                            const score = parseInt(value);
-                            let color = '#dc3545';
-                            if (score >= 8) color = '#28a745';
-                            else if (score >= 6) color = '#ffc107';
-                            return `<span class="badge" style="background-color: ${color}; color: ${score >= 6 && score < 8 ? 'black' : 'white'};">${score}</span>`;
-                        }
-                    },
-                    {
-                        title: "B/S",
-                        field: "buyer_seller",
-                        width: 45,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            let html = '<div style="display: flex; justify-content: center; gap: 5px;">';
-                            if (row.buyer_link) {
-                                html += `<a href="${row.buyer_link}" target="_blank" class="text-decoration-none fw-semibold" style="color: #2c6ed5;" title="Buyer Link">B</a>`;
-                            }
-                            if (row.seller_link) {
-                                html += `<a href="${row.seller_link}" target="_blank" class="text-decoration-none fw-semibold" style="color: #47ad77;" title="Seller Link">S</a>`;
-                            }
-                            html += '</div>';
-                            return (row.buyer_link || row.seller_link) ? html : '-';
-                        }
-                    },
-                    {
-                        title: "PO",
-                        field: "video_product_overview",
-                        width: 70,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            return videoColumnFormatter(cell, 'video_product_overview');
-                        }
-                    },
-                    {
-                        title: "Shop",
-                        field: "video_unboxing",
-                        width: 70,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            return videoColumnFormatter(cell, 'video_unboxing');
-                        }
-                    },
-                    {
-                        title: "HowTo",
-                        field: "video_how_to",
-                        width: 70,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            return videoColumnFormatter(cell, 'video_how_to');
-                        }
-                    },
-                    {
-                        title: "Setup",
-                        field: "video_setup",
-                        width: 70,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            return videoColumnFormatter(cell, 'video_setup');
-                        }
-                    },
-                    {
-                        title: "TS",
-                        field: "video_troubleshooting",
-                        width: 70,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            return videoColumnFormatter(cell, 'video_troubleshooting');
-                        }
-                    },
-                    {
-                        title: "BS",
-                        field: "video_brand_story",
-                        width: 70,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            return videoColumnFormatter(cell, 'video_brand_story');
-                        }
-                    },
-                    {
-                        title: "PB",
-                        field: "video_product_benefits",
-                        width: 70,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            return videoColumnFormatter(cell, 'video_product_benefits');
-                        }
-                    },
-                    {
-                        title: "Action",
-                        field: "action",
-                        width: 100,
-                        hozAlign: "center",
-                        frozen: true,
-                        frozenDirection: "right",
-                        formatter: function(cell) {
-                            const sku = cell.getData().SKU;
-                            return `<button class="action-btn edit-btn" data-sku="${escapeHtml(sku)}"><i class="fas fa-edit"></i> Edit</button>`;
-                        }
-                    }
-                ]
-            });
+                    document.getElementById('rainbow-loader').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showError('Failed to load product data: ' + error.message);
+                    document.getElementById('rainbow-loader').style.display = 'none';
+                });
         }
 
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center">No products found</td></tr>';
+                return;
+            }
+
+            // Filter out parent rows before rendering
+            const filteredData = data.filter(item => {
+                return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
+            });
+
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center">No products found</td></tr>';
+                return;
+            }
+
+            filteredData.forEach(item => {
+                const row = document.createElement('tr');
+
+                // Images
+                const imageCell = document.createElement('td');
+                imageCell.innerHTML = item.image_path 
+                    ? '<img src="' + item.image_path + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">'
+                    : '-';
+                row.appendChild(imageCell);
+
+                // Parent
+                const parentCell = document.createElement('td');
+                parentCell.textContent = escapeHtml(item.Parent) || '-';
+                row.appendChild(parentCell);
+
+                // SKU
+                const skuCell = document.createElement('td');
+                skuCell.textContent = escapeHtml(item.SKU) || '-';
+                row.appendChild(skuCell);
+
+                // Shopify Inv
+                const shopifyInvCell = document.createElement('td');
+                const invVal = item.shopify_inv;
+                shopifyInvCell.textContent = (invVal !== null && invVal !== undefined && invVal !== '') ? Number(invVal) : '-';
+                shopifyInvCell.style.textAlign = 'right';
+                row.appendChild(shopifyInvCell);
+
+                // Video fields (each has link + status dropdown)
+                const videoFields = [
+                    'video_product_overview',
+                    'video_unboxing',
+                    'video_how_to',
+                    'video_setup',
+                    'video_troubleshooting',
+                    'video_brand_story',
+                    'video_product_benefits'
+                ];
+                const statusValues = ['', 'N/R', 'Done/Uploaded', 'Assigned'];
+                const statusLabels = ['--', 'N/R', 'Done/Uploaded', 'Assigned'];
+
+                videoFields.forEach(field => {
+                    const cell = document.createElement('td');
+                    cell.style.textAlign = 'center';
+                    cell.style.verticalAlign = 'middle';
+                    const statusField = field + '_status';
+                    const statusVal = item[statusField] || '';
+
+                    let linkHtml = '';
+                    if (item[field]) {
+                        linkHtml = '<a href="' + escapeHtml(item[field]) + '" target="_blank" class="video-link-icon" title="' + escapeHtml(item[field]) + '"><i class="fas fa-play-circle"></i></a>';
+                    } else {
+                        linkHtml = '<span class="text-muted">-</span>';
+                    }
+                    let optionsHtml = statusValues.map((v, i) => {
+                        return '<option value="' + escapeHtml(v) + '"' + (v === statusVal ? ' selected' : '') + '>' + escapeHtml(statusLabels[i]) + '</option>';
+                    }).join('');
+                    cell.innerHTML = '<div class="d-flex flex-column align-items-center gap-1">' +
+                        '<div>' + linkHtml + '</div>' +
+                        '<select class="form-select form-select-sm video-status-select" style="font-size: 11px; min-width: 100px;" data-sku="' + escapeHtml(item.SKU) + '" data-field="' + field + '">' +
+                        optionsHtml +
+                        '</select>' +
+                        '</div>';
+                    row.appendChild(cell);
+                });
+
+                // Action - Edit Button
+                const actionCell = document.createElement('td');
+                actionCell.innerHTML = '<button class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '"><i class="fas fa-edit"></i> Edit</button>';
+                row.appendChild(actionCell);
+
+                tbody.appendChild(row);
+            });
+
+            setupEditButtons();
+        }
 
         function setupEditButtons() {
-            if (editButtonsSetup) return;
-            editButtonsSetup = true;
-            
-            // Use event delegation for dynamic content
-            document.getElementById('videos-master-table').addEventListener('click', function(e) {
-                const editBtn = e.target.closest('.edit-btn');
-                if (editBtn) {
-                    const sku = editBtn.getAttribute('data-sku');
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const sku = this.getAttribute('data-sku');
                     openModal('edit', sku);
-                }
+                });
             });
         }
 
@@ -861,7 +728,7 @@
             .then(data => {
                 if (data.success) {
                     videoModal.hide();
-                    table.replaceData();
+                    loadVideoData();
                     alert('Videos saved successfully!');
                 } else {
                     alert(data.message || 'Failed to save videos');
@@ -998,76 +865,115 @@
                 alert(message);
                 
                 if (successCount > 0) {
-                    table.replaceData();
+                    loadVideoData();
                 }
             });
         }
 
         // Apply all filters
         function applyFilters() {
-            const generalFilter = document.getElementById('general-search').value.toLowerCase();
             const parentFilter = document.getElementById('parentSearch').value.toLowerCase();
             const skuFilter = document.getElementById('skuSearch').value.toLowerCase();
-            const filterVideos = document.getElementById('filterVideos').value;
+            const filterProductOverview = document.getElementById('filterProductOverview').value;
+            const filterUnboxing = document.getElementById('filterUnboxing').value;
+            const filterHowTo = document.getElementById('filterHowTo').value;
+            const filterSetup = document.getElementById('filterSetup').value;
+            const filterTroubleshooting = document.getElementById('filterTroubleshooting').value;
+            const filterBrandStory = document.getElementById('filterBrandStory').value;
+            const filterProductBenefits = document.getElementById('filterProductBenefits').value;
 
-            const filters = [];
+            const filteredData = tableData.filter(item => {
+                // Skip parent rows
+                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
+                    return false;
+                }
 
-            // General search across all columns
-            if (generalFilter) {
-                filters.push(function(data) {
-                    const searchStr = generalFilter.toLowerCase();
-                    return (data.Parent && data.Parent.toLowerCase().includes(searchStr)) ||
-                           (data.SKU && data.SKU.toLowerCase().includes(searchStr)) ||
-                           (data.shopify_inv && String(data.shopify_inv).toLowerCase().includes(searchStr)) ||
-                           (data.video_product_overview && data.video_product_overview.toLowerCase().includes(searchStr)) ||
-                           (data.video_unboxing && data.video_unboxing.toLowerCase().includes(searchStr)) ||
-                           (data.video_how_to && data.video_how_to.toLowerCase().includes(searchStr)) ||
-                           (data.video_setup && data.video_setup.toLowerCase().includes(searchStr)) ||
-                           (data.video_troubleshooting && data.video_troubleshooting.toLowerCase().includes(searchStr)) ||
-                           (data.video_brand_story && data.video_brand_story.toLowerCase().includes(searchStr)) ||
-                           (data.video_product_benefits && data.video_product_benefits.toLowerCase().includes(searchStr));
-                });
-            }
+                // Parent search filter
+                if (parentFilter && !(item.Parent && item.Parent.toLowerCase().includes(parentFilter))) {
+                    return false;
+                }
 
-            // Parent search filter
-            if (parentFilter) {
-                filters.push({field: "Parent", type: "like", value: parentFilter});
-            }
+                // SKU search filter
+                if (skuFilter && !(item.SKU && item.SKU.toLowerCase().includes(skuFilter))) {
+                    return false;
+                }
 
-            // SKU search filter
-            if (skuFilter) {
-                filters.push({field: "SKU", type: "like", value: skuFilter});
-            }
+                // Product Overview filter
+                if (filterProductOverview === 'missing' && !isMissing(item.video_product_overview)) {
+                    return false;
+                }
 
-            // Missing videos filter
-            if (filterVideos === 'missing') {
-                filters.push(function(data) {
-                    return isMissing(data.video_product_overview) || 
-                           isMissing(data.video_unboxing) || 
-                           isMissing(data.video_how_to) || 
-                           isMissing(data.video_setup) || 
-                           isMissing(data.video_troubleshooting) || 
-                           isMissing(data.video_brand_story) || 
-                           isMissing(data.video_product_benefits);
-                });
-            }
+                // Unboxing filter
+                if (filterUnboxing === 'missing' && !isMissing(item.video_unboxing)) {
+                    return false;
+                }
 
-            table.clearFilter();
-            if (filters.length > 0) {
-                table.setFilter(filters);
-            }
+                // How To filter
+                if (filterHowTo === 'missing' && !isMissing(item.video_how_to)) {
+                    return false;
+                }
+
+                // Setup filter
+                if (filterSetup === 'missing' && !isMissing(item.video_setup)) {
+                    return false;
+                }
+
+                // Troubleshooting filter
+                if (filterTroubleshooting === 'missing' && !isMissing(item.video_troubleshooting)) {
+                    return false;
+                }
+
+                // Brand Story filter
+                if (filterBrandStory === 'missing' && !isMissing(item.video_brand_story)) {
+                    return false;
+                }
+
+                // Product Benefits filter
+                if (filterProductBenefits === 'missing' && !isMissing(item.video_product_benefits)) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            renderTable(filteredData);
         }
 
         function setupSearchHandlers() {
-            const generalSearch = document.getElementById('general-search');
             const parentSearch = document.getElementById('parentSearch');
             const skuSearch = document.getElementById('skuSearch');
-            const filterVideos = document.getElementById('filterVideos');
 
-            generalSearch.addEventListener('input', applyFilters);
             parentSearch.addEventListener('input', applyFilters);
             skuSearch.addEventListener('input', applyFilters);
-            filterVideos.addEventListener('change', applyFilters);
+
+            // Column filters
+            document.getElementById('filterProductOverview').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterUnboxing').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterHowTo').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterSetup').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterTroubleshooting').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterBrandStory').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterProductBenefits').addEventListener('change', function() {
+                applyFilters();
+            });
         }
 
         function filterTable() {
@@ -1094,7 +1000,7 @@
                 if (item.Parent) parentSet.add(item.Parent);
                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                     skuCount++;
-
+                    
                     // Count missing data for each video column
                     if (isMissing(item.video_product_overview)) productOverviewMissingCount++;
                     if (isMissing(item.video_unboxing)) unboxingMissingCount++;
@@ -1106,18 +1012,15 @@
                 }
             });
 
-            // Update placeholders
-            document.getElementById('parentSearch').placeholder = `Search Parent... (${parentSet.size})`;
-            document.getElementById('skuSearch').placeholder = `Search SKU... (${skuCount})`;
-            
-            // Update missing counts
-            document.getElementById('productOverviewMissingCount').textContent = productOverviewMissingCount;
-            document.getElementById('unboxingMissingCount').textContent = unboxingMissingCount;
-            document.getElementById('howToMissingCount').textContent = howToMissingCount;
-            document.getElementById('setupMissingCount').textContent = setupMissingCount;
-            document.getElementById('troubleshootingMissingCount').textContent = troubleshootingMissingCount;
-            document.getElementById('brandStoryMissingCount').textContent = brandStoryMissingCount;
-            document.getElementById('productBenefitsMissingCount').textContent = productBenefitsMissingCount;
+            document.getElementById('parentCount').textContent = '(' + parentSet.size + ')';
+            document.getElementById('skuCount').textContent = '(' + skuCount + ')';
+            document.getElementById('productOverviewMissingCount').textContent = '(' + productOverviewMissingCount + ')';
+            document.getElementById('unboxingMissingCount').textContent = '(' + unboxingMissingCount + ')';
+            document.getElementById('howToMissingCount').textContent = '(' + howToMissingCount + ')';
+            document.getElementById('setupMissingCount').textContent = '(' + setupMissingCount + ')';
+            document.getElementById('troubleshootingMissingCount').textContent = '(' + troubleshootingMissingCount + ')';
+            document.getElementById('brandStoryMissingCount').textContent = '(' + brandStoryMissingCount + ')';
+            document.getElementById('productBenefitsMissingCount').textContent = '(' + productBenefitsMissingCount + ')';
         }
 
         function escapeHtml(text) {

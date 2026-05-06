@@ -2715,7 +2715,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/api/marketplaces/push-status', [ProductMasterController::class, 'getMarketplacePushStatus'])->name('marketplaces.push.status');
     Route::post('/title-master/update-amazon', [ProductMasterController::class, 'updateTitlesToAmazon'])->name('title.master.update.amazon');
     Route::post('/title-master/update-platforms', [ProductMasterController::class, 'updateTitlesToPlatforms'])->name('title.master.update.platforms');
-    Route::get('/videos-master', fn () => view('videos-master'))->name('videos.master');
+    Route::get('/videos-master', [\App\Http\Controllers\PurchaseMaster\VideosMasterController::class, 'videosMaster'])->name('videos.master');
+    Route::get('/videos-master-data-view', [\App\Http\Controllers\PurchaseMaster\VideosMasterController::class, 'getVideosMasterData'])->name('videos.master.data');
     Route::post('/videos-master/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.master.save');
     Route::get('/videos-for-ads', [VideosForAdsController::class, 'index'])->name('videos.for.ads');
     Route::get('/videos-for-ads/data', [VideosForAdsController::class, 'getData'])->name('videos.for.ads.data');
