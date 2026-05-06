@@ -112,6 +112,25 @@
             box-shadow: 0 3px 8px rgba(26, 86, 183, 0.2);
         }
 
+        /* Copy SKU button styles */
+        .copy-sku-btn {
+            opacity: 0.7;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+        }
+
+        .copy-sku-btn:hover {
+            opacity: 1;
+            color: #2c6ed5 !important;
+            transform: scale(1.1);
+        }
+
+        .copy-sku-btn:active {
+            transform: scale(0.95);
+        }
+
         .delete-btn {
             border-radius: 6px;
             padding: 6px 12px;
@@ -993,6 +1012,28 @@
                 return num.toFixed(decimals);
             }
 
+            // Copy to clipboard function
+            function copyToClipboard(text, buttonElement) {
+                navigator.clipboard.writeText(text).then(function() {
+                    // Change icon to checkmark temporarily
+                    const originalHTML = buttonElement.innerHTML;
+                    buttonElement.innerHTML = '<i class="fas fa-check"></i>';
+                    buttonElement.style.color = '#28a745';
+                    
+                    // Show toast notification
+                    showToast('success', `SKU "${text}" copied to clipboard!`);
+                    
+                    // Reset icon after 2 seconds
+                    setTimeout(function() {
+                        buttonElement.innerHTML = originalHTML;
+                        buttonElement.style.color = '#6c757d';
+                    }, 2000);
+                }).catch(function(err) {
+                    console.error('Failed to copy text: ', err);
+                    showToast('danger', 'Failed to copy SKU');
+                });
+            }
+
             // Load A+ images data from server
             function loadData() {
                 const cacheParam = '?ts=' + new Date().getTime();
@@ -1064,7 +1105,35 @@
 
                     // SKU column
                     const skuCell = document.createElement('td');
-                    skuCell.textContent = escapeHtml(item.SKU) || '-';
+                    const skuValue = escapeHtml(item.SKU) || '-';
+                    
+                    // Create container for SKU and copy icon
+                    const skuContainer = document.createElement('div');
+                    skuContainer.style.display = 'inline-flex';
+                    skuContainer.style.alignItems = 'center';
+                    skuContainer.style.gap = '5px';
+                    
+                    // SKU text
+                    const skuText = document.createElement('span');
+                    skuText.textContent = skuValue;
+                    skuContainer.appendChild(skuText);
+                    
+                    // Copy icon button
+                    if (skuValue !== '-') {
+                        const copyBtn = document.createElement('button');
+                        copyBtn.className = 'btn btn-sm btn-link p-0 copy-sku-btn';
+                        copyBtn.style.color = '#6c757d';
+                        copyBtn.style.fontSize = '14px';
+                        copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
+                        copyBtn.title = 'Copy SKU';
+                        copyBtn.onclick = function(e) {
+                            e.stopPropagation();
+                            copyToClipboard(item.SKU, copyBtn);
+                        };
+                        skuContainer.appendChild(copyBtn);
+                    }
+                    
+                    skuCell.appendChild(skuContainer);
                     row.appendChild(skuCell);
 
                     // LQS (Listing Quality Score) column
