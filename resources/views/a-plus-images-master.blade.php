@@ -738,10 +738,29 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value) return '-';
-                        const score = parseInt(value);
-                        let color = '#dc3545';
-                        if (score >= 8) color = '#28a745';
-                        else if (score >= 6) color = '#ffc107';
+                        
+                        const rawValue = parseFloat(value);
+                        let score;
+                        
+                        // Only round off double digit values except 10
+                        if (rawValue >= 11 && rawValue <= 99) {
+                            // Double digit (except 10): divide by 10 and round
+                            score = Math.round(rawValue / 10);
+                        } else if (rawValue === 10) {
+                            // Keep 10 as it is
+                            score = 10;
+                        } else if (rawValue >= 100) {
+                            // Triple digit: divide by 10 and round
+                            score = Math.round(rawValue / 10);
+                        } else {
+                            // Single digit (0-9): keep as is
+                            score = Math.round(rawValue);
+                        }
+                        
+                        let color = '#dc3545'; // Red for low scores
+                        if (score >= 8) color = '#28a745'; // Green for 8-10
+                        else if (score >= 6) color = '#ffc107'; // Yellow for 6-7
+                        
                         return `<span class="badge" style="background-color: ${color}; color: ${score >= 6 && score < 8 ? 'black' : 'white'};">${score}</span>`;
                     }
                 },
