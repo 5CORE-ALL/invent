@@ -1846,8 +1846,14 @@
                 const base = `Amazon pushed $${Number(price).toFixed(2)} for SKU: ${sku}`;
                 const shopify = response && response.shopify_push ? response.shopify_push : null;
                 if (!shopify) {
-                    if (response && (response.S_STATUS === 'pushed' || response.S_STATUS === 'error')) {
-                        showToast(response.S_STATUS === 'pushed' ? 'success' : 'warning', `${base} | Shopify: ${response.S_STATUS === 'pushed' ? 'pushed' : 'failed'}`);
+                    if (response && (response.S_STATUS === 'pushed' || response.S_STATUS === 'error' || response.S_STATUS === 'retry' || response.S_STATUS === 'pending')) {
+                        if (response.S_STATUS === 'pushed') {
+                            showToast('success', `${base} | Shopify: pushed`);
+                        } else if (response.S_STATUS === 'retry' || response.S_STATUS === 'pending') {
+                            showToast('info', `${base} | Shopify: retrying in background (up to 5 attempts)`);
+                        } else {
+                            showToast('warning', `${base} | Shopify: failed`);
+                        }
                     } else {
                         showToast('success', `${base} | Shopify status not available`);
                     }
@@ -1857,9 +1863,13 @@
                     const msg = shopify.message || 'Shopify B2C pushed successfully';
                     showToast('success', `${base} | Shopify: ${msg}`);
                 } else {
-                    const msg = shopify.message || 'Shopify B2C push failed';
-                    // Do not use "success" styling when Shopify did not update (Amazon may still be OK).
-                    showToast('error', `${base} | Shopify NOT updated: ${msg}`);
+                    if (response.shopify_retry_queued) {
+                        showToast('info', `${base} | Shopify: initial push failed, retrying in background (up to 5 attempts)`);
+                    } else {
+                        const msg = shopify.message || 'Shopify B2C push failed';
+                        // Do not use "success" styling when Shopify did not update (Amazon may still be OK).
+                        showToast('error', `${base} | Shopify NOT updated: ${msg}`);
+                    }
                 }
             }
 
@@ -3806,7 +3816,7 @@
                         field: "S_STATUS",
                         hozAlign: "center",
                         headerSort: false,
-                        tooltip: "Shopify B2C push: ✓✓ pushed, ✗ failed, — not pushed",
+                        tooltip: "Shopify B2C push: ✓✓ pushed, ⟳ retrying, ✗ failed, — not pushed",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) {
@@ -3816,8 +3826,11 @@
                             if (st === 'pushed') {
                                 return '<span style="color:#28a745;" title="Shopify B2C: price pushed"><i class="fa-solid fa-check-double"></i></span>';
                             }
+                            if (st === 'pending' || st === 'retry') {
+                                return '<span style="color:#ffc107;" title="Shopify B2C: retrying in background"><i class="fa-solid fa-rotate"></i></span>';
+                            }
                             if (st === 'error') {
-                                return '<span style="color:#dc3545;" title="Shopify B2C: push failed"><i class="fa-solid fa-xmark"></i></span>';
+                                return '<span style="color:#dc3545;" title="Shopify B2C: push failed after retries"><i class="fa-solid fa-xmark"></i></span>';
                             }
                             return '<span style="color:#adb5bd;" title="Shopify: not pushed">—</span>';
                         },

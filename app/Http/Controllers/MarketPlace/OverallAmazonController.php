@@ -18,6 +18,7 @@ use App\Models\JungleScoutProductData;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Jobs\UpdateAmazonSPriceJob;
+use App\Jobs\PushShopifyB2CPriceJob;
 use App\Models\AmazonDatasheet;
 use App\Models\ADVMastersData;
 use App\Models\AmazonSbCampaignReport;
@@ -3396,10 +3397,6 @@ class OverallAmazonController extends Controller
                 return response()->json($result);
             }
 
-            // Check if response indicates success (pushed)
-            // If no errors, consider it pushed initially
-            $this->saveSpriceStatus($statusSku, 'pushed');
-
             // Match Pricing Master CVR Shopify B2C behavior exactly by routing through
             // CvrMasterController::pushPriceToAmazon(marketplace=shopifyb2c).
             $shopifyPush = $this->pushShopifyB2CViaCvrController(
@@ -3407,20 +3404,40 @@ class OverallAmazonController extends Controller
                 $priceFloat
             );
             
-            Log::info('Amazon price update successful', [
-                'status_sku' => $statusSku,
-                'amazon_api_sku' => $skuForAmazon,
-                'asin_param' => $asinParam,
-                'price' => $priceFloat,
-                'shopify_push_ok' => $shopifyPush['ok'] ?? false,
-                'shopify_push_message' => $shopifyPush['message'] ?? null,
-            ]);
+            // Handle Shopify push result with background retry
+            if ($shopifyPush['ok'] ?? false) {
+                // Success: mark as pushed
+                $this->saveSpriceStatus($statusSku, 'pushed');
+                
+                Log::info('Amazon + Shopify B2C price update successful', [
+                    'status_sku' => $statusSku,
+                    'amazon_api_sku' => $skuForAmazon,
+                    'asin_param' => $asinParam,
+                    'price' => $priceFloat,
+                ]);
+            } else {
+                // Failed: dispatch background retry job (5 attempts with exponential backoff)
+                PushShopifyB2CPriceJob::dispatch(
+                    $statusSku !== '' ? $statusSku : strtoupper(trim($skuForAmazon)),
+                    $priceFloat
+                );
+                
+                $this->saveSpriceStatus($statusSku, 'pending');
+                
+                Log::warning('Shopify B2C push failed, queued for background retry', [
+                    'status_sku' => $statusSku,
+                    'amazon_api_sku' => $skuForAmazon,
+                    'price' => $priceFloat,
+                    'shopify_error' => $shopifyPush['message'] ?? 'Unknown error',
+                ]);
+            }
             
             return response()->json(array_merge(is_array($result) ? $result : [], [
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
                 'shopify_push' => $shopifyPush,
-                'S_STATUS' => ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error',
+                'S_STATUS' => ($shopifyPush['ok'] ?? false) ? 'pushed' : 'retry',
+                'shopify_retry_queued' => !($shopifyPush['ok'] ?? false),
             ]));
         } catch (\Exception $e) {
             // Save error status

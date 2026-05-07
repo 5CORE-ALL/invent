@@ -39,6 +39,7 @@ class OnSeaTransitController extends Controller
                 'bl_link' => $item->bl_link,
                 'isf' => $item->isf,
                 'etd' => $item->etd,
+                'eta_port' => $item->eta_port,
                 'port_arrival' => $item->port_arrival,
                 'eta_date_ohio' => $item->eta_date_ohio,
                 'duty_calcu' => $item->duty_calcu,
