@@ -134,29 +134,93 @@
                     <i class="fas fa-chart-bar me-2"></i>SKU Sales by Source (Last 30 Days)
                 </h4>
                 
-                <!-- Stats Cards -->
-                <div class="row mb-3" id="stats-container">
-                    <div class="col-md-4">
+                <!-- Stats Cards - Row 1 -->
+                <div class="row mb-2">
+                    <div class="col">
                         <div class="card stats-card">
-                            <div class="card-body">
-                                <div class="stats-number" id="total-records">-</div>
-                                <div class="stats-label">Total Orders</div>
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem;" id="total-skus">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">SKUs</div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col">
                         <div class="card stats-card" style="border-left-color: #28a745;">
-                            <div class="card-body">
-                                <div class="stats-number" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="total-quantity">-</div>
-                                <div class="stats-label">Total Quantity</div>
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="total-quantity">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">Total</div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
-                        <div class="card stats-card" style="border-left-color: #f5576c;">
-                            <div class="card-body">
-                                <div class="stats-number" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="total-amount">-</div>
-                                <div class="stats-label">Total Revenue</div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #00897B;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #00897B 0%, #00695C 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="pp-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">PP</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #FF9800;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #FF9800 0%, #FF5722 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="amazon-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">Amz</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #0046BE;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #0046BE 0%, #003087 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="bestbuy-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">BB</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #E91E63;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #E91E63 0%, #C2185B 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="macys-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">Macy</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #9C27B0;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="doba-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">Doba</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #4A90E2;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="faire-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">Faire</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #FF6B35;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="reverb-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">R</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #000000;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #000000 0%, #333333 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="shein-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">Sen</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card stats-card" style="border-left-color: #7B2FBE;">
+                            <div class="card-body py-2">
+                                <div class="stats-number" style="font-size: 1.3rem; background: linear-gradient(135deg, #7B2FBE 0%, #5E1D9E 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="wayfair-sales-total">-</div>
+                                <div class="stats-label" style="font-size: 0.7rem;">WF</div>
                             </div>
                         </div>
                     </div>
@@ -268,11 +332,339 @@ $(document).ready(function() {
                         formatter: function(cell) {
                             return `<code class="text-primary fw-bold">${cell.getValue()}</code>`;
                         }
+                    },
+                    {
+                        title: "Amz SL",
+                        field: "amz_sales",
+                        width: 75,
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerTooltip: "Amazon Daily Sales (Last 30 Days)",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #FF9800; font-weight: 600;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
                     }
                 ];
                 
-                // Add a column for each source
-                allSources.forEach(function(source, index) {
+                // Add specific source columns in order: Amz Shp, BB SL, BB Shp, Macy's SL, Macy's Shp, Doba SL, Doba Shp, Faire SL, Faire Shp, PP Shp, R Shp, Sen Shp, WF Shp
+                const prioritySources = ['Amz Shp', 'BestBuy Shp', "Macy's Shp", 'Doba Shp', 'Faire Shp', 'PP Shp', 'R Shp', 'Sen Shp', 'WF Shp'];
+                const remainingSources = [];
+                
+                // Separate priority sources from remaining
+                allSources.forEach(function(source) {
+                    if (!prioritySources.includes(source)) {
+                        remainingSources.push(source);
+                    }
+                });
+                
+                // Add Amz Shp column right after Amz SL
+                if (allSources.includes('Amz Shp')) {
+                    columns.push({
+                        title: "Amz Shp",
+                        field: "Amz Shp",
+                        width: 80,
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add BestBuy SL column
+                columns.push({
+                    title: "BB SL",
+                    field: "bestbuy_sales",
+                    width: 70,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Best Buy Daily Sales (Last 30 Days)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value > 0) {
+                            return `<span style="color: #0046BE; font-weight: 600;">${value}</span>`;
+                        }
+                        return '<span style="color: #ccc;">-</span>';
+                    }
+                });
+                
+                // Add BestBuy Shp column right after BB SL
+                if (allSources.includes('BestBuy Shp')) {
+                    columns.push({
+                        title: "BB Shp",
+                        field: "BestBuy Shp",
+                        width: 75,
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add Macy's SL column
+                columns.push({
+                    title: "Macy SL",
+                    field: "macys_sales",
+                    width: 80,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Macy's Daily Sales (Last 30 Days)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value > 0) {
+                            return `<span style="color: #E91E63; font-weight: 600;">${value}</span>`;
+                        }
+                        return '<span style="color: #ccc;">-</span>';
+                    }
+                });
+                
+                // Add Macy's Shp column right after Macy SL
+                if (allSources.includes("Macy's Shp")) {
+                    columns.push({
+                        title: "Macy Shp",
+                        field: "Macy's Shp",
+                        width: 85,
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add Doba SL column
+                columns.push({
+                    title: "Doba SL",
+                    field: "doba_sales",
+                    width: 80,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Doba Daily Sales (Last 30 Days)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value > 0) {
+                            return `<span style="color: #9C27B0; font-weight: 600;">${value}</span>`;
+                        }
+                        return '<span style="color: #ccc;">-</span>';
+                    }
+                });
+                
+                // Add Doba Shp column right after Doba SL
+                if (allSources.includes('Doba Shp')) {
+                    columns.push({
+                        title: "Doba Shp",
+                        field: "Doba Shp",
+                        width: 85,
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add Faire SL column
+                columns.push({
+                    title: "Faire SL",
+                    field: "faire_sales",
+                    width: 75,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Faire Daily Sales (Last 30 Days)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value > 0) {
+                            return `<span style="color: #4A90E2; font-weight: 600;">${value}</span>`;
+                        }
+                        return '<span style="color: #ccc;">-</span>';
+                    }
+                });
+                
+                // Add Faire Shp column right after Faire SL
+                if (allSources.includes('Faire Shp')) {
+                    columns.push({
+                        title: "Faire Shp",
+                        field: "Faire Shp",
+                        width: 85,
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add PP Shp column (Purchasing Power via Shopify)
+                if (allSources.includes('PP Shp')) {
+                    columns.push({
+                        title: "PP Shp",
+                        field: "PP Shp",
+                        width: 80,
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerTooltip: "Purchasing Power via Shopify (Last 30 Days)",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add PP SL column (Purchasing Power Direct Sales)
+                columns.push({
+                    title: "PP SL",
+                    field: "purchasing_power_sales",
+                    width: 75,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Purchasing Power Direct Sales (Last 30 Days)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value > 0) {
+                            return `<span style="color: #00897B; font-weight: 600;">${value}</span>`;
+                        }
+                        return '<span style="color: #ccc;">-</span>';
+                    }
+                });
+                
+                // Add R Shp column (Reverb via Shopify)
+                if (allSources.includes('R Shp')) {
+                    columns.push({
+                        title: "R Shp",
+                        field: "R Shp",
+                        width: 75,
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerTooltip: "Reverb via Shopify (Last 30 Days)",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add R SL column (Reverb Direct Sales)
+                columns.push({
+                    title: "R SL",
+                    field: "reverb_sales",
+                    width: 75,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Reverb Direct Sales (Last 30 Days)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value > 0) {
+                            return `<span style="color: #FF6B35; font-weight: 600;">${value}</span>`;
+                        }
+                        return '<span style="color: #ccc;">-</span>';
+                    }
+                });
+                
+                // Add Sen Shp column (Shein via Shopify)
+                if (allSources.includes('Sen Shp')) {
+                    columns.push({
+                        title: "Sen Shp",
+                        field: "Sen Shp",
+                        width: 80,
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerTooltip: "Shein via Shopify (Last 30 Days)",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add Sen SL column (Shein Direct Sales)
+                columns.push({
+                    title: "Sen SL",
+                    field: "shein_sales",
+                    width: 75,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Shein Direct Sales (Last 30 Days)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value > 0) {
+                            return `<span style="color: #000; font-weight: 600;">${value}</span>`;
+                        }
+                        return '<span style="color: #ccc;">-</span>';
+                    }
+                });
+                
+                // Add WF Shp column (Wayfair via Shopify)
+                if (allSources.includes('WF Shp')) {
+                    columns.push({
+                        title: "WF Shp",
+                        field: "WF Shp",
+                        width: 80,
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerTooltip: "Wayfair via Shopify (Last 30 Days)",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
+                        }
+                    });
+                }
+                
+                // Add WF SL column (Wayfair Direct Sales)
+                columns.push({
+                    title: "WF SL",
+                    field: "wayfair_sales",
+                    width: 75,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Wayfair Direct Sales (Last 30 Days)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value > 0) {
+                            return `<span style="color: #7B2FBE; font-weight: 600;">${value}</span>`;
+                        }
+                        return '<span style="color: #ccc;">-</span>';
+                    }
+                });
+                
+                // Add remaining source columns
+                remainingSources.forEach(function(source) {
                     columns.push({
                         title: source,
                         field: source,
@@ -342,8 +734,15 @@ $(document).ready(function() {
                 console.log('Stats loaded:', response);
                 $('#total-skus').text(response.total_skus.toLocaleString());
                 $('#total-quantity').text(response.total_quantity.toLocaleString());
-                $('#total-sources').text(response.total_sources.toLocaleString());
-                $('#total-orders').text(response.total_orders.toLocaleString());
+                $('#pp-sales-total').text(response.purchasing_power_sales_total.toLocaleString());
+                $('#amazon-sales-total').text(response.amazon_sales_total.toLocaleString());
+                $('#bestbuy-sales-total').text(response.bestbuy_sales_total.toLocaleString());
+                $('#macys-sales-total').text(response.macys_sales_total.toLocaleString());
+                $('#doba-sales-total').text(response.doba_sales_total.toLocaleString());
+                $('#faire-sales-total').text(response.faire_sales_total.toLocaleString());
+                $('#reverb-sales-total').text(response.reverb_sales_total.toLocaleString());
+                $('#shein-sales-total').text(response.shein_sales_total.toLocaleString());
+                $('#wayfair-sales-total').text(response.wayfair_sales_total.toLocaleString());
             },
             error: function(xhr, status, error) {
                 console.error('Stats load error:', error);
