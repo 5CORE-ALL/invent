@@ -367,8 +367,8 @@
                                         </div>
                                         <div class="mb-3">
                                             <label for="comment" class="form-label fw-bold">Corrective Action Required</label>
-                                            <input type="text" class="form-control" id="comment" name="comment" maxlength="80" placeholder="Optional (max 80 characters)">
-                                            <small class="text-muted"><span id="comment-char-count">0</span>/80</small>
+                                            <input type="text" class="form-control" id="comment" name="comment" placeholder="Optional">
+                                            <small class="text-muted"><span id="comment-char-count">0</span> characters</small>
                                         </div>
                                         <div class="mb-3">
                                             <label for="person_responsible" class="form-label fw-bold">Person responsible</label>
@@ -436,7 +436,7 @@
                                     </div>
                                     <div class="mb-3">
                                         <label for="editComment" class="form-label">Corrective Action Required</label>
-                                        <input type="text" class="form-control" id="editComment" maxlength="80" placeholder="Optional (max 80 characters)">
+                                        <input type="text" class="form-control" id="editComment" placeholder="Optional">
                                     </div>
                                     <div class="mb-3">
                                         <label for="editPersonResponsible" class="form-label">Person responsible</label>

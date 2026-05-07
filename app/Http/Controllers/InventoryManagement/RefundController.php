@@ -213,7 +213,7 @@ class RefundController extends Controller
             'qty.*' => 'required|integer|min:1',
             'refund_amt' => 'required|numeric|min:0',
             'reason' => 'required|string',
-            'comment' => 'nullable|string|max:80',
+            'comment' => 'nullable|string',
             'person_responsible' => ['required', Rule::in(self::PERSON_RESPONSIBLE_OPTIONS)],
             'supplier_id' => [
                 'nullable',
@@ -282,7 +282,7 @@ class RefundController extends Controller
         $request->validate([
             'id' => 'required|integer|exists:refund_records,id',
             'reason' => 'required|string|max:255',
-            'comment' => 'nullable|string|max:80',
+            'comment' => 'nullable|string',
             'person_responsible' => ['required', Rule::in(self::PERSON_RESPONSIBLE_OPTIONS)],
             'supplier_id' => [
                 'nullable',
