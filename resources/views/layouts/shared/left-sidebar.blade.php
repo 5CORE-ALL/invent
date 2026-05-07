@@ -436,6 +436,30 @@
                 </div>
             </li>
 
+            {{-- Sales & History Reports --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#salesHistoryMenu" aria-expanded="false"
+                    aria-controls="salesHistoryMenu" class="side-nav-link">
+                    <i class="ri-bar-chart-box-line"></i>
+                    <span>Sales & History Reports</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="salesHistoryMenu">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('inventory-history.index') }}">
+                                <i class="ri-history-line me-2"></i>Inventory History
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shopify-orders.index') }}">
+                                <i class="ri-shopping-cart-2-line me-2"></i>Sales by Source
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             {{-- Inventory Warehouse --}}
 
             <li class="side-nav-item">

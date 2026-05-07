@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Inventory History', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Shopify Orders (30 Days)', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -121,8 +121,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     
     @include('layouts.shared.page-title', [
-        'page_title' => 'Inventory History',
-        'sub_title' => 'Daily Inventory Snapshots & Sales Tracking',
+        'page_title' => 'SKU Sales by Source (Last 30 Days)',
+        'sub_title' => 'Amazon, eBay, Shopify & Other Sources - PST Timezone',
     ])
     
     <div class="toast-container"></div>
@@ -131,7 +131,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <h4 class="mb-3">
-                    <i class="fas fa-history me-2"></i>Inventory History
+                    <i class="fas fa-chart-bar me-2"></i>SKU Sales by Source (Last 30 Days)
                 </h4>
                 
                 <!-- Stats Cards -->
@@ -140,23 +140,23 @@
                         <div class="card stats-card">
                             <div class="card-body">
                                 <div class="stats-number" id="total-records">-</div>
-                                <div class="stats-label">Total Records</div>
+                                <div class="stats-label">Total Orders</div>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="card stats-card" style="border-left-color: #28a745;">
                             <div class="card-body">
-                                <div class="stats-number" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="total-skus">-</div>
-                                <div class="stats-label">Unique SKUs</div>
+                                <div class="stats-number" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="total-quantity">-</div>
+                                <div class="stats-label">Total Quantity</div>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="card stats-card" style="border-left-color: #f5576c;">
                             <div class="card-body">
-                                <div class="stats-number" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="latest-date">-</div>
-                                <div class="stats-label">Latest Snapshot</div>
+                                <div class="stats-number" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;" id="total-amount">-</div>
+                                <div class="stats-label">Total Revenue</div>
                             </div>
                         </div>
                     </div>
@@ -181,11 +181,6 @@
                         <i class="fa fa-download"></i> Export Excel
                     </button>
 
-                    <!-- Run Snapshot Button -->
-                    <button type="button" class="btn btn-sm btn-run-snapshot" id="run-snapshot-btn">
-                        <i class="fas fa-camera me-2"></i>Run Snapshot Now
-                    </button>
-
                     <!-- Refresh Button -->
                     <button type="button" class="btn btn-sm btn-info" id="refresh-btn">
                         <i class="fas fa-sync-alt me-2"></i>Refresh
@@ -198,24 +193,20 @@
                     <!-- Search Bar -->
                     <div class="p-2 bg-light border-bottom">
                         <div class="row g-2">
-                            <div class="col-md-3">
-                                <input type="text" id="general-search" class="form-control form-control-sm" placeholder="Search all columns...">
-                            </div>
-                            <div class="col-md-2">
+                            <div class="col-md-4">
                                 <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU...">
                             </div>
-                            <div class="col-md-2">
-                                <input type="date" id="date-search" class="form-control form-control-sm" placeholder="Filter by date...">
+                            <div class="col-md-3">
+                                <select id="source-filter" class="form-control form-control-sm">
+                                    <option value="">All Sources</option>
+                                </select>
                             </div>
                             <div class="col-md-2">
-                                <input type="date" id="start-date-search" class="form-control form-control-sm" placeholder="Start date...">
+                                <input type="number" id="min-quantity" class="form-control form-control-sm" placeholder="Min Qty...">
                             </div>
-                            <div class="col-md-2">
-                                <input type="date" id="end-date-search" class="form-control form-control-sm" placeholder="End date...">
-                            </div>
-                            <div class="col-md-1">
-                                <button id="clear-filters-btn" class="btn btn-sm btn-outline-danger w-100" title="Clear all filters">
-                                    <i class="fas fa-times"></i> Clear
+                            <div class="col-md-3">
+                                <button id="clear-filters-btn" class="btn btn-sm btn-outline-danger" title="Clear all filters">
+                                    <i class="fas fa-times"></i> Clear Filters
                                 </button>
                             </div>
                         </div>
@@ -245,135 +236,98 @@ console.log('Tabulator available:', typeof Tabulator !== 'undefined');
 $(document).ready(function() {
     console.log('Document ready - initializing...');
     let table;
+    let allSources = [];
     
-    // Initialize Tabulator
+    // Initialize Tabulator with dynamic columns
     function initTable() {
-        console.log('Initializing Tabulator table...');
-        table = new Tabulator("#inventory-history-table", {
-            layout: "fitColumns",
-            height: "100%",
-            placeholder: "No inventory history records found. Click 'Run Snapshot Now' to create your first snapshot.",
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, 200, 500],
-            ajaxURL: "{{ route('inventory-history.get-data') }}",
-            ajaxConfig: {
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                }
-            },
-            ajaxError: function(xhr, textStatus, errorThrown){
-                console.error('AJAX Error:', textStatus, errorThrown);
-                console.error('Response:', xhr.responseText);
-                showToast('Failed to load data: ' + textStatus, 'error');
-            },
-            ajaxResponse: function(url, params, response) {
-                console.log('Data received:', response);
-                return response.data;
-            },
-            columns: [
-                {
-                    title: "#",
-                    field: "id",
-                    width: 70,
-                    frozen: true,
-                    headerFilter: false,
-                    hozAlign: "center"
-                },
-                {
-                    title: "Snapshot Date",
-                    field: "snapshot_date_formatted",
-                    width: 150,
-                    frozen: true,
-                    sorter: "date",
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        return `<strong>${row.snapshot_date_formatted}</strong><br><small class="text-muted">${row.day_of_week}</small>`;
-                    }
-                },
-                {
-                    title: "SKU",
-                    field: "sku",
-                    width: 200,
-                    frozen: true,
-                    formatter: function(cell) {
-                        return `<code class="text-primary">${cell.getValue()}</code>`;
-                    }
-                },
-                {
-                    title: "Product Name",
-                    field: "product_name",
-                    width: 300,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        return `<div style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${value}">${value}</div>`;
-                    }
-                },
-                {
-                    title: "Opening",
-                    field: "opening_inventory",
-                    width: 120,
-                    hozAlign: "right",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        return `<span class="badge bg-secondary">${cell.getValue().toLocaleString()}</span>`;
-                    }
-                },
-                {
-                    title: "Closing",
-                    field: "closing_inventory",
-                    width: 120,
-                    hozAlign: "right",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        return `<span class="badge bg-info">${cell.getValue().toLocaleString()}</span>`;
-                    }
-                },
-                {
-                    title: "Sold",
-                    field: "sold_quantity",
-                    width: 120,
-                    hozAlign: "right",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value > 0) {
-                            return `<span class="badge badge-sold"><i class="fas fa-arrow-down me-1"></i>${value.toLocaleString()}</span>`;
+        console.log('Fetching data to build columns...');
+        
+        $.ajax({
+            url: "{{ route('shopify-orders.get-data') }}",
+            method: 'GET',
+            success: function(response) {
+                console.log('Data fetched:', response);
+                allSources = response.sources || [];
+                const data = response.data || [];
+                
+                // Populate source filter dropdown
+                const sourceFilter = $('#source-filter');
+                sourceFilter.empty();
+                sourceFilter.append('<option value="">All Sources</option>');
+                allSources.forEach(function(source) {
+                    sourceFilter.append(`<option value="${source}">${source}</option>`);
+                });
+                
+                // Build dynamic columns
+                const columns = [
+                    {
+                        title: "SKU",
+                        field: "sku",
+                        width: 200,
+                        frozen: true,
+                        formatter: function(cell) {
+                            return `<code class="text-primary fw-bold">${cell.getValue()}</code>`;
                         }
-                        return '<span class="text-muted">-</span>';
                     }
-                },
-                {
-                    title: "Restocked",
-                    field: "restocked_quantity",
-                    width: 130,
-                    hozAlign: "right",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value > 0) {
-                            return `<span class="badge badge-restocked"><i class="fas fa-arrow-up me-1"></i>${value.toLocaleString()}</span>`;
+                ];
+                
+                // Add a column for each source
+                allSources.forEach(function(source, index) {
+                    columns.push({
+                        title: source,
+                        field: source,
+                        width: 80,
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value > 0) {
+                                return `<span style="color: #000; font-weight: 500;">${value}</span>`;
+                            }
+                            return '<span style="color: #ccc;">-</span>';
                         }
-                        return '<span class="text-muted">-</span>';
-                    }
-                },
-                {
-                    title: "Recorded At",
-                    field: "created_at",
-                    width: 180,
+                    });
+                });
+                
+                // Add Total column
+                columns.push({
+                    title: "Total",
+                    field: "total",
+                    width: 90,
                     hozAlign: "center",
+                    sorter: "number",
                     formatter: function(cell) {
-                        return `<small class="text-muted">${cell.getValue()}</small>`;
+                        const value = cell.getValue();
+                        return `<span style="color: #000; font-weight: bold; font-size: 15px;">${value}</span>`;
                     }
-                }
-            ],
-            dataLoaded: function(data) {
-                console.log('Data loaded successfully. Total rows:', data.length);
-                updateColumnVisibility();
-                loadStats();
+                });
+                
+                // Initialize Tabulator with dynamic columns
+                console.log('Initializing Tabulator with', columns.length, 'columns');
+                table = new Tabulator("#inventory-history-table", {
+                    layout: "fitDataFill",
+                    height: "600px",
+                    placeholder: "No SKU sales data found in the last 30 days.",
+                    pagination: true,
+                    paginationSize: 50,
+                    paginationSizeSelector: [25, 50, 100, 200, 500],
+                    columns: columns,
+                    data: data,
+                    dataLoaded: function(data) {
+                        console.log('Data loaded successfully. Total rows:', data.length);
+                        updateColumnVisibility();
+                        loadStats();
+                    },
+                    renderComplete: function(){
+                        console.log('Table render complete');
+                    }
+                });
+                
+                showToast('Table loaded with ' + allSources.length + ' sources!', 'success');
             },
-            renderComplete: function(){
-                console.log('Table render complete');
+            error: function(xhr, status, error) {
+                console.error('Error fetching data:', error);
+                showToast('Failed to load data: ' + error, 'error');
             }
         });
     }
@@ -382,13 +336,14 @@ $(document).ready(function() {
     function loadStats() {
         console.log('Loading statistics...');
         $.ajax({
-            url: "{{ route('inventory-history.get-stats') }}",
+            url: "{{ route('shopify-orders.get-stats') }}",
             method: 'GET',
             success: function(response) {
                 console.log('Stats loaded:', response);
-                $('#total-records').text(response.total_records.toLocaleString());
                 $('#total-skus').text(response.total_skus.toLocaleString());
-                $('#latest-date').text(response.latest_date || 'N/A');
+                $('#total-quantity').text(response.total_quantity.toLocaleString());
+                $('#total-sources').text(response.total_sources.toLocaleString());
+                $('#total-orders').text(response.total_orders.toLocaleString());
             },
             error: function(xhr, status, error) {
                 console.error('Stats load error:', error);
@@ -440,88 +395,75 @@ $(document).ready(function() {
 
     // Export to Excel
     $('#export-btn').on('click', function() {
-        table.download("xlsx", "inventory_history.xlsx", {sheetName: "Inventory History"});
+        table.download("xlsx", "sku_sales_by_source_30days.xlsx", {sheetName: "SKU Sales"});
         showToast('Excel file downloaded successfully!', 'success');
-    });
-
-    // Run snapshot
-    $('#run-snapshot-btn').on('click', function() {
-        if (!confirm('Are you sure you want to run the inventory snapshot now?')) {
-            return;
-        }
-
-        const btn = $(this);
-        btn.prop('disabled', true);
-        btn.html('<i class="fas fa-spinner fa-spin me-2"></i>Running...');
-
-        $.ajax({
-            url: "{{ route('inventory-history.run-snapshot') }}",
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-            },
-            success: function(response) {
-                showToast(response.message, 'success');
-                table.replaceData();
-                loadStats();
-            },
-            error: function(xhr) {
-                const message = xhr.responseJSON?.message || 'Snapshot failed. Please try again.';
-                showToast(message, 'error');
-            },
-            complete: function() {
-                btn.prop('disabled', false);
-                btn.html('<i class="fas fa-camera me-2"></i>Run Snapshot Now');
-            }
-        });
     });
 
     // Refresh data
     $('#refresh-btn').on('click', function() {
-        table.replaceData();
-        loadStats();
-        showToast('Data refreshed successfully!', 'success');
+        if (table) {
+            $.ajax({
+                url: "{{ route('shopify-orders.get-data') }}",
+                method: 'GET',
+                success: function(response) {
+                    table.setData(response.data);
+                    loadStats();
+                    showToast('Data refreshed successfully!', 'success');
+                },
+                error: function() {
+                    showToast('Failed to refresh data', 'error');
+                }
+            });
+        } else {
+            initTable();
+        }
     });
 
     // Search filters
-    $('#general-search').on('keyup', function() {
-        table.setFilter([
-            [
-                {field: "sku", type: "like", value: this.value},
-                {field: "product_name", type: "like", value: this.value},
-                {field: "snapshot_date_formatted", type: "like", value: this.value}
-            ]
-        ]);
-    });
-
     $('#sku-search').on('keyup', function() {
-        table.setFilter("sku", "like", this.value);
+        applyFilters();
     });
 
-    $('#date-search').on('change', function() {
-        if (this.value) {
-            table.setFilter("snapshot_date", "=", this.value);
-        } else {
-            table.clearFilter("snapshot_date");
-        }
+    $('#source-filter').on('change', function() {
+        applyFilters();
     });
 
-    $('#start-date-search, #end-date-search').on('change', function() {
-        const startDate = $('#start-date-search').val();
-        const endDate = $('#end-date-search').val();
+    $('#min-quantity').on('keyup', function() {
+        applyFilters();
+    });
+
+    function applyFilters() {
+        const skuSearch = $('#sku-search').val();
+        const sourceFilter = $('#source-filter').val();
+        const minQty = $('#min-quantity').val();
         
-        if (startDate && endDate) {
-            table.setFilter([
-                {field: "snapshot_date", type: ">=", value: startDate},
-                {field: "snapshot_date", type: "<=", value: endDate}
-            ]);
-        } else {
-            table.clearFilter("snapshot_date");
+        let filters = [];
+        
+        if (skuSearch) {
+            filters.push({field: "sku", type: "like", value: skuSearch});
         }
-    });
+        
+        if (sourceFilter) {
+            filters.push(function(data) {
+                return data[sourceFilter] > 0;
+            });
+        }
+        
+        if (minQty) {
+            filters.push(function(data) {
+                return data.total >= parseInt(minQty);
+            });
+        }
+        
+        if (filters.length > 0) {
+            table.setFilter(filters);
+        } else {
+            table.clearFilter();
+        }
+    }
 
     $('#clear-filters-btn').on('click', function() {
-        $('#general-search, #sku-search, #date-search, #start-date-search, #end-date-search').val('');
+        $('#sku-search, #source-filter, #min-quantity').val('');
         table.clearFilter();
         showToast('All filters cleared', 'success');
     });

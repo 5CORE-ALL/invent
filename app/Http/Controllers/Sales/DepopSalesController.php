@@ -73,10 +73,10 @@ class DepopSalesController extends Controller
     }
 
     /**
-     * Upload Depop sales export (TSV/CSV): 1 header row, then data rows. Min 14 columns.
-     * Column map (0-based) — sample layout: resources/views/market-places/depop sheet
-     * 0=Date of sale, 1=Time of sale, 4=Bundle amount, 5=Buyer, 7=Description, 8=Size,
-     * 9=Item price, 11=Total, 12=USPS Cost, 13=Depop fee (indices 2,3,6,10 ignored).
+     * Upload Depop sales export (TSV/CSV): 1 header row, then data rows. Min 15 columns.
+     * Column map (0-based):
+     * 0=Date of sale, 1=Time of sale, 4=Bundle amount, 5=Buyer, 6=Brand, 7=SKU,
+     * 8=Description, 9=Size, 10=Item price, 11=Buyer shipping, 12=Total, 13=USPS Cost, 14=Depop fee
      */
     public function upload(Request $request)
     {
@@ -97,13 +97,16 @@ class DepopSalesController extends Controller
             $colTime = 1;
             $colBundleQty = 4;
             $colBuyer = 5;
-            $colDescription = 7;
-            $colSize = 8;
-            $colItemPrice = 9;
-            $colTotal = 11;
-            $colUspsCost = 12;
-            $colDepopFee = 13;
-            $minCols = 14;
+            $colBrand = 6;
+            $colSKU = 7;
+            $colDescription = 8;
+            $colSize = 9;
+            $colItemPrice = 10;
+            $colBuyerShipping = 11;
+            $colTotal = 12;
+            $colUspsCost = 13;
+            $colDepopFee = 14;
+            $minCols = 15;
 
             $firstLine = fgets($handle);
             if ($firstLine === false) {
@@ -139,6 +142,7 @@ class DepopSalesController extends Controller
                 $dateStr = isset($cells[$colDate]) ? trim($cells[$colDate], " \t\"") : '';
                 $timeStr = isset($cells[$colTime]) ? trim($cells[$colTime], " \t\"") : '';
                 $buyer = isset($cells[$colBuyer]) ? trim($cells[$colBuyer], " \t\"") : '';
+                $sku = isset($cells[$colSKU]) ? trim($cells[$colSKU], " \t\"") : null;
                 $description = isset($cells[$colDescription]) ? trim($cells[$colDescription], " \t\"") : '';
                 $size = isset($cells[$colSize]) ? trim($cells[$colSize], " \t\"") : null;
                 $qtyRaw = isset($cells[$colBundleQty]) ? trim($cells[$colBundleQty], " \t\"") : 'N/A';
@@ -176,6 +180,7 @@ class DepopSalesController extends Controller
                 DepopSalesData::create([
                     'sale_date' => $saleDate,
                     'buyer' => $buyer,
+                    'sku_code' => $sku ?: null,
                     'description' => $description,
                     'size' => $size ?: null,
                     'quantity' => $quantity,

@@ -88,6 +88,7 @@ use App\Http\Controllers\InventoryManagement\StockTransferController;
 use App\Http\Controllers\InventoryManagement\VerificationAdjustmentController;
 use App\Http\Controllers\InventoryWarehouseController;
 use App\Http\Controllers\InventoryHistoryController;
+use App\Http\Controllers\ShopifyOrdersController;
 use App\Http\Controllers\ListingMaster\AmzListingController;
 use App\Http\Controllers\MarketingMaster\EbayCvrLqsController;
 use App\Http\Controllers\MarketingMaster\FacebookAddsManagerController;
@@ -3445,6 +3446,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inventory-history/get-data', [InventoryHistoryController::class, 'getData'])->name('inventory-history.get-data');
     Route::get('/inventory-history/get-stats', [InventoryHistoryController::class, 'getStats'])->name('inventory-history.get-stats');
     Route::post('/inventory-history/run-snapshot', [InventoryHistoryController::class, 'runSnapshot'])->name('inventory-history.run-snapshot');
+
+    Route::get('/shopify-orders', [ShopifyOrdersController::class, 'index'])->name('shopify-orders.index');
+    Route::get('/shopify-orders/get-data', [ShopifyOrdersController::class, 'getData'])->name('shopify-orders.get-data');
+    Route::get('/shopify-orders/get-stats', [ShopifyOrdersController::class, 'getStats'])->name('shopify-orders.get-stats');
 
     Route::controller(ArrivedContainerController::class)->group(function () {
         Route::get('/arrived/container', 'index')->name('arrived.container');
