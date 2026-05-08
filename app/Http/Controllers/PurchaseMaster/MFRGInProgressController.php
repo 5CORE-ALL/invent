@@ -24,12 +24,42 @@ class MFRGInProgressController extends Controller
             supplierCache: $supplierCache,
         );
 
-        if (config('app.debug')) {
-            Log::debug('mip.index enriched', ['ms' => round((microtime(true) - $t0) * 1000, 2)]);
+        // Get Ready-to-Ship data - SIMPLE VERSION
+        $readyToShipData = ReadyToShip::whereNull('deleted_at')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        // Mark RTS items simply
+        foreach ($readyToShipData as $item) {
+            $item->stage = 'rts';
+            $item->source_table = 'ready_to_ship';
+            $item->nr = 'RTS';
+            $item->order_qty = $item->qty ?? 0;
+            $item->ready_to_ship = 'No'; // Set to 'No' so it won't be filtered out
+            // Keep original fields: sku, supplier, zone, packing, terms, etc.
         }
 
+        // Combine both datasets
+        $combinedData = $mfrgData->concat($readyToShipData);
+
+        \Log::info('=== MIP + RTS FINAL DATA ===', [
+            'mip_count' => $mfrgData->count(),
+            'rts_count' => $readyToShipData->count(),
+            'combined_total' => $combinedData->count(),
+            'rts_sample' => $readyToShipData->take(2)->map(function($item) {
+                return [
+                    'sku' => $item->sku,
+                    'stage' => $item->stage,
+                    'source_table' => $item->source_table,
+                    'nr' => $item->nr,
+                    'ready_to_ship' => $item->ready_to_ship,
+                ];
+            }),
+            'ms' => round((microtime(true) - $t0) * 1000, 2)
+        ]);
+
         return view('purchase-master.mfrg-progress.index', [
-            'data' => $mfrgData,
+            'data' => $combinedData,
             'suppliers' => $supplierCache['names'],
             'supplier_platforms_by_name' => $supplierCache['platformsByName'],
         ]);
@@ -56,6 +86,24 @@ class MFRGInProgressController extends Controller
             onlyTrashed: $archived,
             supplierCache: $supplierCache,
         );
+
+        // Also include Ready-to-Ship data if not archived
+        if (!$archived) {
+            $readyToShipData = ReadyToShip::whereNull('deleted_at')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            
+            // Mark RTS items simply
+            foreach ($readyToShipData as $item) {
+                $item->stage = 'rts';
+                $item->source_table = 'ready_to_ship';
+                $item->nr = 'RTS';
+                $item->order_qty = $item->qty ?? 0;
+                $item->ready_to_ship = 'No';
+            }
+            
+            $mfrgData = $mfrgData->concat($readyToShipData);
+        }
 
         if (config('app.debug')) {
             Log::debug('mip.getMfrgProgressData', [
@@ -1054,5 +1102,74 @@ class MFRGInProgressController extends Controller
         }
 
         return $skuToPriceMap;
+    }
+
+    /**
+     * Enrich Ready-to-Ship data to match MIP format
+     */
+    private static function enrichReadyToShipData(Collection $rtsData, array $supplierCache): Collection
+    {
+        if ($rtsData->isEmpty()) {
+            return $rtsData;
+        }
+
+        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
+        
+        try {
+            $forecastData = self::buildForecastDataMapForMipRows($rtsData, $normalizeSku);
+            $shopifyImageByKey = self::buildShopifyImageByKeyForMipRows($rtsData, $normalizeSku);
+            $productMasterByKey = self::buildProductMasterByKeyForMipRows($rtsData, $normalizeSku);
+            $skuToPriceMap = self::buildSkuToPriceMapForMipRows($rtsData, $normalizeSku);
+        } catch (\Exception $e) {
+            Log::warning('RTS enrichment partial failure', ['error' => $e->getMessage()]);
+            $forecastData = collect();
+            $shopifyImageByKey = [];
+            $productMasterByKey = [];
+            $skuToPriceMap = [];
+        }
+        
+        $platformsByName = $supplierCache['platformsByName'] ?? [];
+
+        foreach ($rtsData as $row) {
+            // Mark as RTS FIRST
+            $row->stage = 'rts';
+            $row->source_table = 'ready_to_ship';
+            $row->order_qty = $row->qty ?? 0;
+            $row->nr = 'RTS';
+            
+            // Basic enrichment
+            $sku = $normalizeSku($row->sku);
+            
+            // Image
+            if ($sku && isset($shopifyImageByKey[$sku])) {
+                $row->Image = $shopifyImageByKey[$sku];
+            } else {
+                $row->Image = null;
+            }
+            
+            // CBM and other product master data
+            if ($sku && isset($productMasterByKey[$sku])) {
+                $productRow = $productMasterByKey[$sku];
+                $values = json_decode($productRow->Values ?? '{}', true);
+                if (is_array($values)) {
+                    $row->CBM = $values['cbm'] ?? $row->cbm ?? null;
+                    $row->ctn_cbm_e = $values['CBM E'] ?? $values['cbm_e'] ?? null;
+                }
+            }
+            
+            // Price from PO
+            if ($sku && isset($skuToPriceMap[$sku])) {
+                $row->price_from_po = $skuToPriceMap[$sku]['price'];
+                $row->currency_from_po = $skuToPriceMap[$sku]['currency'];
+            }
+            
+            // Supplier platform links
+            $supplierName = trim((string) ($row->supplier ?? ''));
+            $row->supplier_platform_links = ($supplierName !== '' && isset($platformsByName[$supplierName]))
+                ? $platformsByName[$supplierName]
+                : [];
+        }
+
+        return $rtsData;
     }
 }

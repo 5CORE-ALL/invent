@@ -722,12 +722,14 @@
                         <tbody>
                             @foreach ($data as $item)
                                 @php
-                                    $readyToShip = $item->ready_to_ship ?? '';
                                     $stageValue = $item->stage ?? '';
+                                    $sourceTable = $item->source_table ?? '';
                                     $nrValue = strtoupper(trim($item->nr ?? ''));
                                 @endphp
-                                @continue($readyToShip === 'Yes')
-                                @continue($nrValue === 'NR')
+                                {{-- Skip only NR items, but NEVER skip RTS items --}}
+                                @if($sourceTable !== 'ready_to_ship' && $nrValue === 'NR')
+                                    @continue
+                                @endif
                                 <tr data-stage="{{ $stageValue ?? '' }}" class="stage-row" data-mip-id="{{ $item->id }}" data-sku="{{ e($item->sku ?? '') }}" data-parent="{{ e($item->parent ?? '') }}">
                                     <td data-column="0" class="text-center">
                                         <input type="checkbox" class="row-checkbox" data-sku="{{ $item->sku }}">
@@ -1452,7 +1454,7 @@
                     const stageAttr = (r.getAttribute('data-stage') || '').toLowerCase().trim();
                     const stageSelect = r.querySelector('.editable-select-stage');
                     const stage = (stageSelect ? stageSelect.value : '').toLowerCase().trim() || stageAttr;
-                    return stage === 'mip' && r.style.display !== 'none';
+                    return (stage === 'mip' || stage === 'rts') && r.style.display !== 'none';
                 });
                 if (visibleMipRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
                     sortRowsByOrderDate(visibleMipRows);
