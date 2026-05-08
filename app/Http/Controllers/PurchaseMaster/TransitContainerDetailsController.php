@@ -200,7 +200,73 @@ class TransitContainerDetailsController extends Controller
             $this->logHistory('row_created', $row->id, null, $row->tab_name, $row->our_sku, null);
         }
 
+        // Auto-sync total amount to On Sea Transit
+        $this->autoSyncToOnSea($data['tab_name'] ?? $row->tab_name);
+
         return response()->json(['success' => true, 'id' => $row->id]);
+    }
+    
+    /**
+     * Sync all containers to On Sea Transit
+     */
+    public function syncAllToOnSea()
+    {
+        $tabs = TransitContainerDetail::where(function($q){
+            $q->whereNull('status')->orWhereRaw("TRIM(status) = ''");
+        })->distinct()->pluck('tab_name')->toArray();
+        
+        $syncedCount = 0;
+        foreach ($tabs as $tabName) {
+            $this->autoSyncToOnSea($tabName);
+            $syncedCount++;
+        }
+        
+        return response()->json([
+            'success' => true,
+            'count' => $syncedCount,
+            'message' => "Synced {$syncedCount} container(s) successfully"
+        ]);
+    }
+    
+    /**
+     * Automatically sync total amount to On Sea Transit table
+     */
+    protected function autoSyncToOnSea($tabName)
+    {
+        // Extract container number from tab name (e.g., "Container 85" -> 85)
+        if (preg_match('/Container\s+(\d+)/i', $tabName, $matches)) {
+            $containerSlNo = $matches[1];
+            
+            // Calculate total amount for this tab
+            $rows = TransitContainerDetail::where('tab_name', $tabName)
+                ->where(function($q){
+                    $q->whereNull('status')->orWhereRaw("TRIM(status) = ''");
+                })
+                ->get();
+            
+            $totalAmount = 0;
+            foreach ($rows as $row) {
+                $rate = floatval($row->rate ?? 0);
+                $noOfUnits = floatval($row->no_of_units ?? 0);
+                $totalCtn = floatval($row->total_ctn ?? 0);
+                $pcsQty = floatval($row->pcs_qty ?? 0);
+                
+                // Calculate quantity: if pcs_qty > 0, use it, else use total_ctn * no_of_units
+                $quantity = ($pcsQty > 0) ? $pcsQty : ($totalCtn * $noOfUnits);
+                $totalAmount += $rate * $quantity;
+            }
+            
+            // Update On Sea Transit table
+            $onSeaRecord = \App\Models\OnSeaTransit::firstOrNew(['container_sl_no' => $containerSlNo]);
+            $onSeaRecord->invoice_value = round($totalAmount);
+            
+            // Recalculate balance
+            $invoiceValue = $onSeaRecord->invoice_value ?? 0;
+            $paid = $onSeaRecord->paid ?? 0;
+            $onSeaRecord->balance = $invoiceValue - $paid;
+            
+            $onSeaRecord->save();
+        }
     }
 
     public function uploadImage(Request $request)
@@ -269,6 +335,10 @@ class TransitContainerDetailsController extends Controller
             'count' => count($request->our_sku),
             'skus' => $request->our_sku,
         ]);
+        
+        // Auto-sync total amount to On Sea Transit
+        $this->autoSyncToOnSea($request->tab_name);
+        
         return back()->with('success', 'Items saved successfully!');
     }
 
@@ -372,6 +442,9 @@ class TransitContainerDetailsController extends Controller
             $authUser = auth()->check() ? auth()->user()->name : 'system';
 
             $rows = TransitContainerDetail::whereIn('id', $ids)->get();
+            
+            // Store tab names for auto-sync after deletion
+            $tabNames = $rows->pluck('tab_name')->unique();
 
             DB::beginTransaction();
             try {
@@ -390,6 +463,11 @@ class TransitContainerDetailsController extends Controller
 
                 TransitContainerDetail::whereIn('id', $ids)->delete();
                 DB::commit();
+                
+                // Auto-sync affected containers to On Sea Transit
+                foreach ($tabNames as $tabName) {
+                    $this->autoSyncToOnSea($tabName);
+                }
             } catch (\Throwable $e) {
                 DB::rollBack();
                 throw $e;

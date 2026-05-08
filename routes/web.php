@@ -247,6 +247,7 @@ use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
 use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
+use App\Http\Controllers\PurchaseMaster\FollowUpHistoryController;
 use App\Http\Controllers\PurchaseMaster\LedgerMasterController;
 use App\Http\Controllers\PurchaseMaster\MFRGInProgressController;
 use App\Http\Controllers\PurchaseMaster\OnRoadTransitController;
@@ -3409,6 +3410,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/mfrg-in-progress/data', 'getMfrgProgressData')->name('mfrg.in.progress.data');
     });
 
+    // Follow-up History
+    Route::controller(FollowUpHistoryController::class)->prefix('purchase-master/follow-up-history')->group(function () {
+        Route::get('/', 'index')->name('follow.up.history');
+        Route::get('/remarks', 'getRemarks')->name('follow.up.history.remarks');
+        Route::get('/supplier/{supplierName}', 'getSupplierRemarks')->name('follow.up.history.supplier.remarks');
+        Route::post('/store', 'store')->name('follow.up.history.store');
+        Route::delete('/delete/{id}', 'destroy')->name('follow.up.history.delete');
+    });
+
     // Ready To Ship
     Route::get('/ready-to-ship', [ReadyToShipController::class, 'index'])->name('ready.to.ship');
     Route::get('/ready-to-ship/packing-list-links', [ReadyToShipController::class, 'packingListLinksJson'])->name('ready.to.ship.packing.list.links');
@@ -3425,6 +3435,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // On Sea Transit
     Route::get('/on-sea-transit', [OnSeaTransitController::class, 'index'])->name('on.sea.transit');
     Route::post('/on-sea-transit/inline-update-or-create', [OnSeaTransitController::class, 'inlineUpdateOrCreate']);
+    Route::post('/on-sea-transit/sync-value', [OnSeaTransitController::class, 'syncValue']);
     Route::get('/on-sea-transit/details-history/{id}', [OnSeaTransitController::class, 'getDetailsHistory']);
 
     // On Road Transit
@@ -3435,6 +3446,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/transit-container-details', [TransitContainerDetailsController::class, 'index'])->name('transit.container.details');
     Route::post('/transit-container/add-tab', [TransitContainerDetailsController::class, 'addTab']);
     Route::post('/transit-container/save-row', [TransitContainerDetailsController::class, 'saveRow']);
+    Route::post('/transit-container/sync-all-to-on-sea', [TransitContainerDetailsController::class, 'syncAllToOnSea']);
     Route::post('/upload-image', [TransitContainerDetailsController::class, 'uploadImage'])->name('transit.upload-image');
     Route::get('/transit-container-changes', [TransitContainerDetailsController::class, 'transitContainerChanges'])->name('transit.container.changes');
     Route::get('/transit-container-new', [TransitContainerDetailsController::class, 'transitContainerNew'])->name('transit.container.new');

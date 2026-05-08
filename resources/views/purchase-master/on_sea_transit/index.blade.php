@@ -931,68 +931,24 @@ document.addEventListener('DOMContentLoaded', function () {
                     `;
                 }
             },
-            { 
-                title: "Value", 
-                field: "invoice_value", 
+            {
+                title: "Value",
+                field: "invoice_value",
                 headerSort: false,
                 minWidth: 120,
                 formatter: function(cell) {
                     const value = cell.getValue();
-                    const roundedValue = value ? Math.round(value) : '';
-                    const hasBadge = roundedValue > 0;
-                    
-                    if (hasBadge) {
+                    const roundedValue = value ? Math.round(value) : 0;
+
+                    if (roundedValue > 0) {
                         return `
-                            <div class="d-flex align-items-center gap-1">
-                                <span class="badge bg-success text-white" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">$${Math.round(roundedValue).toLocaleString()}</span>
-                                <input type="number" 
-                                    class="form-control form-control-sm auto-save" 
-                                    data-column="invoice_value" 
-                                    value="${roundedValue}" 
-                                    placeholder="0"
-                                    step="1"
-                                    style="width: 70px; font-size: 0.85rem;">
+                            <div class="d-flex justify-content-center align-items-center">
+                                <span class="badge bg-success text-white fw-bold" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">
+                                    $${roundedValue.toLocaleString()}
+                                </span>
                             </div>`;
                     }
-                    return `<input type="number" 
-                        class="form-control form-control-sm auto-save" 
-                        data-column="invoice_value" 
-                        value="${roundedValue}" 
-                        placeholder="0"
-                        step="1"
-                        style="width: 100%;">`;
-                }
-            },
-            { 
-                title: "Paid ($)", 
-                field: "paid", 
-                headerSort: false,
-                minWidth: 120,
-                formatter: function(cell) {
-                    const value = cell.getValue();
-                    const roundedValue = value ? Math.round(parseFloat(value)) : 0;
-                    const hasBadge = roundedValue > 0;
-                    
-                    if (hasBadge) {
-                        return `
-                            <div class="d-flex align-items-center gap-1">
-                                <span class="badge bg-info text-white" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">$${Math.round(roundedValue).toLocaleString()}</span>
-                                <input type="number" 
-                                    class="form-control form-control-sm auto-save" 
-                                    data-column="paid" 
-                                    value="${roundedValue}" 
-                                    placeholder="0"
-                                    step="1"
-                                    style="width: 70px; font-size: 0.85rem;">
-                            </div>`;
-                    }
-                    return `<input type="number" 
-                        class="form-control form-control-sm auto-save" 
-                        data-column="paid" 
-                        value="${roundedValue}" 
-                        placeholder="0"
-                        step="1"
-                        style="width: 100%;">`;
+                    return `<div class="text-center text-muted">-</div>`;
                 }
             },
             { 

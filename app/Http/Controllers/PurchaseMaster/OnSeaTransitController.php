@@ -156,4 +156,28 @@ class OnSeaTransitController extends Controller
             'history' => $history
         ]);
     }
+    
+    public function syncValue(Request $request)
+    {
+        $data = $request->only(['container_sl_no', 'invoice_value']);
+
+        if (!$data['container_sl_no']) {
+            return response()->json(['success' => false, 'message' => 'Container number is required']);
+        }
+
+        $record = OnSeaTransit::firstOrNew(['container_sl_no' => $data['container_sl_no']]);
+        $record->invoice_value = $data['invoice_value'] ?? 0;
+        
+        // Auto-calculate balance
+        $invoiceValue = $record->invoice_value ?? 0;
+        $paid = $record->paid ?? 0;
+        $record->balance = $invoiceValue - $paid;
+        
+        $record->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Value synced successfully'
+        ]);
+    }
 }

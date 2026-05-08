@@ -3228,51 +3228,75 @@
         updateCounts();
         updateFollowSupplierCount();
 
-        // Supplier Remarks Functionality
+        // Supplier Remarks Functionality (Database Version)
         let currentSupplierForRemarks = '';
 
-        // Function to get supplier remarks from local storage
-        function getSupplierRemarks(supplier) {
+        // Function to get supplier remarks from database
+        async function getSupplierRemarks(supplier) {
             if (!supplier) return [];
-            const remarksKey = `supplier_remarks_${supplier}`;
-            const remarks = localStorage.getItem(remarksKey);
-            return remarks ? JSON.parse(remarks) : [];
+            
+            try {
+                const response = await fetch(`/purchase-master/follow-up-history/supplier/${encodeURIComponent(supplier)}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    return data.data;
+                }
+                return [];
+            } catch (error) {
+                console.error('Error fetching remarks:', error);
+                return [];
+            }
         }
 
-        // Function to save supplier remark
-        function saveSupplierRemark(supplier, remark) {
+        // Function to save supplier remark to database
+        async function saveSupplierRemark(supplier, remark) {
             if (!supplier || !remark.trim()) {
                 alert('Please enter a remark.');
                 return;
             }
 
-            const remarksKey = `supplier_remarks_${supplier}`;
-            const remarks = getSupplierRemarks(supplier);
-            
-            const newRemark = {
-                id: Date.now(),
-                text: remark.trim(),
-                timestamp: new Date().toLocaleString()
-            };
-            
-            remarks.unshift(newRemark); // Add to beginning
-            localStorage.setItem(remarksKey, JSON.stringify(remarks));
-            
-            // Clear input
-            document.getElementById('supplier-remark-input').value = '';
-            
-            // Reload remarks
-            loadSupplierRemarks(supplier);
-            
-            alert('Remark saved successfully!');
+            try {
+                const response = await fetch('/purchase-master/follow-up-history/store', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        supplier_name: supplier,
+                        remark: remark.trim()
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Clear input
+                    document.getElementById('supplier-remark-input').value = '';
+                    
+                    // Reload remarks
+                    await loadSupplierRemarks(supplier);
+                    
+                    alert('Remark saved successfully!');
+                } else {
+                    alert('Failed to save remark: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error saving remark:', error);
+                alert('An error occurred while saving the remark.');
+            }
         }
 
-        // Function to load and display supplier remarks
-        function loadSupplierRemarks(supplier) {
+        // Function to load and display supplier remarks from database
+        async function loadSupplierRemarks(supplier) {
             const remarksList = document.getElementById('remarks-list');
             if (!remarksList) return;
 
-            const remarks = getSupplierRemarks(supplier);
+            // Show loading state
+            remarksList.innerHTML = '<p class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading remarks...</p>';
+
+            const remarks = await getSupplierRemarks(supplier);
             
             if (remarks.length === 0) {
                 remarksList.innerHTML = '<p class="text-muted">No remarks saved yet.</p>';
@@ -3281,12 +3305,23 @@
 
             let html = '<div class="list-group">';
             remarks.forEach(remark => {
+                const createdAt = new Date(remark.created_at);
+                const formattedDate = createdAt.toLocaleDateString('en-GB', { 
+                    day: '2-digit', 
+                    month: 'short', 
+                    year: 'numeric' 
+                }) + ', ' + createdAt.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: true 
+                });
+
                 html += `
                     <div class="list-group-item mb-2" style="border-left: 4px solid #28a745;">
                         <div class="d-flex justify-content-between align-items-start">
                             <div class="flex-grow-1">
-                                <p class="mb-1">${remark.text}</p>
-                                <small class="text-muted">${remark.timestamp}</small>
+                                <p class="mb-1">${escapeHtml(remark.remark)}</p>
+                                <small class="text-muted">${formattedDate}</small>
                             </div>
                             <button class="btn btn-sm btn-outline-danger delete-remark-btn" data-id="${remark.id}" title="Delete">
                                 <i class="fas fa-trash"></i>
@@ -3308,13 +3343,34 @@
             });
         }
 
-        // Function to delete supplier remark
-        function deleteSupplierRemark(supplier, remarkId) {
-            const remarksKey = `supplier_remarks_${supplier}`;
-            const remarks = getSupplierRemarks(supplier);
-            const filteredRemarks = remarks.filter(r => r.id !== remarkId);
-            localStorage.setItem(remarksKey, JSON.stringify(filteredRemarks));
-            loadSupplierRemarks(supplier);
+        // Function to delete supplier remark from database
+        async function deleteSupplierRemark(supplier, remarkId) {
+            try {
+                const response = await fetch(`/purchase-master/follow-up-history/delete/${remarkId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    await loadSupplierRemarks(supplier);
+                } else {
+                    alert('Failed to delete remark: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error deleting remark:', error);
+                alert('An error occurred while deleting the remark.');
+            }
+        }
+
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Open remarks modal button

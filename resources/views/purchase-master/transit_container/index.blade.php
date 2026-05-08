@@ -174,6 +174,12 @@
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
                             To. CBM: <span class="text-primary" id="total-cbm-display">0</span>
                         </div>
+                        <button type="button" id="syncToOnSeaBtn" class="btn btn-success btn-sm" onclick="syncToOnSea()" title="Sync this container to On Sea Transit Value">
+                            <i class="fas fa-sync-alt me-1"></i> Sync to On Sea
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="syncAllContainers()" title="Sync all containers at once">
+                            <i class="fas fa-sync me-1"></i> Sync All
+                        </button>
                     </div>
 
                     <!-- 🔽 Filter Type Dropdown -->
@@ -1795,6 +1801,105 @@ document.getElementById('search-input').addEventListener('input', function () {
 
 
 document.body.style.zoom = "90%"; 
+
+// Sync All Containers Function
+function syncAllContainers() {
+    if (!confirm('Sync all container values to On Sea Transit? This will update all containers.')) {
+        return;
+    }
+    
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Syncing All...';
+    
+    fetch('/transit-container/sync-all-to-on-sea', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Successfully synced ${data.count} container(s) to On Sea Transit`);
+        } else {
+            alert('❌ Failed to sync: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('❌ Error syncing data');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    });
+}
+
+// Sync To On Sea Function
+function syncToOnSea() {
+    // Get active tab name
+    const activeTab = document.querySelector('.nav-link.active');
+    if (!activeTab) {
+        alert('Please select a container tab first');
+        return;
+    }
+    
+    const tabName = activeTab.textContent.trim();
+    const containerMatch = tabName.match(/Container\s+(\d+)/i);
+    
+    if (!containerMatch) {
+        alert('Invalid container name format. Expected format: "Container 82"');
+        return;
+    }
+    
+    const containerSlNo = containerMatch[1];
+    const totalAmount = parseFloat(document.getElementById('total-amount-display').textContent) || 0;
+    
+    if (totalAmount === 0) {
+        alert('Total amount is 0. Nothing to sync.');
+        return;
+    }
+    
+    if (!confirm(`Sync $${totalAmount} to Container ${containerSlNo} in On Sea Transit?`)) {
+        return;
+    }
+    
+    const btn = document.getElementById('syncToOnSeaBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Syncing...';
+    
+    fetch('/on-sea-transit/sync-value', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            container_sl_no: containerSlNo,
+            invoice_value: totalAmount
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Successfully synced $${totalAmount} to Container ${containerSlNo}`);
+        } else {
+            alert('❌ Failed to sync: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('❌ Error syncing data');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    });
+}
 
 </script>
 
