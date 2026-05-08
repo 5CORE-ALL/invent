@@ -44,14 +44,17 @@
             position: relative;
             vertical-align: middle;
         }
+        :root {
+            --avatar-size: 30px;
+        }
         .task-summary-avatar {
-            width: 30px;
-            height: 30px;
+            width: var(--avatar-size);
+            height: var(--avatar-size);
             max-width: none;
             border-radius: 50%;
             object-fit: cover;
             border: 1px solid rgba(15, 23, 42, 0.08);
-            transition: box-shadow 0.2s ease, transform 0.2s ease;
+            transition: box-shadow 0.2s ease, transform 0.2s ease, width 0.3s ease, height 0.3s ease;
             transform-origin: center center;
         }
         .task-summary-avatar-wrap:hover .task-summary-avatar {
@@ -83,6 +86,10 @@
             height: 100%;
             object-fit: cover;
             display: block;
+        }
+        .task-summary-col-overdue {
+            color: #dc2626 !important;
+            font-weight: 700;
         }
         .task-summary-col-overdue-positive {
             color: #dc2626 !important;
@@ -448,6 +455,21 @@
                                        spellcheck="false" />
                             </div>
                         </div>
+                        
+                        <!-- Avatar Size Controls -->
+                        <div class="d-flex justify-content-end align-items-center mb-3 gap-2">
+                            <span class="text-muted small">Avatar Size:</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(-5)" title="Decrease size">
+                                <i class="mdi mdi-minus"></i>
+                            </button>
+                            <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 45px;">30px</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(5)" title="Increase size">
+                                <i class="mdi mdi-plus"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="resetAvatarSize()" title="Reset to default">
+                                <i class="mdi mdi-refresh"></i>
+                            </button>
+                        </div>
                     @endif
                     <div class="table-responsive">
                         <table class="table table-hover table-striped table-bordered mb-0 task-summary-table">
@@ -464,6 +486,9 @@
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
                                         Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Sort by current month work hours from Team Logger ({{ \Carbon\Carbon::now()->format('M Y') }})" role="button" tabindex="0">
+                                        L30 Hrs <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Sort by assignor task count" role="button" tabindex="0">
                                         Assignor task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -501,6 +526,7 @@
                                         data-sort-member="{{ e($row['team_member']) }}"
                                         data-sort-designation="{{ e($row['designation'] ?? '') }}"
                                         data-sort-task="{{ (int) ($row['task'] ?? 0) }}"
+                                        data-sort-l30_hrs="{{ (float) ($row['l30_hrs'] ?? 0) }}"
                                         data-sort-assignor_task="{{ (int) ($row['assignor_task'] ?? 0) }}"
                                         data-sort-overdue="{{ (int) ($row['overdue'] ?? 0) }}"
                                         data-sort-a_task="{{ (int) ($row['a_task'] ?? 0) }}"
@@ -524,9 +550,16 @@
                                         </td>
                                         <td>{{ $row['designation'] ?: '—' }}</td>
                                         <td class="task-summary-num">{{ $row['task'] }}</td>
+                                        <td class="task-summary-num" style="background-color: #e8f5e9;">
+                                            @php
+                                                $hours = $row['l30_hrs'] ?? 0;
+                                                $roundedHours = round($hours);
+                                            @endphp
+                                            {{ $roundedHours > 0 ? $roundedHours . 'h' : '—' }}
+                                        </td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
-                                        <td class="task-summary-num @if(($row['overdue'] ?? 0) > 0) task-summary-col-overdue-positive @endif">{{ $row['overdue'] }}</td>
+                                        <td class="task-summary-num task-summary-col-overdue">{{ $row['overdue'] }}</td>
                                         <td class="task-summary-num">{{ $row['a_task'] }}</td>
                                         <td class="task-summary-num" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
                                         <td class="task-summary-num">{{ $row['need_approval'] }}</td>
@@ -1425,5 +1458,31 @@
             updateHeaderIcons('task', 'desc');
             applySort();
         })();
+        
+        // Avatar size adjustment functions
+        let currentAvatarSize = parseInt(localStorage.getItem('avatarSize')) || 30;
+        
+        // Apply saved size on page load
+        document.documentElement.style.setProperty('--avatar-size', currentAvatarSize + 'px');
+        if (document.getElementById('avatar-size-display')) {
+            document.getElementById('avatar-size-display').textContent = currentAvatarSize + 'px';
+        }
+        
+        function adjustAvatarSize(delta) {
+            currentAvatarSize += delta;
+            // Limit between 20px and 80px
+            currentAvatarSize = Math.max(20, Math.min(80, currentAvatarSize));
+            
+            document.documentElement.style.setProperty('--avatar-size', currentAvatarSize + 'px');
+            document.getElementById('avatar-size-display').textContent = currentAvatarSize + 'px';
+            localStorage.setItem('avatarSize', currentAvatarSize);
+        }
+        
+        function resetAvatarSize() {
+            currentAvatarSize = 30;
+            document.documentElement.style.setProperty('--avatar-size', '30px');
+            document.getElementById('avatar-size-display').textContent = '30px';
+            localStorage.setItem('avatarSize', 30);
+        }
     </script>
 @endsection

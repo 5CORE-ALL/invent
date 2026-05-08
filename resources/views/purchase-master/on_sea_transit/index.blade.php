@@ -423,11 +423,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 formatter: function(cell) {
                     const slNo = cell.getValue();
                     return `
-                        ${slNo} <i class="fas fa-info-circle ms-1 text-primary open-modal-btn" data-sl="${slNo}"></i>
+                        <span class="badge bg-primary text-white" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">${slNo}</span>
+                        <i class="fas fa-info-circle ms-1 text-primary open-modal-btn" data-sl="${slNo}" style="cursor: pointer;"></i>
                     `;
                 },
                 headerSort: false,
-                minWidth: 100
+                minWidth: 120
             },
             {
                 title: "MBL",
@@ -892,10 +893,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 title: "Value", 
                 field: "invoice_value", 
                 headerSort: false,
-                minWidth: 100,
+                minWidth: 120,
                 formatter: function(cell) {
                     const value = cell.getValue();
                     const roundedValue = value ? Math.round(value) : '';
+                    const hasBadge = roundedValue > 0;
+                    
+                    if (hasBadge) {
+                        return `
+                            <div class="d-flex align-items-center gap-1">
+                                <span class="badge bg-success text-white" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">$${Math.round(roundedValue).toLocaleString()}</span>
+                                <input type="number" 
+                                    class="form-control form-control-sm auto-save" 
+                                    data-column="invoice_value" 
+                                    value="${roundedValue}" 
+                                    placeholder="0"
+                                    step="1"
+                                    style="width: 70px; font-size: 0.85rem;">
+                            </div>`;
+                    }
                     return `<input type="number" 
                         class="form-control form-control-sm auto-save" 
                         data-column="invoice_value" 
@@ -909,10 +925,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 title: "Paid ($)", 
                 field: "paid", 
                 headerSort: false,
-                minWidth: 100,
+                minWidth: 120,
                 formatter: function(cell) {
                     const value = cell.getValue();
                     const roundedValue = value ? Math.round(parseFloat(value)) : 0;
+                    const hasBadge = roundedValue > 0;
+                    
+                    if (hasBadge) {
+                        return `
+                            <div class="d-flex align-items-center gap-1">
+                                <span class="badge bg-info text-white" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">$${Math.round(roundedValue).toLocaleString()}</span>
+                                <input type="number" 
+                                    class="form-control form-control-sm auto-save" 
+                                    data-column="paid" 
+                                    value="${roundedValue}" 
+                                    placeholder="0"
+                                    step="1"
+                                    style="width: 70px; font-size: 0.85rem;">
+                            </div>`;
+                    }
                     return `<input type="number" 
                         class="form-control form-control-sm auto-save" 
                         data-column="paid" 
@@ -931,8 +962,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     const value = cell.getValue();
                     const displayValue = value ?? 0;
                     const roundedValue = Math.round(displayValue);
-                    const colorClass = displayValue > 0 ? 'text-danger' : 'text-success';
-                    return `<span class="fw-bold ${colorClass}">$${roundedValue.toLocaleString()}</span>`;
+                    const badgeClass = displayValue > 0 ? 'bg-danger' : 'bg-success';
+                    return `<span class="badge ${badgeClass} text-white" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">$${roundedValue.toLocaleString()}</span>`;
                 }
             },
             { 

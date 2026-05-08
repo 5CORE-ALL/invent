@@ -369,16 +369,34 @@ class TaskController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'avatar', 'designation']);
 
+        // Fetch TeamLogger data for current month
+        $teamLoggerData = [];
+        try {
+            $teamLoggerService = new \App\Services\TeamLoggerService();
+            $currentMonth = \Carbon\Carbon::now()->format('F Y'); // e.g., "May 2026"
+            $teamLoggerData = $teamLoggerService->fetchByMonth($currentMonth);
+        } catch (\Exception $e) {
+            \Log::error('Failed to fetch TeamLogger data for task summary: ' . $e->getMessage());
+        }
+
         $rows = [];
         foreach ($members as $member) {
             $email = $member->email;
             $counts = $byEmail[$email] ?? $defaultCounts;
+            
+            // Get TeamLogger hours for this user (current month)
+            $l30Hours = 0;
+            if (isset($teamLoggerData[$email])) {
+                $l30Hours = $teamLoggerData[$email]['hours'] ?? 0;
+            }
+            
             $rows[] = [
                 'team_member' => $member->name,
                 'email' => $email,
                 'avatar' => $member->avatar,
                 'designation' => $member->designation,
                 'task' => $counts['task'],
+                'l30_hrs' => round($l30Hours, 1),
                 'assignor_task' => $counts['assignor_task'],
                 'overdue' => $counts['overdue'],
                 'a_task' => $counts['a_task'],
@@ -555,12 +573,14 @@ class TaskController extends Controller
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
                 $task->assignor_id = $assignorUser ? $assignorUser->id : null;
+                $task->assignor_designation = $assignorUser ? $assignorUser->designation : null;
                 $task->assignor_avatar = $assignorUser && $assignorUser->avatar
                     ? asset('storage/' . $assignorUser->avatar)
                     : $defaultAvatar;
             } else {
                 $task->assignor_name = '-';
                 $task->assignor_id = null;
+                $task->assignor_designation = null;
                 $task->assignor_avatar = null;
             }
 
@@ -569,6 +589,7 @@ class TaskController extends Controller
                 $assigneeEmails = array_map('trim', explode(',', $task->assign_to));
                 $assigneeNames = [];
                 $assigneeIds = [];
+                $assigneeDesignations = [];
                 $assigneeAvatars = [];
 
                 foreach ($assigneeEmails as $email) {
@@ -576,11 +597,13 @@ class TaskController extends Controller
                     if ($assigneeUser) {
                         $assigneeNames[] = $assigneeUser->name;
                         $assigneeIds[] = $assigneeUser->id;
+                        $assigneeDesignations[] = $assigneeUser->designation;
                         $assigneeAvatars[] = $assigneeUser->avatar
                             ? asset('storage/' . $assigneeUser->avatar)
                             : $defaultAvatar;
                     } else {
                         $assigneeNames[] = $email;
+                        $assigneeDesignations[] = null;
                         $assigneeAvatars[] = $defaultAvatar;
                     }
                 }
@@ -588,6 +611,8 @@ class TaskController extends Controller
                 $task->assignee_name = implode(', ', $assigneeNames);
                 $task->assignee_id = !empty($assigneeIds) ? $assigneeIds[0] : null; // First ID for compatibility
                 $task->assignee_ids = $assigneeIds;
+                $task->assignee_designation = !empty($assigneeDesignations) ? $assigneeDesignations[0] : null;
+                $task->assignee_designations = $assigneeDesignations;
                 $task->assignee_count = count($assigneeNames);
                 $task->assignee_avatar = !empty($assigneeAvatars) ? $assigneeAvatars[0] : null;
                 $task->assignee_avatars = $assigneeAvatars;
@@ -595,6 +620,8 @@ class TaskController extends Controller
                 $task->assignee_name = '-';
                 $task->assignee_id = null;
                 $task->assignee_ids = [];
+                $task->assignee_designation = null;
+                $task->assignee_designations = [];
                 $task->assignee_count = 0;
                 $task->assignee_avatar = null;
                 $task->assignee_avatars = [];
@@ -613,10 +640,13 @@ class TaskController extends Controller
             foreach ([
                 'assignor_name',
                 'assignor_id',
+                'assignor_designation',
                 'assignor_avatar',
                 'assignee_name',
                 'assignee_id',
                 'assignee_ids',
+                'assignee_designation',
+                'assignee_designations',
                 'assignee_count',
                 'assignee_avatar',
                 'assignee_avatars',
