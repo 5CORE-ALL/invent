@@ -5,6 +5,7 @@ namespace App\Http\Controllers\PurchaseMaster;
 use App\Http\Controllers\Controller;
 use App\Models\ChinaLoad;
 use App\Models\OnSeaTransit;
+use App\Models\OnSeaTransitDetailsHistory;
 use Illuminate\Http\Request;
 
 class OnSeaTransitController extends Controller
@@ -50,6 +51,7 @@ class OnSeaTransitController extends Controller
                 'invoice_value' => $item->invoice_value,
                 'paid' => $item->paid,
                 'balance' => $balance,
+                'details' => $item->details,
             ];
         });
         
@@ -101,20 +103,57 @@ class OnSeaTransitController extends Controller
         }
 
         $record = OnSeaTransit::firstOrNew(['container_sl_no' => $data['container_sl_no']]);
-        $record->{$data['column']} = $data['value'];
         
-        // Auto-calculate balance when invoice_value or paid changes
-        if ($data['column'] === 'invoice_value' || $data['column'] === 'paid') {
-            $invoiceValue = $data['column'] === 'invoice_value' ? $data['value'] : $record->invoice_value;
-            $paid = $data['column'] === 'paid' ? $data['value'] : $record->paid;
-            $record->balance = ($invoiceValue ?? 0) - ($paid ?? 0);
+        // Track details history if the column is 'details'
+        if ($data['column'] === 'details') {
+            $oldValue = $record->details;
+            $newValue = $data['value'];
+            
+            // Only create history if value actually changed
+            if ($oldValue !== $newValue) {
+                $record->{$data['column']} = $data['value'];
+                $record->save();
+                
+                // Get current user name
+                $userName = auth()->check() ? auth()->user()->name : 'Unknown';
+                
+                OnSeaTransitDetailsHistory::create([
+                    'on_sea_transit_id' => $record->id,
+                    'container_sl_no' => $data['container_sl_no'],
+                    'user_name' => $userName,
+                    'old_value' => $oldValue,
+                    'new_value' => $newValue,
+                    'changed_at' => now(),
+                ]);
+            }
+        } else {
+            $record->{$data['column']} = $data['value'];
+            
+            // Auto-calculate balance when invoice_value or paid changes
+            if ($data['column'] === 'invoice_value' || $data['column'] === 'paid') {
+                $invoiceValue = $data['column'] === 'invoice_value' ? $data['value'] : $record->invoice_value;
+                $paid = $data['column'] === 'paid' ? $data['value'] : $record->paid;
+                $record->balance = ($invoiceValue ?? 0) - ($paid ?? 0);
+            }
+            
+            $record->save();
         }
-        
-        $record->save();
 
         return response()->json([
             'success' => true,
             'balance' => $record->balance
+        ]);
+    }
+    
+    public function getDetailsHistory($id)
+    {
+        $history = OnSeaTransitDetailsHistory::where('on_sea_transit_id', $id)
+            ->orderBy('changed_at', 'desc')
+            ->get();
+            
+        return response()->json([
+            'success' => true,
+            'history' => $history
         ]);
     }
 }

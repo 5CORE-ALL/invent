@@ -13,6 +13,11 @@ class OnSeaTransit extends Model
         'container_sl_no', 'bl_check', 'bl_link', 'isf', 'etd', 'eta_port', 'port_arrival',
         'eta_date_ohio', 'status', 'isf_usa_agent', 'duty_calcu',
         'invoice_send_to_dominic', 'arrival_notice_email', 'remarks', 'invoice_value',
-        'paid', 'balance'
+        'paid', 'balance', 'details'
     ];
+    
+    public function detailsHistory()
+    {
+        return $this->hasMany(OnSeaTransitDetailsHistory::class, 'on_sea_transit_id');
+    }
 }

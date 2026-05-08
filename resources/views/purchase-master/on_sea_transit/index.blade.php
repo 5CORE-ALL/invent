@@ -190,6 +190,21 @@
         border: 2px solid #28a745;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
+    
+    /* Remove modal backdrop completely */
+    .modal-backdrop {
+        display: none !important;
+    }
+    
+    /* Add shadow to modal for depth without backdrop */
+    .modal-dialog {
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Ensure modal content is on top */
+    .modal {
+        background-color: transparent !important;
+    }
 </style>
 @endsection
 @section('content')
@@ -202,7 +217,7 @@
                 <div class="d-flex justify-content-start align-items-center mb-3 flex-wrap gap-2">
                     <div class="d-flex flex-wrap gap-3 w-100">
                         <span class="badge bg-warning text-dark" style="font-size: 1.1rem; padding: 0.75rem 1.25rem; flex: 1; min-width: 150px;">
-                            <i class="fas fa-clipboard-list me-2"></i>Planning: {{ $planningCount }}
+                            <i class="fas fa-clipboard-list me-2"></i>Pre-Load: {{ $planningCount }}
                         </span>
                         <span class="badge bg-primary text-white" style="font-size: 1.1rem; padding: 0.75rem 1.25rem; flex: 1; min-width: 150px;">
                             <i class="fas fa-ship me-2"></i>On Sea: <span id="onSeaBadge">0</span>
@@ -243,6 +258,69 @@
   </div>
 </div>
 
+<!-- Details History Modal -->
+<div class="modal fade" id="detailsHistoryModal" tabindex="-1" aria-labelledby="detailsHistoryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="fas fa-history me-2"></i>Details History</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="detailsHistoryModalBody" style="max-height: 70vh; overflow-y: auto;">
+        <div class="text-center">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Remarks Edit Modal -->
+<div class="modal fade" id="remarksModal" tabindex="-1" aria-labelledby="remarksModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title"><i class="fas fa-file-alt me-2"></i>Remarks</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <textarea class="form-control" id="remarksTextarea" rows="5" placeholder="Enter remarks..."></textarea>
+        <input type="hidden" id="remarksContainer">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveRemarksBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Details Edit Modal -->
+<div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Details</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <textarea class="form-control" id="detailsTextarea" rows="5" placeholder="Enter details..."></textarea>
+        <input type="hidden" id="detailsContainer">
+        <input type="hidden" id="detailsRecordId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveDetailsBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 @endsection
 @section('script')
@@ -257,16 +335,25 @@ document.addEventListener('DOMContentLoaded', function () {
     
     // Function to update badge counts
     function updateBadgeCounts() {
-        const totalCount = tableData.length;
-        const planningCount = tableData.filter(item => item.status === 'Planning').length;
-        const arrivedCount = tableData.filter(item => item.status === 'Arrived').length;
-        const onSeaCount = tableData.filter(item => item.status === 'On Sea').length;
-        const landedCount = tableData.filter(item => item.status === 'Landed').length;
-        const remainingCount = totalCount - (arrivedCount + planningCount);
+        // Filter out 'Arrived' status to match table display
+        const visibleData = tableData.filter(item => item.status !== 'Arrived');
+        console.log('Visible Data:', visibleData);
+        console.log('All statuses:', visibleData.map(item => item.status));
+        
+        const totalCount = visibleData.length;
+        // Count Planning and null/empty status as Pre-Load (since formatter defaults to Planning)
+        const planningCount = visibleData.filter(item => !item.status || item.status === 'Planning').length;
+        const onSeaCount = visibleData.filter(item => item.status === 'On Sea').length;
+        const landedCount = visibleData.filter(item => item.status === 'Landed').length;
+        const remainingCount = totalCount - planningCount;
+        
+        console.log('Planning Count:', planningCount);
+        console.log('On Sea Count:', onSeaCount);
+        console.log('Landed Count:', landedCount);
         
         // Calculate total invoice value for containers excluding Arrived and Planning
-        const totalInvoiceValue = tableData
-            .filter(item => item.status !== 'Arrived' && item.status !== 'Planning')
+        const totalInvoiceValue = visibleData
+            .filter(item => item.status !== 'Planning' && item.status !== null && item.status !== '')
             .reduce((sum, item) => {
                 const value = parseFloat(item.invoice_value) || 0;
                 console.log(`Container ${item.container_sl_no}: status=${item.status}, invoice_value=${item.invoice_value}, parsed=${value}`);
@@ -274,8 +361,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }, 0);
         
         // Calculate total pending amount (balance) for containers excluding Arrived and Planning
-        const totalPendingAmount = tableData
-            .filter(item => item.status !== 'Arrived' && item.status !== 'Planning')
+        const totalPendingAmount = visibleData
+            .filter(item => item.status !== 'Planning' && item.status !== null && item.status !== '')
             .reduce((sum, item) => sum + (parseFloat(item.balance) || 0), 0);
         
         console.log('Total Invoice Value:', totalInvoiceValue);
@@ -283,7 +370,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         const planningBadge = document.querySelector('.badge.bg-warning');
         if (planningBadge) {
-            planningBadge.innerHTML = `<i class="fas fa-clipboard-list me-1"></i>Planning: ${planningCount}`;
+            planningBadge.innerHTML = `<i class="fas fa-clipboard-list me-1"></i>Pre-Load: ${planningCount}`;
         }
         
         const onSeaBadge = document.getElementById('onSeaBadge');
@@ -314,12 +401,12 @@ document.addEventListener('DOMContentLoaded', function () {
     
     const table = new Tabulator("#on-sea-transit-table", {
         data: tableData,
-        layout: "fitColumns",
+        layout: "fitDataStretch",
         placeholder: "No records available",
         pagination: "local",
         paginationSize: 10,
         movableColumns: true,
-        resizableColumns: false,
+        resizableColumns: true,
         headerSort: false,
         height: "550px",
         rowFormatter: function (row) {
@@ -779,20 +866,26 @@ document.addEventListener('DOMContentLoaded', function () {
             { 
                 title: "Remarks", 
                 field: "remarks", 
+                headerSort: false,
+                minWidth: 80,
                 formatter: function(cell) {
-                    const value = cell.getValue();
-                    if (value) {
-                        return `
-                            <button class="btn btn-sm btn-info" onclick="alert('${value.replace(/'/g, "\\'")}')">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                            <input type="text" class="form-control form-control-sm auto-save" 
-                                data-column="remarks" value="${value}" placeholder="Enter remarks" style="display: none;width: 90px;">
-                        `;
-                    } else {
-                        return `<input type="text" class="form-control form-control-sm auto-save" 
-                            data-column="remarks" value="" placeholder="Enter remarks" style="width: 90px;">`;
-                    }
+                    const value = cell.getValue() || '';
+                    const rowData = cell.getRow().getData();
+                    const containerSlNo = rowData.container_sl_no;
+                    
+                    // Show icon with different color if has content
+                    const iconClass = value ? 'btn-info' : 'btn-secondary';
+                    const icon = value ? 'fa-file-alt' : 'fa-file';
+                    
+                    return `
+                        <button class="btn btn-sm ${iconClass} view-remarks-btn" 
+                            data-container="${containerSlNo}"
+                            data-value="${value.replace(/"/g, '&quot;')}"
+                            title="${value ? 'View/Edit Remarks' : 'Add Remarks'}"
+                            style="padding: 4px 10px;">
+                            <i class="fas ${icon}"></i>
+                        </button>
+                    `;
                 }
             },
             { 
@@ -843,6 +936,41 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             },
             { 
+                title: "Details", 
+                field: "details", 
+                headerSort: false,
+                minWidth: 80,
+                formatter: function(cell) {
+                    const value = cell.getValue() || '';
+                    const rowData = cell.getRow().getData();
+                    const rowId = rowData.id;
+                    const containerSlNo = rowData.container_sl_no;
+                    
+                    // Show icon with different color if has content
+                    const iconClass = value ? 'btn-primary' : 'btn-secondary';
+                    const icon = value ? 'fa-edit' : 'fa-plus';
+                    
+                    return `
+                        <div style="display: flex; align-items: center; gap: 5px; justify-content: center;">
+                            <button class="btn btn-sm ${iconClass} view-details-btn" 
+                                data-id="${rowId}"
+                                data-container="${containerSlNo}"
+                                data-value="${value.replace(/"/g, '&quot;')}"
+                                title="${value ? 'View/Edit Details' : 'Add Details'}"
+                                style="padding: 4px 10px;">
+                                <i class="fas ${icon}"></i>
+                            </button>
+                            <button class="btn btn-sm btn-warning view-history-btn" 
+                                data-id="${rowId}"
+                                title="View History"
+                                style="padding: 4px 10px;">
+                                <i class="fas fa-history"></i>
+                            </button>
+                        </div>
+                    `;
+                }
+            },
+            { 
                 title: "Status",
                 field: "status",
                 headerSort: false,
@@ -878,7 +1006,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             <select class="form-select form-select-sm auto-save"
                                 data-column="status"
                                 style="min-width: 90px; background-color: ${bgColor}; color: ${textColor}; width: 120px;">
-                                <option value="Planning" ${value === 'Planning' ? 'selected' : ''}>Planning</option>
+                                <option value="Planning" ${value === 'Planning' ? 'selected' : ''}>Pre-Load</option>
                                 <option value="On Sea" ${value === 'On Sea' ? 'selected' : ''}>On Sea</option>
                                 <option value="Landed" ${value === 'Landed' ? 'selected' : ''}>Landed</option>
                                 <option value="Arrived" ${value === 'Arrived' ? 'selected' : ''}>Arrived</option>
@@ -1365,6 +1493,198 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.body.style.zoom = "90%";
+    
+    // Handle view remarks button click
+    document.addEventListener("click", function (e) {
+        if (e.target.closest('.view-remarks-btn')) {
+            const button = e.target.closest('.view-remarks-btn');
+            const containerSlNo = button.getAttribute("data-container");
+            const currentValue = button.getAttribute("data-value");
+            
+            // Set modal values
+            document.getElementById('remarksTextarea').value = currentValue;
+            document.getElementById('remarksContainer').value = containerSlNo;
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById("remarksModal"));
+            modal.show();
+        }
+        
+        if (e.target.closest('.view-details-btn')) {
+            const button = e.target.closest('.view-details-btn');
+            const recordId = button.getAttribute("data-id");
+            const containerSlNo = button.getAttribute("data-container");
+            const currentValue = button.getAttribute("data-value");
+            
+            // Set modal values
+            document.getElementById('detailsTextarea').value = currentValue;
+            document.getElementById('detailsContainer').value = containerSlNo;
+            document.getElementById('detailsRecordId').value = recordId;
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById("detailsModal"));
+            modal.show();
+        }
+    });
+    
+    // Save Remarks
+    document.getElementById('saveRemarksBtn').addEventListener('click', function() {
+        const containerSlNo = document.getElementById('remarksContainer').value;
+        const value = document.getElementById('remarksTextarea').value;
+        
+        fetch('/on-sea-transit/inline-update-or-create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                container_sl_no: containerSlNo,
+                column: 'remarks',
+                value: value
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update the tableData
+                const dataIndex = tableData.findIndex(item => item.container_sl_no == containerSlNo);
+                if (dataIndex !== -1) {
+                    tableData[dataIndex].remarks = value;
+                }
+                
+                // Reload table data
+                table.setData(tableData);
+                
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('remarksModal')).hide();
+                
+                // Show success message
+                alert('Remarks saved successfully!');
+            } else {
+                alert('Failed to save remarks');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to save remarks');
+        });
+    });
+    
+    // Save Details
+    document.getElementById('saveDetailsBtn').addEventListener('click', function() {
+        const containerSlNo = document.getElementById('detailsContainer').value;
+        const recordId = document.getElementById('detailsRecordId').value;
+        const value = document.getElementById('detailsTextarea').value;
+        
+        fetch('/on-sea-transit/inline-update-or-create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                container_sl_no: containerSlNo,
+                column: 'details',
+                value: value
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update the tableData
+                const dataIndex = tableData.findIndex(item => item.container_sl_no == containerSlNo);
+                if (dataIndex !== -1) {
+                    tableData[dataIndex].details = value;
+                }
+                
+                // Reload table data
+                table.setData(tableData);
+                
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('detailsModal')).hide();
+                
+                // Show success message
+                alert('Details saved successfully!');
+            } else {
+                alert('Failed to save details');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to save details');
+        });
+    });
+    
+    // Handle view history button click
+    document.addEventListener("click", function (e) {
+        if (e.target.closest('.view-history-btn')) {
+            const button = e.target.closest('.view-history-btn');
+            const recordId = button.getAttribute("data-id");
+            
+            // Show modal with loading state
+            const modal = new bootstrap.Modal(document.getElementById("detailsHistoryModal"));
+            modal.show();
+            
+            // Reset modal body to loading state
+            document.getElementById("detailsHistoryModalBody").innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            `;
+            
+            // Fetch history
+            fetch(`/on-sea-transit/details-history/${recordId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.history.length > 0) {
+                    let historyHtml = '<div class="table-responsive"><table class="table table-striped table-bordered table-hover">';
+                    historyHtml += '<thead class="table-dark"><tr><th style="width: 15%;">Date & Time</th><th style="width: 12%;">User</th><th style="width: 36%;">Old Value</th><th style="width: 36%;">New Value</th></tr></thead>';
+                    historyHtml += '<tbody>';
+                    
+                    data.history.forEach(item => {
+                        const date = new Date(item.changed_at);
+                        const formattedDate = date.toLocaleString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true
+                        });
+                        
+                        historyHtml += `
+                            <tr>
+                                <td style="white-space: nowrap; font-size: 0.9rem;">${formattedDate}</td>
+                                <td style="font-weight: 600; font-size: 0.95rem;">${item.user_name || 'Unknown'}</td>
+                                <td style="word-break: break-word; white-space: pre-wrap; font-size: 0.9rem; padding: 12px;">${item.old_value || '<span class="text-muted fst-italic">Empty</span>'}</td>
+                                <td style="word-break: break-word; white-space: pre-wrap; font-size: 0.9rem; padding: 12px; background-color: #f0f8ff;">${item.new_value || '<span class="text-muted fst-italic">Empty</span>'}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    historyHtml += '</tbody></table></div>';
+                    document.getElementById("detailsHistoryModalBody").innerHTML = historyHtml;
+                } else {
+                    document.getElementById("detailsHistoryModalBody").innerHTML = 
+                        '<div class="alert alert-info mb-0"><i class="fas fa-info-circle me-2"></i>No history available for this record.</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching history:', error);
+                document.getElementById("detailsHistoryModalBody").innerHTML = 
+                    '<div class="alert alert-danger mb-0"><i class="fas fa-exclamation-circle me-2"></i>Failed to load history.</div>';
+            });
+        }
+    });
 
 });
 

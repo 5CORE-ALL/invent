@@ -3421,6 +3421,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // On Sea Transit
     Route::get('/on-sea-transit', [OnSeaTransitController::class, 'index'])->name('on.sea.transit');
     Route::post('/on-sea-transit/inline-update-or-create', [OnSeaTransitController::class, 'inlineUpdateOrCreate']);
+    Route::get('/on-sea-transit/details-history/{id}', [OnSeaTransitController::class, 'getDetailsHistory']);
 
     // On Road Transit
     Route::get('/on-road-transit', [OnRoadTransitController::class, 'index'])->name('on.road.transit');
