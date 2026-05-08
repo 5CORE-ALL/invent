@@ -739,18 +739,30 @@ class MFRGInProgressController extends Controller
 
             $result = [];
 
+            // Check if supplier_remarks table exists
+            $remarksTableExists = DB::getSchemaBuilder()->hasTable('supplier_remarks');
+
             foreach ($suppliers as $supplier) {
                 $supplierName = trim($supplier->name);
+                $latestRemark = null;
+                $remarkCount = 0;
 
-                // Get latest remark from supplier_remarks
-                $latestRemark = DB::table('supplier_remarks')
-                    ->where('supplier_name', $supplierName)
-                    ->orderByDesc('created_at')
-                    ->first();
+                // Only query remarks if table exists
+                if ($remarksTableExists) {
+                    try {
+                        $latestRemark = DB::table('supplier_remarks')
+                            ->where('supplier_name', $supplierName)
+                            ->orderByDesc('created_at')
+                            ->first();
 
-                $remarkCount = DB::table('supplier_remarks')
-                    ->where('supplier_name', $supplierName)
-                    ->count();
+                        $remarkCount = DB::table('supplier_remarks')
+                            ->where('supplier_name', $supplierName)
+                            ->count();
+                    } catch (\Exception $e) {
+                        // Silently handle if remarks query fails
+                        Log::debug('Could not query supplier_remarks for '.$supplierName);
+                    }
+                }
 
                 $result[] = [
                     'name' => $supplierName,

@@ -1794,11 +1794,23 @@
         function setupColumnSearch() {
             let debounceTimer = null;
 
+            // Normalize text for searching - handles special characters, whitespace, and encoding issues
+            function normalizeSearchText(text) {
+                if (!text) return '';
+                // Convert to string, trim, lowercase
+                let normalized = String(text).trim().toLowerCase();
+                // Replace multiple spaces with single space
+                normalized = normalized.replace(/\s+/g, ' ');
+                // Remove zero-width spaces, non-breaking spaces, etc.
+                normalized = normalized.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
+                return normalized;
+            }
+
             function collectFilters() {
                 const filters = {};
                 document.querySelectorAll('.column-search').forEach(function (searchInput) {
                     const col = searchInput.getAttribute('data-search-column');
-                    const val = searchInput.value.trim().toLowerCase();
+                    const val = normalizeSearchText(searchInput.value);
                     if (val !== '') {
                         filters[col] = val;
                     }
@@ -1821,9 +1833,17 @@
                     for (const col in filters) {
                         let cellText = '';
                         if (col === '3') {
-                            cellText = (row.getAttribute('data-sku') || '').trim().toLowerCase();
+                            // SKU column - get from data attribute
+                            cellText = normalizeSearchText(row.getAttribute('data-sku') || '');
+                            // Also check the visible text in the cell as fallback
+                            if (!cellText) {
+                                const skuCell = row.querySelector('td[data-column="3"] .mip-sku-text');
+                                if (skuCell) {
+                                    cellText = normalizeSearchText(skuCell.textContent);
+                                }
+                            }
                         } else if (col === '2') {
-                            cellText = (row.getAttribute('data-parent') || '').trim().toLowerCase();
+                            cellText = normalizeSearchText(row.getAttribute('data-parent') || '');
                         } else if (col === '6') {
                             const cell = row.querySelector('td[data-column="6"]');
                             if (!cell) {
@@ -1832,15 +1852,17 @@
                             }
                             const sel = cell.querySelector('select[data-column="supplier"]');
                             const opt = sel?.selectedOptions?.[0] || sel?.querySelector('option:checked');
-                            cellText = (opt ? opt.textContent : (sel?.value || '')).trim().toLowerCase();
+                            cellText = normalizeSearchText(opt ? opt.textContent : (sel?.value || ''));
                         } else {
                             const cell = row.querySelector('td[data-column="' + col + '"]');
                             if (!cell) {
                                 show = false;
                                 break;
                             }
-                            cellText = (cell.textContent || '').toLowerCase();
+                            cellText = normalizeSearchText(cell.textContent);
                         }
+                        
+                        // Check if the normalized cell text includes the normalized filter value
                         if (!cellText.includes(filters[col])) {
                             show = false;
                             break;
