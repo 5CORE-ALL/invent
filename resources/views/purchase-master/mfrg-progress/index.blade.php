@@ -513,6 +513,10 @@
                             </div>
                             </div>
                             <div class="mip-toolbar-export-cluster" title="Pick supplier (optional), then Export">
+                                <button type="button" id="mip-bulk-edit-ddate-btn" class="btn btn-sm btn-primary fw-semibold d-inline-flex align-items-center gap-1 shadow-sm" title="Bulk edit delivery date for selected rows">
+                                    <i class="fas fa-calendar-alt"></i>
+                                    <span>Bulk Edit D-Date</span>
+                                </button>
                                 <select id="mip-export-supplier-select" class="form-select form-select-sm" aria-label="Export filter by supplier" title="All suppliers = every visible row; or pick one supplier">
                                     <option value="">All suppliers</option>
                                     @foreach ($suppliers as $supplierName)
@@ -561,6 +565,36 @@
                                         <p class="text-muted">No remarks saved yet.</p>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bulk Edit Delivery Date Modal -->
+                <div class="modal fade" id="bulkEditDDateModal" tabindex="-1" aria-labelledby="bulkEditDDateModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="bulkEditDDateModalLabel">
+                                    <i class="fas fa-calendar-alt"></i> Bulk Edit Delivery Date
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> 
+                                    <span id="bulk-edit-selected-count">0</span> rows selected
+                                </div>
+                                <div class="mb-3">
+                                    <label for="bulk-delivery-date-input" class="form-label fw-bold">New Delivery Date:</label>
+                                    <input type="date" class="form-control" id="bulk-delivery-date-input">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="apply-bulk-ddate-btn">
+                                    <i class="fas fa-check"></i> Apply to Selected
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1440,6 +1474,84 @@
         // Summary Export to Excel
         const summaryExportBtn = document.getElementById('mip-summary-export-btn');
         if (summaryExportBtn) summaryExportBtn.addEventListener('click', exportMipSummaryToCsv);
+
+        // Bulk Edit Delivery Date
+        const bulkEditDDateBtn = document.getElementById('mip-bulk-edit-ddate-btn');
+        if (bulkEditDDateBtn) {
+            bulkEditDDateBtn.addEventListener('click', function() {
+                const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
+                if (selectedCheckboxes.length === 0) {
+                    alert('Please select at least one row to edit');
+                    return;
+                }
+                document.getElementById('bulk-edit-selected-count').textContent = selectedCheckboxes.length;
+                const bulkModal = new bootstrap.Modal(document.getElementById('bulkEditDDateModal'));
+                bulkModal.show();
+            });
+        }
+
+        // Apply bulk delivery date
+        const applyBulkDDateBtn = document.getElementById('apply-bulk-ddate-btn');
+        if (applyBulkDDateBtn) {
+            applyBulkDDateBtn.addEventListener('click', async function() {
+                const newDate = document.getElementById('bulk-delivery-date-input').value;
+                if (!newDate) {
+                    alert('Please select a delivery date');
+                    return;
+                }
+                
+                const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
+                const skus = Array.from(selectedCheckboxes).map(cb => cb.dataset.sku).filter(s => s);
+                
+                if (skus.length === 0) {
+                    alert('No valid SKUs selected');
+                    return;
+                }
+                
+                applyBulkDDateBtn.disabled = true;
+                applyBulkDDateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+                
+                try {
+                    const response = await fetch('/mfrg/bulk-update-delivery-date', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            skus: skus,
+                            delivery_date: newDate
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        // Update the UI for each row
+                        selectedCheckboxes.forEach(checkbox => {
+                            const row = checkbox.closest('tr');
+                            const dateInput = row.querySelector('input[data-column="delivery_date"]');
+                            if (dateInput) {
+                                dateInput.value = newDate;
+                            }
+                        });
+                        
+                        alert(`Successfully updated ${result.updated_count || skus.length} row(s)`);
+                        bootstrap.Modal.getInstance(document.getElementById('bulkEditDDateModal')).hide();
+                        
+                        // Uncheck all checkboxes
+                        selectedCheckboxes.forEach(cb => cb.checked = false);
+                    } else {
+                        alert('Error: ' + (result.message || 'Failed to update'));
+                    }
+                } catch (error) {
+                    alert('Error updating delivery dates: ' + error.message);
+                } finally {
+                    applyBulkDDateBtn.disabled = false;
+                    applyBulkDDateBtn.innerHTML = '<i class="fas fa-check"></i> Apply to Selected';
+                }
+            });
+        }
 
         // ========= FUNCTIONS ========= //
 

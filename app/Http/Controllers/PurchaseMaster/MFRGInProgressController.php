@@ -673,6 +673,60 @@ class MFRGInProgressController extends Controller
         }
     }
 
+    public function bulkUpdateDeliveryDate(Request $request)
+    {
+        try {
+            $skus = $request->input('skus', []);
+            $deliveryDate = $request->input('delivery_date');
+
+            if (empty($skus) || ! is_array($skus)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No SKUs provided.',
+                ], 400);
+            }
+
+            if (empty($deliveryDate)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Delivery date is required.',
+                ], 400);
+            }
+
+            $normalizedSkus = array_map(function ($sku) {
+                return strtoupper(trim((string) $sku));
+            }, $skus);
+
+            $updatedCount = 0;
+            foreach ($normalizedSkus as $ns) {
+                if ($ns === '') {
+                    continue;
+                }
+                $updated = MfrgProgress::query()
+                    ->whereNull('deleted_at')
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$ns])
+                    ->update([
+                        'delivery_date' => $deliveryDate,
+                        'updated_at' => now(),
+                    ]);
+                $updatedCount += $updated;
+            }
+
+            return response()->json([
+                'success' => true,
+                'updated_count' => $updatedCount,
+                'message' => "Updated delivery date for {$updatedCount} row(s).",
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error bulk updating delivery dates: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
     private static function normalizeMipSku(?string $sku): string
     {
         if ($sku === null || $sku === '') {
