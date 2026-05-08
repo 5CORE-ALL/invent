@@ -1731,6 +1731,17 @@ class ForecastAnalysisController extends Controller
                 ], 400);
             }
 
+            // Normalize SKU function (same as R2S page)
+            $normalizeSku = function ($sku) {
+                if (empty($sku)) {
+                    return '';
+                }
+                $sku = strtoupper(trim($sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return trim($sku);
+            };
+
             // Get product master data for supplier matching
             $supplierRows = Supplier::where('type', 'Supplier')->get();
             $supplierMapByParent = [];
@@ -1743,7 +1754,22 @@ class ForecastAnalysisController extends Controller
                 }
             }
 
-            // Find all SKUs that belong to this supplier
+            // Get stage data from forecast_analysis - IMPORTANT: Only include SKUs with stage='r2s'
+            $forecastData = DB::table('forecast_analysis')
+                ->select('sku', 'stage')
+                ->get()
+                ->groupBy(function ($item) use ($normalizeSku) {
+                    return $normalizeSku($item->sku);
+                })
+                ->map(function ($group) {
+                    $withStage = $group->firstWhere('stage', '!=', null);
+                    if ($withStage && !empty(trim((string) $withStage->stage))) {
+                        return $withStage;
+                    }
+                    return $group->first();
+                });
+
+            // Find all SKUs that belong to this supplier AND have stage='r2s'
             $productMasterSkus = DB::table('product_master')
                 ->whereNull('deleted_at')
                 ->get(['sku', 'parent', 'Values']);
@@ -1754,7 +1780,15 @@ class ForecastAnalysisController extends Controller
                 if (!empty($parent) && isset($supplierMapByParent[$parent])) {
                     $suppliers = $supplierMapByParent[$parent];
                     if (in_array($supplier, $suppliers)) {
-                        $relevantSkus[] = strtoupper(trim($prod->sku));
+                        $normSku = $normalizeSku($prod->sku);
+                        // Check if this SKU has stage='r2s' in forecast_analysis
+                        if ($forecastData->has($normSku)) {
+                            $forecast = $forecastData->get($normSku);
+                            $stage = strtolower(trim($forecast->stage ?? ''));
+                            if ($stage === 'r2s') {
+                                $relevantSkus[] = $normSku;
+                            }
+                        }
                     }
                 }
             }
@@ -1766,30 +1800,45 @@ class ForecastAnalysisController extends Controller
                 ]);
             }
 
-            // Get R2S data for these SKUs
+            // Get R2S data for these SKUs (that have stage='r2s')
             $r2sData = ReadyToShip::whereNull('deleted_at')
                 ->where('transit_inv_status', 0)
-                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $relevantSkus)
-                ->get();
+                ->get()
+                ->filter(function($item) use ($relevantSkus, $normalizeSku) {
+                    return in_array($normalizeSku($item->sku), $relevantSkus);
+                });
 
             // Get images from shopify_skus
             $shopifyImages = DB::table('shopify_skus')
                 ->whereNotNull('image_src')
                 ->where('image_src', '!=', '')
                 ->get(['sku', 'image_src'])
-                ->keyBy(function($item) {
-                    return strtoupper(trim($item->sku));
+                ->keyBy(function($item) use ($normalizeSku) {
+                    return $normalizeSku($item->sku);
                 });
+
+            // Also get images from product_master
+            $productMasterImages = [];
+            foreach ($productMasterSkus as $prod) {
+                $normSku = $normalizeSku($prod->sku);
+                $valuesRaw = $prod->Values ?? '{}';
+                $values = json_decode($valuesRaw, true);
+                if (is_array($values) && !empty($values['image_path'])) {
+                    $productMasterImages[$normSku] = 'storage/' . ltrim($values['image_path'], '/');
+                }
+            }
 
             $exportData = [];
             foreach ($r2sData as $r2s) {
                 $sku = trim($r2s->sku ?? '');
-                $skuUpper = strtoupper($sku);
+                $normSku = $normalizeSku($sku);
                 
-                // Get image
+                // Get image - prefer shopify, fallback to product_master
                 $image = '';
-                if (isset($shopifyImages[$skuUpper])) {
-                    $image = $shopifyImages[$skuUpper]->image_src ?? '';
+                if (isset($shopifyImages[$normSku])) {
+                    $image = $shopifyImages[$normSku]->image_src ?? '';
+                } elseif (isset($productMasterImages[$normSku])) {
+                    $image = $productMasterImages[$normSku];
                 }
 
                 // Only include rows with qty > 0

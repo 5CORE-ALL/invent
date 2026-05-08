@@ -3584,28 +3584,41 @@
             });
         });
         
-        // If a specific supplier is selected, fetch R2S data for that supplier
-        if (exportSupplierFilter) {
-            try {
-                const response = await fetch('/forecast.analysis/get-r2s-data-for-export?supplier=' + encodeURIComponent(exportSupplierFilter));
-                const result = await response.json();
+        // Collect unique suppliers from visible MIP rows
+        const uniqueSuppliers = [...new Set(exportData.map(row => row['Supplier']).filter(s => s))];
+        
+        // Fetch R2S data for all suppliers (or just the filtered one if selected)
+        const suppliersToFetch = exportSupplierFilter ? [exportSupplierFilter] : uniqueSuppliers;
+        
+        if (suppliersToFetch.length > 0) {
+            console.log('Fetching R2S data for suppliers:', suppliersToFetch);
+            
+            // Fetch R2S data for each supplier
+            for (const supplier of suppliersToFetch) {
+                if (!supplier) continue;
                 
-                if (result.success && result.data && result.data.length > 0) {
-                    result.data.forEach(r2sItem => {
-                        exportData.push({
-                            'Stage': 'R2S',
-                            'Supplier': r2sItem.supplier || exportSupplierFilter,
-                            'SKU': r2sItem.sku || '',
-                            'Image': r2sItem.image || '',
-                            'QTY': r2sItem.qty || '',
-                            'O Date': '',
-                            'Days': ''
+                try {
+                    const response = await fetch('/forecast.analysis/get-r2s-data-for-export?supplier=' + encodeURIComponent(supplier));
+                    const result = await response.json();
+                    
+                    if (result.success && result.data && result.data.length > 0) {
+                        result.data.forEach(r2sItem => {
+                            exportData.push({
+                                'Stage': 'R2S',
+                                'Supplier': r2sItem.supplier || supplier,
+                                'SKU': r2sItem.sku || '',
+                                'Image': r2sItem.image || '',
+                                'QTY': r2sItem.qty || '',
+                                'O Date': '',
+                                'Days': ''
+                            });
                         });
-                    });
+                        console.log(`Added ${result.data.length} R2S items for supplier: ${supplier}`);
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch R2S data for supplier ${supplier}:`, e);
+                    // Continue with other suppliers if one fails
                 }
-            } catch (e) {
-                console.warn('Failed to fetch R2S data:', e);
-                // Continue with MIP data only if R2S fetch fails
             }
         }
         if (exportData.length === 0) {
