@@ -316,18 +316,21 @@ class MFRGInProgressController extends Controller
             $currencyFromPO = $skuToPriceMap[$sku]['currency'];
         }
 
-        $stage = '';
-        $nr = '';
-        if ($forecastData->has($sku)) {
-            $forecast = $forecastData->get($sku);
-            $stage = $forecast->stage ?? '';
-            $nr = strtoupper(trim($forecast->nr ?? ''));
-            if (! empty($stage)) {
-                $stage = strtolower(trim($stage));
+            $stage = 'mip'; // Default stage for MIP page - always 'mip' since this is mfrg_progress table
+            $nr = '';
+            if ($forecastData->has($sku)) {
+                $forecast = $forecastData->get($sku);
+                $nr = strtoupper(trim($forecast->nr ?? ''));
+                // Optionally use forecast stage if it exists, but default to 'mip'
+                $forecastStage = $forecast->stage ?? '';
+                if (! empty($forecastStage)) {
+                    $stage = strtolower(trim($forecastStage));
+                } else {
+                    $stage = 'mip'; // Always 'mip' if no forecast stage
+                }
             }
-        }
 
-        $row->stage = $stage;
+            $row->stage = $stage;
         $row->nr = $nr;
         $row->order_qty = $row->qty;
         $row->Image = ! empty($image) ? $image : null;
