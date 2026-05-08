@@ -738,8 +738,18 @@ document.addEventListener('DOMContentLoaded', function () {
                     const month = monthNames[date.getMonth()];
                     const formattedDate = `${day} ${month}`;
                     
+                    // Check if date has arrived or passed (turn red with background)
+                    const etaDate = new Date(value);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    etaDate.setHours(0, 0, 0, 0);
+                    const isOverdue = etaDate <= today;
+                    const textColor = isOverdue ? '#fff' : '#000';
+                    const bgColor = isOverdue ? '#dc3545' : 'transparent';
+                    const borderRadius = isOverdue ? '4px' : '0';
+                    
                     return `
-                        <div class="date-display" style="cursor: pointer; padding: 6px; text-align: center; font-weight: 600;">
+                        <div class="date-display" style="cursor: pointer; padding: 6px; text-align: center; font-weight: 700; color: ${textColor}; background-color: ${bgColor}; border-radius: ${borderRadius};">
                             ${formattedDate}
                             <input type="date" 
                                 class="form-control form-control-sm auto-save date-input" 
@@ -1492,8 +1502,26 @@ document.addEventListener('DOMContentLoaded', function () {
                             const month = monthNames[date.getMonth()];
                             const formattedDate = `${day} ${month}`;
                             
+                            // Check if ETA Port date has arrived or passed (turn red with background)
+                            let textColor = '#000';
+                            let bgColor = 'transparent';
+                            let borderRadius = '0';
+                            let fontWeight = '600';
+                            
+                            if (column === 'eta_port') {
+                                const etaDate = new Date(value);
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                etaDate.setHours(0, 0, 0, 0);
+                                const isOverdue = etaDate <= today;
+                                textColor = isOverdue ? '#fff' : '#000';
+                                bgColor = isOverdue ? '#dc3545' : 'transparent';
+                                borderRadius = isOverdue ? '4px' : '0';
+                                fontWeight = isOverdue ? '700' : '600';
+                            }
+                            
                             const dateHtml = `
-                                <div class="date-display" style="cursor: pointer; padding: 6px; text-align: center; font-weight: 600;">
+                                <div class="date-display" style="cursor: pointer; padding: 6px; text-align: center; font-weight: ${fontWeight}; color: ${textColor}; background-color: ${bgColor}; border-radius: ${borderRadius};">
                                     ${formattedDate}
                                     <input type="date" 
                                         class="form-control form-control-sm auto-save date-input" 
