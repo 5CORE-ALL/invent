@@ -517,6 +517,10 @@
                                     <i class="fas fa-calendar-alt"></i>
                                     <span>Bulk Edit D-Date</span>
                                 </button>
+                                <button type="button" id="all-suppliers-followup-btn" class="btn btn-sm btn-info fw-semibold d-inline-flex align-items-center gap-1 shadow-sm text-white" title="View all suppliers follow-up status">
+                                    <i class="fas fa-users"></i>
+                                    <span>All Suppliers Follow-Up</span>
+                                </button>
                                 <select id="mip-export-supplier-select" class="form-select form-select-sm" aria-label="Export filter by supplier" title="All suppliers = every visible row; or pick one supplier">
                                     <option value="">All suppliers</option>
                                     @foreach ($suppliers as $supplierName)
@@ -565,6 +569,50 @@
                                         <p class="text-muted">No remarks saved yet.</p>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- All Suppliers Follow-Up Modal -->
+                <div class="modal fade" id="allSuppliersFollowupModal" tabindex="-1" aria-labelledby="allSuppliersFollowupModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header bg-info text-white">
+                                <h5 class="modal-title" id="allSuppliersFollowupModalLabel">
+                                    <i class="fas fa-users"></i> All Suppliers Follow-Up Status
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <input type="text" id="supplier-search-input" class="form-control" placeholder="Search supplier...">
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px;">
+                                    <table class="table table-striped table-hover table-bordered">
+                                        <thead class="table-info sticky-top">
+                                            <tr>
+                                                <th style="width: 200px;">Supplier</th>
+                                                <th style="width: 150px;">Next Follow Up</th>
+                                                <th>Latest Remark</th>
+                                                <th style="width: 180px;">Last Updated</th>
+                                                <th style="width: 120px;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="all-suppliers-tbody">
+                                            <tr>
+                                                <td colspan="5" class="text-center">
+                                                    <div class="spinner-border text-info" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                             </div>
                         </div>
                     </div>
@@ -1552,6 +1600,116 @@
                 }
             });
         }
+
+        // All Suppliers Follow-Up Modal
+        const allSuppliersFollowupBtn = document.getElementById('all-suppliers-followup-btn');
+        if (allSuppliersFollowupBtn) {
+            allSuppliersFollowupBtn.addEventListener('click', async function() {
+                const modal = new bootstrap.Modal(document.getElementById('allSuppliersFollowupModal'));
+                modal.show();
+                await loadAllSuppliersFollowup();
+            });
+        }
+
+        // Supplier search filter
+        const supplierSearchInput = document.getElementById('supplier-search-input');
+        if (supplierSearchInput) {
+            supplierSearchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase();
+                const rows = document.querySelectorAll('#all-suppliers-tbody tr');
+                rows.forEach(row => {
+                    const supplierName = row.querySelector('.supplier-name')?.textContent.toLowerCase() || '';
+                    row.style.display = supplierName.includes(searchTerm) ? '' : 'none';
+                });
+            });
+        }
+
+        async function loadAllSuppliersFollowup() {
+            const tbody = document.getElementById('all-suppliers-tbody');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center"><div class="spinner-border text-info"><span class="visually-hidden">Loading...</span></div></td></tr>';
+            
+            try {
+                const response = await fetch('/mfrg/all-suppliers-followup');
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    if (result.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No suppliers found</td></tr>';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = result.data.map(supplier => {
+                        const nextFollowup = supplier.next_followup || '';
+                        const latestRemark = supplier.latest_remark || '<span class="text-muted">No remarks</span>';
+                        const lastUpdated = supplier.last_updated || '-';
+                        const remarkCount = supplier.remark_count || 0;
+                        
+                        return `
+                            <tr>
+                                <td class="supplier-name fw-bold">${supplier.name}</td>
+                                <td>
+                                    <input type="date" 
+                                           class="form-control form-control-sm next-followup-date" 
+                                           data-supplier="${supplier.name}"
+                                           value="${nextFollowup}"
+                                           onchange="updateNextFollowup('${supplier.name.replace(/'/g, "\\'")}', this.value)">
+                                </td>
+                                <td>
+                                    <div style="max-height: 60px; overflow-y: auto;">
+                                        ${latestRemark}
+                                    </div>
+                                    ${remarkCount > 0 ? `<small class="text-muted">(${remarkCount} total remarks)</small>` : ''}
+                                </td>
+                                <td><small>${lastUpdated}</small></td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" onclick="openSupplierRemarks('${supplier.name.replace(/'/g, "\\'")}')">
+                                        <i class="fas fa-comment-alt"></i> View
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error loading data</td></tr>';
+                }
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error: ' + error.message + '</td></tr>';
+            }
+        }
+
+        window.updateNextFollowup = async function(supplierName, date) {
+            try {
+                const response = await fetch('/mfrg/update-supplier-next-followup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        supplier_name: supplierName,
+                        next_followup: date
+                    })
+                });
+                
+                const result = await response.json();
+                if (!result.success) {
+                    alert('Error: ' + (result.message || 'Failed to update'));
+                }
+            } catch (error) {
+                alert('Error updating next follow-up: ' + error.message);
+            }
+        };
+
+        window.openSupplierRemarks = function(supplierName) {
+            // Close all suppliers modal
+            bootstrap.Modal.getInstance(document.getElementById('allSuppliersFollowupModal'))?.hide();
+            
+            // Open the existing supplier remarks modal
+            const remarksModal = new bootstrap.Modal(document.getElementById('supplierRemarksModal'));
+            document.getElementById('modal-supplier-name').textContent = supplierName;
+            loadSupplierRemarks(supplierName);
+            remarksModal.show();
+        };
 
         // ========= FUNCTIONS ========= //
 

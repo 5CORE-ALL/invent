@@ -727,6 +727,95 @@ class MFRGInProgressController extends Controller
         }
     }
 
+    public function getAllSuppliersFollowup()
+    {
+        try {
+            // Get all suppliers
+            $suppliers = Supplier::where('type', 'Supplier')
+                ->whereNotNull('name')
+                ->where('name', '!=', '')
+                ->orderBy('name')
+                ->get(['name', 'next_followup']);
+
+            $result = [];
+
+            foreach ($suppliers as $supplier) {
+                $supplierName = trim($supplier->name);
+
+                // Get latest remark from supplier_remarks
+                $latestRemark = DB::table('supplier_remarks')
+                    ->where('supplier_name', $supplierName)
+                    ->orderByDesc('created_at')
+                    ->first();
+
+                $remarkCount = DB::table('supplier_remarks')
+                    ->where('supplier_name', $supplierName)
+                    ->count();
+
+                $result[] = [
+                    'name' => $supplierName,
+                    'next_followup' => $supplier->next_followup ? \Carbon\Carbon::parse($supplier->next_followup)->format('Y-m-d') : '',
+                    'latest_remark' => $latestRemark ? htmlspecialchars($latestRemark->remark ?? '') : '',
+                    'last_updated' => $latestRemark ? \Carbon\Carbon::parse($latestRemark->created_at)->format('d M Y, h:i A') : '',
+                    'remark_count' => $remarkCount,
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $result,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error getting all suppliers followup: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function updateSupplierNextFollowup(Request $request)
+    {
+        try {
+            $supplierName = $request->input('supplier_name');
+            $nextFollowup = $request->input('next_followup');
+
+            if (empty($supplierName)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Supplier name is required.',
+                ], 400);
+            }
+
+            $supplier = Supplier::where('name', $supplierName)
+                ->where('type', 'Supplier')
+                ->first();
+
+            if (! $supplier) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Supplier not found.',
+                ], 404);
+            }
+
+            $supplier->next_followup = $nextFollowup ?: null;
+            $supplier->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Next follow-up date updated successfully.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating supplier next followup: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
     private static function normalizeMipSku(?string $sku): string
     {
         if ($sku === null || $sku === '') {
