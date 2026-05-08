@@ -1716,4 +1716,106 @@ class ForecastAnalysisController extends Controller
         }
     }
 
+    /**
+     * Get R2S (Ready to Ship) data for a specific supplier - used for MIP export
+     */
+    public function getR2sDataForExport(Request $request)
+    {
+        try {
+            $supplier = $request->query('supplier');
+
+            if (!$supplier) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Supplier is required'
+                ], 400);
+            }
+
+            // Get product master data for supplier matching
+            $supplierRows = Supplier::where('type', 'Supplier')->get();
+            $supplierMapByParent = [];
+            foreach ($supplierRows as $row) {
+                $parents = array_map('trim', explode(',', strtoupper($row->parent ?? '')));
+                foreach ($parents as $parent) {
+                    if (!empty($parent)) {
+                        $supplierMapByParent[$parent][] = $row->name;
+                    }
+                }
+            }
+
+            // Find all SKUs that belong to this supplier
+            $productMasterSkus = DB::table('product_master')
+                ->whereNull('deleted_at')
+                ->get(['sku', 'parent', 'Values']);
+
+            $relevantSkus = [];
+            foreach ($productMasterSkus as $prod) {
+                $parent = strtoupper(trim($prod->parent ?? ''));
+                if (!empty($parent) && isset($supplierMapByParent[$parent])) {
+                    $suppliers = $supplierMapByParent[$parent];
+                    if (in_array($supplier, $suppliers)) {
+                        $relevantSkus[] = strtoupper(trim($prod->sku));
+                    }
+                }
+            }
+
+            if (empty($relevantSkus)) {
+                return response()->json([
+                    'success' => true,
+                    'data' => []
+                ]);
+            }
+
+            // Get R2S data for these SKUs
+            $r2sData = ReadyToShip::whereNull('deleted_at')
+                ->where('transit_inv_status', 0)
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $relevantSkus)
+                ->get();
+
+            // Get images from shopify_skus
+            $shopifyImages = DB::table('shopify_skus')
+                ->whereNotNull('image_src')
+                ->where('image_src', '!=', '')
+                ->get(['sku', 'image_src'])
+                ->keyBy(function($item) {
+                    return strtoupper(trim($item->sku));
+                });
+
+            $exportData = [];
+            foreach ($r2sData as $r2s) {
+                $sku = trim($r2s->sku ?? '');
+                $skuUpper = strtoupper($sku);
+                
+                // Get image
+                $image = '';
+                if (isset($shopifyImages[$skuUpper])) {
+                    $image = $shopifyImages[$skuUpper]->image_src ?? '';
+                }
+
+                // Only include rows with qty > 0
+                $qty = (float)($r2s->qty ?? 0);
+                if ($qty > 0) {
+                    $exportData[] = [
+                        'sku' => $sku,
+                        'qty' => $qty,
+                        'supplier' => $supplier,
+                        'image' => $image,
+                    ];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $exportData
+            ]);
+
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong!',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
 }

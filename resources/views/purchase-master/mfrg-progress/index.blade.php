@@ -3222,11 +3222,13 @@
         URL.revokeObjectURL(url);
     }
 
-    function exportMipSummaryToCsv() {
+    async function exportMipSummaryToCsv() {
         const rows = document.querySelectorAll('table.wide-table tbody tr');
         const exportSupplierSel = document.getElementById('mip-export-supplier-select');
         const exportSupplierFilter = exportSupplierSel ? String(exportSupplierSel.value || '').trim() : '';
         const exportData = [];
+        
+        // Collect MIP data from visible rows
         rows.forEach(row => {
             if (row.style.display === 'none') return;
             let rowSupplier = '';
@@ -3280,6 +3282,7 @@
                 orderDateFormatted = d + '-' + m + '-' + y;
             }
             exportData.push({
+                'Stage': 'MIP',
                 'Supplier': rowSupplier,
                 'SKU': getCellText('3'),
                 'Image': getImageUrl('1'),
@@ -3288,6 +3291,31 @@
                 'Days': daysDiff !== '' ? daysDiff : ''
             });
         });
+        
+        // If a specific supplier is selected, fetch R2S data for that supplier
+        if (exportSupplierFilter) {
+            try {
+                const response = await fetch('/forecast.analysis/get-r2s-data-for-export?supplier=' + encodeURIComponent(exportSupplierFilter));
+                const result = await response.json();
+                
+                if (result.success && result.data && result.data.length > 0) {
+                    result.data.forEach(r2sItem => {
+                        exportData.push({
+                            'Stage': 'R2S',
+                            'Supplier': r2sItem.supplier || exportSupplierFilter,
+                            'SKU': r2sItem.sku || '',
+                            'Image': r2sItem.image || '',
+                            'QTY': r2sItem.qty || '',
+                            'O Date': '',
+                            'Days': ''
+                        });
+                    });
+                }
+            } catch (e) {
+                console.warn('Failed to fetch R2S data:', e);
+                // Continue with MIP data only if R2S fetch fails
+            }
+        }
         if (exportData.length === 0) {
             alert(exportSupplierFilter ? 'No rows to export for this supplier (check visible filters and supplier selection).' : 'No data to export.');
             return;
@@ -3301,17 +3329,22 @@
             } else if (supplierBadge && supplierBadge.style.display !== 'none' && supplierEl) {
                 supplierName = supplierEl.textContent.trim() || supplierName;
             }
+            
+            // Count MIP and R2S items
+            const mipCount = exportData.filter(r => r['Stage'] === 'MIP').length;
+            const r2sCount = exportData.filter(r => r['Stage'] === 'R2S').length;
             const itemsCount = exportData.length;
             const dateStr = new Date().toISOString().split('T')[0];
             const supplierFileSlug = exportSupplierFilter
                 ? '_' + exportSupplierFilter.replace(/[^\w\-.]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 48)
                 : '';
 
-            const csvCols = ['Supplier', 'SKU', 'Image', 'QTY', 'O Date', 'Days'];
+            const csvCols = ['Stage', 'Supplier', 'SKU', 'Image', 'QTY', 'O Date', 'Days'];
             const csvLines = [];
             csvLines.push(csvCols.map(mipCsvEscapeField).join(','));
             exportData.forEach(function(r) {
                 csvLines.push([
+                    r['Stage'],
                     r['Supplier'],
                     r['SKU'],
                     r['Image'],
@@ -3321,8 +3354,9 @@
                 ].map(mipCsvEscapeField).join(','));
             });
             const bom = '\uFEFF';
+            const exportTitle = exportSupplierFilter ? 'MIP_R2S_Summary' : 'MIP_Summary';
             mipDownloadTextFile(
-                'MIP_Summary_' + dateStr + supplierFileSlug + '.csv',
+                exportTitle + '_' + dateStr + supplierFileSlug + '.csv',
                 bom + csvLines.join('\r\n'),
                 'text/csv;charset=utf-8'
             );
@@ -3330,9 +3364,12 @@
             const imageUrls = exportData.map(r => r['Image']).filter(url => url);
             if (imageUrls.length > 0) {
                 const urlsJson = JSON.stringify([...new Set(imageUrls)]);
-                const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MIP Summary ' + dateStr + '</title><style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#3bc0c3;color:#fff;}</style></head><body><h2>MIP Summary - ' + dateStr + '</h2><p><strong>Supplier:</strong> ' + supplierName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' | <strong>Items:</strong> ' + itemsCount + '</p><table><thead><tr><th>Supplier</th><th>SKU</th><th>Image</th><th>QTY</th><th>O Date</th><th>Days</th></tr></thead><tbody>' + exportData.map(r => '<tr><td>' + (r['Supplier']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['SKU']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['Image'] ? '<a href="' + r['Image'].replace(/"/g,'&quot;') + '" target="_blank">View</a>' : '') + '</td><td>' + (r['QTY']||'') + '</td><td>' + (r['O Date']||'') + '</td><td>' + (r['Days']||'') + '</td></tr>').join('') + '</tbody></table><script>var urls=' + urlsJson + ';var i=0;function openNext(){if(i<urls.length){window.open(urls[i],"_blank");i++;setTimeout(openNext,800);}}setTimeout(openNext,1000);<\/script></body></html>';
+                const summaryText = exportSupplierFilter 
+                    ? '<strong>Supplier:</strong> ' + supplierName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' | <strong>Total:</strong> ' + itemsCount + ' (MIP: ' + mipCount + ', R2S: ' + r2sCount + ')'
+                    : '<strong>Supplier:</strong> ' + supplierName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' | <strong>Items:</strong> ' + itemsCount;
+                const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MIP+R2S Summary ' + dateStr + '</title><style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#3bc0c3;color:#fff;}.stage-mip{background:#e3f2fd;}.stage-r2s{background:#fff3e0;}</style></head><body><h2>MIP + R2S Summary - ' + dateStr + '</h2><p>' + summaryText + '</p><table><thead><tr><th>Stage</th><th>Supplier</th><th>SKU</th><th>Image</th><th>QTY</th><th>O Date</th><th>Days</th></tr></thead><tbody>' + exportData.map(r => '<tr class="stage-' + (r['Stage']||'').toLowerCase() + '"><td>' + (r['Stage']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['Supplier']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['SKU']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['Image'] ? '<a href="' + r['Image'].replace(/"/g,'&quot;') + '" target="_blank">View</a>' : '') + '</td><td>' + (r['QTY']||'') + '</td><td>' + (r['O Date']||'') + '</td><td>' + (r['Days']||'') + '</td></tr>').join('') + '</tbody></table><script>var urls=' + urlsJson + ';var i=0;function openNext(){if(i<urls.length){window.open(urls[i],"_blank");i++;setTimeout(openNext,800);}}setTimeout(openNext,1000);<\/script></body></html>';
                 mipDownloadTextFile(
-                    'MIP_Summary_' + dateStr + supplierFileSlug + '_images.html',
+                    exportTitle + '_' + dateStr + supplierFileSlug + '_images.html',
                     html,
                     'text/html;charset=utf-8'
                 );
