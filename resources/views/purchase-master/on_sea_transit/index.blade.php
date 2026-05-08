@@ -235,6 +235,16 @@
                             <i class="fas fa-exclamation-circle me-2"></i>Pending: $<span id="totalPendingBadge">{{ number_format($totalPendingAmount ?? 0, 0) }}</span>
                         </span>
                     </div>
+                    
+                    <!-- SOP Button with Edit Option -->
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <a href="#" id="sopButton" class="btn btn-primary" target="_blank" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                            <i class="fas fa-book me-2"></i>SOP
+                        </a>
+                        <button type="button" class="btn btn-outline-secondary" onclick="openSopModal()" style="font-size: 0.9rem; padding: 0.5rem 0.75rem;">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div id="on-sea-transit-table"></div>
@@ -321,6 +331,26 @@
   </div>
 </div>
 
+<!-- SOP Link Edit Modal -->
+<div class="modal fade" id="sopModal" tabindex="-1" aria-labelledby="sopModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="fas fa-link me-2"></i>Edit SOP Link</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="sopLinkInput" class="form-label">SOP Link URL</label>
+        <input type="url" class="form-control" id="sopLinkInput" placeholder="https://example.com/sop" required>
+        <small class="text-muted">Enter the full URL including https://</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveSopLinkBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 @endsection
 @section('script')
@@ -1716,6 +1746,64 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
     });
+    
+    // SOP Link Management
+    window.loadSopLink = function() {
+        const sopLink = localStorage.getItem('onSeaTransit_sopLink');
+        const sopButton = document.getElementById('sopButton');
+        
+        if (sopLink) {
+            sopButton.href = sopLink;
+            sopButton.style.display = 'inline-flex';
+        } else {
+            sopButton.href = '#';
+            sopButton.style.display = 'inline-flex';
+            sopButton.onclick = function(e) {
+                e.preventDefault();
+                alert('Please set the SOP link by clicking the edit button.');
+            };
+        }
+    }
+    
+    // Function to open SOP modal
+    window.openSopModal = function() {
+        const sopLink = localStorage.getItem('onSeaTransit_sopLink') || '';
+        document.getElementById('sopLinkInput').value = sopLink;
+        const sopModal = new bootstrap.Modal(document.getElementById('sopModal'));
+        sopModal.show();
+    }
+    
+    // Save SOP Link
+    document.getElementById('saveSopLinkBtn').addEventListener('click', function() {
+        const sopLink = document.getElementById('sopLinkInput').value.trim();
+        
+        if (!sopLink) {
+            alert('Please enter a valid URL');
+            return;
+        }
+        
+        // Basic URL validation
+        try {
+            new URL(sopLink);
+        } catch (e) {
+            alert('Please enter a valid URL (e.g., https://example.com)');
+            return;
+        }
+        
+        localStorage.setItem('onSeaTransit_sopLink', sopLink);
+        
+        const sopButton = document.getElementById('sopButton');
+        sopButton.href = sopLink;
+        sopButton.onclick = null; // Remove the alert onclick if it was set
+        
+        const sopModal = bootstrap.Modal.getInstance(document.getElementById('sopModal'));
+        sopModal.hide();
+        
+        alert('SOP link saved successfully!');
+    });
+    
+    // Load SOP link on page load
+    loadSopLink();
 
 });
 
