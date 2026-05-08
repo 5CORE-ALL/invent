@@ -1443,7 +1443,20 @@
     }
     
     .modal-backdrop {
-        z-index: 9998 !important;
+        z-index: 1040 !important;
+        background-color: rgba(0, 0, 0, 0.5) !important;
+    }
+    
+    .modal {
+        z-index: 1050 !important;
+    }
+    
+    .modal-dialog {
+        z-index: 1055 !important;
+    }
+    
+    .modal-content {
+        z-index: 1060 !important;
     }
     
     </style>

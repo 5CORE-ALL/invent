@@ -191,19 +191,21 @@
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
     
-    /* Remove modal backdrop completely */
+    /* Modal styling */
     .modal-backdrop {
-        display: none !important;
+        background-color: rgba(0, 0, 0, 0.5) !important;
     }
     
-    /* Add shadow to modal for depth without backdrop */
     .modal-dialog {
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        z-index: 1050 !important;
     }
     
-    /* Ensure modal content is on top */
     .modal {
-        background-color: transparent !important;
+        z-index: 1055 !important;
+    }
+    
+    .modal-content {
+        z-index: 1060 !important;
     }
 </style>
 @endsection
