@@ -1185,6 +1185,10 @@
 
             // Custom price rounding function
             function roundToRetailPrice(price) {
+                // Don't round if price is below 20.99
+                if (price < 20.99) {
+                    return price;
+                }
                 const roundedDollar = Math.ceil(price);
                 return roundedDollar - 0.01;
             }
@@ -2972,7 +2976,7 @@
                 updateSummary();
             }
 
-            $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter')
+            $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #roi-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter')
                 .on('change', function() {
                     applyFilters();
                 });

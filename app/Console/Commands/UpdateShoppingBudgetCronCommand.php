@@ -241,7 +241,8 @@ class UpdateShoppingBudgetCronCommand extends Command
                 }
 
                 $campaignId = $matchedCampaign->campaign_id;
-                if ($campaignIdsFilter !== null && ! in_array((string) $campaignId, $campaignIdsFilter, true)) {
+                // FIX: Convert filter to strings for consistent comparison (campaign_id from DB is string, filter may be int)
+                if ($campaignIdsFilter !== null && ! in_array((string) $campaignId, array_map('strval', $campaignIdsFilter), true)) {
                     continue;
                 }
                 $budgetId = $matchedCampaign->budget_id;
