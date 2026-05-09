@@ -102,6 +102,15 @@ return [
     'prolightsounds' => [
         'api_key' => env('PROLIGHTSOUNDS_SHOPIFY_API_KEY'),
         'password' => env('PROLIGHTSOUNDS_SHOPIFY_PASSWORD'),
+        'access_token' => env('PROLIGHTSOUNDS_SHOPIFY_ACCESS_TOKEN'),
+        'domain' => env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN'),
+        'store_url' => env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN'),
+    ],
+
+    'prolightsounds_shopify' => [
+        'api_key' => env('PROLIGHTSOUNDS_SHOPIFY_API_KEY'),
+        'password' => env('PROLIGHTSOUNDS_SHOPIFY_PASSWORD'),
+        'access_token' => env('PROLIGHTSOUNDS_SHOPIFY_ACCESS_TOKEN'),
         'domain' => env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN'),
         'store_url' => env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN'),
     ],

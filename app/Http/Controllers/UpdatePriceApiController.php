@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Session;
 class UpdatePriceApiController extends Controller
 {
     //update price in shopify by variant id
-    public static function updateShopifyVariantPrice($variantId, $newPrice)
+    public static function updateShopifyVariantPrice($variantId, $newPrice, $store = 'b2c')
     {
         try {
             // Shopify rate limiting (2 calls/sec) via default cache store. On production, a missing or
@@ -45,36 +45,53 @@ class UpdatePriceApiController extends Controller
 
             Log::info('Shopify price update started', [
                 'variant_id' => $variantId,
-                'new_price' => $newPrice
+                'new_price' => $newPrice,
+                'store' => $store
             ]);
 
-            $storeUrl = "https://" . config('services.shopify.store_url');
+            // Determine which store credentials to use
+            if ($store === 'pls' || $store === 'prolightsounds') {
+                $storeUrl = "https://" . config('services.prolightsounds_shopify.store_url');
+                $accessToken = config('services.prolightsounds_shopify.password');
+                $storeName = 'ProLightSounds';
+            } else {
+                // Default to B2C store
+                $storeUrl = "https://" . config('services.shopify.store_url');
+                $accessToken = config('services.shopify.password');
+                $storeName = 'Shopify B2C';
+            }
+
             $apiVersion = "2025-01";
-            $accessToken = config('services.shopify.password');
 
             if (!$storeUrl || !$accessToken) {
-                Log::error('Shopify credentials missing', [
+                Log::error("$storeName credentials missing", [
                     'store_url' => $storeUrl ? 'present' : 'missing',
                     'access_token' => $accessToken ? 'present' : 'missing'
                 ]);
                 return [
                     "status" => "error",
-                    "message" => "Shopify credentials not configured"
+                    "message" => "$storeName credentials not configured"
                 ];
             }
 
             $url = "{$storeUrl}/admin/api/{$apiVersion}/variants/{$variantId}.json";
 
+            // Ensure price is formatted as string with exactly 2 decimal places
+            // This prevents float precision issues and ensures exact price is sent
+            $priceFormatted = number_format((float)$newPrice, 2, '.', '');
+            
             $payload = [
                 "variant" => [
                     "id" => $variantId,
-                    "price" => $newPrice
+                    "price" => $priceFormatted
                 ]
             ];
 
-            Log::info('Sending Shopify API request', [
+            Log::info("Sending $storeName API request", [
                 'url' => $url,
-                'payload' => $payload
+                'payload' => $payload,
+                'price_original' => $newPrice,
+                'price_formatted' => $priceFormatted
             ]);
 
             // API enforces ~2 calls/sec; small gap before first attempt reduces immediate 429 when
@@ -96,7 +113,7 @@ class UpdatePriceApiController extends Controller
                 $statusCode = $response->status();
                 $responseBody = $response->json();
 
-                Log::info('Shopify API response received', [
+                Log::info("$storeName API response received", [
                     'status_code' => $statusCode,
                     'response' => $responseBody,
                     'attempt' => $attempt,
@@ -110,7 +127,7 @@ class UpdatePriceApiController extends Controller
                 if ($attempt < $maxAttempts) {
                     $retryAfterSec = (int) ($response->header('Retry-After') ?? 0);
                     $sleepMs = $retryAfterSec > 0 ? ($retryAfterSec * 1000) : ($baseDelayMs * $attempt);
-                    Log::warning('Shopify API rate limited (429), retrying', [
+                    Log::warning("$storeName API rate limited (429), retrying", [
                         'attempt' => $attempt,
                         'sleep_ms' => $sleepMs,
                     ]);
@@ -125,14 +142,19 @@ class UpdatePriceApiController extends Controller
                     $updatedPrice = (float) $responseBody['variant']['price'];
                 }
                 
-                // Verify the price matches what we sent (with small tolerance for rounding)
-                $priceMatches = $updatedPrice && abs($updatedPrice - (float)$newPrice) < 0.01;
+                // Verify the price matches exactly what we sent (no tolerance for rounding)
+                // Format both prices to 2 decimals for exact comparison
+                $sentPrice = number_format((float)$newPrice, 2, '.', '');
+                $receivedPrice = number_format($updatedPrice, 2, '.', '');
+                $priceMatches = $updatedPrice && ($sentPrice === $receivedPrice);
                 
                 if (!$priceMatches) {
-                    Log::error('Shopify API returned success but price mismatch detected', [
+                    Log::error("$storeName API returned success but price mismatch detected", [
                         'variant_id' => $variantId,
                         'expected_price' => $newPrice,
+                        'expected_price_formatted' => $sentPrice,
                         'actual_price_in_response' => $updatedPrice,
+                        'actual_price_formatted' => $receivedPrice,
                         'response' => $responseBody
                     ]);
                     return [
@@ -143,7 +165,7 @@ class UpdatePriceApiController extends Controller
                     ];
                 }
                 
-                Log::info('Shopify price updated and verified successfully', [
+                Log::info("$storeName price updated and verified successfully", [
                     'variant_id' => $variantId,
                     'new_price' => $newPrice,
                     'verified_price' => $updatedPrice
@@ -163,7 +185,7 @@ class UpdatePriceApiController extends Controller
                     $errorMessage = $responseBody['error'];
                 }
 
-                Log::error('Shopify API returned error', [
+                Log::error("$storeName API returned error", [
                     'variant_id' => $variantId,
                     'status_code' => $statusCode,
                     'error' => $errorMessage,
@@ -178,7 +200,8 @@ class UpdatePriceApiController extends Controller
             }
 
         } catch (\Exception $e) {
-            Log::error('Shopify price update exception', [
+            $storeName = ($store === 'pls' || $store === 'prolightsounds') ? 'ProLightSounds' : 'Shopify B2C';
+            Log::error("$storeName price update exception", [
                 'variant_id' => $variantId,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()

@@ -4450,4 +4450,164 @@ class AmazonSpApiService
 
         return is_array($json) ? $json : null;
     }
+
+    /**
+     * Update Amazon listing's minimum price (business price rule)
+     * Uses the same endpoint as regular price update but adds business_price section
+     * 
+     * @param string $sku The seller SKU
+     * @param float $minPrice Minimum price to set
+     * @return array Response data
+     */
+    public function updateCompetitivePriceConstraints($sku, $minPrice)
+    {
+        // Validate SKU
+        $sku = $this->normalizeListingsSellerSku(trim((string) $sku));
+        if (empty($sku)) {
+            Log::error("Amazon Min Price Update: Empty SKU provided");
+            return [
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'SKU is required and cannot be empty.'
+                ]]
+            ];
+        }
+
+        // Validate price
+        if ($minPrice !== null) {
+            $minPrice = is_numeric($minPrice) ? round((float) $minPrice, 2) : null;
+            if ($minPrice === null || $minPrice < 0) {
+                Log::error("Amazon Min Price Update: Invalid min price", ['sku' => $sku, 'min_price' => $minPrice]);
+                return [
+                    'errors' => [[
+                        'code' => 'InvalidInput',
+                        'message' => 'Minimum price must be a valid number.'
+                    ]]
+                ];
+            }
+        }
+
+        $sellerId = config('services.amazon_sp.seller_id');
+        if (empty($sellerId)) {
+            Log::error("Amazon Min Price Update: Seller ID not configured");
+            return [
+                'errors' => [[
+                    'code' => 'ConfigurationError',
+                    'message' => 'Amazon Seller ID is not configured.'
+                ]]
+            ];
+        }
+
+        try {
+            // Get access token
+            $accessToken = $this->getAccessToken();
+            if (!$accessToken) {
+                return [
+                    'errors' => [[
+                        'code' => 'AuthenticationError',
+                        'message' => 'Failed to obtain Amazon access token.'
+                    ]]
+                ];
+            }
+
+            // Use the Listings Items API to update minimum seller allowed price
+            $url = $this->endpoint . '/listings/2021-08-01/items/' . rawurlencode($sellerId) . '/' . rawurlencode($sku);
+            $url .= '?marketplaceIds=' . rawurlencode($this->marketplaceId);
+            
+            $payload = [
+                'productType' => 'PRODUCT',
+                'patches' => [
+                    [
+                        'op' => 'replace',
+                        'path' => '/attributes/purchasable_offer',
+                        'value' => [
+                            [
+                                'marketplace_id' => $this->marketplaceId,
+                                'currency' => 'USD',
+                                'our_price' => [
+                                    [
+                                        'schedule' => [
+                                            [
+                                                'value_with_tax' => $minPrice
+                                            ]
+                                        ]
+                                    ]
+                                ],
+                                'minimum_seller_allowed_price' => [
+                                    [
+                                        'schedule' => [
+                                            [
+                                                'value_with_tax' => $minPrice
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ];
+
+            Log::info('Amazon Min Price Update Request', [
+                'sku' => $sku,
+                'min_price' => $minPrice,
+                'url' => $url,
+                'payload' => $payload
+            ]);
+
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])
+                ->timeout(60)
+                ->connectTimeout(25)
+                ->patch($url, $payload);
+
+            $responseData = $response->json();
+
+            if ($response->successful()) {
+                Log::info('Amazon Min Price Update Success', [
+                    'sku' => $sku,
+                    'min_price' => $minPrice,
+                    'response' => $responseData
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Minimum price updated successfully',
+                    'sku' => $sku,
+                    'min_price' => $minPrice
+                ];
+            } else {
+                Log::error('Amazon Min Price Update Failed', [
+                    'sku' => $sku,
+                    'status' => $response->status(),
+                    'response' => $responseData
+                ]);
+
+                return [
+                    'errors' => $responseData['errors'] ?? [[
+                        'code' => 'APIError',
+                        'message' => 'Failed to update minimum price: ' . ($response->body() ?: 'Unknown error')
+                    ]]
+                ];
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Amazon Min Price Update Exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'errors' => [[
+                    'code' => 'Exception',
+                    'message' => $e->getMessage()
+                ]]
+            ];
+        }
+    }
 }

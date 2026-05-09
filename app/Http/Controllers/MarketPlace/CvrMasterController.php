@@ -3259,6 +3259,8 @@ class CvrMasterController extends Controller
                 return $this->pushToShopifyB2C($sku, $price);
             } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
                 return $this->pushToShopifyB2B($sku, $price);
+            } elseif ($marketplace === 'pls' || $marketplace === 'prolightsounds') {
+                return $this->pushToPls($sku, $price);
             } elseif ($marketplace === 'reverb') {
                 return $this->pushToReverb($sku, $price);
             } elseif ($marketplace === 'fba') {
@@ -3266,7 +3268,7 @@ class CvrMasterController extends Controller
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is only supported for Amazon, Doba, Walmart, Shopify B2C, Shopify B2B, Reverb, and FBA. Received: $marketplace"
+                    'message' => "Price push is only supported for Amazon, Doba, Walmart, Shopify B2C, Shopify B2B, ProLightSounds, Reverb, and FBA. Received: $marketplace"
                 ], 400);
             }
 
@@ -3635,6 +3637,109 @@ class CvrMasterController extends Controller
                 'success' => false,
                 'message' => 'Shopify B2C API error: ' . $e->getMessage(),
                 'errors' => [['message' => 'API Exception: ' . $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to ProLightSounds (PLS) Shopify store
+     */
+    private function pushToPls($sku, $price)
+    {
+        try {
+            // Get variant_id from shopify_catalog_variants for PLS store
+            $plsVariant = \App\Models\ShopifyPlsVariant::where('sku', $sku)->first();
+
+            if (!$plsVariant) {
+                $this->savePricePushStatus($sku, 'pls', 'error', $price);
+
+                Log::error('CVR Master - PLS SKU not found', [
+                    'sku' => $sku
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => "SKU: $sku not found in ProLightSounds.",
+                    'errors' => [['message' => 'SKU not found in ProLightSounds listings']]
+                ], 404);
+            }
+
+            $variantId = $plsVariant->shopify_variant_id;
+
+            if (!$variantId) {
+                $this->savePricePushStatus($sku, 'pls', 'error', $price);
+
+                Log::error('CVR Master - PLS Variant ID is null', [
+                    'sku' => $sku,
+                    'pls_variant' => $plsVariant
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => "Variant ID not found for SKU: $sku",
+                    'errors' => [['message' => 'Variant ID is null']]
+                ], 404);
+            }
+
+            Log::info('CVR Master - Calling Shopify API to update PLS price', [
+                'sku' => $sku,
+                'variant_id' => $variantId,
+                'price' => $price
+            ]);
+
+            // Push to ProLightSounds Shopify using UpdatePriceApiController
+            $result = \App\Http\Controllers\UpdatePriceApiController::updateShopifyVariantPrice(
+                $variantId, 
+                $price,
+                'pls'  // Pass store identifier
+            );
+
+            if ($result['status'] === 'success') {
+                $verifiedPrice = $result['verified_price'] ?? $price;
+                $this->savePricePushStatus($sku, 'pls', 'pushed', $verifiedPrice);
+
+                Log::info('CVR Master - PLS price push successful', [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'price' => $verifiedPrice
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Price $" . number_format($verifiedPrice, 2) . " pushed to ProLightSounds successfully for SKU: $sku",
+                    'data' => $result
+                ]);
+            } else {
+                $reason = $result['message'] ?? 'API error';
+
+                $this->savePricePushStatus($sku, 'pls', 'error', $price);
+
+                Log::error('CVR Master - PLS price push failed', [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'price' => $price,
+                    'reason' => $reason,
+                    'result' => $result
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'ProLightSounds price update failed: ' . $reason,
+                    'errors' => [['message' => $reason]]
+                ], 400);
+            }
+
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'pls', 'error', $price);
+
+            Log::error('CVR Master - PLS push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'ProLightSounds API error: ' . $e->getMessage()
             ], 500);
         }
     }

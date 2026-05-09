@@ -161,71 +161,6 @@
             cursor: not-allowed !important;
         }
 
-        .acos-info-icon {
-            transition: color 0.2s;
-        }
-
-        .acos-info-icon:hover {
-            color: #007bff !important;
-        }
-
-        #campaignModal .table {
-            font-size: 0.875rem;
-        }
-
-        #campaignModal .table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            white-space: nowrap;
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            transform: rotate(180deg);
-            height: 60px;
-            width: 40px;
-            min-width: 40px;
-            font-size: 11px;
-            vertical-align: middle;
-            text-align: center;
-            padding: 5px;
-        }
-
-        #campaignModal .table td {
-            white-space: nowrap;
-            vertical-align: middle;
-            text-align: center;
-        }
-
-        /* Coloring for ACOS */
-        .green-bg {
-            color: #05bd30 !important;
-        }
-
-        .pink-bg {
-            color: #ff01d0 !important;
-        }
-
-        .red-bg {
-            color: #ff2727 !important;
-        }
-
-        /* Row-level trend dot (chart trigger when present in cells) */
-        .trend-dot {
-            width: 10px !important;
-            height: 10px !important;
-            min-width: 10px !important;
-            min-height: 10px !important;
-            background: #b8860b !important;
-            border-radius: 50% !important;
-            display: inline-block !important;
-            margin-right: 6px !important;
-            flex-shrink: 0;
-            cursor: pointer;
-            transition: transform 0.15s ease;
-        }
-        .trend-dot:hover {
-            transform: scale(1.2);
-            background-color: #9c6f0c !important;
-        }
         .kw-cell-wrapper {
             display: flex !important;
             align-items: center !important;
@@ -254,7 +189,7 @@
             <div class="card-body py-3">
                 
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU / Campaign..." style="width: 180px; display: inline-block;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -357,23 +292,6 @@
                         <option value="blank">Blank S PRC only</option>
                     </select>
 
-                    <select id="campaign-status-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="">Active Filter</option>
-                        <option value="ALL">All</option>
-                        <option value="ENABLED">Active</option>
-                        <option value="PAUSED">Paused</option>
-                        <option value="MISSING">Missing A</option>
-                    </select>
-
-                    <select id="nra-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all" selected>All</option>
-                        <option value="RA">RA</option>
-                        <option value="NRA">NRA</option>
-                        <option value="LATER">LATER</option>
-                    </select>
-
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
                         0 selected
@@ -388,13 +306,36 @@
                             id="bulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-tasks"></i> Bulk Actions
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="bulkActionsDropdown">
+                        <ul class="dropdown-menu" aria-labelledby="bulkActionsDropdown" style="min-width: 250px;">
                             <li><a class="dropdown-item bulk-action-item" href="#" data-action="NRA">Mark as NRA</a></li>
                             <li><a class="dropdown-item bulk-action-item" href="#" data-action="RA">Mark as RA</a></li>
-                            <li><a class="dropdown-item bulk-action-item" href="#" data-action="LATER">Mark as LATER</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item bulk-action-item" href="#" data-action="PAUSE">Pause Campaigns</a></li>
-                            <li><a class="dropdown-item bulk-action-item" href="#" data-action="ACTIVATE">Activate Campaigns</a></li>
+                            <li class="px-3 py-2">
+                                <div style="font-weight: 600; margin-bottom: 8px; color: #495057;">
+                                    <i class="fas fa-upload"></i> Bulk Push Prices
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input bulk-push-checkbox" type="checkbox" value="amazon" id="bulkPushAmazon" checked>
+                                    <label class="form-check-label" for="bulkPushAmazon" style="color: #FF9900; font-weight: 500;">
+                                        Amazon
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input bulk-push-checkbox" type="checkbox" value="shopify" id="bulkPushShopify" checked>
+                                    <label class="form-check-label" for="bulkPushShopify" style="color: #96bf48; font-weight: 500;">
+                                        Shopify
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input bulk-push-checkbox" type="checkbox" value="pls" id="bulkPushPls" checked>
+                                    <label class="form-check-label" for="bulkPushPls" style="color: #5C6AC4; font-weight: 500;">
+                                        ProLightSounds
+                                    </label>
+                                </div>
+                                <button class="btn btn-sm btn-primary w-100 mt-2" id="executeBulkPush">
+                                    <i class="fas fa-paper-plane"></i> Push Selected
+                                </button>
+                            </li>
                         </ul>
                     </div>
 
@@ -482,14 +423,11 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Sales: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="total_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Ad: $0.00</span>
                         
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
                         <span class="badge bg-light fs-6 p-2 amz-badge-chart border" data-metric="groi_pct" id="groi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GROI: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" id="nroi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">NROI: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" id="tcos-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">TCOS: 0%</span>
                         
                         <!-- Amazon Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
@@ -728,50 +666,6 @@
         </div>
     </div>
 
-    <!-- Row-level trend graph modal (KW/PT/HL ACOS & CVR via ad-breakdown-chart-data) -->
-    <div class="modal fade" id="trendGraphModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg shadow-none" style="max-width: 90vw; width: 90vw;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
-                <div class="modal-header bg-info text-white py-1 px-3">
-                    <h6 class="modal-title mb-0" style="font-size: 13px;">
-                        <i class="fas fa-chart-line me-1"></i>
-                        <span id="trendGraphModalTitle">30 Day Trend</span>
-                    </h6>
-                    <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-3">
-                    <div id="trendGraphLoading" class="text-center py-4" style="display: none;">
-                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                        <p class="mt-1 text-muted small mb-0">Loading chart...</p>
-                    </div>
-                    <div id="trendGraphNoData" class="text-center py-4" style="display: none;">
-                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
-                        <p class="text-muted small mb-0">No trend data available.</p>
-                    </div>
-                    <div id="trendGraphContainer" style="height: 20vh; display: none; align-items: stretch;">
-                        <div style="flex: 1; min-width: 0; position: relative;">
-                            <canvas id="trendGraphCanvas"></canvas>
-                        </div>
-                        <div id="trendChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
-                            <div style="text-align: center;">
-                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
-                                <div id="trendChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
-                            </div>
-                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
-                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
-                                <div id="trendChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
-                            </div>
-                            <div style="text-align: center;">
-                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
-                                <div id="trendChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
 @endsection
 
 @section('script-bottom')
@@ -875,40 +769,6 @@
             else if (n > 125) c = '#e83e8c';
             return '<span style="color: ' + c + '; font-weight: 600;">' + Math.round(n) + '%</span>';
         }
-        /** NROI% column uses ROI_percentage − TCOS (same as tabulator NROI formatter) */
-        function amazonModalNroiColoredHtml(row) {
-            const roi = parseFloat(row.ROI_percentage) || 0;
-            const adSpend = parseFloat(row.AD_Spend_L30) || 0;
-            const price = parseFloat(row.price) || 0;
-            const aL30 = parseFloat(row.A_L30) || 0;
-            const totalSales = price * aL30;
-            const tcos = totalSales > 0 ? (adSpend / totalSales) * 100 : 0;
-            const nroi = roi - tcos;
-            const nroiSafe = isNaN(nroi) ? 0 : nroi;
-            let c = '#a00211';
-            if (nroiSafe >= 50 && nroiSafe < 75) c = '#ffc107';
-            else if (nroiSafe >= 75 && nroiSafe <= 125) c = '#28a745';
-            else if (nroiSafe > 125) c = '#e83e8c';
-            return '<span style="color: ' + c + '; font-weight: 600;">' + Math.round(nroiSafe) + '%</span>';
-        }
-        /** AD% — same edge-case colors as TACOS column (field AD%) */
-        function amazonModalAdPctColoredHtml(row) {
-            const adSpend = parseFloat(row.AD_Spend_L30) || 0;
-            const sales = parseFloat(row['A_L30']) || 0;
-            const value = row['AD%'];
-            if (adSpend > 0 && sales === 0) {
-                return '<span style="color: #a00211; font-weight: 600;">100%</span>';
-            }
-            if (value === null || value === undefined) {
-                return '<span style="font-weight: 600;">0%</span>';
-            }
-            const percent = parseFloat(value);
-            if (isNaN(percent)) return '<span style="font-weight: 600;">0%</span>';
-            if (adSpend > 0 && percent === 0) {
-                return '<span style="color: #dc3545; font-weight: 600;">100%</span>';
-            }
-            return '<span style="font-weight: 600;">' + Math.round(percent) + '%</span>';
-        }
         /** CVR L30 — same formula and colors as tabulator CVR L30 column */
         function amazonModalCvrL30ColoredHtml(row) {
             const aL30 = parseFloat(row['A_L30']) || 0;
@@ -977,30 +837,75 @@
         function amazonModalAcceptPushHtml(row) {
             const sku = row['(Child) sku'] || '';
             const sprice = parseFloat(row.SPRICE) || 0;
-            const status = row.SPRICE_STATUS || null;
+            const amazonStatus = row.SPRICE_STATUS || null;
+            const shopifyStatus = row.S_STATUS || null;
+            const plsStatus = row.PLS_STATUS || null;
             if (!sku || !sprice || sprice <= 0) {
                 return '<span class="text-muted">N/A</span>';
             }
-            let icon = '<i class="fas fa-check"></i>';
-            let iconColor = '#28a745';
-            let titleText = 'Apply Price to Amazon';
-            if (status === 'pushed') {
-                icon = '<i class="fa-solid fa-check-double"></i>';
-                titleText = 'Price pushed to Amazon (Double-click to mark as Applied)';
-            } else if (status === 'applied') {
-                icon = '<i class="fa-solid fa-check-double"></i>';
-                titleText = 'Price applied to Amazon (Double-click to change)';
-            } else if (status === 'error') {
-                icon = '<i class="fa-solid fa-x"></i>';
-                iconColor = '#dc3545';
-                titleText = 'Error applying price to Amazon';
-            } else if (status === 'processing') {
-                icon = '<i class="fas fa-spinner fa-spin"></i>';
-                iconColor = '#ffc107';
-                titleText = 'Price pushing in progress...';
+            
+            // Amazon button
+            let amazonIcon = '<i class="fas fa-check"></i>';
+            let amazonColor = '#28a745';
+            let amazonTitle = 'Push to Amazon';
+            if (amazonStatus === 'pushed') {
+                amazonIcon = '<i class="fa-solid fa-check-double"></i>';
+                amazonTitle = 'Price pushed to Amazon (Double-click to mark as Applied)';
+            } else if (amazonStatus === 'applied') {
+                amazonIcon = '<i class="fa-solid fa-check-double"></i>';
+                amazonTitle = 'Price applied to Amazon (Double-click to change)';
+            } else if (amazonStatus === 'error') {
+                amazonIcon = '<i class="fa-solid fa-x"></i>';
+                amazonColor = '#dc3545';
+                amazonTitle = 'Error pushing to Amazon';
+            } else if (amazonStatus === 'processing') {
+                amazonIcon = '<i class="fas fa-spinner fa-spin"></i>';
+                amazonColor = '#ffc107';
+                amazonTitle = 'Pushing to Amazon...';
             }
+            
+            // Shopify button
+            let shopifyIcon = '<i class="fas fa-check"></i>';
+            let shopifyColor = '#0d6efd';
+            let shopifyTitle = 'Push to Shopify';
+            if (shopifyStatus === 'pushed') {
+                shopifyIcon = '<i class="fa-solid fa-check-double"></i>';
+                shopifyColor = '#28a745';
+                shopifyTitle = 'Price pushed to Shopify';
+            } else if (shopifyStatus === 'error') {
+                shopifyIcon = '<i class="fa-solid fa-x"></i>';
+                shopifyColor = '#dc3545';
+                shopifyTitle = 'Error pushing to Shopify';
+            } else if (shopifyStatus === 'processing') {
+                shopifyIcon = '<i class="fas fa-spinner fa-spin"></i>';
+                shopifyColor = '#ffc107';
+                shopifyTitle = 'Pushing to Shopify...';
+            }
+            
+            // PLS button
+            let plsIcon = '<i class="fas fa-check"></i>';
+            let plsColor = '#ff8c00';
+            let plsTitle = 'Push to ProLightSounds';
+            if (plsStatus === 'pushed') {
+                plsIcon = '<i class="fa-solid fa-check-double"></i>';
+                plsColor = '#28a745';
+                plsTitle = 'Price pushed to ProLightSounds';
+            } else if (plsStatus === 'error') {
+                plsIcon = '<i class="fa-solid fa-x"></i>';
+                plsColor = '#dc3545';
+                plsTitle = 'Error pushing to ProLightSounds';
+            } else if (plsStatus === 'processing') {
+                plsIcon = '<i class="fas fa-spinner fa-spin"></i>';
+                plsColor = '#ffc107';
+                plsTitle = 'Pushing to ProLightSounds...';
+            }
+            
             const asinVal = (row.asin != null && String(row.asin).trim() !== '') ? escAttr(String(row.asin).trim()) : '';
-            return '<button type="button" class="btn btn-sm parent-pricing-modal-apply-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-asin="' + asinVal + '" data-status="' + escAttr(status || '') + '" title="' + escAttr(titleText) + '" style="border: none; background: none; color: ' + iconColor + '; padding: 0;">' + icon + '</button>';
+            return '<div style="display: flex; gap: 8px; align-items: center; justify-content: center;">' +
+                '<button type="button" class="btn btn-sm parent-pricing-modal-apply-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-asin="' + asinVal + '" data-status="' + escAttr(amazonStatus || '') + '" title="' + escAttr(amazonTitle) + '" style="border: none; background: none; color: ' + amazonColor + '; padding: 0; cursor: pointer;">' + amazonIcon + '</button>' +
+                '<button type="button" class="btn btn-sm parent-pricing-modal-shopify-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-status="' + escAttr(shopifyStatus || '') + '" title="' + escAttr(shopifyTitle) + '" style="border: none; background: none; color: ' + shopifyColor + '; padding: 0; cursor: pointer;">' + shopifyIcon + '</button>' +
+                '<button type="button" class="btn btn-sm parent-pricing-modal-pls-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-status="' + escAttr(plsStatus || '') + '" title="' + escAttr(plsTitle) + '" style="border: none; background: none; color: ' + plsColor + '; padding: 0; cursor: pointer;">' + plsIcon + '</button>' +
+                '</div>';
         }
         /** S PFT % — same colors as Spft% column */
         function amazonModalSpftColoredHtml(row) {
@@ -1060,10 +965,8 @@
                     tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row['A_L30'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalCvrL30ColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['GPFT%'])));
-                    tr.append($('<td class="text-end"></td>').html(amazonModalAdPctColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['PFT%'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGroiColoredHtml(row['GROI%'])));
-                    tr.append($('<td class="text-end"></td>').html(amazonModalNroiColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalLmpColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalSpriceInputHtml(row)));
                     tr.append($('<td class="text-center"></td>').html(amazonModalAcceptPushHtml(row)));
@@ -1088,28 +991,27 @@
 
         const amzMetricLabels = {
             'l30_sales': 'L30 Sales', 'l30_orders': 'L30 Orders', 'qty': 'Total Qty',
-            'gprofit': 'Gprofit%', 'groi': 'G ROI%', 'ads_pct': 'Ads%/TCOS',
-            'npft': 'N PFT%', 'nroi': 'N ROI%', 'ad_spend': 'Ad',
-            'clicks': 'Clicks', 'acos': 'ACOS', 'missing_l': 'Missing',
+            'gprofit': 'Gprofit%', 'groi': 'G ROI%',
+            'npft': 'N PFT%', 'missing_l': 'Missing',
             'nmap': 'Missing M',
             // Badge-stat metrics (daily snapshot counts)
             'sold_count': 'Sold >0', 'zero_sold_count': '0 Sold',
             'map_count': 'Missing M', 'nmap_count': 'Missing M', 'missing_count': 'Missing L',
             'prc_gt_lmp_count': 'Prc > LMP',
-            'total_pft': 'PFT', 'total_sales': 'Sales', 'total_spend': 'Ad',
-            'gpft_pct': 'GPFT%', 'npft_pct': 'PFT%', 'groi_pct': 'GROI%', 'nroi_pct': 'NROI%', 'tcos_pct': 'TCOS%',
+            'total_pft': 'PFT', 'total_sales': 'Sales',
+            'gpft_pct': 'GPFT%', 'npft_pct': 'PFT%', 'groi_pct': 'GROI%',
         };
 
         // Metrics stored in badge stats table (daily counts/amounts)
         const amzBadgeStatMetrics = [
             'sold_count', 'zero_sold_count', 'map_count', 'nmap_count',
             'missing_count', 'prc_gt_lmp_count',
-            'total_pft', 'total_sales', 'total_spend',
-            'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct',
+            'total_pft', 'total_sales',
+            'gpft_pct', 'npft_pct', 'groi_pct',
         ];
 
-        const amzPctMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
-        const amzDollarMetrics = ['l30_sales', 'ad_spend', 'total_pft', 'total_sales', 'total_spend'];
+        const amzPctMetrics = ['gprofit', 'groi', 'npft', 'gpft_pct', 'npft_pct', 'groi_pct'];
+        const amzDollarMetrics = ['l30_sales', 'total_pft', 'total_sales'];
 
         /** Set false to silence [amazon-tabulator] browser console debug lines */
         const AMAZON_TABULATOR_DEBUG_LOG = true;
@@ -1150,19 +1052,6 @@
             return hasInDisplay || (fbaSku && fbaSku.includes('FBA'));
         }
 
-        /** Amazon tabulator: only child SKUs ending with "FBA" use FBA-inventory ad lock (matches PHP FbaInventoryService::childSkuHasFbaSuffix). */
-        function childSkuHasFbaSuffixForAds(rowData) {
-            const child = normalizeFbaSkuToken(rowData['(Child) sku'] || '');
-            return child !== '' && child.endsWith('FBA');
-        }
-
-        function rowFbaSuffixZeroFbaInvLocksAds(rowData) {
-            if (!childSkuHasFbaSuffixForAds(rowData)) return false;
-            const q = parseFloat(rowData.FBA_Quantity);
-            const n = isNaN(q) ? 0 : q;
-            return n <= 0;
-        }
-
         /** FBA INV: dash when row is not FBA-relevant; never show 0 for those rows */
         function formatFbaQuantityDisplay(rowData) {
             const value = rowData.FBA_Quantity;
@@ -1199,7 +1088,7 @@
             $('#amzChartRangeSelect').val('30');
             const label = amzMetricLabels[metricKey] || metricKey;
             const isBadge = amzBadgeStatMetrics.includes(metricKey);
-            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'total_spend', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
+            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct'];
             const suffix = isBadge ? (badgeSnapshotMetrics.includes(metricKey) ? 'Daily Snapshot' : 'Daily Count') : 'Rolling L30';
             $('#amzChartModalTitle').text(`Amazon - ${label} (${suffix})`);
             const modal = new bootstrap.Modal(document.getElementById('amzMetricChartModal'));
@@ -1533,39 +1422,36 @@
                     const labels = data.map(d => d.date_formatted || d.date || '');
                     const isCvr = currentSkuChartMetric === 'cvr';
                     const isViews = currentSkuChartMetric === 'views';
-                    const isTacos = currentSkuChartMetric === 'tacos';
                     const isInv = currentSkuChartMetric === 'inv';
                     const isInvAmz = currentSkuChartMetric === 'inv_amz';
                     const isAl30 = currentSkuChartMetric === 'al30';
                     const isOvl30 = currentSkuChartMetric === 'ovl30';
                     const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
-                    const values = isCvr ? data.map(d => Number(d.cvr_percent) || 0) : isViews ? data.map(d => Number(d.views) || 0) : isTacos ? data.map(d => Number(d.ad_percent) || 0) : isInv ? data.map(d => Number(d.inv) ?? 0) : isInvAmz ? data.map(d => Number(d.inv_amz) ?? 0) : isAl30 ? data.map(d => Number(d.a_l30) || 0) : isOvl30 ? data.map(d => Number(d.l30) ?? 0) : data.map(d => Number(d.price) || 0);
+                    const values = isCvr ? data.map(d => Number(d.cvr_percent) || 0) : isViews ? data.map(d => Number(d.views) || 0) : isInv ? data.map(d => Number(d.inv) ?? 0) : isInvAmz ? data.map(d => Number(d.inv_amz) ?? 0) : isAl30 ? data.map(d => Number(d.a_l30) || 0) : isOvl30 ? data.map(d => Number(d.l30) ?? 0) : data.map(d => Number(d.price) || 0);
                     const refLabelEl = document.getElementById('skuChartRefLabel');
                     const refDotEl = document.getElementById('skuChartRefDot');
-                    const refLabels = { cvr: 'CVR%', views: 'View L30', tacos: 'TACOS%', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
+                    const refLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
-                    const refColors = { cvr: '#008000', views: '#0000FF', tacos: '#FFD700', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14' };
+                    const refColors = { cvr: '#008000', views: '#0000FF', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14' };
                     if (refDotEl) refDotEl.style.background = refColors[currentSkuChartMetric] || '#adb5bd';
 
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
                     skuMetricsChart.data.datasets[0].label = refLabelText + (currentSkuChartMetric === 'price' ? ' (USD)' : '');
                     skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
-                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', tacos: 'rgba(255, 215, 0, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)' };
                     skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
                     const cvrFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
                     const viewsFmt = intFmt;
-                    const tacosFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
-                    const refFmt = (isCvr || isTacos) ? (isCvr ? cvrFmt : tacosFmt) : (isViews || isInv || isInvAmz || isAl30 || isOvl30) ? intFmt : skuChartFmtVal;
+                    const refFmt = isCvr ? cvrFmt : (isViews || isInv || isInvAmz || isAl30 || isOvl30) ? intFmt : skuChartFmtVal;
                     if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
-                        if (isCvr || isTacos) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return v.toFixed(0) + '%'; };
+                        if (isCvr) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return v.toFixed(0) + '%'; };
                         else if (isViews || isInv || isInvAmz || isAl30 || isOvl30) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
                         else skuMetricsChart.options.scales.y.ticks.callback = function(v) { return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')); };
                     }
                     if (skuMetricsChart.options.plugins && skuMetricsChart.options.plugins.tooltip && skuMetricsChart.options.plugins.tooltip.callbacks) {
                         if (isCvr) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'CVR%: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
-                        else if (isTacos) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'TACOS%: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
                         else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'View L30: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isInv || isInvAmz || isAl30 || isOvl30) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return refLabelText + ': ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Price: ' + skuChartFmtVal(context.parsed.y || 0); };
@@ -1969,13 +1855,13 @@
             // Retry function for applying price with up to 5 attempts
             // NOTE: Backend now includes automatic verification and retry (2 attempts with fresh token)
             // This frontend retry is for network errors, timeouts, or persistent failures
-            function applyPriceWithRetry(sku, price, cell, maxRetries = 5, delay = 5000, asin = null) {
+            function applyPriceWithRetry(sku, price, cell, maxRetries = 5, delay = 5000, asin = null, pushShopify = false) {
                 return new Promise((resolve, reject) => {
                     let attempt = 0;
                     
                     function attemptApply() {
                         attempt++;
-                        const post = { sku: sku, price: price };
+                        const post = { sku: sku, price: price, push_shopify: pushShopify };
                         if (asin) {
                             post.asin = asin;
                         }
@@ -2128,7 +2014,6 @@
                 
                 let successCount = 0;
                 let errorCount = 0;
-                let shopifyFailCount = 0;
                 let currentIndex = 0;
                 
                 // Process SKUs sequentially (one by one) with delay to avoid rate limiting
@@ -2142,11 +2027,7 @@
                             $btn.removeClass('btn-primary').addClass('btn-success');
                             const selectedCount = selectedSkus.size;
                             $btn.html(`<i class="fas fa-check-double" style="color: black; font-weight: bold;"></i> Applied (<span class="apply-all-count">${selectedCount}</span>)`);
-                            if (shopifyFailCount === 0) {
-                                showToast('success', `Amazon + Shopify B2C: ${successCount} SKU${successCount > 1 ? 's' : ''} pushed.`);
-                            } else {
-                                showToast('warning', `Amazon OK for ${successCount} SKU${successCount > 1 ? 's' : ''}; Shopify failed for ${shopifyFailCount}. Check per-SKU toasts / log.`);
-                            }
+                            showToast('success', `Amazon: ${successCount} SKU${successCount > 1 ? 's' : ''} pushed.`);
                             
                             // Reset to original state after 3 seconds
                             setTimeout(() => {
@@ -2156,7 +2037,7 @@
                             }, 3000);
                         } else {
                             $btn.html(originalHtml);
-                            showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                            showToast('error', `Amazon: Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                         }
                         return;
                     }
@@ -2187,24 +2068,17 @@
                         }
                     }
                     
-                    // Use retry function to apply price (optional ASIN → seller SKU via amazon_datsheets on server)
-                    applyPriceWithRetry(sku, price, null, 5, 5000, asin || null)
+                    // Use retry function to apply price to Amazon only (optional ASIN → seller SKU via amazon_datsheets on server)
+                    applyPriceWithRetry(sku, price, null, 5, 5000, asin || null, false)
                         .then((result) => {
                             successCount++;
                             const resp = result && result.response ? result.response : null;
-                            if (resp && resp.shopify_push && !resp.shopify_push.ok) {
-                                shopifyFailCount++;
-                            }
-                            showAmazonShopifyPushMessage(sku, price, resp);
+                            showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
                             
                             // Update row data with pushed status instantly
                             if (row) {
                                 const rowData = row.getData();
                                 rowData.SPRICE_STATUS = 'pushed';
-                                const ss = sStatusFromApiResponse(resp);
-                                if (ss) {
-                                    rowData.S_STATUS = ss;
-                                }
                                 row.update(rowData);
                                 
                                 // Update button to show green tick in circular button
@@ -2360,6 +2234,7 @@
                             SROI: 0,
                             SPRICE_STATUS: null,
                             S_STATUS: null,
+                            PLS_STATUS: null,
                             has_custom_sprice: false
                         });
 
@@ -2586,11 +2461,10 @@
                 
                 // Same retry path as Accept column (backend verifies listing price after PATCH)
                 const asinBtn = ($btn.attr('data-asin') || '').trim();
-                applyPriceWithRetry(sku, price, null, 5, 5000, asinBtn || null)
+                applyPriceWithRetry(sku, price, null, 5, 5000, asinBtn || null, false)
                     .then(function(result) {
                         $btn.prop('disabled', false);
-                        updateTabulatorRowShopifyStatus(sku, result && result.response ? result.response : null);
-                        showAmazonShopifyPushMessage(sku, price, result && result.response ? result.response : null);
+                        showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
                         $btn.removeClass('btn-success').addClass('btn-secondary');
                         $btn.html('<i class="fas fa-check-circle"></i> Applied');
                         setTimeout(function() {
@@ -2610,7 +2484,7 @@
                     });
             });
 
-            // Parent pricing modal: push SPRICE to Amazon (same retry + row update as Accept column; class is not .apply-price-btn to avoid double POST)
+            // Parent pricing modal: push SPRICE to Amazon only
             $(document).on('click', '.parent-pricing-modal-apply-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2623,19 +2497,34 @@
                     return;
                 }
                 $btn.prop('disabled', true);
-                $btn.css({
-                    'border-radius': '50%',
-                    'width': '35px',
-                    'height': '35px',
-                    'padding': '0',
-                    'display': 'flex',
-                    'align-items': 'center',
-                    'justify-content': 'center'
-                });
                 $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
                 const asinModal = ($btn.attr('data-asin') || '').trim();
-                applyPriceWithRetry(sku, price, null, 5, 5000, asinModal || null)
-                    .then(function(result) {
+                
+                // Push to Amazon only (pass push_shopify: false)
+                $.ajax({
+                    url: '/apply-amazon-price',
+                    method: 'POST',
+                    timeout: 120000,
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        price: price,
+                        asin: asinModal || null,
+                        push_shopify: false
+                    },
+                    success: function(response) {
+                        if (response.errors && response.errors.length > 0) {
+                            const errorMsg = response.errors[0].message || 'Unknown error';
+                            showToast('error', `Amazon push failed: ${errorMsg}`);
+                            const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                            if (pk) {
+                                showParentPricingBreakdownModal(pk);
+                            }
+                            return;
+                        }
+                        
                         if (table) {
                             const tabRow = table.getRows().find(function(r) {
                                 return (r.getData()['(Child) sku'] || '') === sku;
@@ -2643,20 +2532,16 @@
                             if (tabRow) {
                                 const rowData = tabRow.getData();
                                 rowData.SPRICE_STATUS = 'pushed';
-                                const ss = sStatusFromApiResponse(result && result.response ? result.response : null);
-                                if (ss) {
-                                    rowData.S_STATUS = ss;
-                                }
                                 tabRow.update(rowData);
                             }
                         }
-                        showAmazonShopifyPushMessage(sku, price, result && result.response ? result.response : null);
+                        showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
                         const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
                         if (pk) {
                             showParentPricingBreakdownModal(pk);
                         }
-                    })
-                    .catch(function() {
+                    },
+                    error: function(xhr) {
                         if (table) {
                             const tabRow = table.getRows().find(function(r) {
                                 return (r.getData()['(Child) sku'] || '') === sku;
@@ -2667,12 +2552,180 @@
                                 tabRow.update(rowData);
                             }
                         }
-                        showToast('error', 'Failed to apply price to Amazon');
+                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
+                        showToast('error', `Amazon push failed: ${errorMsg}`);
                         const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
                         if (pk) {
                             showParentPricingBreakdownModal(pk);
                         }
-                    });
+                    }
+                });
+            });
+            
+            // Parent pricing modal: push SPRICE to Shopify only
+            $(document).on('click', '.parent-pricing-modal-shopify-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                const sku = $btn.attr('data-sku');
+                const price = parseFloat($btn.attr('data-price'));
+                if (!sku || !price || price <= 0 || isNaN(price)) {
+                    showToast('error', 'Invalid SKU or price');
+                    return;
+                }
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
+                
+                // Push to Shopify only
+                $.ajax({
+                    url: '/push-shopify-b2c-price',
+                    method: 'POST',
+                    timeout: 120000,
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        price: price
+                    },
+                    success: function(response) {
+                        if (response.errors && response.errors.length > 0) {
+                            const errorMsg = response.errors[0].message || 'Unknown error';
+                            showToast('error', `Shopify push failed: ${errorMsg}`);
+                            const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                            if (pk) {
+                                showParentPricingBreakdownModal(pk);
+                            }
+                            return;
+                        }
+                        
+                        if (table) {
+                            const tabRow = table.getRows().find(function(r) {
+                                return (r.getData()['(Child) sku'] || '') === sku;
+                            });
+                            if (tabRow) {
+                                const rowData = tabRow.getData();
+                                const shopifyPush = response.shopify_push || {};
+                                rowData.S_STATUS = shopifyPush.ok ? 'pushed' : 'error';
+                                tabRow.update(rowData);
+                            }
+                        }
+                        const shopifyPush = response.shopify_push || {};
+                        if (shopifyPush.ok) {
+                            const msg = shopifyPush.message || 'Shopify B2C pushed successfully';
+                            showToast('success', `Shopify: ${msg} for SKU: ${sku}`);
+                        } else {
+                            const msg = shopifyPush.message || 'Shopify B2C push failed';
+                            showToast('error', `Shopify: ${msg}`);
+                        }
+                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                        if (pk) {
+                            showParentPricingBreakdownModal(pk);
+                        }
+                    },
+                    error: function(xhr) {
+                        if (table) {
+                            const tabRow = table.getRows().find(function(r) {
+                                return (r.getData()['(Child) sku'] || '') === sku;
+                            });
+                            if (tabRow) {
+                                const rowData = tabRow.getData();
+                                rowData.S_STATUS = 'error';
+                                tabRow.update(rowData);
+                            }
+                        }
+                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
+                        showToast('error', `Shopify push failed: ${errorMsg}`);
+                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                        if (pk) {
+                            showParentPricingBreakdownModal(pk);
+                        }
+                    }
+                });
+            });
+
+            // Handle PLS modal button click
+            $(document).on('click', '.parent-pricing-modal-pls-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                const sku = $btn.attr('data-sku');
+                const price = parseFloat($btn.attr('data-price'));
+                if (!sku || !price || price <= 0 || isNaN(price)) {
+                    showToast('error', 'Invalid SKU or price');
+                    return;
+                }
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
+                
+                // Push to ProLightSounds only
+                $.ajax({
+                    url: '/push-pls-price',
+                    method: 'POST',
+                    timeout: 120000,
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        price: price
+                    },
+                    success: function(response) {
+                        if (response.errors && response.errors.length > 0) {
+                            const errorMsg = response.errors[0].message || 'Unknown error';
+                            showToast('error', `ProLightSounds push failed: ${errorMsg}`);
+                            const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                            if (pk) {
+                                showParentPricingBreakdownModal(pk);
+                            }
+                            return;
+                        }
+                        
+                        if (table) {
+                            const tabRow = table.getRows().find(function(r) {
+                                return (r.getData()['(Child) sku'] || '') === sku;
+                            });
+                            if (tabRow) {
+                                const rowData = tabRow.getData();
+                                const plsPush = response.pls_push || {};
+                                rowData.PLS_STATUS = plsPush.ok ? 'pushed' : 'error';
+                                tabRow.update(rowData);
+                            }
+                        }
+                        const plsPush = response.pls_push || {};
+                        if (plsPush.ok) {
+                            const msg = plsPush.message || 'ProLightSounds pushed successfully';
+                            showToast('success', `PLS: ${msg} for SKU: ${sku}`);
+                        } else {
+                            const msg = plsPush.message || 'ProLightSounds push failed';
+                            showToast('error', `PLS: ${msg}`);
+                        }
+                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                        if (pk) {
+                            showParentPricingBreakdownModal(pk);
+                        }
+                    },
+                    error: function(xhr) {
+                        if (table) {
+                            const tabRow = table.getRows().find(function(r) {
+                                return (r.getData()['(Child) sku'] || '') === sku;
+                            });
+                            if (tabRow) {
+                                const rowData = tabRow.getData();
+                                rowData.PLS_STATUS = 'error';
+                                tabRow.update(rowData);
+                            }
+                        }
+                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
+                        showToast('error', `ProLightSounds push failed: ${errorMsg}`);
+                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
+                        if (pk) {
+                            showParentPricingBreakdownModal(pk);
+                        }
+                    }
+                });
             });
 
             $(document).on('dblclick', '.parent-pricing-modal-apply-btn', function(e) {
@@ -2825,17 +2878,11 @@
                 const days = $(this).val();
                 const daysNum = parseInt(days, 10);
                 const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
-                const metricLabels = { cvr: 'CVR%', views: 'View L30', tacos: 'TACOS%', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
+                const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
                 const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                 $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ')');
                 if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
             });
-            let campaignTotals = {
-                kw_spend_L30: 0,
-                pt_spend_L30: 0,
-                hl_spend_L30: 0
-            };
-
             table = new Tabulator("#amazon-table", {
                 ajaxURL: "/amazon-data-json",
                 ajaxSorting: false,
@@ -2848,10 +2895,6 @@
                     dir: "asc"
                 }],
                 ajaxResponse: function(url, params, response) {
-                    // Extract campaign totals from response
-                    if (response.campaign_totals) {
-                        campaignTotals = response.campaign_totals;
-                    }
                     var payload = response.data || response;
                     if (Array.isArray(payload)) {
                         var withFba = 0, sumFba = 0, childN = 0;
@@ -3421,32 +3464,6 @@
                             `;
                         }
                     },
-                    {
-                        title: "KW NRA",
-                        field: "NRA",
-                        visible: false,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow();
-                            const sku = row.getData()['(Child) sku'];
-                            const rowData = row.getData();
-                            // If NRL is 'NRL' (red dot), default to NRA, otherwise default to RA
-                            const nrlValue = rowData.NRL || "REQ";
-                            const defaultValue = (nrlValue === 'NRL') ? "NRA" : "RA";
-                            const value = (cell.getValue()?.trim()) || defaultValue;
-
-                            return `
-                                <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${escAttr(sku)}" 
-                                        data-field="NRA"
-                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
-                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
-                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
-                                </select>
-                            `;
-                        }
-                    },
 
                     {
                         title: "View L30",
@@ -3497,8 +3514,8 @@
                             const lmpaPrice = parseFloat(rowData.price_lmpa || 0);
                             const isListed = !rowData.is_missing_amazon;
 
-                            // Dot icon: only for listed SKUs — opens SKU metrics chart (Price, Views, CVR%, AD%, Sold)
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" title="View metrics chart (Price, Views, CVR%, AD%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
+                            // Dot icon: only for listed SKUs — opens SKU metrics chart (Price, Views, CVR%, Sold)
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" title="View metrics chart (Price, Views, CVR%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
 
                             // If no listing, show nothing (no price, no dot)
                             if (!isListed) return '';
@@ -3546,21 +3563,6 @@
                     },
 
                     {
-                        title: "Info",
-                        field: "campaign_info_icon",
-                        hozAlign: "center",
-                        visible: true,
-                        frozen: true,
-                        width: 50,
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const sku = rowData['(Child) sku'] || '';
-                            return `<i class="fas fa-info-circle campaign-info-btn" data-sku="${escAttr(sku)}" style="color: #ffc107; cursor: pointer; font-size: 16px;" title="Click to view KW, PT, HL details"></i>`;
-                        }
-                    },
-
-                    {
                         title: "GPFT %",
                         field: "GPFT%",
                         hozAlign: "center",
@@ -3603,78 +3605,6 @@
                         width: 65
                     },
 
-                    {
-                        title: "NROI%",
-                        field: "NROI",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const roi = parseFloat(rowData.ROI_percentage) || 0;
-                            const adSpend = parseFloat(rowData.AD_Spend_L30) || 0;
-                            const price = parseFloat(rowData.price) || 0;
-                            const aL30 = parseFloat(rowData.A_L30) || 0;
-                            const totalSales = price * aL30;
-                            const tcos = totalSales > 0 ? (adSpend / totalSales) * 100 : 0;
-                            
-                            // NROI% = GROI% - TCOS%
-                            const nroi = roi - tcos;
-                            
-                            let color = '';
-                            if (nroi < 50) color = '#a00211'; // red
-                            else if (nroi >= 50 && nroi < 75) color = '#ffc107'; // yellow
-                            else if (nroi >= 75 && nroi <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcNROI = (row) => {
-                                const roi = parseFloat(row.ROI_percentage) || 0;
-                                const adSpend = parseFloat(row.AD_Spend_L30) || 0;
-                                const price = parseFloat(row.price) || 0;
-                                const aL30 = parseFloat(row.A_L30) || 0;
-                                const totalSales = price * aL30;
-                                const tcos = totalSales > 0 ? (adSpend / totalSales) * 100 : 0;
-                                return roi - tcos;
-                            };
-                            return calcNROI(aRow.getData()) - calcNROI(bRow.getData());
-                        },
-                        width: 65
-                    },
-
-                    {
-                        title: "TACOS",
-                        field: "AD%",
-                        hozAlign: "center",
-                        visible: false,
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const rowData = cell.getRow().getData();
-                            const sku = rowData['(Child) sku'] || '';
-                            const isListed = !rowData.is_missing_amazon;
-                            const adSpend = parseFloat(rowData.AD_Spend_L30) || 0;
-                            const sales = parseFloat(rowData['A_L30']) || 0;
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="tacos" title="View TACOS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span></button>` : '';
-
-                            // If there is ad spend but no sales, show 100%
-                            if (adSpend > 0 && sales === 0) {
-                                return `<span style="color: #a00211; font-weight: 600;">100%</span> ${dotBtn}`.trim();
-                            }
-
-                            if (value === null || value === undefined) return `0.00% ${dotBtn}`.trim();
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return `0.00% ${dotBtn}`.trim();
-
-                            // If spend > 0 but AD% is 0, show red alert
-                            if (adSpend > 0 && percent === 0) {
-                                return `<span style="color: #dc3545; font-weight: 600;">100%</span> ${dotBtn}`.trim();
-                            }
-
-                            return `${parseFloat(value).toFixed(0)}% ${dotBtn}`.trim();
-                        },
-                        width: 55
-                    },
                     {
                         title: "PFT %",
                         field: "PFT%",
@@ -3824,16 +3754,43 @@
                         width: 44
                     },
                     {
-                        title: "Accept",
+                        title: "PLS st",
+                        field: "PLS_STATUS",
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "ProLightSounds push: ✓✓ pushed, ✗ failed, — not pushed",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) {
+                                return '';
+                            }
+                            const st = rowData.PLS_STATUS;
+                            if (st === 'pushed') {
+                                return '<span style="color:#28a745;" title="ProLightSounds: price pushed"><i class="fa-solid fa-check-double"></i></span>';
+                            }
+                            if (st === 'error') {
+                                return '<span style="color:#dc3545;" title="ProLightSounds: push failed"><i class="fa-solid fa-xmark"></i></span>';
+                            }
+                            return '<span style="color:#adb5bd;" title="ProLightSounds: not pushed">—</span>';
+                        },
+                        width: 44
+                    },
+                    {
+                        title: "Push Prices",
                         field: "_accept",
                         hozAlign: "center",
                         headerSort: false,
                         titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
-                                <span>Accept</span>
-                                <button type="button" class="btn btn-sm apply-all-prices-btn" title="Apply All Selected Prices to Amazon" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;" onclick="event.stopPropagation(); if(typeof applyAllSelectedPrices === 'function') { applyAllSelectedPrices(); }">
-                                    <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
-                                </button>
+                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 8px; flex-direction: row;">
+                                <div style="text-align: center; min-width: 30px;">
+                                    <div style="font-size: 0.75em; font-weight: 600; color: #FF9900;">AMZ</div>
+                                </div>
+                                <div style="text-align: center; min-width: 30px;">
+                                    <div style="font-size: 0.75em; font-weight: 600; color: #96bf48;">SFY</div>
+                                </div>
+                                <div style="text-align: center; min-width: 30px;">
+                                    <div style="font-size: 0.75em; font-weight: 600; color: #5C6AC4;">PLS</div>
+                                </div>
                             </div>`;
                         },
                         formatter: function(cell) {
@@ -3843,105 +3800,333 @@
                             if (rowData.is_parent_summary) return '';
                             
                             const sku = rowData['(Child) sku'];
-                            const sprice = parseFloat(rowData.SPRICE) || 0;
-                            const status = rowData.SPRICE_STATUS || null;
+                            // Keep SPRICE as string to preserve exact decimal precision (e.g., 19.27 not 19.28)
+                            const spriceRaw = rowData.SPRICE;
+                            const sprice = spriceRaw ? parseFloat(spriceRaw) : 0;
+                            const amazonStatus = rowData.SPRICE_STATUS || null;
+                            const shopifyStatus = rowData.S_STATUS || null;
+                            const plsStatus = rowData.PLS_STATUS || null;
                             const asinVal = (rowData.asin != null && String(rowData.asin).trim() !== '') ? escAttr(String(rowData.asin).trim()) : '';
                             
                             if (!sprice || sprice === 0) {
                                 return '<span style="color: #999;">N/A</span>';
                             }
                             
-                            // Determine icon and color based on status
-                            let icon = '<i class="fas fa-check"></i>';
-                            let iconColor = '#28a745'; // Green for apply
-                            let titleText = 'Apply Price to Amazon';
+                            // Determine Amazon button icon and color
+                            let amazonIcon = '<i class="fas fa-check"></i>';
+                            let amazonColor = '#28a745'; // Green
+                            let amazonTitle = 'Push to Amazon';
                             
-                            if (status === 'pushed') {
-                                icon = '<i class="fa-solid fa-check-double"></i>';
-                                iconColor = '#28a745'; // Green
-                                titleText = 'Price pushed to Amazon (Double-click to mark as Applied)';
-                            } else if (status === 'applied') {
-                                icon = '<i class="fa-solid fa-check-double"></i>';
-                                iconColor = '#28a745'; // Green
-                                titleText = 'Price applied to Amazon (Double-click to change)';
-                            } else if (status === 'error') {
-                                icon = '<i class="fa-solid fa-x"></i>';
-                                iconColor = '#dc3545'; // Red
-                                titleText = 'Error applying price to Amazon';
-                            } else if (status === 'processing') {
-                                icon = '<i class="fas fa-spinner fa-spin"></i>';
-                                iconColor = '#ffc107'; // Yellow
-                                titleText = 'Price pushing in progress...';
+                            if (amazonStatus === 'pushed') {
+                                amazonIcon = '<i class="fa-solid fa-check-double"></i>';
+                                amazonColor = '#28a745';
+                                amazonTitle = 'Price pushed to Amazon';
+                            } else if (amazonStatus === 'applied') {
+                                amazonIcon = '<i class="fa-solid fa-check-double"></i>';
+                                amazonColor = '#28a745';
+                                amazonTitle = 'Price applied to Amazon';
+                            } else if (amazonStatus === 'error') {
+                                amazonIcon = '<i class="fa-solid fa-x"></i>';
+                                amazonColor = '#dc3545'; // Red
+                                amazonTitle = 'Error pushing to Amazon';
+                            } else if (amazonStatus === 'processing') {
+                                amazonIcon = '<i class="fas fa-spinner fa-spin"></i>';
+                                amazonColor = '#ffc107'; // Yellow
+                                amazonTitle = 'Pushing to Amazon...';
                             }
                             
-                            // Show only icon with color, no background (data-asin lets server map B0… ASIN → seller SKU in amazon_datsheets)
-                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${escAttr(sku)}" data-asin="${asinVal}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
-                                ${icon}
-                            </button>`;
+                            // Determine Shopify button icon and color
+                            let shopifyIcon = '<i class="fas fa-check"></i>';
+                            let shopifyColor = '#0d6efd'; // Blue
+                            let shopifyTitle = 'Push to Shopify';
+
+                            if (shopifyStatus === 'pushed') {
+                                shopifyIcon = '<i class="fa-solid fa-check-double"></i>';
+                                shopifyColor = '#28a745'; // Green when pushed
+                                shopifyTitle = 'Price pushed to Shopify';
+                            } else if (shopifyStatus === 'error') {
+                                shopifyIcon = '<i class="fa-solid fa-x"></i>';
+                                shopifyColor = '#dc3545'; // Red
+                                shopifyTitle = 'Error pushing to Shopify';
+                            } else if (shopifyStatus === 'processing') {
+                                shopifyIcon = '<i class="fas fa-spinner fa-spin"></i>';
+                                shopifyColor = '#ffc107'; // Yellow
+                                shopifyTitle = 'Pushing to Shopify...';
+                            }
+
+                            // Determine PLS button icon and color
+                            let plsIcon = '<i class="fas fa-check"></i>';
+                            let plsColor = '#ff8c00'; // Orange
+                            let plsTitle = 'Push to ProLightSounds';
+
+                            if (plsStatus === 'pushed') {
+                                plsIcon = '<i class="fa-solid fa-check-double"></i>';
+                                plsColor = '#28a745'; // Green when pushed
+                                plsTitle = 'Price pushed to ProLightSounds';
+                            } else if (plsStatus === 'error') {
+                                plsIcon = '<i class="fa-solid fa-x"></i>';
+                                plsColor = '#dc3545'; // Red
+                                plsTitle = 'Error pushing to ProLightSounds';
+                            } else if (plsStatus === 'processing') {
+                                plsIcon = '<i class="fas fa-spinner fa-spin"></i>';
+                                plsColor = '#ffc107'; // Yellow
+                                plsTitle = 'Pushing to ProLightSounds...';
+                            }
+
+                            // Return three buttons side by side - use raw string value for exact precision
+                            return `<div style="display: flex; gap: 8px; align-items: center; justify-content: center;">
+                                <button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${escAttr(sku)}" data-asin="${asinVal}" data-price="${spriceRaw}" data-status="${amazonStatus || ''}" title="${amazonTitle}" style="border: none; background: none; color: ${amazonColor}; padding: 0; cursor: pointer;">
+                                    ${amazonIcon}
+                                </button>
+                                <button type="button" class="btn btn-sm push-shopify-btn btn-circle" data-sku="${escAttr(sku)}" data-price="${spriceRaw}" data-status="${shopifyStatus || ''}" title="${shopifyTitle}" style="border: none; background: none; color: ${shopifyColor}; padding: 0; cursor: pointer;">
+                                    ${shopifyIcon}
+                                </button>
+                                <button type="button" class="btn btn-sm push-pls-btn btn-circle" data-sku="${escAttr(sku)}" data-price="${spriceRaw}" data-status="${plsStatus || ''}" title="${plsTitle}" style="border: none; background: none; color: ${plsColor}; padding: 0; cursor: pointer;">
+                                    ${plsIcon}
+                                </button>
+                            </div>`;
                         },
                         cellClick: function(e, cell) {
                             // Handle button click directly in cellClick
                             const $target = $(e.target);
+                            
+                            // Handle Amazon button click
                             if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
                                 e.stopPropagation();
                                 const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
-                                const sku = $btn.attr('data-sku') || $btn.data('sku');
-                                const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
-                                const asinCell = ($btn.attr('data-asin') || '').trim();
+                                
+                                // Read price from fresh row data instead of old button attribute
+                                const rowData = cell.getRow().getData();
+                                const sku = rowData['(Child) sku'];
+                                const price = parseFloat(rowData.SPRICE) || 0;
+                                const asinCell = (rowData.asin && String(rowData.asin).trim() !== '') ? String(rowData.asin).trim() : '';
                                 
                                 if (!sku || !price || price <= 0 || isNaN(price)) {
                                     showToast('error', 'Invalid SKU or price');
                                     return;
                                 }
                                 
-                                // Disable button and show loading state (only clock icon)
+                                // Disable button and show loading state
                                 $btn.prop('disabled', true);
-                                // Ensure circular styling
-                                $btn.css({
-                                    'border-radius': '50%',
-                                    'width': '35px',
-                                    'height': '35px',
-                                    'padding': '0',
-                                    'display': 'flex',
-                                    'align-items': 'center',
-                                    'justify-content': 'center'
-                                });
                                 $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
                                 
-                                // Use retry function
-                                applyPriceWithRetry(sku, price, cell, 5, 5000, asinCell || null)
-                                    .then((result) => {
+                                // Push to Amazon only (pass push_shopify: false)
+                                // Also update Amazon's minimum price constraint to match
+                                $.ajax({
+                                    url: '/apply-amazon-price',
+                                    method: 'POST',
+                                    timeout: 120000,
+                                    headers: {
+                                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                    },
+                                    data: {
+                                        sku: sku,
+                                        price: price,
+                                        asin: asinCell || null,
+                                        push_shopify: false,
+                                        update_amazon_min_price: true
+                                    },
+                                    success: function(response) {
+                                        // Check for errors in response
+                                        if (response.errors && response.errors.length > 0) {
+                                            const errorMsg = response.errors[0].message || 'Unknown error';
+                                            const row = cell.getRow();
+                                            const rowData = row.getData();
+                                            rowData.SPRICE_STATUS = 'error';
+                                            row.update(rowData);
+                                            
+                                            $btn.prop('disabled', false);
+                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+                                            showToast('error', `Amazon push failed: ${errorMsg}`);
+                                            return;
+                                        }
+                                        
                                         // Success - update row data with pushed status
                                         const row = cell.getRow();
                                         const rowData = row.getData();
-                                        const pushResp = result && result.response ? result.response : null;
                                         rowData.SPRICE_STATUS = 'pushed';
-                                        const ss = sStatusFromApiResponse(pushResp);
-                                        if (ss) {
-                                            rowData.S_STATUS = ss;
-                                        }
                                         row.update(rowData);
                                         
                                         $btn.prop('disabled', false);
-                                        // Show green tick icon in circular button
-                                        $btn.html('<i class="fas fa-check-circle" style="color: black; font-size: 1.1em;"></i>');
-                                        showAmazonShopifyPushMessage(sku, price, pushResp);
-                                    })
-                                    .catch((error) => {
-                                        // Update row data with error status
+                                        $btn.html('<i class="fas fa-check-circle" style="color: #28a745;"></i>');
+                                        showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                                    },
+                                    error: function(xhr) {
                                         const row = cell.getRow();
                                         const rowData = row.getData();
                                         rowData.SPRICE_STATUS = 'error';
                                         row.update(rowData);
                                         
                                         $btn.prop('disabled', false);
-                                        // Show error icon in circular button
-                                        $btn.html('<i class="fas fa-times" style="color: black;"></i>');
+                                        $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
                                         
-                                        console.error('Apply price failed after retries:', error);
-                                    });
+                                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
+                                        showToast('error', `Amazon push failed: ${errorMsg}`);
+                                    }
+                                });
                                 return;
                             }
+                            
+                            // Handle Shopify button click
+                            if ($target.hasClass('push-shopify-btn') || $target.closest('.push-shopify-btn').length) {
+                                e.stopPropagation();
+                                const $btn = $target.hasClass('push-shopify-btn') ? $target : $target.closest('.push-shopify-btn');
+
+                                // Read price from fresh row data instead of old button attribute
+                                const rowData = cell.getRow().getData();
+                                const sku = rowData['(Child) sku'];
+                                const price = parseFloat(rowData.SPRICE) || 0;
+
+                                if (!sku || !price || price <= 0 || isNaN(price)) {
+                                    showToast('error', 'Invalid SKU or price');
+                                    return;
+                                }
+
+                                // Disable button and show loading state
+                                $btn.prop('disabled', true);
+                                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
+
+                                // Push to Shopify only
+                                $.ajax({
+                                    url: '/push-shopify-b2c-price',
+                                    method: 'POST',
+                                    timeout: 120000,
+                                    headers: {
+                                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                    },
+                                    data: {
+                                        sku: sku,
+                                        price: price
+                                    },
+                                    success: function(response) {
+                                        // Check for errors in response
+                                        if (response.errors && response.errors.length > 0) {
+                                            const errorMsg = response.errors[0].message || 'Unknown error';
+                                            const row = cell.getRow();
+                                            const rowData = row.getData();
+                                            rowData.S_STATUS = 'error';
+                                            row.update(rowData);
+
+                                            $btn.prop('disabled', false);
+                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+                                            showToast('error', `Shopify push failed: ${errorMsg}`);
+                                            return;
+                                        }
+
+                                        // Success - update row data with pushed status
+                                        const row = cell.getRow();
+                                        const rowData = row.getData();
+                                        const shopifyPush = response.shopify_push || {};
+                                        rowData.S_STATUS = shopifyPush.ok ? 'pushed' : 'error';
+                                        row.update(rowData);
+
+                                        $btn.prop('disabled', false);
+                                        if (shopifyPush.ok) {
+                                            $btn.html('<i class="fas fa-check-circle" style="color: #28a745;"></i>');
+                                            const msg = shopifyPush.message || 'Shopify B2C pushed successfully';
+                                            showToast('success', `Shopify: ${msg} for SKU: ${sku}`);
+                                        } else {
+                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+                                            const msg = shopifyPush.message || 'Shopify B2C push failed';
+                                            showToast('error', `Shopify: ${msg}`);
+                                        }
+                                    },
+                                    error: function(xhr) {
+                                        const row = cell.getRow();
+                                        const rowData = row.getData();
+                                        rowData.S_STATUS = 'error';
+                                        row.update(rowData);
+
+                                        $btn.prop('disabled', false);
+                                        $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+
+                                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
+                                        showToast('error', `Shopify push failed: ${errorMsg}`);
+                                    }
+                                });
+                                return;
+                            }
+
+                            // Handle PLS button click
+                            if ($target.hasClass('push-pls-btn') || $target.closest('.push-pls-btn').length) {
+                                e.stopPropagation();
+                                const $btn = $target.hasClass('push-pls-btn') ? $target : $target.closest('.push-pls-btn');
+
+                                // Read price from fresh row data instead of old button attribute
+                                const rowData = cell.getRow().getData();
+                                const sku = rowData['(Child) sku'];
+                                const price = parseFloat(rowData.SPRICE) || 0;
+
+                                if (!sku || !price || price <= 0 || isNaN(price)) {
+                                    showToast('error', 'Invalid SKU or price');
+                                    return;
+                                }
+
+                                // Disable button and show loading state
+                                $btn.prop('disabled', true);
+                                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
+
+                                // Push to ProLightSounds only
+                                $.ajax({
+                                    url: '/push-pls-price',
+                                    method: 'POST',
+                                    timeout: 120000,
+                                    headers: {
+                                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                    },
+                                    data: {
+                                        sku: sku,
+                                        price: price
+                                    },
+                                    success: function(response) {
+                                        // Check for errors in response
+                                        if (response.errors && response.errors.length > 0) {
+                                            const errorMsg = response.errors[0].message || 'Unknown error';
+                                            const row = cell.getRow();
+                                            const rowData = row.getData();
+                                            rowData.PLS_STATUS = 'error';
+                                            row.update(rowData);
+
+                                            $btn.prop('disabled', false);
+                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+                                            showToast('error', `ProLightSounds push failed: ${errorMsg}`);
+                                            return;
+                                        }
+
+                                        // Success - update row data with pushed status
+                                        const row = cell.getRow();
+                                        const rowData = row.getData();
+                                        const plsPush = response.pls_push || {};
+                                        rowData.PLS_STATUS = plsPush.ok ? 'pushed' : 'error';
+                                        row.update(rowData);
+
+                                        $btn.prop('disabled', false);
+                                        if (plsPush.ok) {
+                                            $btn.html('<i class="fas fa-check-circle" style="color: #28a745;"></i>');
+                                            const msg = plsPush.message || 'ProLightSounds pushed successfully';
+                                            showToast('success', `PLS: ${msg} for SKU: ${sku}`);
+                                        } else {
+                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+                                            const msg = plsPush.message || 'ProLightSounds push failed';
+                                            showToast('error', `PLS: ${msg}`);
+                                        }
+                                    },
+                                    error: function(xhr) {
+                                        const row = cell.getRow();
+                                        const rowData = row.getData();
+                                        rowData.PLS_STATUS = 'error';
+                                        row.update(rowData);
+
+                                        $btn.prop('disabled', false);
+                                        $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+
+                                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
+                                        showToast('error', `ProLightSounds push failed: ${errorMsg}`);
+                                    }
+                                });
+                                return;
+                            }
+
                             // Don't stop propagation for other clicks
                             e.stopPropagation();
                         },
@@ -3986,7 +4171,7 @@
                                 }
                             }
                         },
-                        width: 80
+                        width: 100
                     },
                     {
                         title: "S GPFT",
@@ -4149,21 +4334,19 @@
                         },
                         success: function(response) {
                             showToast('success', 'SPRICE updated successfully');
+                            // Update SPRICE in row data using the exact value from database response
+                            // This prevents float precision issues
+                            const updates = { 'SPRICE': response.data || value };
                             if (response.sgpft_percent !== undefined) {
-                                row.update({
-                                    'SGPFT': response.sgpft_percent
-                                });
+                                updates['SGPFT'] = response.sgpft_percent;
                             }
                             if (response.spft_percent !== undefined) {
-                                row.update({
-                                    'Spft%': response.spft_percent
-                                });
+                                updates['Spft%'] = response.spft_percent;
                             }
                             if (response.sroi_percent !== undefined) {
-                                row.update({
-                                    'SROI': response.sroi_percent
-                                });
+                                updates['SROI'] = response.sroi_percent;
                             }
+                            row.update(updates);
                         },
                         error: function(xhr) {
                             showToast('error', 'Failed to update SPRICE');
@@ -4336,9 +4519,7 @@
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
-                
-                const campaignStatusFilter = $('#campaign-status-filter').val();
-                const nraFilter = $('#nra-filter').val();
+
                 table.clearFilter(true);
 
                 // When Play is active: apply ONLY playback filter so parent summary row always shows (no other filter can hide it)
@@ -4509,16 +4690,13 @@
 
                 // Play / Pause filter is applied at top of applyFilters when isProductNavigationActive (early return)
 
-                // SKU / Campaign search: match SKU (or Parent for parent rows) or any of KW, PT, HL campaign names
+                // SKU search: match SKU (or Parent for parent rows)
                 var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
                 if (searchVal) {
                     table.addFilter(function(data) {
                         var sku = (data.is_parent_summary ? (data.Parent || data['(Child) sku'] || data.sku || '') : (data['(Child) sku'] || data.sku || ''));
                         sku = (sku + '').toLowerCase();
-                        var kwCamp = ((data.campaignName || '') + '').toLowerCase();
-                        var ptCamp = ((data.pt_campaignName || '') + '').toLowerCase();
-                        var hlCamp = ((data.hl_campaignName || '') + '').toLowerCase();
-                        return sku.indexOf(searchVal) !== -1 || kwCamp.indexOf(searchVal) !== -1 || ptCamp.indexOf(searchVal) !== -1 || hlCamp.indexOf(searchVal) !== -1;
+                        return sku.indexOf(searchVal) !== -1;
                     });
                 }
 
@@ -4645,49 +4823,6 @@
                     });
                 }
 
-                // Campaign Status filter (Active Filter) - section-aware; apply to ALL rows including parent rows
-                // Active = only rows with a campaign that is ENABLED; rows with no campaign must be hidden
-                if (campaignStatusFilter && campaignStatusFilter !== '' && campaignStatusFilter !== 'ALL') {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var isEnabled = false;
-                        var hasCampaignInSection = false;
-
-                        var campaignName = (data.campaignName || '').trim();
-                        hasCampaignInSection = data.hasCampaign !== undefined ? !!data.hasCampaign : !!(data.campaign_id && campaignName);
-                        var kwStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
-                        isEnabled = hasCampaignInSection && kwStatus === 'ENABLED';
-
-                        // FBA-suffix child SKU + FBA inv 0: never treat as "active" (aligns with server overlay + toggle lock)
-                        if (rowFbaSuffixZeroFbaInvLocksAds(data)) {
-                            isEnabled = false;
-                        }
-
-                        if (campaignStatusFilter === 'ENABLED') {
-                            return isEnabled; // Only show rows that have a campaign and it is ENABLED
-                        } else if (campaignStatusFilter === 'PAUSED') {
-                            return hasCampaignInSection && !isEnabled;
-                        } else if (campaignStatusFilter === 'MISSING') {
-                            return !hasCampaignInSection;
-                        }
-
-                        return true;
-                    });
-                }
-
-                // NRA filter - when "All" or empty, show all rows; when RA/NRA/LATER, filter to that value
-                if (nraFilter && nraFilter !== '' && nraFilter !== 'all') {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        var nraValue = (data.NRA || '').toString().trim();
-                        if (!nraValue) {
-                            var nrlValue = (data.NRL || 'REQ').toString().trim();
-                            nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
-                        }
-                        return nraValue === nraFilter;
-                    });
-                }
-
                 updateCalcValues();
                 updateSummary();
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
@@ -4697,7 +4832,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter, #campaign-status-filter, #nra-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -4760,234 +4895,6 @@
                 applyFilters();
             });
 
-            // Row-level trend dot — open 30-day trend via ad-breakdown-chart-data
-            var trendGraphChartInstance = null;
-            var trendChartAjax = null;
-
-            function trendDateRange(days) {
-                days = days || 30;
-                var today = new Date();
-                var end = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2);
-                if (days === 0) return { start: null, end: end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0') };
-                var start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - days + 1);
-                return {
-                    start: start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0') + '-' + String(start.getDate()).padStart(2, '0'),
-                    end: end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0')
-                };
-            }
-
-            $(document).on('click', '.trend-dot', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                var metric = $(this).data('metric');
-                var keywordId = $(this).data('keyword-id');
-                var sku = $(this).data('sku');
-                if (metric) openTrendModal(keywordId, metric, sku);
-            });
-
-            function openTrendModal(keywordId, metric, sku) {
-                var adType, apiMetric;
-                if (metric === 'kw_ad_cbr') {
-                    adType = 'kw';
-                    apiMetric = 'cvr';
-                } else {
-                    var parts = metric.split('_');
-                    adType = parts[0];
-                    apiMetric = parts[1];
-                }
-                if (typeof console !== 'undefined' && console.log) console.log('Metric:', metric, 'AdType:', adType, 'apiMetric:', apiMetric);
-                var label = (adType.toUpperCase() + ' ' + (apiMetric === 'acos' ? 'ACOS' : 'CVR'));
-                $('#trendGraphModalTitle').text('Amazon - ' + label + ' (Rolling 30 Day)');
-                $('#trendGraphNoData').hide();
-                $('#trendGraphContainer').hide();
-                $('#trendGraphLoading').show();
-                var modalEl = document.getElementById('trendGraphModal');
-                var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-                modal.show();
-                loadTrendChart(adType, apiMetric);
-            }
-
-            function loadTrendChart(adType, apiMetric) {
-                if (trendChartAjax) trendChartAjax.abort();
-                var range = trendDateRange(30);
-                var params = {
-                    channel: 'amazon',
-                    ad_type: adType,
-                    metric: apiMetric,
-                    end_date: range.end
-                };
-                if (range.start) params.start_date = range.start;
-                trendChartAjax = $.ajax({
-                    url: '/ad-breakdown-chart-data',
-                    method: 'GET',
-                    data: params,
-                    success: function(response) {
-                        trendChartAjax = null;
-                        $('#trendGraphLoading').hide();
-                        if (response.success && response.data && response.data.length > 0) {
-                            $('#trendGraphContainer').css('display', 'flex').show();
-                            renderTrendGraph(response.data, apiMetric);
-                        } else {
-                            $('#trendGraphNoData').show();
-                        }
-                    },
-                    error: function(xhr, status) {
-                        trendChartAjax = null;
-                        if (status === 'abort') return;
-                        $('#trendGraphLoading').hide();
-                        $('#trendGraphNoData').show();
-                    }
-                });
-            }
-
-            function trendFmtVal(v) {
-                return v.toFixed(1) + '%';
-            }
-
-            function renderTrendGraph(data, apiMetric) {
-                var ctx = document.getElementById('trendGraphCanvas');
-                if (!ctx) return;
-                if (trendGraphChartInstance) {
-                    trendGraphChartInstance.destroy();
-                    trendGraphChartInstance = null;
-                }
-                var labels = data.map(function(d) { return d.date; });
-                var values = data.map(function(d) { return d.value; });
-                var dataMin = values.length ? Math.min.apply(null, values) : 0;
-                var dataMax = values.length ? Math.max.apply(null, values) : 10;
-                var sorted = values.slice().sort(function(a, b) { return a - b; });
-                var mid = Math.floor(sorted.length / 2);
-                var median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-                var range = dataMax - dataMin || 1;
-                var yMin = Math.max(0, dataMin - range * 0.1);
-                var yMax = dataMax + range * 0.1;
-
-                document.getElementById('trendChartHighest').textContent = trendFmtVal(dataMax);
-                document.getElementById('trendChartMedian').textContent = trendFmtVal(median);
-                document.getElementById('trendChartLowest').textContent = trendFmtVal(dataMin);
-
-                var dotColors = [];
-                for (var i = 0; i < values.length; i++) {
-                    if (i === 0) dotColors.push('#6c757d');
-                    else if (apiMetric === 'acos') {
-                        if (values[i] > values[i - 1]) dotColors.push('#dc3545');
-                        else if (values[i] < values[i - 1]) dotColors.push('#28a745');
-                        else dotColors.push('#6c757d');
-                    } else {
-                        if (values[i] > values[i - 1]) dotColors.push('#28a745');
-                        else if (values[i] < values[i - 1]) dotColors.push('#dc3545');
-                        else dotColors.push('#6c757d');
-                    }
-                }
-                var labelColors = dotColors;
-
-                var medianLinePlugin = {
-                    id: 'medianLine',
-                    afterDraw: function(chart) {
-                        var yScale = chart.scales.y, xScale = chart.scales.x, cctx = chart.ctx;
-                        var yPixel = yScale.getPixelForValue(median);
-                        cctx.save();
-                        cctx.setLineDash([6, 4]);
-                        cctx.strokeStyle = '#6c757d';
-                        cctx.lineWidth = 1.2;
-                        cctx.beginPath();
-                        cctx.moveTo(xScale.left, yPixel);
-                        cctx.lineTo(xScale.right, yPixel);
-                        cctx.stroke();
-                        cctx.restore();
-                    }
-                };
-
-                var valueLabelsPlugin = {
-                    id: 'valueLabels',
-                    afterDatasetsDraw: function(chart) {
-                        var dataset = chart.data.datasets[0], meta = chart.getDatasetMeta(0), cctx = chart.ctx;
-                        cctx.save();
-                        cctx.font = 'bold 7px Inter, system-ui, sans-serif';
-                        cctx.textAlign = 'center';
-                        cctx.textBaseline = 'bottom';
-                        meta.data.forEach(function(point, i) {
-                            var offsetY = (i % 2 === 0) ? -7 : -14;
-                            cctx.fillStyle = labelColors[i];
-                            cctx.fillText(trendFmtVal(dataset.data[i]), point.x, point.y + offsetY);
-                        });
-                        cctx.restore();
-                    }
-                };
-
-                trendGraphChartInstance = new Chart(ctx.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: apiMetric === 'acos' ? 'ACOS' : 'CVR',
-                            data: values,
-                            borderColor: '#adb5bd',
-                            borderWidth: 1.5,
-                            fill: false,
-                            tension: 0.3,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
-                            pointBackgroundColor: dotColors,
-                            pointBorderColor: dotColors,
-                            pointBorderWidth: 1.5
-                        }]
-                    },
-                    plugins: [medianLinePlugin, valueLabelsPlugin],
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
-                        interaction: { intersect: false, mode: 'index' },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                titleFont: { size: 10 },
-                                bodyFont: { size: 10 },
-                                padding: 6,
-                                callbacks: {
-                                    label: function(context) {
-                                        var idx = context.dataIndex;
-                                        var parts = ['Value: ' + trendFmtVal(context.raw)];
-                                        if (idx > 0) {
-                                            var diff = context.raw - values[idx - 1];
-                                            parts.push('vs Yesterday: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + trendFmtVal(Math.abs(diff)));
-                                        }
-                                        if (idx >= 7) {
-                                            var diff7 = context.raw - values[idx - 7];
-                                            parts.push('vs 7d Ago: ' + (diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬') + ' ' + trendFmtVal(Math.abs(diff7)));
-                                        }
-                                        return parts;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                min: yMin,
-                                max: yMax,
-                                ticks: { callback: function(v) { return v.toFixed(1) + '%'; }, font: { size: 9 } },
-                                grid: { color: 'rgba(0,0,0,0.08)' }
-                            },
-                            x: {
-                                ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } },
-                                grid: { color: 'rgba(0,0,0,0.06)' }
-                            }
-                        }
-                    }
-                });
-            }
-
-            document.getElementById('trendGraphModal').addEventListener('hidden.bs.modal', function() {
-                if (trendGraphChartInstance) {
-                    trendGraphChartInstance.destroy();
-                    trendGraphChartInstance = null;
-                }
-                if (trendChartAjax) {
-                    trendChartAjax.abort();
-                    trendChartAjax = null;
-                }
-            });
 
             // Update PFT% and ROI% calc values (only for INV > 0)
             function updateCalcValues() {
@@ -5002,13 +4909,11 @@
                         const aL30 = parseFloat(row['A_L30']) || 0;
                         const lp = parseFloat(row['LP_productmaster']) || 0;
                         const ship = parseFloat(row['Ship_productmaster']) || 0;
-                        const adPercent = parseFloat(row['AD%']) || 0;
-                        const adDecimal = adPercent / 100;
                         
                         // Only process rows with sales
                         if (aL30 > 0 && price > 0) {
-                            // Profit per unit = (price * (0.80 - adDecimal)) - ship - lp
-                            const profitPerUnit = (price * (0.80 - adDecimal)) - ship - lp;
+                            // Profit per unit = (price * 0.80) - ship - lp
+                            const profitPerUnit = (price * 0.80) - ship - lp;
                             // Total profit for this row = profitPerUnit * L30
                             const profitTotal = profitPerUnit * aL30;
                             const salesL30 = price * aL30;
@@ -5062,15 +4967,10 @@
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalSkuCount++;
-                        // DO NOT sum AD_Spend_L30 from rows - causes double-counting
-                        // Will use campaign totals instead (calculated after loop)
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['A_L30'] || 0);
                         totalAmazonInv += parseFloat(row['INV'] || 0);
-                        
-                        // Ad Spend Breakdown - DO NOT sum from rows as it causes double-counting
-                        // We'll use the campaign totals from the backend instead (calculated below)
                         
                         const aL30 = parseFloat(row['A_L30'] || 0);
                         totalAmazonL30 += aL30;
@@ -5179,24 +5079,9 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 // Update Prc > LMP count
                 $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
                 
-                // Calculate Total Spend L30 from campaign totals (avoid double-counting)
-                const totalSpendL30 = parseFloat(campaignTotals.kw_spend_L30 || 0) + parseFloat(campaignTotals.pt_spend_L30 || 0) + parseFloat(campaignTotals.hl_spend_L30 || 0);
-                
-                // Calculate TCOS% = (Total Spend L30 / Total Sales) * 100
-                const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
-                
-                $('#total-spend-l30-badge').text('Ad: $' + Math.round(totalSpendL30));
-                
                 // GROI% = (Total PFT / Total COGS) * 100
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
                 $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
-                
-                // NROI% = GROI% - TCOS%
-                const nroiPercent = groiPercent - tcosPercent;
-                $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
-                
-                // TCOS%
-                $('#tcos-percent-badge').text('TCOS: ' + Math.round(tcosPercent) + '%');
                 
                 $('#total-amazon-inv-badge').text('INV: ' + Math.round(totalAmazonInv).toLocaleString());
                 $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
@@ -5206,11 +5091,8 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
                 $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
                 
-                // TACOS% = (total ad dollars / Total Sales) * 100
-                const tacosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
-                
-                // AVG PFT% = GPFT% - TACOS% (Net Profit % - after ads)
-                const avgPft = avgGpft - tacosPercent;
+                // AVG PFT% = GPFT% (Net Profit % - same as gross since no ads)
+                const avgPft = avgGpft;
                 $('#avg-pft-badge').text('PFT: ' + Math.round(avgPft) + '%');
                 
                 // Save badge stats daily (fire-and-forget, once per page load)
@@ -5229,13 +5111,9 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         prc_gt_lmp_count: prcGtLmpCount,
                         total_pft: Math.round(totalPftAmt),
                         total_sales: Math.round(totalSalesAmt),
-                        total_spend: Math.round(totalSpendL30),
                         gpft_pct: Math.round(avgGpft),
                         npft_pct: Math.round(avgPft),
-                        groi_pct: Math.round(groiPercent),
-                        nroi_pct: Math.round(nroiPercent),
-                        tcos_pct: Math.round(tcosPercent),
-                        total_l30_orders: Math.round(totalAmazonL30)
+                        groi_pct: Math.round(groiPercent)
                     });
                 }
             }
@@ -5483,57 +5361,8 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 var originalText = $btn.html();
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> Processing...').prop('disabled', true);
                 
-                // Handle PAUSE/ACTIVATE actions differently
-                if (action === 'PAUSE' || action === 'ACTIVATE') {
-                    var newStatus = action === 'ACTIVATE' ? 'ENABLED' : 'PAUSED';
-                    
-                    var promises = selectedSkusList.map(function(sku) {
-                        return fetch('/toggle-amazon-sku-ads', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                            },
-                            body: JSON.stringify({
-                                sku: sku,
-                                status: newStatus
-                            })
-                        }).then(function(res) { return res.json(); });
-                    });
-                    
-                    Promise.all(promises).then(function(results) {
-                        // Update table data
-                        selectedSkusList.forEach(function(sku) {
-                            var rows = table.getRows().filter(function(row) {
-                                return row.getData()['(Child) sku'] === sku;
-                            });
-                            rows.forEach(function(row) {
-                                row.update({
-                                    kw_campaign_status: newStatus,
-                                    pt_campaign_status: newStatus,
-                                    campaignStatus: newStatus
-                                });
-                                row.reformat();
-                            });
-                        });
-                        
-                        // Show success message
-                        var statusText = newStatus === 'ENABLED' ? 'activated' : 'paused';
-                        showToast('success', selectedSkusList.length + ' campaign(s) ' + statusText);
-                        
-                        // Clear selections
-                        clearRowSelections();
-                        
-                        // Restore button
-                        $btn.html(originalText).prop('disabled', false);
-                    }).catch(function(err) {
-                        console.error('Bulk action error:', err);
-                        alert('Error processing bulk action: ' + (err.message || 'Unknown error'));
-                        $btn.html(originalText).prop('disabled', false);
-                    });
-                } else {
-                    // Handle NRA/RA/LATER actions - use same URL as single-cell save
-                    var bulkSaveUrl = "{{ url('update-amazon-nr-nrl-fba') }}";
+                // Handle NRA/RA/LATER actions - use same URL as single-cell save
+                var bulkSaveUrl = "{{ url('update-amazon-nr-nrl-fba') }}";
                     var csrfMeta = document.querySelector('meta[name="csrf-token"]');
                     var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
@@ -5595,7 +5424,180 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         alert('Error processing bulk action: ' + (err.message || 'Unknown error'));
                         $btn.html(originalText).prop('disabled', false);
                     });
+            });
+
+            // Bulk Push Actions - Execute button handler
+            $(document).on('click', '#executeBulkPush', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Get selected marketplaces
+                var selectedMarketplaces = [];
+                $('.bulk-push-checkbox:checked').each(function() {
+                    selectedMarketplaces.push($(this).val());
+                });
+                
+                if (selectedMarketplaces.length === 0) {
+                    alert('Please select at least one marketplace');
+                    return;
                 }
+                
+                var selectedSkusList = getSelectedSkus();
+                
+                if (selectedSkusList.length === 0) {
+                    alert('Please select at least one row');
+                    return;
+                }
+                
+                var marketplaceNames = selectedMarketplaces.map(function(m) {
+                    return m === 'amazon' ? 'Amazon' : (m === 'shopify' ? 'Shopify' : 'PLS');
+                }).join(', ');
+                
+                if (!confirm('Push ' + selectedSkusList.length + ' price(s) to ' + marketplaceNames + '?')) {
+                    return;
+                }
+                
+                // Show loading
+                var $btn = $('#bulkActionsDropdown');
+                var originalText = $btn.html();
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Pushing...').prop('disabled', true);
+                
+                var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+                
+                // For each SKU, push to all selected marketplaces
+                var allPromises = [];
+                
+                selectedSkusList.forEach(function(sku) {
+                    // Get SPRICE for this SKU
+                    var row = table.getRows().find(function(r) {
+                        return r.getData()['(Child) sku'] === sku;
+                    });
+                    
+                    if (!row) {
+                        allPromises.push(Promise.resolve({ 
+                            ok: false, 
+                            sku: sku, 
+                            marketplace: 'all',
+                            error: 'Row not found' 
+                        }));
+                        return;
+                    }
+                    
+                    var rowData = row.getData();
+                    var spriceRaw = rowData.SPRICE;
+                    
+                    if (!spriceRaw || spriceRaw === '' || spriceRaw === '0' || spriceRaw === '0.00') {
+                        allPromises.push(Promise.resolve({ 
+                            ok: false, 
+                            sku: sku, 
+                            marketplace: 'all',
+                            error: 'No SPRICE set' 
+                        }));
+                        return;
+                    }
+                    
+                    // Push to each selected marketplace
+                    selectedMarketplaces.forEach(function(marketplace) {
+                        var pushUrl;
+                        if (marketplace === 'amazon') {
+                            pushUrl = "{{ route('apply.amazon.price') }}";
+                        } else if (marketplace === 'shopify') {
+                            pushUrl = "{{ route('push.shopify.b2c.price') }}";
+                        } else if (marketplace === 'pls') {
+                            pushUrl = "{{ route('push.pls.price') }}";
+                        }
+                        
+                        // Build request body
+                        var requestBody = {
+                            sku: sku,
+                            price: spriceRaw
+                        };
+                        
+                        // For Amazon, also update the competitive price constraint (minimum price)
+                        if (marketplace === 'amazon') {
+                            requestBody.update_amazon_min_price = true;
+                        }
+                        
+                        var promise = fetch(pushUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify(requestBody)
+                        }).then(function(res) {
+                            if (!res.ok) {
+                                return res.text().then(function(text) {
+                                    var msg = res.status === 419 ? 'Session expired.' : (text || 'Push failed (' + res.status + ')');
+                                    return { ok: false, sku: sku, marketplace: marketplace, error: msg };
+                                });
+                            }
+                            return res.json().then(function(data) {
+                                return { ok: data.success !== false, sku: sku, marketplace: marketplace, data: data };
+                            });
+                        }).catch(function(err) {
+                            return { ok: false, sku: sku, marketplace: marketplace, error: err.message || 'Network error' };
+                        });
+                        
+                        allPromises.push(promise);
+                    });
+                });
+                
+                Promise.all(allPromises).then(function(results) {
+                    var succeeded = 0;
+                    var failed = [];
+                    var skusToUpdate = {};
+                    
+                    results.forEach(function(r) {
+                        if (r.ok) {
+                            succeeded++;
+                            // Track which SKU needs which status updated
+                            if (!skusToUpdate[r.sku]) {
+                                skusToUpdate[r.sku] = {};
+                            }
+                            skusToUpdate[r.sku][r.marketplace] = 'pushed';
+                        } else {
+                            var marketplaceName = r.marketplace === 'amazon' ? 'AMZ' : (r.marketplace === 'shopify' ? 'SFY' : 'PLS');
+                            failed.push(r.sku + ' (' + marketplaceName + ')' + (r.error ? ': ' + r.error : ''));
+                        }
+                    });
+                    
+                    // Update row statuses
+                    Object.keys(skusToUpdate).forEach(function(sku) {
+                        var rows = table.getRows().filter(function(row) {
+                            return row.getData()['(Child) sku'] === sku;
+                        });
+                        rows.forEach(function(row) {
+                            var updateData = {};
+                            if (skusToUpdate[sku]['amazon']) {
+                                updateData.STATUS = 'pushed';
+                            }
+                            if (skusToUpdate[sku]['shopify']) {
+                                updateData.S_STATUS = 'pushed';
+                            }
+                            if (skusToUpdate[sku]['pls']) {
+                                updateData.PLS_STATUS = 'pushed';
+                            }
+                            row.update(updateData);
+                            row.reformat();
+                        });
+                    });
+                    
+                    if (failed.length > 0) {
+                        showToast('warning', succeeded + ' pushed, ' + failed.length + ' failed. ' + (failed[0].length > 80 ? failed[0].substring(0, 80) + '…' : failed[0]));
+                        if (failed.length > 1) console.error('Bulk push failures:', failed);
+                    } else {
+                        showToast('success', succeeded + ' price(s) pushed to ' + marketplaceNames);
+                    }
+                    clearRowSelections();
+                    $btn.html(originalText).prop('disabled', false);
+                }).catch(function(err) {
+                    console.error('Bulk push error:', err);
+                    alert('Error processing bulk push: ' + (err.message || 'Unknown error'));
+                    $btn.html(originalText).prop('disabled', false);
+                });
             });
 
             // Function to get all selected SKUs
@@ -5651,7 +5653,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
                     $('#sku-chart-days-filter').val('30');
-                    const metricLabels = { cvr: 'CVR%', views: 'View L30', tacos: 'TACOS%', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
+                    const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
                     const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                     $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30)');
                     $('#skuChartLoading').show();
@@ -5659,77 +5661,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     $('#chart-no-data-message').hide();
                     loadSkuMetricsData(sku, 30);
                     $('#skuMetricsModal').modal('show');
-                }
-            });
-
-            // Ad Pause Toggle - use change event like acos-control-kw
-            document.addEventListener("change", function(e) {
-                if (e.target.classList.contains("ad-pause-toggle")) {
-                    const checkbox = e.target;
-                    const sku = checkbox.getAttribute("data-sku");
-                    const isEnabled = checkbox.checked;
-                    const newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
-                    
-                    if (!sku) {
-                        alert("SKU not found!");
-                        checkbox.checked = !isEnabled; // Revert toggle
-                        return;
-                    }
-                    
-                    // Show loading overlay if available
-                    const overlay = document.getElementById("progress-overlay");
-                    if (overlay) overlay.style.display = "flex";
-                    
-                    fetch('/toggle-amazon-sku-ads', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                        },
-                        body: JSON.stringify({
-                            sku: sku,
-                            status: newStatus
-                        })
-                    })
-                    .then(res => {
-                        if (!res.ok) {
-                            throw new Error(`HTTP error! status: ${res.status}`);
-                        }
-                        return res.json();
-                    })
-                    .then(data => {
-                        if (data.status === 200) {
-                            // Update the row data - update campaign status fields like acos-control-kw
-                            let rows = table.getRows();
-                            for (let i = 0; i < rows.length; i++) {
-                                let rowData = rows[i].getData();
-                                if (rowData['(Child) sku'] === sku) {
-                                    // Update campaign status fields
-                                    rows[i].update({
-                                        kw_campaign_status: newStatus,
-                                        pt_campaign_status: newStatus
-                                    });
-                                    
-                                    // Reformat the row to update the toggle button with new status
-                                    rows[i].reformat();
-                                    
-                                    showToast('success', `Ads ${newStatus === 'ENABLED' ? 'enabled' : 'paused'} for SKU: ${sku}`);
-                                    break;
-                                }
-                            }
-                        } else {
-                            alert("Error: " + (data.message || "Failed to update ad status"));
-                            checkbox.checked = !isEnabled; // Revert toggle
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Toggle error:', err);
-                        alert("Request failed: " + (err.message || "Network error"));
-                        checkbox.checked = !isEnabled; // Revert toggle
-                    })
-                    .finally(() => {
-                        if (overlay) overlay.style.display = "none";
-                    });
                 }
             });
 
@@ -6148,208 +6079,9 @@ $('#nmap-count').text(missingCount.toLocaleString());
             $('#scoutModal').modal('show');
         }
 
-        // ACOS Info Icon Click Handler
-        $(document).on('click', '.acos-info-icon', function(e) {
-            e.stopPropagation();
-            const sku = $(this).data('sku');
-            if (!sku) {
-                showToast('error', 'SKU not found');
-                return;
-            }
-            
-            $('#campaignModalLabel').text(`Campaign Details - ${sku}`);
-            $('#campaignModalBody').html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
-            $('#campaignModal').modal('show');
-            
-            $.ajax({
-                url: '/amazon-campaign-data-by-sku',
-                type: 'GET',
-                data: { sku: sku },
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                },
-                success: function(response) {
-                    // Helper function to get ACOS color class
-                    function getAcosColorClass(acos) {
-                        if (acos === 0) return '';
-                        if (acos < 7) return 'pink-bg';
-                        if (acos >= 7 && acos <= 14) return 'green-bg';
-                        if (acos > 14) return 'red-bg';
-                        return '';
-                    }
-                    
-                    let html = '';
-                    
-                    // Check if HL campaigns exist - if yes, only show HL (not KW/PT)
-                    const hasHlCampaigns = response.hl_campaigns && response.hl_campaigns.length > 0;
-                    
-                    if (hasHlCampaigns) {
-                        // Only show HL campaigns
-                        response.hl_campaigns.forEach(function(campaign, index) {
-                            html += `<h5 class="mb-3">HL Campaign - ${campaign.campaign_name || 'N/A'}</h5>`;
-                            html += '<div class="table-responsive mb-4">';
-                            html += '<table class="table table-bordered table-sm">';
-                            html += '<thead><tr>';
-                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad</th><th>Ad Sales</th><th>Ad Sold</th>';
-                            html += '<th>AD CVR</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
-                            html += '</tr></thead><tbody>';
-                            const acos = parseFloat(campaign.acos || 0);
-                            
-                            html += '<tr>';
-                            html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.sbgt || 0).toFixed(0)}</td>`;
-                            html += `<td class="${getAcosColorClass(acos)}">${acos.toFixed(0)}%</td>`;
-                            html += `<td>${(campaign.clicks || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_spend || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
-                            html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l_bid && campaign.l_bid !== '' && campaign.l_bid !== '0' && parseFloat(campaign.l_bid) > 0) ? parseFloat(campaign.l_bid).toFixed(2) : '-'}</td>`;
-                            // Show SBID if it exists and is > 0 (for over, under, or zero utilization cases)
-                            const showSbid = campaign.sbid && campaign.sbid > 0;
-                            html += `<td>${showSbid ? campaign.sbid.toFixed(2) : '-'}</td>`;
-                            html += '</tr>';
-                            html += '</tbody></table></div>';
-                        });
-                    } else {
-                        // Show KW and PT campaigns (only if no HL campaigns)
-                        // KW Campaigns
-                        if (response.kw_campaigns && response.kw_campaigns.length > 0) {
-                        response.kw_campaigns.forEach(function(campaign, index) {
-                            html += `<h5 class="mb-3">KW Campaign - ${campaign.campaign_name || 'N/A'}</h5>`;
-                            html += '<div class="table-responsive mb-4">';
-                            html += '<table class="table table-bordered table-sm">';
-                            html += '<thead><tr>';
-                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad</th><th>Ad Sales</th><th>Ad Sold</th>';
-                            html += '<th>AD CVR</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
-                            html += '</tr></thead><tbody>';
-                            const acos = parseFloat(campaign.acos || 0);
-                            
-                            html += '<tr>';
-                            html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.sbgt || 0).toFixed(0)}</td>`;
-                            html += `<td class="${getAcosColorClass(acos)}">${acos.toFixed(0)}%</td>`;
-                            html += `<td>${(campaign.clicks || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_spend || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
-                            html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l_bid && campaign.l_bid !== '' && campaign.l_bid !== '0' && parseFloat(campaign.l_bid) > 0) ? parseFloat(campaign.l_bid).toFixed(2) : '-'}</td>`;
-                            // Show SBID if it exists and is > 0 (for over, under, or zero utilization cases)
-                            const showSbid = campaign.sbid && campaign.sbid > 0;
-                            html += `<td>${showSbid ? campaign.sbid.toFixed(2) : '-'}</td>`;
-                            html += '</tr>';
-                            html += '</tbody></table></div>';
-                        });
-                    } else {
-                        html += '<h5 class="mb-3">KW Campaigns</h5><p class="text-muted">No KW campaigns found</p>';
-                    }
-                    
-                    // PT Campaigns
-                    if (response.pt_campaigns && response.pt_campaigns.length > 0) {
-                        response.pt_campaigns.forEach(function(campaign, index) {
-                            html += `<h5 class="mb-3">PT Campaign - ${campaign.campaign_name || 'N/A'}</h5>`;
-                            html += '<div class="table-responsive mb-4">';
-                            html += '<table class="table table-bordered table-sm">';
-                            html += '<thead><tr>';
-                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad</th><th>Ad Sales</th><th>Ad Sold</th>';
-                            html += '<th>AD CVR</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
-                            html += '</tr></thead><tbody>';
-                            const acos = parseFloat(campaign.acos || 0);
-                            
-                            html += '<tr>';
-                            html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.sbgt || 0).toFixed(0)}</td>`;
-                            html += `<td class="${getAcosColorClass(acos)}">${acos.toFixed(0)}%</td>`;
-                            html += `<td>${(campaign.clicks || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_spend || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
-                            html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
-                            html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
-                            html += `<td>${(campaign.l_bid && campaign.l_bid !== '' && campaign.l_bid !== '0' && parseFloat(campaign.l_bid) > 0) ? parseFloat(campaign.l_bid).toFixed(2) : '-'}</td>`;
-                            // Show SBID if it exists and is > 0 (for over, under, or zero utilization cases)
-                            const showSbid = campaign.sbid && campaign.sbid > 0;
-                            html += `<td>${showSbid ? campaign.sbid.toFixed(2) : '-'}</td>`;
-                            html += '</tr>';
-                            html += '</tbody></table></div>';
-                        });
-                        } else {
-                            html += '<h5 class="mb-3">PT Campaigns</h5><p class="text-muted">No PT campaigns found</p>';
-                        }
-                    }
-                    
-                    // Show empty message only if no campaigns at all
-                    if (!hasHlCampaigns && (!response.kw_campaigns || !response.kw_campaigns.length) && (!response.pt_campaigns || !response.pt_campaigns.length)) {
-                        html = '<p class="text-muted">No campaigns found for this SKU</p>';
-                    }
-                    
-                    $('#campaignModalBody').html(html);
-                },
-                error: function(xhr) {
-                    const error = xhr.responseJSON?.error || 'Failed to load campaign data';
-                    $('#campaignModalBody').html(`<div class="alert alert-danger">${error}</div>`);
-                }
-            });
-        });
     </script>
     
     <!-- Campaign Details Modal -->
-    <div class="modal fade" id="campaignModal" tabindex="-1" aria-labelledby="campaignModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="campaignModalLabel">Campaign Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body" id="campaignModalBody">
-                    <!-- Content will be loaded here -->
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Campaign Comparison Modal -->
-    <div class="modal fade" id="campaignSummaryModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-warning">
-                    <h5 class="modal-title">
-                        <i class="fas fa-info-circle"></i> Campaign Details - <span id="modal-sku-name"></span>
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <table class="table table-bordered table-sm">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Type</th>
-                                <th>AD SPEND</th>
-                                <th>AD SALES</th>
-                                <th>ACOS</th>
-                                <th>CLICKS</th>
-                                <th>AD SOLD</th>
-                                <th>CVR</th>
-                            </tr>
-                        </thead>
-                        <tbody id="campaign-comparison-tbody"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Parent row: child SKU pricing breakdown (KW / all sections) -->
     <div class="modal fade" id="parentPricingBreakdownModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -6372,10 +6104,8 @@ $('#nmap-count').text(missingCount.toLocaleString());
                                     <th class="text-end">A L30</th>
                                     <th class="text-end">CVR L30</th>
                                     <th class="text-end">GPFT %</th>
-                                    <th class="text-end">AD %</th>
                                     <th class="text-end">NPFT %</th>
                                     <th class="text-end">GROI %</th>
-                                    <th class="text-end">NROI %</th>
                                     <th class="text-end">LMP</th>
                                     <th class="text-end">S PRC</th>
                                     <th class="text-center">Push</th>
@@ -6392,67 +6122,6 @@ $('#nmap-count').text(missingCount.toLocaleString());
     </div>
 
     <script>
-        // Delegated event handler for campaign info icon click
-        $(document).on('click', '.campaign-info-btn', function(e) {
-            e.stopPropagation();
-            const sku = $(this).data('sku');
-            
-            // Find the row data
-            if (!table) return;
-            const allData = table.getData();
-            const rowData = allData.find(row => row['(Child) sku'] === sku);
-            
-            if (rowData) {
-                showCampaignDetailsForSku(rowData);
-            }
-        });
-        
-        function showCampaignDetailsForSku(rowData) {
-            const sku = rowData['(Child) sku'] || '';
-            $('#modal-sku-name').text(sku);
-            
-            const tbody = $('#campaign-comparison-tbody');
-            tbody.empty();
-            
-            // KW, PT, HL rows
-            const campaignTypes = [
-                { type: 'KW', bgClass: 'table-primary', fields: {
-                    spend: 'l30_spend', sales: 'l30_sales', clicks: 'l30_clicks', sold: 'l30_purchases'
-                }},
-                { type: 'PT', bgClass: 'table-info', fields: {
-                    spend: 'pt_spend_L30', sales: 'pt_sales_L30', clicks: 'pt_clicks_L30', sold: 'pt_sold_L30'
-                }},
-                { type: 'HL', bgClass: 'table-warning', fields: {
-                    spend: 'hl_spend_L30', sales: 'hl_sales_L30', clicks: 'hl_clicks_L30', sold: 'hl_sold_L30'
-                }}
-            ];
-            
-            campaignTypes.forEach(({type, bgClass, fields}) => {
-                const spend = parseFloat(rowData[fields.spend] || 0);
-                const sales = parseFloat(rowData[fields.sales] || 0);
-                const clicks = parseFloat(rowData[fields.clicks] || 0);
-                const sold = parseFloat(rowData[fields.sold] || 0);
-                
-                const acos = sales > 0 ? ((spend / sales) * 100).toFixed(1) : '-';
-                const cvr = clicks > 0 ? ((sold / clicks) * 100).toFixed(1) : '-';
-                
-                tbody.append(`
-                    <tr class="${bgClass}">
-                        <td class="fw-bold">${type}</td>
-                        <td class="text-end">${spend > 0 ? '$' + spend.toFixed(2) : '-'}</td>
-                        <td class="text-end">${sales > 0 ? '$' + sales.toFixed(2) : '-'}</td>
-                        <td class="text-center">${acos !== '-' ? acos + '%' : '-'}</td>
-                        <td class="text-center">${clicks > 0 ? clicks.toLocaleString() : '-'}</td>
-                        <td class="text-center">${sold > 0 ? sold.toLocaleString() : '-'}</td>
-                        <td class="text-center">${cvr !== '-' ? cvr + '%' : '-'}</td>
-                    </tr>
-                `);
-            });
-            
-            // Open the modal
-            $('#campaignSummaryModal').modal('show');
-        }
-
         // Table export (filtered rows)
         $('#section-export-btn').on('click', function() {
             if (!table) {

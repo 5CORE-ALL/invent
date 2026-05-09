@@ -2796,7 +2796,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/save-amazon-variation', [OverallAmazonController::class, 'saveVariationToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
     Route::post('/amazon-clear-sprice', [OverallAmazonController::class, 'clearAmazonSprice']);
-    Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice']);
+    Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice'])->name('apply.amazon.price');
+    Route::post('/push-shopify-b2c-price', [OverallAmazonController::class, 'pushShopifyB2CPrice'])->name('push.shopify.b2c.price');
+    Route::post('/push-pls-price', [OverallAmazonController::class, 'pushPlsPrice'])->name('push.pls.price');
     Route::post('/update-sprice-status', [OverallAmazonController::class, 'updateSpriceStatus']);
     Route::post('/update-amazon-listed-live', [OverallAmazonController::class, 'updateListedLive']);
     Route::get('/amazon-export-pricing-cvr', [OverallAmazonController::class, 'exportAmazonPricingCVR'])->name('amazon.export.pricing.cvr');

@@ -20,8 +20,6 @@ use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Jobs\UpdateAmazonSPriceJob;
 use App\Models\AmazonDatasheet;
 use App\Models\ADVMastersData;
-use App\Models\AmazonSbCampaignReport;
-use App\Models\AmazonSpCampaignReport;
 use App\Models\ChannelMaster;
 use Illuminate\Support\Facades\DB;
 use App\Services\AmazonDataService;
@@ -36,7 +34,6 @@ use App\Models\AmazonSkuCompetitor;
 use App\Models\FbaPrice;
 use App\Models\FbaTable;
 use App\Services\FbaInventoryService;
-use App\Support\AmazonAcosSbgtRule;
 
 class OverallAmazonController extends Controller
 {
@@ -350,612 +347,8 @@ class OverallAmazonController extends Controller
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Amazon')->first();
 
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1; 
-        $adUpdates  = $marketplaceData ? $marketplaceData->ad_updates : 0;   
-
-        // Calculate AVG CPC from all daily records (lifetime average) - same as KW page
-        $avgCpcData = collect();
-        try {
-            $dailyRecords = DB::table('amazon_sp_campaign_reports')
-                ->select('campaign_id', DB::raw('AVG(costPerClick) as avg_cpc'))
-                ->where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('campaignStatus', '!=', 'ARCHIVED')
-                ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-                ->where('costPerClick', '>', 0)
-                ->whereNotNull('campaign_id')
-                ->groupBy('campaign_id')
-                ->get();
-            
-            foreach ($dailyRecords as $record) {
-                if ($record->campaign_id && $record->avg_cpc > 0) {
-                    $avgCpcData->put($record->campaign_id, round($record->avg_cpc, 2));
-                }
-            }
-        } catch (\Exception $e) {
-            Log::warning('Could not calculate AVG CPC: ' . $e->getMessage());
-        }
-
-        // Fetch Amazon SP Campaign Reports for L30 (KW campaigns - NOT PT)
-        // Use EXACT same logic as AmazonSpBudgetController::amazonSpBudgetTable() line 2073-2080
-        // Include NULL campaignStatus so all PARENT X KW campaigns appear (SQL: NULL != 'ARCHIVED' excludes NULL)
-        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->where('campaignName', 'NOT LIKE', '% PT')
-            ->where('campaignName', 'NOT LIKE', '% PT.')
-            ->where('campaignName', 'NOT LIKE', '%FBA')
-            ->where('campaignName', 'NOT LIKE', '%FBA.')
-            ->where(function ($q) {
-                $q->whereNull('campaignStatus')->orWhere('campaignStatus', '!=', 'ARCHIVED');
-            })
-            ->get();
-
-        // Fetch Amazon SP Campaign Reports for L30 (PT campaigns)
-        // Use individual records (no grouping) - same as amazon-utilized-pt page
-        $amazonSpCampaignReportsPtL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->where(function($q) {
-                $q->where('campaignName', 'LIKE', '% PT')
-                  ->orWhere('campaignName', 'LIKE', '% PT.');
-            })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->get();
-
-        // Fetch Amazon SB Campaign Reports for L30 (HL campaigns)
-        // Use EXACT same logic as AmazonCampaignReportsController::amazonHlAdsView() line 891-901
-        // Group ONLY by campaignName and use MAX(cost) to avoid double-counting duplicate entries
-        $amazonHlL30 = DB::table('amazon_sb_campaign_reports')
-            ->selectRaw('
-                campaignName,
-                MAX(campaign_id) as campaign_id,
-                MAX(cost) as cost,
-                SUM(clicks) as clicks,
-                SUM(sales) as sales,
-                SUM(purchases) as purchases,
-                SUM(impressions) as impressions,
-                MAX(campaignStatus) as campaignStatus,
-                MAX(campaignBudgetAmount) as campaignBudgetAmount
-            ')
-            ->where('ad_type', 'SPONSORED_BRANDS')
-            ->where('report_date_range', 'L30')
-            ->groupBy('campaignName')
-            ->get();
-
-        // Fetch Amazon SB Campaign Reports for L7 (HL campaigns)
-        $amazonHlL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
-            ->where('report_date_range', 'L7')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
-                    $upperSku = strtoupper($sku);
-                    $q->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% PT')
-                    ->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% pt');
-                }
-            })
-            ->get();
-
-        // Fetch Amazon SB Campaign Reports for L1 (HL campaigns)
-        $amazonHlL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
-            ->where('report_date_range', 'L1')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
-                    $upperSku = strtoupper($sku);
-                    $q->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% PT')
-                    ->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% pt');
-                }
-            })
-            ->get();
-
-        // Fetch Amazon SP Campaign Reports for L7 (KW campaigns - for utilization)
-        $amazonSpCampaignReportsL7 = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('
-                campaignName,
-                campaign_id,
-                MAX(spend) as spend,
-                SUM(clicks) as clicks,
-                SUM(sales30d) as sales30d,
-                MAX(costPerClick) as costPerClick,
-                MAX(campaignStatus) as campaignStatus,
-                MAX(campaignBudgetAmount) as campaignBudgetAmount
-            ')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L7')
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->groupBy('campaignName', 'campaign_id')
-            ->get();
-
-        // Fetch Amazon SP Campaign Reports for L1 (KW campaigns - for utilization)
-        $amazonSpCampaignReportsL1 = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('
-                campaignName,
-                campaign_id,
-                MAX(spend) as spend,
-                SUM(clicks) as clicks,
-                SUM(sales30d) as sales30d,
-                MAX(costPerClick) as costPerClick,
-                MAX(campaignStatus) as campaignStatus,
-                MAX(campaignBudgetAmount) as campaignBudgetAmount
-            ')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L1')
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->groupBy('campaignName', 'campaign_id')
-            ->get();
-
-        // Fetch Amazon SP Campaign Reports for PT L7 (PT campaigns)
-        // Use individual records (no grouping) - same as amazon-utilized-pt page
-        $amazonSpCampaignReportsPtL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L7')
-            ->where(function($q) {
-                $q->where('campaignName', 'LIKE', '% PT')
-                  ->orWhere('campaignName', 'LIKE', '% PT.');
-            })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->get();
-
-        // Fetch Amazon SP Campaign Reports for PT L1 (PT campaigns)
-        // Use individual records (no grouping) - same as amazon-utilized-pt page
-        $amazonSpCampaignReportsPtL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L1')
-            ->where(function($q) {
-                $q->where('campaignName', 'LIKE', '% PT')
-                  ->orWhere('campaignName', 'LIKE', '% PT.');
-            })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->get();
-
-        // L2 = 2nd last date in table (based on table's latest data, not server today).
-        $latestDateInTable = DB::table('amazon_sp_campaign_reports')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
-            ->max('report_date_range');
-        $dayBeforeYesterdayForL2 = $latestDateInTable
-            ? date('Y-m-d', strtotime($latestDateInTable . ' -1 day'))
-            : date('Y-m-d', strtotime('-2 days'));
-        $amazonSpCampaignReportsL2 = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('
-                campaignName,
-                campaign_id,
-                MAX(spend) as spend,
-                SUM(clicks) as clicks,
-                SUM(sales30d) as sales30d,
-                MAX(costPerClick) as costPerClick,
-                MAX(campaignStatus) as campaignStatus,
-                MAX(campaignBudgetAmount) as campaignBudgetAmount
-            ')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', $dayBeforeYesterdayForL2)
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->groupBy('campaignName', 'campaign_id')
-            ->get();
-
-        $amazonSpCampaignReportsPtL2 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', $dayBeforeYesterdayForL2)
-            ->where(function($q) {
-                $q->where('campaignName', 'LIKE', '% PT')
-                  ->orWhere('campaignName', 'LIKE', '% PT.');
-            })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->get();
-
-        // Fetch Amazon SP Campaign Reports for L90 (for budget data)
-        $amazonSpCampaignReportsL90 = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('
-                campaignName,
-                campaign_id,
-                MAX(campaignBudgetAmount) as campaignBudgetAmount,
-                AVG(costPerClick) as avg_cpc
-            ')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->groupBy('campaignName', 'campaign_id')
-            ->get();
-        
-        // Fetch Amazon SP Campaign Reports for PT L90 (for budget data - PT campaigns with no L30/L7 activity)
-        $amazonSpCampaignReportsPtL90 = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('
-                campaignName,
-                campaign_id,
-                MAX(campaignBudgetAmount) as campaignBudgetAmount,
-                MAX(campaignStatus) as campaignStatus,
-                AVG(costPerClick) as avg_cpc
-            ')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->whereRaw("(campaignName REGEXP '(PT\\.?$)' OR campaignName LIKE '% PT' OR campaignName LIKE '% PT.')")
-            ->groupBy('campaignName', 'campaign_id')
-            ->get();
-
-        // Fetch last_sbid and sbid_m from yesterday and day-before-yesterday records.
-        // Prefer YESTERDAY so KW Last SBID column shows the previous day's SBID (not 2 days ago).
-        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
-        $yesterday = date('Y-m-d', strtotime('-1 day'));
-
-        // Initialize maps once; seed KW sbid from L30 first so UI SBID reflects current bid.
-        $lastSbidMap = [];
-        $sbidMMap = [];
-        $sbidMap = [];
-
-        $kwSbidL30Reports = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'sbid')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->whereNotNull('sbid')
-            ->where('sbid', '>', 0)
-            ->get();
-
-        foreach ($kwSbidL30Reports as $report) {
-            $campaignIdStr = (string) $report->campaign_id;
-            if (!empty($campaignIdStr) && !isset($sbidMap[$campaignIdStr])) {
-                $sbidMap[$campaignIdStr] = $report->sbid;
-            }
-            if (!empty($report->campaignName)) {
-                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
-                if (!isset($sbidMap['name_' . $normalizedName])) {
-                    $sbidMap['name_' . $normalizedName] = $report->sbid;
-                }
-            }
-        }
-        
-        $lastSbidReports = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
-                $q->where('report_date_range', $dayBeforeYesterday)
-                  ->orWhere('report_date_range', $yesterday);
-            })
-            ->where(function($q) {
-                $q->whereNotNull('last_sbid')
-                  ->where('last_sbid', '!=', '')
-                  ->orWhere(function($q2) {
-                      $q2->whereNotNull('sbid_m')
-                         ->where('sbid_m', '!=', '');
-                  });
-            })
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$yesterday])
-            ->get();
-        
-        // Build remaining last_sbid and sbid_m maps (sbid map already seeded from L30).
-        foreach ($lastSbidReports as $report) {
-            $campaignIdStr = (string)$report->campaign_id;
-            if (!empty($campaignIdStr) && !isset($lastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
-                $lastSbidMap[$campaignIdStr] = $report->last_sbid;
-            }
-            if (!empty($campaignIdStr) && !isset($sbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
-                $sbidMMap[$campaignIdStr] = $report->sbid_m;
-            }
-            if (!empty($campaignIdStr) && !isset($sbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                $sbidMap[$campaignIdStr] = $report->sbid;
-            }
-            // Also map by normalized campaign name for fallback
-            if (!empty($report->campaignName)) {
-                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
-                if (!isset($lastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
-                    $lastSbidMap['name_' . $normalizedName] = $report->last_sbid;
-                }
-                if (!isset($sbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
-                    $sbidMMap['name_' . $normalizedName] = $report->sbid_m;
-                }
-                if (!isset($sbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                    $sbidMap['name_' . $normalizedName] = $report->sbid;
-                }
-            }
-        }
-
-        // Fallback: KW last_sbid from L1/L7 when no day-specific row exists yet
-        $kwLastSbidFallback = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->whereIn('report_date_range', ['L1', 'L7'])
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->where(function($q) {
-                $q->whereNotNull('last_sbid')->where('last_sbid', '!=', '')
-                  ->orWhere(function($q2) {
-                      $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
-                  });
-            })
-            ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
-            ->get();
-        foreach ($kwLastSbidFallback as $report) {
-            $campaignIdStr = (string)$report->campaign_id;
-            if (!empty($campaignIdStr) && !isset($lastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
-                $lastSbidMap[$campaignIdStr] = $report->last_sbid;
-            }
-            if (!empty($campaignIdStr) && !isset($sbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
-                $sbidMMap[$campaignIdStr] = $report->sbid_m;
-            }
-            if (!empty($campaignIdStr) && !isset($sbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                $sbidMap[$campaignIdStr] = $report->sbid;
-            }
-            if (!empty($report->campaignName)) {
-                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
-                if (!isset($lastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
-                    $lastSbidMap['name_' . $normalizedName] = $report->last_sbid;
-                }
-                if (!isset($sbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
-                    $sbidMMap['name_' . $normalizedName] = $report->sbid_m;
-                }
-                if (!isset($sbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                    $sbidMap['name_' . $normalizedName] = $report->sbid;
-                }
-            }
-        }
-
-        // Fetch PT-specific last_sbid, sbid_m, and sbid (Amazon suggested bid for PT SBID column) from day-specific + fallback windows
-        $ptLastSbidReports = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
-                $q->where('report_date_range', $dayBeforeYesterday)
-                  ->orWhere('report_date_range', $yesterday);
-            })
-            ->where(function($q) {
-                $q->where(function($q1) {
-                    $q1->whereNotNull('last_sbid')->where('last_sbid', '!=', '');
-                })
-                  ->orWhere(function($q2) {
-                      $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
-                  })
-                  ->orWhere(function($q3) {
-                      $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
-                  });
-            })
-            ->whereRaw("(campaignName REGEXP '(PT\\.?$)' OR campaignName LIKE '% PT' OR campaignName LIKE '% PT.')")
-            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
-            ->get();
-        
-        // Build PT last_sbid, sbid_m, and sbid (suggested bid) maps — mirrors KW $sbidMap for product-targeting campaigns
-        $ptLastSbidMap = [];
-        $ptSbidMMap = [];
-        $ptSbidMap = [];
-        foreach ($ptLastSbidReports as $report) {
-            $campaignIdStr = (string)$report->campaign_id;
-            if (!empty($campaignIdStr) && !isset($ptLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
-                $ptLastSbidMap[$campaignIdStr] = $report->last_sbid;
-            }
-            if (!empty($campaignIdStr) && !isset($ptSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
-                $ptSbidMMap[$campaignIdStr] = $report->sbid_m;
-            }
-            if (!empty($campaignIdStr) && !isset($ptSbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                $ptSbidMap[$campaignIdStr] = $report->sbid;
-            }
-            // Also map by normalized campaign name for fallback
-            if (!empty($report->campaignName)) {
-                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
-                if (!isset($ptLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
-                    $ptLastSbidMap['name_' . $normalizedName] = $report->last_sbid;
-                }
-                if (!isset($ptSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
-                    $ptSbidMMap['name_' . $normalizedName] = $report->sbid_m;
-                }
-                if (!isset($ptSbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                    $ptSbidMap['name_' . $normalizedName] = $report->sbid;
-                }
-            }
-        }
-
-        // Fallback: PT last_sbid / sbid from L1/L7 when no day-specific row exists yet
-        $ptLastSbidFallback = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->whereIn('report_date_range', ['L1', 'L7'])
-            ->whereRaw("(campaignName REGEXP '(PT\\.?$)' OR campaignName LIKE '% PT' OR campaignName LIKE '% PT.')")
-            ->where(function($q) {
-                $q->where(function($q1) {
-                    $q1->whereNotNull('last_sbid')->where('last_sbid', '!=', '');
-                })
-                  ->orWhere(function($q2) {
-                      $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
-                  })
-                  ->orWhere(function($q3) {
-                      $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
-                  });
-            })
-            ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
-            ->get();
-        foreach ($ptLastSbidFallback as $report) {
-            $campaignIdStr = (string)$report->campaign_id;
-            if (!empty($campaignIdStr) && !isset($ptLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
-                $ptLastSbidMap[$campaignIdStr] = $report->last_sbid;
-            }
-            if (!empty($campaignIdStr) && !isset($ptSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
-                $ptSbidMMap[$campaignIdStr] = $report->sbid_m;
-            }
-            if (!empty($campaignIdStr) && !isset($ptSbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                $ptSbidMap[$campaignIdStr] = $report->sbid;
-            }
-            if (!empty($report->campaignName)) {
-                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
-                if (!isset($ptLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
-                    $ptLastSbidMap['name_' . $normalizedName] = $report->last_sbid;
-                }
-                if (!isset($ptSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
-                    $ptSbidMMap['name_' . $normalizedName] = $report->sbid_m;
-                }
-                if (!isset($ptSbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                    $ptSbidMap['name_' . $normalizedName] = $report->sbid;
-                }
-            }
-        }
-
-        // Fetch HL-specific last_sbid, sbid_m, and sbid (suggested bid) from day-before-yesterday and yesterday records
-        $hlLastSbidReports = DB::table('amazon_sb_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
-            ->where('ad_type', 'SPONSORED_BRANDS')
-            ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
-                $q->where('report_date_range', $dayBeforeYesterday)
-                  ->orWhere('report_date_range', $yesterday);
-            })
-            ->where(function($q) {
-                $q->whereNotNull('last_sbid')
-                  ->where('last_sbid', '!=', '')
-                  ->orWhere(function($q2) {
-                      $q2->whereNotNull('sbid_m')
-                         ->where('sbid_m', '!=', '');
-                  })
-                  ->orWhere(function($q3) {
-                      $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
-                  });
-            })
-            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
-            ->get();
-
-        // Build HL last_sbid, sbid_m, and sbid maps (mirrors PT / KW sbid maps)
-        $hlLastSbidMap = [];
-        $hlSbidMMap = [];
-        $hlSbidMap = [];
-        foreach ($hlLastSbidReports as $report) {
-            $campaignIdStr = (string)$report->campaign_id;
-            if (!empty($campaignIdStr) && !isset($hlLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
-                $hlLastSbidMap[$campaignIdStr] = $report->last_sbid;
-            }
-            if (!empty($campaignIdStr) && !isset($hlSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
-                $hlSbidMMap[$campaignIdStr] = $report->sbid_m;
-            }
-            if (!empty($campaignIdStr) && !isset($hlSbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                $hlSbidMap[$campaignIdStr] = $report->sbid;
-            }
-            // Also map by normalized campaign name for fallback
-            if (!empty($report->campaignName)) {
-                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
-                if (!isset($hlLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
-                    $hlLastSbidMap['name_' . $normalizedName] = $report->last_sbid;
-                }
-                if (!isset($hlSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
-                    $hlSbidMMap['name_' . $normalizedName] = $report->sbid_m;
-                }
-                if (!isset($hlSbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                    $hlSbidMap['name_' . $normalizedName] = $report->sbid;
-                }
-            }
-        }
-
-        // Fallback: fetch HL last_sbid / sbid from L1/L7 so saved value shows when no day-specific row exists yet
-        $hlLastSbidFallback = DB::table('amazon_sb_campaign_reports')
-            ->select('campaign_id', 'campaignName', 'last_sbid', 'sbid_m', 'sbid')
-            ->where('ad_type', 'SPONSORED_BRANDS')
-            ->whereIn('report_date_range', ['L1', 'L7'])
-            ->where(function($q) {
-                $q->whereNotNull('last_sbid')->where('last_sbid', '!=', '')
-                  ->orWhere(function($q2) {
-                      $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
-                  })
-                  ->orWhere(function($q3) {
-                      $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
-                  });
-            })
-            ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
-            ->get();
-        foreach ($hlLastSbidFallback as $report) {
-            $campaignIdStr = (string)$report->campaign_id;
-            if (!empty($campaignIdStr) && !isset($hlLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
-                $hlLastSbidMap[$campaignIdStr] = $report->last_sbid;
-            }
-            if (!empty($campaignIdStr) && !isset($hlSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
-                $hlSbidMMap[$campaignIdStr] = $report->sbid_m;
-            }
-            if (!empty($campaignIdStr) && !isset($hlSbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                $hlSbidMap[$campaignIdStr] = $report->sbid;
-            }
-            if (!empty($report->campaignName)) {
-                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
-                if (!isset($hlLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
-                    $hlLastSbidMap['name_' . $normalizedName] = $report->last_sbid;
-                }
-                if (!isset($hlSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
-                    $hlSbidMMap['name_' . $normalizedName] = $report->sbid_m;
-                }
-                if (!isset($hlSbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
-                    $hlSbidMap['name_' . $normalizedName] = $report->sbid;
-                }
-            }
-        }
-
-        // L30 SB rows: last_sbid / sbid / sbid_m often exist only on the L30 aggregate row (same row used for HL spend metrics)
-        $hlL30BidRows = DB::table('amazon_sb_campaign_reports')
-            ->select('campaign_id', 'campaignName', 'last_sbid', 'sbid_m', 'sbid')
-            ->where('ad_type', 'SPONSORED_BRANDS')
-            ->where('report_date_range', 'L30')
-            ->where(function ($q) {
-                $q->where(function ($q1) {
-                    $q1->whereNotNull('last_sbid')->where('last_sbid', '!=', '');
-                })
-                    ->orWhere(function ($q2) {
-                        $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
-                    })
-                    ->orWhere(function ($q3) {
-                        $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
-                    });
-            })
-            ->orderBy('id', 'desc')
-            ->get();
-        foreach ($hlL30BidRows as $report) {
-            $campaignIdStr = (string) $report->campaign_id;
-            if (! empty($campaignIdStr) && ! isset($hlLastSbidMap[$campaignIdStr]) && ! empty($report->last_sbid)) {
-                $hlLastSbidMap[$campaignIdStr] = $report->last_sbid;
-            }
-            if (! empty($campaignIdStr) && ! isset($hlSbidMMap[$campaignIdStr]) && ! empty($report->sbid_m)) {
-                $hlSbidMMap[$campaignIdStr] = $report->sbid_m;
-            }
-            if (! empty($campaignIdStr) && ! isset($hlSbidMap[$campaignIdStr]) && isset($report->sbid) && (float) ($report->sbid ?? 0) > 0) {
-                $hlSbidMap[$campaignIdStr] = $report->sbid;
-            }
-            if (! empty($report->campaignName)) {
-                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
-                if (! isset($hlLastSbidMap['name_'.$normalizedName]) && ! empty($report->last_sbid)) {
-                    $hlLastSbidMap['name_'.$normalizedName] = $report->last_sbid;
-                }
-                if (! isset($hlSbidMMap['name_'.$normalizedName]) && ! empty($report->sbid_m)) {
-                    $hlSbidMMap['name_'.$normalizedName] = $report->sbid_m;
-                }
-                if (! isset($hlSbidMap['name_'.$normalizedName]) && isset($report->sbid) && (float) ($report->sbid ?? 0) > 0) {
-                    $hlSbidMap['name_'.$normalizedName] = $report->sbid;
-                }
-            }
-        }
-
-        // Calculate AVG CPC for PT campaigns (from daily records)
-        // Use same query as amazon-utilized-pt page: AVG(costPerClick) grouped by campaign_id
-        // Do NOT filter by campaign name - just use campaign_id (same approach as PT utilized page)
-        $ptAvgCpcData = collect([]);
-        try {
-            $ptDailyRecords = DB::table('amazon_sp_campaign_reports')
-                ->select('campaign_id', DB::raw('AVG(costPerClick) as avg_cpc'))
-                ->where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('campaignStatus', '!=', 'ARCHIVED')
-                ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-                ->where('costPerClick', '>', 0)
-                ->whereNotNull('campaign_id')
-                ->groupBy('campaign_id')
-                ->get();
-            foreach ($ptDailyRecords as $record) {
-                if ($record->campaign_id && $record->avg_cpc > 0) {
-                    $ptAvgCpcData->put($record->campaign_id, round($record->avg_cpc, 2));
-                }
-            }
-        } catch (\Exception $e) {
-            // Continue without PT avg_cpc data if there's an error
-        }
-
-        // Calculate HL LIFE CPC from all daily records: Total Cost / Total Clicks (lifetime average CPC)
-        $hlAvgCpcData = collect();
-        try {
-            $hlDailyRecords = DB::table('amazon_sb_campaign_reports')
-                ->select('campaign_id', DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
-                ->where('ad_type', 'SPONSORED_BRANDS')
-                ->where('campaignStatus', '!=', 'ARCHIVED')
-                ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-                ->whereNotNull('campaign_id')
-                ->groupBy('campaign_id')
-                ->get();
-            
-            foreach ($hlDailyRecords as $record) {
-                if ($record->campaign_id && $record->avg_cpc > 0) {
-                    $hlAvgCpcData->put($record->campaign_id, round($record->avg_cpc, 2));
-                }
-            }
-        } catch (\Exception $e) {
-            Log::warning('Could not calculate HL LIFE CPC: ' . $e->getMessage());
-        }
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
+        $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
 
         $parentSkuCounts = $productMasters
             ->filter(fn($pm) => $pm->parent && !str_starts_with(strtoupper($pm->sku), 'PARENT'))
@@ -963,48 +356,6 @@ class OverallAmazonController extends Controller
             ->map->count();
 
         $result = [];
-        $parentHlSpendData = [];
-
-        // First loop: collect parent HL spend data
-        $normalizeKwForMatchParentHl = function ($s) {
-            $s = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $s ?? '');
-            $s = preg_replace('/\s+/', ' ', $s);
-            $s = preg_replace('/\s+PCS\b/i', 'PCS', $s);
-            return strtoupper(trim(rtrim($s, '.')));
-        };
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper($pm->sku);
-            $parent = trim($pm->parent);
-
-            $cleanSkuL30 = strtoupper(trim(rtrim($sku, '.')));
-            $cleanSkuL30Norm = $normalizeKwForMatchParentHl($cleanSkuL30);
-            $cleanParentL30Norm = $normalizeKwForMatchParentHl(strtoupper(trim($parent)));
-            $isParentRowHl = str_starts_with($cleanSkuL30, 'PARENT');
-            $matchedCampaignsHlL30First = $amazonHlL30->filter(function ($item) use ($cleanSkuL30Norm, $cleanParentL30Norm, $isParentRowHl, $normalizeKwForMatchParentHl) {
-                $cn = $normalizeKwForMatchParentHl($item->campaignName ?? '');
-                if ($isParentRowHl) {
-                    return $cn === $cleanSkuL30Norm || $cn === $cleanSkuL30Norm . ' HEAD'
-                        || rtrim($cn, '.') === $cleanSkuL30Norm || rtrim($cn, '.') === $cleanSkuL30Norm . ' HEAD';
-                }
-
-                return $cn === $cleanSkuL30Norm || $cn === $cleanSkuL30Norm . ' HEAD'
-                    || $cn === $cleanParentL30Norm || $cn === $cleanParentL30Norm . ' HEAD'
-                    || rtrim($cn, '.') === $cleanSkuL30Norm || rtrim($cn, '.') === $cleanSkuL30Norm . ' HEAD'
-                    || rtrim($cn, '.') === $cleanParentL30Norm || rtrim($cn, '.') === $cleanParentL30Norm . ' HEAD';
-            });
-            $matchedCampaignHlL30 = $matchedCampaignsHlL30First->first(function ($item) {
-                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            }) ?? $matchedCampaignsHlL30First->first();
-
-            if (str_starts_with($sku, 'PARENT')) {
-                $childCount = $parentSkuCounts[$parent] ?? 0;
-                $parentHlSpendData[$parent] = [
-                    'total_L30' => $matchedCampaignHlL30->cost ?? 0,
-                    'total_L30_sales' => $matchedCampaignHlL30->sales ?? 0,
-                    'childCount' => $childCount,
-                ];
-            }
-        }
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
@@ -1207,557 +558,6 @@ class OverallAmazonController extends Controller
                 ->toArray();
             $row['lmp_entries_total'] = $lmpEntries->count();
 
-            // Amazon SP Campaign Reports - KW and PMT spend L30
-            // Get ALL matching campaigns (not just first) to handle variations like 'A-54' and 'A-54 2PCS'
-            $cleanSkuL30 = strtoupper(trim(rtrim($sku, '.')));
-            $cleanParentL30 = strtoupper(trim($parent));
-            // Normalize so "CD 110 2 PCS" / "CD 110 2 PCS KW" in DB matches SKU "CD 110 2PCS"
-            $normalizeKwForMatch = function ($s) {
-                $s = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $s ?? '');
-                $s = preg_replace('/\s+/', ' ', $s);
-                $s = preg_replace('/\s+PCS\b/i', 'PCS', $s);
-                return strtoupper(trim(rtrim($s, '.')));
-            };
-            $cleanSkuL30Norm = $normalizeKwForMatch($cleanSkuL30);
-            $cleanParentL30Norm = $normalizeKwForMatch($cleanParentL30);
-
-            // KW campaigns: must end with " KW" or " KW." and the part before must EXACTLY match SKU
-            // e.g. SKU "PC 1002" matches "PC 1002 KW" or "PC 1002 KW." but NOT "PC 1002 FBA KW"
-            $kwCampaignMatchesSku = function ($campaignName, $skuNorm) use ($normalizeKwForMatch) {
-                $cn = $normalizeKwForMatch($campaignName);
-                if ($cn === $skuNorm) {
-                    return true;
-                }
-                if (str_ends_with($cn, ' KW')) {
-                    return rtrim(substr($cn, 0, -3)) === $skuNorm;
-                }
-                if (str_ends_with($cn, ' KW.')) {
-                    return rtrim(substr($cn, 0, -4)) === $skuNorm;
-                }
-                return false;
-            };
-            $matchedCampaignsKwL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($cleanSkuL30Norm, $cleanParentL30Norm, $kwCampaignMatchesSku) {
-                $campaignName = $item->campaignName ?? '';
-                return $kwCampaignMatchesSku($campaignName, $cleanSkuL30Norm)
-                    || $kwCampaignMatchesSku($campaignName, $cleanParentL30Norm);
-            });
-
-            // For PARENT rows, only match exact "PARENT SKU PT" campaigns, not child variations
-            $isParentRow = str_starts_with($cleanSkuL30, 'PARENT');
-            $matchedCampaignsPtL30 = $amazonSpCampaignReportsPtL30->filter(function ($item) use ($cleanSkuL30Norm, $cleanParentL30Norm, $isParentRow, $normalizeKwForMatch) {
-                $cleanName = $normalizeKwForMatch($item->campaignName ?? '');
-                
-                if ($isParentRow) {
-                    // For PARENT rows, only match exact "PARENT SKU PT" or "PARENT SKU PT."
-                    return $cleanName === $cleanSkuL30Norm . ' PT' || $cleanName === $cleanSkuL30Norm . ' PT.';
-                }
-                
-                // For child rows: Match PT campaigns by exact SKU match only (normalized so "CD 110 2 P CS PT" matches "CD 110 2PCS")
-                $cleanNameNoDot = rtrim($cleanName, '.');
-                return $cleanName === $cleanSkuL30Norm . ' PT'
-                    || $cleanName === $cleanSkuL30Norm . ' PT.'
-                    || $cleanNameNoDot === $cleanSkuL30Norm . ' PT'
-                    || $cleanName === $cleanParentL30Norm . ' PT'
-                    || $cleanName === $cleanParentL30Norm . ' PT.'
-                    || $cleanNameNoDot === $cleanParentL30Norm . ' PT';
-            });
-
-            // HL (Headline): all L30 matches for this SKU/parent (any status). Primary = ENABLED if any, else first — same idea as PT.
-            $hlCampaignMatchesHlL30 = function ($item) use ($cleanSkuL30Norm, $cleanParentL30Norm, $isParentRow, $normalizeKwForMatch) {
-                $cn = $normalizeKwForMatch($item->campaignName ?? '');
-                if ($isParentRow) {
-                    return $cn === $cleanSkuL30Norm || $cn === $cleanSkuL30Norm . ' HEAD'
-                        || rtrim($cn, '.') === $cleanSkuL30Norm || rtrim($cn, '.') === $cleanSkuL30Norm . ' HEAD';
-                }
-
-                return $cn === $cleanSkuL30Norm || $cn === $cleanSkuL30Norm . ' HEAD'
-                    || $cn === $cleanParentL30Norm || $cn === $cleanParentL30Norm . ' HEAD'
-                    || rtrim($cn, '.') === $cleanSkuL30Norm || rtrim($cn, '.') === $cleanSkuL30Norm . ' HEAD'
-                    || rtrim($cn, '.') === $cleanParentL30Norm || rtrim($cn, '.') === $cleanParentL30Norm . ' HEAD';
-            };
-            $matchedCampaignsHlL30 = $amazonHlL30->filter($hlCampaignMatchesHlL30);
-            $matchedCampaignHlL30 = $matchedCampaignsHlL30->first(function ($item) {
-                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            }) ?? $matchedCampaignsHlL30->first();
-
-            // Sum spend from all matching KW campaigns
-            $row['kw_spend_L30'] = $matchedCampaignsKwL30->sum('spend');
-            // Sum spend from all matching PT campaigns
-            $row['pmt_spend_L30'] = $matchedCampaignsPtL30->sum('spend');
-            
-            // Campaign status for ad pause toggle
-            // Prefer KW-suffix campaign (e.g. "GSS 2N1 BLU KW") for status so toggle reflects what user paused
-            $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-            $cleanSkuNorm = $normalizeKwForMatch($cleanSku);
-
-            $exactKwCampaigns = $matchedCampaignsKwL30->filter(function ($campaign) use ($cleanSkuNorm, $normalizeKwForMatch) {
-                $campaignName = $normalizeKwForMatch($campaign->campaignName ?? '');
-                return $campaignName === $cleanSkuNorm;
-            });
-            $exactKwCampaignsWithSuffix = $matchedCampaignsKwL30->filter(function ($campaign) use ($cleanSkuNorm, $normalizeKwForMatch) {
-                $campaignName = $normalizeKwForMatch($campaign->campaignName ?? '');
-                return ($campaignName === $cleanSkuNorm . ' KW' || $campaignName === $cleanSkuNorm . ' KW.');
-            });
-            
-            $exactPtCampaigns = $matchedCampaignsPtL30->filter(function ($campaign) use ($cleanSkuNorm, $normalizeKwForMatch) {
-                $cleanName = $normalizeKwForMatch($campaign->campaignName ?? '');
-                return $cleanName === $cleanSkuNorm . ' PT' || $cleanName === $cleanSkuNorm . ' PT.' || rtrim($cleanName, '.') === $cleanSkuNorm . ' PT';
-            });
-            
-            // Prefer KW-suffix campaign for status (Active toggle); else exact SKU; else all matches
-            $kwCampaignsForStatus = $exactKwCampaignsWithSuffix->isNotEmpty()
-                ? $exactKwCampaignsWithSuffix
-                : ($exactKwCampaigns->isNotEmpty() ? $exactKwCampaigns : $matchedCampaignsKwL30);
-            $ptCampaignsForStatus = $exactPtCampaigns->isNotEmpty() ? $exactPtCampaigns : $matchedCampaignsPtL30;
-            
-            // Check if ANY campaign is ENABLED
-            $kwHasEnabled = $kwCampaignsForStatus->contains(function ($campaign) {
-                return strtoupper($campaign->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            });
-            $ptHasEnabled = $ptCampaignsForStatus->contains(function ($campaign) {
-                return strtoupper($campaign->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            });
-
-            // If either has any ENABLED campaign, ads are enabled
-            $row['ad_pause'] = !($kwHasEnabled || $ptHasEnabled);
-            
-            // Store status based on exact match (or all if no exact match)
-            // Only set status if campaign actually exists, otherwise empty string
-            // Initial status from L30 campaigns
-            $row['kw_campaign_status'] = $matchedCampaignsKwL30->isNotEmpty() ? ($kwHasEnabled ? 'ENABLED' : 'PAUSED') : '';
-            $row['pt_campaign_status'] = $matchedCampaignsPtL30->isNotEmpty() ? ($ptHasEnabled ? 'ENABLED' : 'PAUSED') : '';
-            
-            // Check if any campaigns exist for this SKU (L30 only initially - updated below with L7/L1)
-            $row['has_campaigns'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
-            $row['hasCampaign'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
-            // For Missing AD column: only green when THIS SKU has its own campaign (not parent-only)
-            $row['has_own_kw_campaign'] = $exactKwCampaigns->isNotEmpty() || $exactKwCampaignsWithSuffix->isNotEmpty();
-            // PT: any L30 PT campaign match (same scope as pt_campaign_id / PT metrics). Exact "SKU PT" only
-            // was too strict — e.g. child rows matched via parent PT name had metrics but SBID columns stayed blank.
-            $row['has_own_pt_campaign'] = $matchedCampaignsPtL30->isNotEmpty();
-            // HL: same — any L30 HL match (SKU/parent HEAD) so parent-matched rows get SBID columns.
-            $row['has_own_hl_campaign'] = $matchedCampaignsHlL30->isNotEmpty();
-            
-            // Match L7 campaign data for utilization - use same normalization as KW page
-            $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-            
-            // Helper to normalize campaign name (same as KW page)
-            // Also normalize "2 PCS" / "2 PCS KW" to "2PCS" / "2PCS KW" so DB "CD 110 2 P CS" matches SKU "CD 110 2PCS"
-            $normalizeCampaignNameForMatch = function($campaignName) {
-                // Replace non-breaking spaces and other special whitespace
-                $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName ?? '');
-                $cn = preg_replace('/\s+/', ' ', $cn);
-                $cn = preg_replace('/\s+PCS\b/i', 'PCS', $cn);
-                return strtoupper(trim(rtrim($cn, '.')));
-            };
-            // Normalized SKU for matching (collapse spaces so "CD  110  2PCS" matches "CD 110 2PCS")
-            $cleanSkuNorm = $normalizeCampaignNameForMatch($cleanSku);
-            
-            // Match L7 campaign - exact SKU match (supports " KW" and " KW." suffix)
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
-                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
-            });
-            
-            // Match L1 campaign - exact SKU match (supports " KW" and " KW." suffix)
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
-                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
-            });
-
-            // Match L2 campaign (one day before L1 - same match logic)
-            $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
-                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
-            });
-            
-            // Match L90 campaign - exact SKU match
-            $matchedCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
-                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                return $campaignName === $cleanSkuNorm;
-            });
-            
-            // Also get L30 campaign for ACOS calculation (supports " KW" and " KW." suffix)
-            $matchedCampaignL30ForAcos = $amazonSpCampaignReportsL30->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
-                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
-            });
-            // Prefer KW-suffix campaign for display/toggle so status matches "SKU KW" (what user pauses)
-            $matchedCampaignL30KwSuffix = $amazonSpCampaignReportsL30->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
-                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                return $campaignName === $cleanSkuNorm . ' KW' || $campaignName === $cleanSkuNorm . ' KW.';
-            });
-            $campaignForDisplay = $matchedCampaignL30KwSuffix ?? $matchedCampaignL30ForAcos;
-            // Fallback: only campaigns where part before " KW"/" KW." exactly matches this SKU (not parent/sibling)
-            $campaignsForThisSkuOnly = $matchedCampaignsKwL30->filter(function ($c) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
-                return $kwCampaignMatchesSku($c->campaignName ?? '', $cleanSkuNorm);
-            });
-            $campaignForRow = $campaignForDisplay ?? $campaignsForThisSkuOnly->first();
-
-            // KW page fields: use L30 campaign for campaign_id, campaignName, campaignStatus.
-            // When matchedCampaignsKwL30 is not empty, always populate campaign_id/campaignName so the tabulator can show all matching rows.
-            if ($matchedCampaignsKwL30->isNotEmpty() && $campaignForRow) {
-                $row['campaignBudgetAmount'] = $campaignForRow->campaignBudgetAmount ?? ($matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0));
-                $row['utilization_budget'] = $row['campaignBudgetAmount'];
-                $row['campaign_id'] = $campaignForRow->campaign_id ?? ($matchedCampaignL7?->campaign_id ?? ($matchedCampaignL1?->campaign_id ?? null));
-                $row['campaignName'] = $campaignForRow->campaignName ?? ($matchedCampaignL7?->campaignName ?? ($matchedCampaignL1?->campaignName ?? null));
-                $row['campaignStatus'] = $campaignForRow->campaignStatus ?? ($matchedCampaignL7?->campaignStatus ?? ($matchedCampaignL1?->campaignStatus ?? null));
-            } else {
-                $row['campaignBudgetAmount'] = $matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0);
-                $row['utilization_budget'] = $row['campaignBudgetAmount'];
-                $row['campaign_id'] = null;
-                $row['campaignName'] = null;
-                $row['campaignStatus'] = null;
-            }
-            
-            // L7/L1/L2 spend and CPC (same as KW page; L2 = one day before L1 from daily table)
-            $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
-            $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
-            $row['l2_spend'] = $matchedCampaignL2?->spend ?? 0;
-            $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
-            $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
-            $row['l2_cpc'] = $matchedCampaignL2?->costPerClick ?? 0;
-            $row['l2_clicks'] = $matchedCampaignL2?->clicks ?? 0;
-            // AVG CPC from lifetime average (same as KW page)
-            $row['avg_cpc'] = $row['campaign_id'] ? $avgCpcData->get($row['campaign_id'], 0) : 0;
-            
-            // L7 click/sales data
-            $row['l7_clicks'] = $matchedCampaignL7->clicks ?? 0;
-            $row['l7_sales'] = $matchedCampaignL7->sales30d ?? 0;
-            $row['spend_l7_col'] = $matchedCampaignL7->spend ?? 0;
-            $row['l7_purchases'] = 0; // Not available in L7 data
-            
-            // Sales data for L30 (like AmazonAdRunningController) - sum from all matching campaigns
-            // Must be set before using in l30_spend/l30_sales
-            $row['kw_sales_L30'] = $matchedCampaignsKwL30->sum('sales30d');
-            $row['pmt_sales_L30'] = $matchedCampaignsPtL30->sum('sales30d');
-            
-            // L30 click/sales data - use same campaign as display (KW-suffix when present)
-            $row['l30_clicks'] = $campaignForRow ? ($campaignForRow->clicks ?? 0) : 0;
-            $row['l30_spend'] = $campaignForRow ? ($campaignForRow->spend ?? 0) : 0;
-            $row['l30_sales'] = $campaignForRow ? ($campaignForRow->sales30d ?? 0) : 0;
-            $row['l30_purchases'] = $campaignForRow ? ($campaignForRow->unitsSoldClicks30d ?? 0) : 0;
-            
-            // --- PT Campaign Data ---
-            // Match PT L7 campaign
-            $matchedCampaignPtL7 = $amazonSpCampaignReportsPtL7->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
-                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                // Match PT campaigns: ends with "SKU PT" or "SKU PT."
-                $baseNamePt = $campaignName;
-                if (str_ends_with($campaignName, ' PT')) {
-                    $baseNamePt = rtrim(substr($campaignName, 0, -3));
-                } elseif (str_ends_with($campaignName, ' PT.')) {
-                    $baseNamePt = rtrim(substr($campaignName, 0, -4));
-                }
-                return $baseNamePt === $cleanSkuNorm;
-            });
-            
-            // Match PT L1 campaign
-            $matchedCampaignPtL1 = $amazonSpCampaignReportsPtL1->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
-                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                $baseNamePt = $campaignName;
-                if (str_ends_with($campaignName, ' PT')) {
-                    $baseNamePt = rtrim(substr($campaignName, 0, -3));
-                } elseif (str_ends_with($campaignName, ' PT.')) {
-                    $baseNamePt = rtrim(substr($campaignName, 0, -4));
-                }
-                return $baseNamePt === $cleanSkuNorm;
-            });
-
-            // Match PT L2 campaign (one day before L1)
-            $matchedCampaignPtL2 = $amazonSpCampaignReportsPtL2->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
-                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                $baseNamePt = $campaignName;
-                if (str_ends_with($campaignName, ' PT')) {
-                    $baseNamePt = rtrim(substr($campaignName, 0, -3));
-                } elseif (str_ends_with($campaignName, ' PT.')) {
-                    $baseNamePt = rtrim(substr($campaignName, 0, -4));
-                }
-                return $baseNamePt === $cleanSkuNorm;
-            });
-            
-            // PT L30 data - sum from all matching PT campaigns
-            $row['pt_spend_L30'] = $matchedCampaignsPtL30->sum('spend');
-            $row['pt_sales_L30'] = $matchedCampaignsPtL30->sum('sales30d');
-            $row['pt_clicks_L30'] = $matchedCampaignsPtL30->sum('clicks');
-            $row['pt_sold_L30'] = $matchedCampaignsPtL30->sum('unitsSoldClicks30d');
-            
-            // PT L7 data - same spend fallback as amazon-utilized-pt page
-            $ptL7SpendRaw = (float)($matchedCampaignPtL7->spend ?? $matchedCampaignPtL7->cost ?? 0);
-            $ptL7Clicks = (int)($matchedCampaignPtL7->clicks ?? 0);
-            $ptL7Cpc = (float)($matchedCampaignPtL7->costPerClick ?? 0);
-            if ($ptL7SpendRaw <= 0 && $ptL7Clicks > 0 && $ptL7Cpc > 0) {
-                $ptL7SpendRaw = round($ptL7Clicks * $ptL7Cpc, 2);
-            }
-            $row['pt_spend_L7'] = $ptL7SpendRaw;
-            $row['pt_sales_L7'] = $matchedCampaignPtL7->sales7d ?? 0;
-            $row['pt_clicks_L7'] = $ptL7Clicks;
-            $row['pt_sold_L7'] = $matchedCampaignPtL7->unitsSoldSameSku7d ?? 0;
-            
-            // PT L1 data - same spend fallback as amazon-utilized-pt page
-            $row['pt_spend_L1'] = (float)($matchedCampaignPtL1->spend ?? $matchedCampaignPtL1->cost ?? 0);
-            $row['pt_clicks_L1'] = (int)($matchedCampaignPtL1->clicks ?? 0);
-
-            // PT L2 data (one day before L1 from daily table)
-            $row['pt_spend_L2'] = (float)($matchedCampaignPtL2?->spend ?? $matchedCampaignPtL2?->cost ?? 0);
-            $row['pt_clicks_L2'] = (int)($matchedCampaignPtL2?->clicks ?? 0);
-            
-            // PT Campaign name, budget, and campaign_id - only from L30 (no L7/L1 fallback) so deleted campaigns don't show as active
-            if ($matchedCampaignsPtL30->isNotEmpty()) {
-                $firstPtCampaign = $matchedCampaignsPtL30->first();
-                $row['pt_campaignName'] = $firstPtCampaign->campaignName ?? null;
-                $row['pt_campaignBudgetAmount'] = ($firstPtCampaign ? $firstPtCampaign->campaignBudgetAmount : null)
-                    ?? ($matchedCampaignPtL7 ? $matchedCampaignPtL7->campaignBudgetAmount : null)
-                    ?? ($matchedCampaignPtL1 ? $matchedCampaignPtL1->campaignBudgetAmount : null)
-                    ?? 0;
-                $row['pt_campaign_id'] = $firstPtCampaign->campaign_id ?? null;
-            } else {
-                $row['pt_campaignName'] = null;
-                $row['pt_campaignBudgetAmount'] = 0;
-                $row['pt_campaign_id'] = null;
-            }
-            
-            // Only use L30 for campaign existence and status; do not use L7/L1 fallback so deleted
-            // campaigns (still in L7/L1 report data) show as Missing A and do not get SBID
-            $kwHasCampaign = $matchedCampaignsKwL30->isNotEmpty();
-            $ptHasCampaignFull = $matchedCampaignsPtL30->isNotEmpty();
-            $row['hasCampaign'] = $kwHasCampaign || $ptHasCampaignFull;
-            $row['has_campaigns'] = $row['hasCampaign'];
-            
-            // PT CPC fields (same calculation as KW)
-            $row['pt_l7_cpc'] = $matchedCampaignPtL7->costPerClick ?? 0;
-            $row['pt_l1_cpc'] = $matchedCampaignPtL1->costPerClick ?? 0;
-            $row['pt_l2_cpc'] = $matchedCampaignPtL2?->costPerClick ?? 0;
-            $row['pt_avg_cpc'] = $row['pt_campaign_id'] ? $ptAvgCpcData->get($row['pt_campaign_id'], 0) : 0;
-            
-            // PT AD CVR = (Ad Sold L30 / Clicks L30) * 100 (same as KW page)
-            $ptClicks30 = (int)$row['pt_clicks_L30'];
-            $ptSold30 = (int)$row['pt_sold_L30'];
-            $row['pt_ad_cvr'] = $ptClicks30 > 0 ? round(($ptSold30 / $ptClicks30) * 100, 2) : 0;
-            
-            $inv = (float)($row['INV'] ?? 0);
-            // PT SBID fields - only for campaigns that exist in L30 and INV > 0 (do not show SBID when INV is 0)
-            $ptLastSbid = '';
-            $ptSbidM = '';
-            if ($matchedCampaignsPtL30->isNotEmpty() && $inv > 0) {
-                $ptCampaignIdStr = $row['pt_campaign_id'] ? (string)$row['pt_campaign_id'] : null;
-                if ($ptCampaignIdStr && isset($ptLastSbidMap[$ptCampaignIdStr])) {
-                    $ptLastSbid = $ptLastSbidMap[$ptCampaignIdStr];
-                } else {
-                    $ptCampaignName = $row['pt_campaignName'];
-                    if ($ptCampaignName) {
-                        $ptNormalizedName = strtoupper(trim(rtrim($ptCampaignName, '.')));
-                        if (isset($ptLastSbidMap['name_' . $ptNormalizedName])) {
-                            $ptLastSbid = $ptLastSbidMap['name_' . $ptNormalizedName];
-                        }
-                    }
-                }
-                if ($ptCampaignIdStr && isset($ptSbidMMap[$ptCampaignIdStr])) {
-                    $ptSbidM = $ptSbidMMap[$ptCampaignIdStr];
-                } else {
-                    $ptCampaignName = $row['pt_campaignName'];
-                    if ($ptCampaignName) {
-                        $ptNormalizedName = strtoupper(trim(rtrim($ptCampaignName, '.')));
-                        if (isset($ptSbidMMap['name_' . $ptNormalizedName])) {
-                            $ptSbidM = $ptSbidMMap['name_' . $ptNormalizedName];
-                        }
-                    }
-                }
-            }
-            $row['pt_last_sbid'] = $ptLastSbid;
-            $row['pt_sbid_m'] = $ptSbidM;
-
-            // PT SBID: Amazon suggested bid (sbid) for product-targeting campaigns — same source as KW sbidMap
-            $ptSbidFromDb = 0.0;
-            if ($matchedCampaignsPtL30->isNotEmpty() && $inv > 0) {
-                $ptCampaignIdStrForSbid = $row['pt_campaign_id'] ? (string) $row['pt_campaign_id'] : null;
-                if ($ptCampaignIdStrForSbid && isset($ptSbidMap[$ptCampaignIdStrForSbid])) {
-                    $ptSbidFromDb = (float) $ptSbidMap[$ptCampaignIdStrForSbid];
-                } else {
-                    $ptCampaignNameForSbid = $row['pt_campaignName'];
-                    if ($ptCampaignNameForSbid) {
-                        $ptNormNameForSbid = strtoupper(trim(rtrim($ptCampaignNameForSbid, '.')));
-                        if (isset($ptSbidMap['name_'.$ptNormNameForSbid])) {
-                            $ptSbidFromDb = (float) $ptSbidMap['name_'.$ptNormNameForSbid];
-                        }
-                    }
-                }
-            }
-            $row['pt_sbid'] = $ptSbidFromDb;
-            
-            // SBID fields - only for KW campaigns that exist in L30 and INV > 0 (do not show SBID when INV is 0)
-            $sbidFromDb = 0;
-            $cleanParent = strtoupper(trim($parent));
-            $lastSbid = '';
-            $sbidM = '';
-            if ($matchedCampaignsKwL30->isNotEmpty() && $inv > 0) {
-                $campaignIdStr = $row['campaign_id'] ? (string)$row['campaign_id'] : null;
-                if ($campaignIdStr && isset($lastSbidMap[$campaignIdStr])) {
-                    $lastSbid = $lastSbidMap[$campaignIdStr];
-                } else {
-                    $nameKey = 'name_' . $cleanSku;
-                    if (isset($lastSbidMap[$nameKey])) {
-                        $lastSbid = $lastSbidMap[$nameKey];
-                    } elseif (isset($lastSbidMap['name_' . $cleanParent])) {
-                        $lastSbid = $lastSbidMap['name_' . $cleanParent];
-                    }
-                }
-                if ($campaignIdStr && isset($sbidMMap[$campaignIdStr])) {
-                    $sbidM = $sbidMMap[$campaignIdStr];
-                } else {
-                    $nameKey = 'name_' . $cleanSku;
-                    if (isset($sbidMMap[$nameKey])) {
-                        $sbidM = $sbidMMap[$nameKey];
-                    } elseif (isset($sbidMMap['name_' . $cleanParent])) {
-                        $sbidM = $sbidMMap['name_' . $cleanParent];
-                    }
-                }
-                if ($campaignIdStr && isset($sbidMap[$campaignIdStr])) {
-                    $sbidFromDb = (float)$sbidMap[$campaignIdStr];
-                } else {
-                    $nameKey = 'name_' . $cleanSku;
-                    if (isset($sbidMap[$nameKey])) {
-                        $sbidFromDb = (float)$sbidMap[$nameKey];
-                    } elseif (isset($sbidMap['name_' . $cleanParent])) {
-                        $sbidFromDb = (float)$sbidMap['name_' . $cleanParent];
-                    }
-                }
-            }
-            $row['sbid'] = $sbidFromDb;
-            $row['last_sbid'] = $lastSbid;
-            $row['sbid_m'] = $sbidM;
-            
-            // AD CVR calculation
-            $l30Clicks = $row['l30_clicks'];
-            $l30Purchases = $row['l30_purchases'];
-            $row['ad_cvr'] = $l30Clicks > 0 ? round(($l30Purchases / $l30Clicks) * 100, 2) : 0;
-            
-            // ACOS calculation (same logic as KW page line 3132-3139)
-            $spend30Val = $row['l30_spend'];
-            $sales30Val = $row['l30_sales'];
-            if ($spend30Val > 0 && $sales30Val > 0) {
-                $row['acos'] = round(($spend30Val / $sales30Val) * 100, 2);
-            } elseif ($spend30Val > 0 && $sales30Val == 0) {
-                $row['acos'] = 100;
-            } else {
-                $row['acos'] = 0;
-            }
-            $row['ACOS'] = $row['acos'];
-
-            // HL (Headline/Sponsored Brands) data (like AmazonAdRunningController)
-            if (isset($parentHlSpendData[$parent]) && $parentHlSpendData[$parent]['childCount'] > 0) {
-                $row['hl_spend_L30'] = $parentHlSpendData[$parent]['total_L30'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_sales_L30'] = $parentHlSpendData[$parent]['total_L30_sales'] / $parentHlSpendData[$parent]['childCount'];
-            } else {
-                $row['hl_spend_L30'] = 0;
-                $row['hl_sales_L30'] = 0;
-            }
-
-            // --- HL Campaign Details (tabulator HL columns) ---
-            // Match HL L7 / L1 with same name rules as L30; prefer ENABLED row for budget/CPC, else any status (paused campaigns still show metrics).
-            $matchedCampaignsHlL7 = $amazonHlL7->filter($hlCampaignMatchesHlL30);
-            $matchedHlL7 = $matchedCampaignsHlL7->first(function ($item) {
-                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            }) ?? $matchedCampaignsHlL7->first();
-            $matchedCampaignsHlL1 = $amazonHlL1->filter($hlCampaignMatchesHlL30);
-            $matchedHlL1 = $matchedCampaignsHlL1->first(function ($item) {
-                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            }) ?? $matchedCampaignsHlL1->first();
-
-            // HL Campaign name, budget, campaign_id, status - only from L30 (no L7/L1 fallback) so deleted campaigns don't show as active
-            if ($matchedCampaignsHlL30->isNotEmpty() && $matchedCampaignHlL30) {
-                $row['hl_campaignName'] = $matchedCampaignHlL30->campaignName ?? null;
-                $row['hl_campaignBudgetAmount'] = ($matchedCampaignHlL30->campaignBudgetAmount ?? null)
-                    ?? ($matchedHlL7 ? ($matchedHlL7->campaignBudgetAmount ?? null) : null)
-                    ?? ($matchedHlL1 ? ($matchedHlL1->campaignBudgetAmount ?? null) : null)
-                    ?? 0;
-                $row['hl_campaign_id'] = $matchedCampaignHlL30->campaign_id ?? null;
-                $hlHasEnabled = strtoupper($matchedCampaignHlL30->campaignStatus ?? '') === 'ENABLED';
-                $row['hl_campaign_status'] = $hlHasEnabled ? 'ENABLED' : 'PAUSED';
-            } else {
-                $row['hl_campaignName'] = null;
-                $row['hl_campaignBudgetAmount'] = $matchedHlL7?->campaignBudgetAmount ?? ($matchedHlL1?->campaignBudgetAmount ?? 0);
-                $row['hl_campaign_id'] = null;
-                $row['hl_campaign_status'] = '';
-            }
-
-            // HL L1 spend and clicks
-            $row['hl_spend_L1'] = $matchedHlL1 ? ($matchedHlL1->cost ?? 0) : 0;
-            $row['hl_clicks_L1'] = $matchedHlL1 ? (int)($matchedHlL1->clicks ?? 0) : 0;
-
-            // HL CPC fields
-            $row['hl_l7_cpc'] = ($matchedHlL7 && ($matchedHlL7->clicks ?? 0) > 0)
-                ? round(($matchedHlL7->cost ?? 0) / $matchedHlL7->clicks, 2)
-                : 0;
-            $row['hl_l1_cpc'] = ($matchedHlL1 && ($matchedHlL1->clicks ?? 0) > 0)
-                ? round(($matchedHlL1->cost ?? 0) / $matchedHlL1->clicks, 2)
-                : 0;
-            $row['hl_avg_cpc'] = $row['hl_campaign_id'] ? $hlAvgCpcData->get($row['hl_campaign_id'], 0) : 0;
-
-            // HL AD CVR = (hl_sold_L30 / hl_clicks_L30) * 100
-            $hlClicks30 = (int)($row['hl_clicks_L30'] ?? 0);
-            $hlSold30 = (int)($row['hl_sold_L30'] ?? 0);
-            $row['hl_ad_cvr'] = $hlClicks30 > 0 ? round(($hlSold30 / $hlClicks30) * 100, 2) : 0;
-
-            // HL SBID fields when HL L30 campaign exists (do not gate on INV — Shopify INV can be 0 while ads run; Tabulator showed "-" for all rows)
-            $hlLastSbid = '';
-            $hlSbidM = '';
-            if ($matchedCampaignsHlL30->isNotEmpty()) {
-                $hlCampaignIdStr = $row['hl_campaign_id'] ? (string)$row['hl_campaign_id'] : null;
-                if ($hlCampaignIdStr && isset($hlLastSbidMap[$hlCampaignIdStr])) {
-                    $hlLastSbid = $hlLastSbidMap[$hlCampaignIdStr];
-                } else {
-                    $hlCampaignNameForSbid = $row['hl_campaignName'];
-                    if ($hlCampaignNameForSbid) {
-                        $hlNormalizedName = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
-                        if (isset($hlLastSbidMap['name_' . $hlNormalizedName])) {
-                            $hlLastSbid = $hlLastSbidMap['name_' . $hlNormalizedName];
-                        }
-                    }
-                }
-                if ($hlCampaignIdStr && isset($hlSbidMMap[$hlCampaignIdStr])) {
-                    $hlSbidM = $hlSbidMMap[$hlCampaignIdStr];
-                } else {
-                    $hlCampaignNameForSbid = $row['hl_campaignName'];
-                    if ($hlCampaignNameForSbid) {
-                        $hlNormalizedName = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
-                        if (isset($hlSbidMMap['name_' . $hlNormalizedName])) {
-                            $hlSbidM = $hlSbidMMap['name_' . $hlNormalizedName];
-                        }
-                    }
-                }
-            }
-            $row['hl_last_sbid'] = $hlLastSbid;
-            $row['hl_sbid_m'] = $hlSbidM;
-
-            // HL SBID: Amazon suggested bid (sbid) from SB campaign reports — same pattern as PT sbid
-            $hlSbidFromDb = 0.0;
-            if ($matchedCampaignsHlL30->isNotEmpty()) {
-                $hlCampaignIdStrForSbid = $row['hl_campaign_id'] ? (string) $row['hl_campaign_id'] : null;
-                if ($hlCampaignIdStrForSbid && isset($hlSbidMap[$hlCampaignIdStrForSbid])) {
-                    $hlSbidFromDb = (float) $hlSbidMap[$hlCampaignIdStrForSbid];
-                } else {
-                    $hlCampaignNameForSbid = $row['hl_campaignName'];
-                    if ($hlCampaignNameForSbid) {
-                        $hlNormNameForSbid = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
-                        if (isset($hlSbidMap['name_'.$hlNormNameForSbid])) {
-                            $hlSbidFromDb = (float) $hlSbidMap['name_'.$hlNormNameForSbid];
-                        }
-                    }
-                }
-            }
-            if ($hlSbidFromDb <= 0 && $hlLastSbid !== '' && is_numeric($hlLastSbid)) {
-                $hlSbidFromDb = (float) $hlLastSbid;
-            }
-            $row['hl_sbid'] = $hlSbidFromDb;
-
-            // SPEND_L30 and SALES_L30 include HL (like AmazonAdRunningController)
-            $row['SPEND_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0) + ($row['hl_spend_L30'] ?? 0);
-            $row['AD_Spend_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0) + ($row['hl_spend_L30'] ?? 0);
-            $row['SALES_L30'] = ($row['kw_sales_L30'] ?? 0) + ($row['pmt_sales_L30'] ?? 0) + ($row['hl_sales_L30'] ?? 0);
-
-            // AD% Formula = (AD_Spend_L30 / (price * A_L30)) * 100
-            $totalRevenue = $price * $units_ordered_l30;
-            $row['AD%'] = $totalRevenue > 0
-                ? round(($row['AD_Spend_L30'] / $totalRevenue) * 100, 4)
-                : 0;
-
             // GPFT% Formula = ((price × 0.80 - ship - lp) / price) × 100
             $row['GPFT%'] = $price > 0
                 ? round((($price * 0.80 - $ship - $lp) / $price) * 100, 2)
@@ -1768,17 +568,6 @@ class OverallAmazonController extends Controller
             $row['GROI%'] = $lp > 0
                 ? round((($price * 0.80 - $ship - $lp) / $lp) * 100, 2)
                 : 0;
-
-            // PFT% = GPFT% - AD%
-            $row['PFT%'] = round($row['GPFT%'] - $row['AD%'], 2);
-
-            // NROI% (Net ROI) = ((price * (0.80 - AD%/100) - ship - lp) / lp) * 100
-            $adDecimal = $row['AD%'] / 100;
-            $row['ROI_percentage'] = round(
-                $lp > 0 ? (($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
-                2
-            );
-            $row['NROI%'] = $row['ROI_percentage']; // Alias for clarity
 
             // Load NR field from AmazonDataView (exact SKU or normalized SKU so spacing variants match)
             $nrRaw = $nrValues[$pm->sku] ?? $nrValues[$normalizeSku($pm->sku)] ?? null;
@@ -1883,16 +672,6 @@ class OverallAmazonController extends Controller
                     2
                 );
                 $row['SGPFT'] = $sgpft;
-                
-                // Calculate SPFT = SGPFT - AD%
-                $row['Spft%'] = round($sgpft - $row['AD%'], 2);
-                
-                // Calculate SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
-                $adDecimal = $row['AD%'] / 100;
-                $row['SROI'] = round(
-                    $lp > 0 ? (($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
-                    2
-                );
             } else {
                 $row['has_custom_sprice'] = true; // Flag to indicate custom SPRICE
                 
@@ -1904,21 +683,6 @@ class OverallAmazonController extends Controller
                         2
                     );
                     $row['SGPFT'] = $sgpft;
-                }
-                
-                // Calculate SPFT = SGPFT - AD%
-                if (!empty($row['SGPFT'])) {
-                    $row['Spft%'] = round($row['SGPFT'] - $row['AD%'], 2);
-                }
-                
-                // Calculate SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
-                if (!empty($row['SPRICE'])) {
-                    $sprice = floatval($row['SPRICE']);
-                    $adDecimal = $row['AD%'] / 100;
-                    $row['SROI'] = round(
-                        $lp > 0 ? (($sprice * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
-                        2
-                    );
                 }
             }
 
@@ -2043,14 +807,9 @@ class OverallAmazonController extends Controller
                 'percentage' => $percentage,
                 'LP_productmaster' => '',
                 'Ship_productmaster' => '',
-                'kw_spend_L30' => round($rows->sum('kw_spend_L30'), 2),
-                'pmt_spend_L30' => round($rows->sum('pmt_spend_L30'), 2),
-                'AD_Spend_L30' => round($rows->sum('AD_Spend_L30'), 2),
-                'AD%' => 0, // Parent summary AD% not calculated
                 'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
                 'GROI%' => $rows->count() > 0 ? round($rows->avg('GROI%'), 2) : 0,
                 'ROI_percentage' => $rows->count() > 0 ? round($rows->avg('ROI_percentage'), 2) : 0,
-                'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'is_parent_summary' => true,
                 'ad_updates' => $adUpdates,
                 'variation_display' => $parentVariations[$parent] ?? 'red'
@@ -2077,682 +836,11 @@ class OverallAmazonController extends Controller
                 $sumRow['NR'] = $hasNraChild ? 'NR' : 'REQ';
             }
 
-            // Add campaign data for parent rows - match by "PARENT {parent}" campaign name
-            // Normalize parent name (handle special characters like non-breaking spaces)
-            $parentNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
-            $parentCampaignName = 'PARENT ' . $parentNorm;
-            $parentNormNoDot = rtrim($parentNorm, '.');
-            $parentCampaignNameNoDot = rtrim($parentCampaignName, '.');
-            
-            // Helper to normalize campaign name for matching (same as KW page)
-            $normalizeCampaignName = function($campaignName) {
-                $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName ?? '');
-                $cn = preg_replace('/\s+/', ' ', $cn);
-                return strtoupper(trim(rtrim($cn, '.')));
-            };
-            
-            // Match L7 campaign for parent - supports " KW" suffix
-            // For parent rows, campaign should be exactly "PARENT {parent}" or "{parent}" or with " KW"
-            // Do NOT match child campaigns like "DS CH BLK" when parent is "DS CH"
-            $parentCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                // Match exact "PARENT {parent}" campaign or with " KW" suffix
-                return $campaignName === $parentCampaignName 
-                    || $campaignName === $parentCampaignNameNoDot
-                    || $campaignName === $parentCampaignName . ' KW'
-                    || $campaignName === $parentCampaignNameNoDot . ' KW';
-            });
-            
-            // Match L1 campaign for parent - supports " KW" suffix
-            $parentCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                // Match exact "PARENT {parent}" campaign or with " KW" suffix
-                return $campaignName === $parentCampaignName 
-                    || $campaignName === $parentCampaignNameNoDot
-                    || $campaignName === $parentCampaignName . ' KW'
-                    || $campaignName === $parentCampaignNameNoDot . ' KW';
-            });
-
-            // Match L2 campaign for parent (one day before L1)
-            $parentCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentCampaignName 
-                    || $campaignName === $parentCampaignNameNoDot
-                    || $campaignName === $parentCampaignName . ' KW'
-                    || $campaignName === $parentCampaignNameNoDot . ' KW';
-            });
-            
-            // Match L90 campaign for parent (for budget) - include " PARENT X KW" variant
-            $parentCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentCampaignName
-                    || $campaignName === $parentCampaignNameNoDot
-                    || $campaignName === $parentCampaignName . ' KW'
-                    || $campaignName === $parentCampaignNameNoDot . ' KW';
-            });
-            
-            // Match L30 campaign for parent - include " PARENT X KW" so "PARENT A-54 KW" in DB matches
-            $parentCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentCampaignName
-                    || $campaignName === $parentCampaignNameNoDot
-                    || $campaignName === $parentCampaignName . ' KW'
-                    || $campaignName === $parentCampaignNameNoDot . ' KW';
-            });
-            
-            $firstParentL30 = $parentCampaignsL30->first();
-            // Add campaign data to parent summary - use L30 when L7/L1 have no match so campaign name shows
-            $sumRow['hasCampaign'] = $parentCampaignL7 || $parentCampaignL1 || $parentCampaignsL30->isNotEmpty();
-            $sumRow['has_own_kw_campaign'] = $sumRow['hasCampaign'];
-            // Parent PT presence is set below after $hasParentPtCampaign is computed (see pt_campaign_status block)
-            $sumRow['has_own_pt_campaign'] = false;
-            // HL parent flag set in HL block below (same pattern as PT)
-            $sumRow['has_own_hl_campaign'] = false;
-            $sumRow['campaign_id'] = ($parentCampaignL7 ? $parentCampaignL7->campaign_id : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaign_id : null) ?? ($firstParentL30 ? $firstParentL30->campaign_id : null);
-            $sumRow['campaignName'] = ($parentCampaignL7 ? $parentCampaignL7->campaignName : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignName : null) ?? ($firstParentL30 ? $firstParentL30->campaignName : null);
-            $sumRow['campaignStatus'] = ($parentCampaignL7 ? $parentCampaignL7->campaignStatus : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignStatus : null) ?? ($firstParentL30 ? $firstParentL30->campaignStatus : null);
-            // Prefer recent budget windows for utilization; avoid stale L90 budget overriding current campaign budget.
-            $sumRow['campaignBudgetAmount'] = ($firstParentL30 ? $firstParentL30->campaignBudgetAmount : null)
-                ?? ($parentCampaignL7 ? $parentCampaignL7->campaignBudgetAmount : null)
-                ?? ($parentCampaignL1 ? $parentCampaignL1->campaignBudgetAmount : null)
-                ?? ($parentCampaignL2 ? $parentCampaignL2->campaignBudgetAmount : null)
-                ?? ($parentCampaignL90 ? $parentCampaignL90->campaignBudgetAmount : null)
-                ?? 0;
-            
-            // L7 spend with fallback calculation (clicks * cpc) like KW page
-            $l7SpendVal = $parentCampaignL7 ? (float)($parentCampaignL7->spend ?? $parentCampaignL7->cost ?? 0) : 0;
-            if ($l7SpendVal <= 0 && $parentCampaignL7) {
-                $c7 = (int)($parentCampaignL7->clicks ?? 0);
-                $cpc7 = (float)($parentCampaignL7->costPerClick ?? 0);
-                if ($c7 > 0 && $cpc7 > 0) {
-                    $l7SpendVal = round($c7 * $cpc7, 2);
-                }
-            }
-            $sumRow['l7_spend'] = $l7SpendVal;
-            
-            // L1 spend with fallback calculation
-            $l1SpendVal = $parentCampaignL1 ? (float)($parentCampaignL1->spend ?? $parentCampaignL1->cost ?? 0) : 0;
-            if ($l1SpendVal <= 0 && $parentCampaignL1) {
-                $c1 = (int)($parentCampaignL1->clicks ?? 0);
-                $cpc1 = (float)($parentCampaignL1->costPerClick ?? 0);
-                if ($c1 > 0 && $cpc1 > 0) {
-                    $l1SpendVal = round($c1 * $cpc1, 2);
-                }
-            }
-            $sumRow['l1_spend'] = $l1SpendVal;
-
-            // L2 spend and CPC for parent (one day before L1)
-            $l2SpendVal = $parentCampaignL2 ? (float)($parentCampaignL2->spend ?? $parentCampaignL2->cost ?? 0) : 0;
-            if ($l2SpendVal <= 0 && $parentCampaignL2) {
-                $c2 = (int)($parentCampaignL2->clicks ?? 0);
-                $cpc2 = (float)($parentCampaignL2->costPerClick ?? 0);
-                if ($c2 > 0 && $cpc2 > 0) {
-                    $l2SpendVal = round($c2 * $cpc2, 2);
-                }
-            }
-            $sumRow['l2_spend'] = $l2SpendVal;
-            $sumRow['l2_cpc'] = $parentCampaignL2 ? ($parentCampaignL2->costPerClick ?? 0) : 0;
-
-            $sumRow['l7_cpc'] = $parentCampaignL7 ? ($parentCampaignL7->costPerClick ?? 0) : 0;
-            $sumRow['l1_cpc'] = $parentCampaignL1 ? ($parentCampaignL1->costPerClick ?? 0) : 0;
-            // AVG CPC from lifetime average (same as KW page)
-            $sumRow['avg_cpc'] = $sumRow['campaign_id'] ? $avgCpcData->get($sumRow['campaign_id'], 0) : 0;
-            $sumRow['l7_clicks'] = $parentCampaignL7 ? ($parentCampaignL7->clicks ?? 0) : 0;
-            $sumRow['l7_sales'] = $parentCampaignL7 ? ($parentCampaignL7->sales30d ?? 0) : 0;
-            $sumRow['l7_purchases'] = $parentCampaignL7 ? ($parentCampaignL7->unitsSoldClicks7d ?? 0) : 0;
-            $sumRow['spend_l7_col'] = $sumRow['l7_spend'];
-            
-            // L30 data for parent
-            $firstParentL30 = $parentCampaignsL30->first();
-            $sumRow['l30_clicks'] = $parentCampaignsL30->sum('clicks');
-            $sumRow['l30_spend'] = $parentCampaignsL30->sum('spend');
-            $sumRow['l30_sales'] = $parentCampaignsL30->sum('sales30d');
-            $sumRow['l30_purchases'] = $parentCampaignsL30->sum('unitsSoldClicks30d');
-            
-            // --- PT Data for parent ---
-            // Match PARENT's own PT campaign directly (like "PARENT CONGO PT.")
-            $parentPtCampaignName = $parentCampaignName . ' PT';
-            $parentPtCampaignNameDot = $parentCampaignName . ' PT.';
-            $parentPtCampaignNameNoDot = $parentCampaignNameNoDot . ' PT';
-            $parentPtCampaignNameNoDotDot = $parentCampaignNameNoDot . ' PT.';
-            
-            // Match PT L30 campaign for parent
-            $parentPtCampaignsL30 = $amazonSpCampaignReportsPtL30->filter(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentPtCampaignName 
-                    || $campaignName === $parentPtCampaignNameDot
-                    || $campaignName === $parentPtCampaignNameNoDot
-                    || $campaignName === $parentPtCampaignNameNoDotDot
-                    || str_ends_with($campaignName, $parentPtCampaignName)
-                    || str_ends_with($campaignName, $parentPtCampaignNameNoDot);
-            });
-            
-            // Match PT L7 campaign for parent
-            $parentPtCampaignL7 = $amazonSpCampaignReportsPtL7->first(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentPtCampaignName 
-                    || $campaignName === $parentPtCampaignNameDot
-                    || $campaignName === $parentPtCampaignNameNoDot
-                    || $campaignName === $parentPtCampaignNameNoDotDot
-                    || str_ends_with($campaignName, $parentPtCampaignName)
-                    || str_ends_with($campaignName, $parentPtCampaignNameNoDot);
-            });
-            
-            // Match PT L1 campaign for parent
-            $parentPtCampaignL1 = $amazonSpCampaignReportsPtL1->first(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentPtCampaignName 
-                    || $campaignName === $parentPtCampaignNameDot
-                    || $campaignName === $parentPtCampaignNameNoDot
-                    || $campaignName === $parentPtCampaignNameNoDotDot
-                    || str_ends_with($campaignName, $parentPtCampaignName)
-                    || str_ends_with($campaignName, $parentPtCampaignNameNoDot);
-            });
-
-            // Match PT L2 campaign for parent (one day before L1)
-            $parentPtCampaignL2 = $amazonSpCampaignReportsPtL2->first(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentPtCampaignName 
-                    || $campaignName === $parentPtCampaignNameDot
-                    || $campaignName === $parentPtCampaignNameNoDot
-                    || $campaignName === $parentPtCampaignNameNoDotDot
-                    || str_ends_with($campaignName, $parentPtCampaignName)
-                    || str_ends_with($campaignName, $parentPtCampaignNameNoDot);
-            });
-            
-            // Match PT L90 campaign for parent (for budget/campaign info when L30/L7/L1 have no data)
-            $parentPtCampaignL90 = $amazonSpCampaignReportsPtL90->first(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
-                $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentPtCampaignName 
-                    || $campaignName === $parentPtCampaignNameDot
-                    || $campaignName === $parentPtCampaignNameNoDot
-                    || $campaignName === $parentPtCampaignNameNoDotDot
-                    || str_ends_with($campaignName, $parentPtCampaignName)
-                    || str_ends_with($campaignName, $parentPtCampaignNameNoDot);
-            });
-            
-            // Determine if parent has its own PT campaign from any source
-            $hasParentPtCampaign = $parentPtCampaignsL30->isNotEmpty() || $parentPtCampaignL7 || $parentPtCampaignL1 || $parentPtCampaignL90;
-            
-            // Use parent's own PT campaign data if found, otherwise sum from child rows
-            if ($hasParentPtCampaign) {
-                // L30 spend data
-                $sumRow['pt_spend_L30'] = $parentPtCampaignsL30->sum('spend');
-                $sumRow['pt_sales_L30'] = $parentPtCampaignsL30->sum('sales30d');
-                $sumRow['pt_clicks_L30'] = $parentPtCampaignsL30->sum('clicks');
-                $sumRow['pt_sold_L30'] = $parentPtCampaignsL30->sum('unitsSoldClicks30d');
-                
-                // Campaign name, ID, budget - try L30 first, then L7, L1, L90 as fallbacks
-                $firstParentPtL30 = $parentPtCampaignsL30->first();
-                $sumRow['pt_campaignName'] = $firstParentPtL30->campaignName 
-                    ?? ($parentPtCampaignL7->campaignName ?? ($parentPtCampaignL1->campaignName ?? ($parentPtCampaignL90->campaignName ?? null)));
-                $sumRow['pt_campaign_id'] = $firstParentPtL30->campaign_id 
-                    ?? ($parentPtCampaignL7->campaign_id ?? ($parentPtCampaignL1->campaign_id ?? ($parentPtCampaignL90->campaign_id ?? null)));
-                // For budget, use same priority as amazon-utilized-pt page: L30 → L7 → L1 → L90
-                $sumRow['pt_campaignBudgetAmount'] = ($firstParentPtL30->campaignBudgetAmount ?? null)
-                    ?? ($parentPtCampaignL7->campaignBudgetAmount ?? ($parentPtCampaignL1->campaignBudgetAmount ?? ($parentPtCampaignL90->campaignBudgetAmount ?? 0)));
-            } else {
-                // No parent PT campaign found - show empty/zero data, do NOT use child campaign data
-                $sumRow['pt_spend_L30'] = 0;
-                $sumRow['pt_sales_L30'] = 0;
-                $sumRow['pt_clicks_L30'] = 0;
-                $sumRow['pt_sold_L30'] = 0;
-                $sumRow['pt_campaignName'] = null;
-                $sumRow['pt_campaign_id'] = null;
-                $sumRow['pt_campaignBudgetAmount'] = 0;
-            }
-            
-            // PT L7 data from parent's own PT campaign
-            if ($hasParentPtCampaign && $parentPtCampaignL7) {
-                $sumRow['pt_spend_L7'] = $parentPtCampaignL7->spend ?? 0;
-                $sumRow['pt_sales_L7'] = $parentPtCampaignL7->sales7d ?? 0;
-                $sumRow['pt_clicks_L7'] = $parentPtCampaignL7->clicks ?? 0;
-                $sumRow['pt_sold_L7'] = $parentPtCampaignL7->unitsSoldSameSku7d ?? 0;
-                $sumRow['pt_l7_cpc'] = $parentPtCampaignL7->costPerClick ?? 0;
-            } else {
-                // No parent PT campaign or no L7 data - set to 0
-                $sumRow['pt_spend_L7'] = 0;
-                $sumRow['pt_sales_L7'] = 0;
-                $sumRow['pt_clicks_L7'] = 0;
-                $sumRow['pt_sold_L7'] = 0;
-                $sumRow['pt_l7_cpc'] = 0;
-            }
-            
-            // PT L1 data from parent's own PT campaign
-            if ($hasParentPtCampaign && $parentPtCampaignL1) {
-                $sumRow['pt_spend_L1'] = $parentPtCampaignL1->spend ?? 0;
-                $sumRow['pt_clicks_L1'] = $parentPtCampaignL1->clicks ?? 0;
-                $sumRow['pt_l1_cpc'] = $parentPtCampaignL1->costPerClick ?? 0;
-            } else {
-                // No parent PT campaign or no L1 data - set to 0
-                $sumRow['pt_spend_L1'] = 0;
-                $sumRow['pt_clicks_L1'] = 0;
-                $sumRow['pt_l1_cpc'] = 0;
-            }
-
-            // PT L2 data from parent's own PT campaign (one day before L1)
-            if ($hasParentPtCampaign && $parentPtCampaignL2) {
-                $sumRow['pt_spend_L2'] = $parentPtCampaignL2->spend ?? 0;
-                $sumRow['pt_clicks_L2'] = $parentPtCampaignL2->clicks ?? 0;
-                $sumRow['pt_l2_cpc'] = $parentPtCampaignL2->costPerClick ?? 0;
-            } else {
-                $sumRow['pt_spend_L2'] = 0;
-                $sumRow['pt_clicks_L2'] = 0;
-                $sumRow['pt_l2_cpc'] = 0;
-            }
-            
-            // PT AVG CPC from parent's own campaign only
-            if ($hasParentPtCampaign && $sumRow['pt_campaign_id']) {
-                $sumRow['pt_avg_cpc'] = $ptAvgCpcData->get($sumRow['pt_campaign_id'], 0);
-            } elseif ($hasParentPtCampaign && $parentPtCampaignL90 && isset($parentPtCampaignL90->avg_cpc)) {
-                $sumRow['pt_avg_cpc'] = $parentPtCampaignL90->avg_cpc;
-            } else {
-                $sumRow['pt_avg_cpc'] = 0;
-            }
-            
-            // PT AD CVR for parent
-            $sumRow['pt_ad_cvr'] = $sumRow['pt_clicks_L30'] > 0 ? round(($sumRow['pt_sold_L30'] / $sumRow['pt_clicks_L30']) * 100, 2) : 0;
-            
-            // PT SBID fields for parent - use parent's own PT campaign values from ptLastSbidMap
-            $ptParentCampaignIdStr = $sumRow['pt_campaign_id'] ? (string)$sumRow['pt_campaign_id'] : null;
-            $ptParentLastSbid = '';
-            $ptParentSbidM = '';
-            
-            // Try to get from parent PT campaign ID
-            if ($ptParentCampaignIdStr && isset($ptLastSbidMap[$ptParentCampaignIdStr])) {
-                $ptParentLastSbid = $ptLastSbidMap[$ptParentCampaignIdStr];
-            } elseif (isset($ptLastSbidMap['name_' . $parentPtCampaignName])) {
-                $ptParentLastSbid = $ptLastSbidMap['name_' . $parentPtCampaignName];
-            } elseif (isset($ptLastSbidMap['name_' . $parentPtCampaignNameNoDot])) {
-                $ptParentLastSbid = $ptLastSbidMap['name_' . $parentPtCampaignNameNoDot];
-            }
-            
-            if ($ptParentCampaignIdStr && isset($ptSbidMMap[$ptParentCampaignIdStr])) {
-                $ptParentSbidM = $ptSbidMMap[$ptParentCampaignIdStr];
-            } elseif (isset($ptSbidMMap['name_' . $parentPtCampaignName])) {
-                $ptParentSbidM = $ptSbidMMap['name_' . $parentPtCampaignName];
-            } elseif (isset($ptSbidMMap['name_' . $parentPtCampaignNameNoDot])) {
-                $ptParentSbidM = $ptSbidMMap['name_' . $parentPtCampaignNameNoDot];
-            }
-            
-            // Use parent PT campaign values only - do NOT fallback to children
-            $sumRow['pt_last_sbid'] = $ptParentLastSbid ?: '';
-            $sumRow['pt_sbid_m'] = $ptParentSbidM ?: '';
-
-            $ptParentSbidFromDb = 0.0;
-            if ($ptParentCampaignIdStr && isset($ptSbidMap[$ptParentCampaignIdStr])) {
-                $ptParentSbidFromDb = (float) $ptSbidMap[$ptParentCampaignIdStr];
-            } elseif (isset($ptSbidMap['name_'.$parentPtCampaignName])) {
-                $ptParentSbidFromDb = (float) $ptSbidMap['name_'.$parentPtCampaignName];
-            } elseif (isset($ptSbidMap['name_'.$parentPtCampaignNameNoDot])) {
-                $ptParentSbidFromDb = (float) $ptSbidMap['name_'.$parentPtCampaignNameNoDot];
-            }
-            $sumRow['pt_sbid'] = $ptParentSbidFromDb;
-            
-            // AD CVR and ACOS for parent
-            $sumRow['ad_cvr'] = $sumRow['l30_clicks'] > 0 ? round(($sumRow['l30_purchases'] / $sumRow['l30_clicks']) * 100, 2) : 0;
-            $sumRow['ACOS'] = $sumRow['l30_sales'] > 0 ? round(($sumRow['l30_spend'] / $sumRow['l30_sales']) * 100, 2) : 0;
-            $sumRow['acos'] = $sumRow['ACOS'];
-            
-            // TPFT for parent (average of children)
-            $sumRow['TPFT'] = $rows->count() > 0 ? round($rows->avg('TPFT'), 2) : 0;
-            
-            // Get last_sbid and sbid_m for parent from lastSbidMap
-            $parentCampaignIdStr = $sumRow['campaign_id'] ? (string)$sumRow['campaign_id'] : null;
-            $parentLastSbid = '';
-            $parentSbidM = '';
-            if ($parentCampaignIdStr && isset($lastSbidMap[$parentCampaignIdStr])) {
-                $parentLastSbid = $lastSbidMap[$parentCampaignIdStr];
-            } elseif (isset($lastSbidMap['name_' . $parentCampaignName])) {
-                $parentLastSbid = $lastSbidMap['name_' . $parentCampaignName];
-            } elseif (isset($lastSbidMap['name_' . $parentNorm])) {
-                $parentLastSbid = $lastSbidMap['name_' . $parentNorm];
-            }
-            if ($parentCampaignIdStr && isset($sbidMMap[$parentCampaignIdStr])) {
-                $parentSbidM = $sbidMMap[$parentCampaignIdStr];
-            } elseif (isset($sbidMMap['name_' . $parentCampaignName])) {
-                $parentSbidM = $sbidMMap['name_' . $parentCampaignName];
-            } elseif (isset($sbidMMap['name_' . $parentNorm])) {
-                $parentSbidM = $sbidMMap['name_' . $parentNorm];
-            }
-            $parentSbid = 0;
-            if ($parentCampaignIdStr && isset($sbidMap[$parentCampaignIdStr])) {
-                $parentSbid = (float)$sbidMap[$parentCampaignIdStr];
-            } elseif (isset($sbidMap['name_' . $parentCampaignName])) {
-                $parentSbid = (float)$sbidMap['name_' . $parentCampaignName];
-            } elseif (isset($sbidMap['name_' . $parentNorm])) {
-                $parentSbid = (float)$sbidMap['name_' . $parentNorm];
-            }
-            $sumRow['last_sbid'] = $parentLastSbid;
-            $sumRow['sbid_m'] = $parentSbidM;
-            $sumRow['sbid'] = $parentSbid;
-            $sumRow['sbid_approved'] = false;
-            $sumRow['utilization_budget'] = $sumRow['campaignBudgetAmount'];
-            
-            // KW campaign status for parent: use L30 first (so all PARENT X KW campaigns show when L7/L1 have no row), then L7, then L1
-            $kwParentStatus = ($firstParentL30 ? $firstParentL30->campaignStatus : null) ?? ($parentCampaignL7 ? $parentCampaignL7->campaignStatus : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignStatus : null);
-            $kwParentEnabled = $kwParentStatus && strtoupper($kwParentStatus) === 'ENABLED';
-            $sumRow['kw_campaign_status'] = $kwParentEnabled ? 'ENABLED' : ($kwParentStatus ? 'PAUSED' : '');
-            
-            // PT campaign status for parent - get from parent's own PT campaign
-            // Priority: L30 → L7 → L1 → L90 (same as amazon-utilized-pt page)
-            $ptParentStatus = null;
-            if ($parentPtCampaignsL30->isNotEmpty()) {
-                $ptParentStatus = $parentPtCampaignsL30->first()->campaignStatus ?? null;
-            } elseif ($parentPtCampaignL7) {
-                $ptParentStatus = $parentPtCampaignL7->campaignStatus ?? null;
-            } elseif ($parentPtCampaignL1) {
-                $ptParentStatus = $parentPtCampaignL1->campaignStatus ?? null;
-            } elseif ($parentPtCampaignL90) {
-                $ptParentStatus = $parentPtCampaignL90->campaignStatus ?? null;
-            }
-            $ptParentEnabled = $ptParentStatus && strtoupper($ptParentStatus) === 'ENABLED';
-            $sumRow['pt_campaign_status'] = $ptParentEnabled ? 'ENABLED' : ($ptParentStatus ? 'PAUSED' : '');
-            $sumRow['has_own_pt_campaign'] = $hasParentPtCampaign;
-            
-            // --- HL (Headline/Sponsored Brands) Data for parent ---
-            // Match HL campaigns using "PARENT {parent}" or "PARENT {parent} HEAD"
-            $hlParentName = $parentCampaignName;  // e.g. "PARENT 12 WF PP"
-            $hlParentNameNoDot = $parentCampaignNameNoDot;
-            
-            // Match HL L30 / L7 / L1 for parent: any status, prefer ENABLED for primary row (paused still counts)
-            $parentHlCandidatesL30 = $amazonHlL30->filter(function ($item) use ($hlParentName, $hlParentNameNoDot) {
-                $cleanName = strtoupper(trim($item->campaignName));
-
-                return in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']);
-            });
-            $parentHlL30 = $parentHlCandidatesL30->first(function ($item) {
-                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            }) ?? $parentHlCandidatesL30->first();
-            $parentHlCandidatesL7 = $amazonHlL7->filter(function ($item) use ($hlParentName, $hlParentNameNoDot) {
-                $cleanName = strtoupper(trim($item->campaignName));
-
-                return in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']);
-            });
-            $parentHlL7 = $parentHlCandidatesL7->first(function ($item) {
-                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            }) ?? $parentHlCandidatesL7->first();
-            $parentHlCandidatesL1 = $amazonHlL1->filter(function ($item) use ($hlParentName, $hlParentNameNoDot) {
-                $cleanName = strtoupper(trim($item->campaignName));
-
-                return in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']);
-            });
-            $parentHlL1 = $parentHlCandidatesL1->first(function ($item) {
-                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
-            }) ?? $parentHlCandidatesL1->first();
-
-            $hasParentHlCampaign = $parentHlL30 || $parentHlL7 || $parentHlL1;
-            $sumRow['has_own_hl_campaign'] = $hasParentHlCampaign;
-            
-            // HL Campaign name, budget, ID, status
-            $sumRow['hl_campaignName'] = ($parentHlL30 ? $parentHlL30->campaignName : null)
-                ?? ($parentHlL7 ? $parentHlL7->campaignName : null)
-                ?? ($parentHlL1 ? $parentHlL1->campaignName : null);
-            $sumRow['hl_campaignBudgetAmount'] = ($parentHlL30 ? ($parentHlL30->campaignBudgetAmount ?? null) : null)
-                ?? ($parentHlL7 ? ($parentHlL7->campaignBudgetAmount ?? null) : null)
-                ?? ($parentHlL1 ? ($parentHlL1->campaignBudgetAmount ?? null) : null)
-                ?? 0;
-            // campaign_id: try L30 first, then L7, then L1
-            $sumRow['hl_campaign_id'] = ($parentHlL30 ? ($parentHlL30->campaign_id ?? null) : null)
-                ?? ($parentHlL7 ? $parentHlL7->campaign_id : null)
-                ?? ($parentHlL1 ? $parentHlL1->campaign_id : null);
-            $hlParentHasEnabled = ($parentHlL30 && strtoupper($parentHlL30->campaignStatus ?? '') === 'ENABLED')
-                || ($parentHlL7 && strtoupper($parentHlL7->campaignStatus ?? '') === 'ENABLED')
-                || ($parentHlL1 && strtoupper($parentHlL1->campaignStatus ?? '') === 'ENABLED');
-            $sumRow['hl_campaign_status'] = $hasParentHlCampaign
-                ? ($hlParentHasEnabled ? 'ENABLED' : 'PAUSED')
-                : '';
-            
-            // HL L30 data (from grouped SB query - uses cost instead of spend, purchases instead of unitsSold)
-            $sumRow['hl_spend_L30'] = $parentHlL30 ? round((float)($parentHlL30->cost ?? 0), 2) : 0;
-            $sumRow['hl_clicks_L30'] = $parentHlL30 ? (int)($parentHlL30->clicks ?? 0) : 0;
-            $sumRow['hl_sales_L30'] = $parentHlL30 ? round((float)($parentHlL30->sales ?? 0), 2) : 0;
-            $sumRow['hl_sold_L30'] = $parentHlL30 ? (int)($parentHlL30->purchases ?? 0) : 0;
-            
-            // HL L7 data
-            if ($parentHlL7) {
-                $sumRow['hl_spend_L7'] = round((float)($parentHlL7->cost ?? 0), 2);
-                $sumRow['hl_clicks_L7'] = (int)($parentHlL7->clicks ?? 0);
-                $sumRow['hl_sales_L7'] = round((float)($parentHlL7->sales ?? 0), 2);
-                $sumRow['hl_sold_L7'] = (int)($parentHlL7->unitsSold ?? $parentHlL7->purchases ?? 0);
-                $sumRow['hl_l7_cpc'] = ($parentHlL7->clicks ?? 0) > 0
-                    ? round(($parentHlL7->cost ?? 0) / $parentHlL7->clicks, 2) : 0;
-            } else {
-                $sumRow['hl_spend_L7'] = 0;
-                $sumRow['hl_clicks_L7'] = 0;
-                $sumRow['hl_sales_L7'] = 0;
-                $sumRow['hl_sold_L7'] = 0;
-                $sumRow['hl_l7_cpc'] = 0;
-            }
-            
-            // HL L1 data
-            if ($parentHlL1) {
-                $sumRow['hl_spend_L1'] = round((float)($parentHlL1->cost ?? 0), 2);
-                $sumRow['hl_clicks_L1'] = (int)($parentHlL1->clicks ?? 0);
-                $sumRow['hl_l1_cpc'] = ($parentHlL1->clicks ?? 0) > 0
-                    ? round(($parentHlL1->cost ?? 0) / $parentHlL1->clicks, 2) : 0;
-            } else {
-                $sumRow['hl_spend_L1'] = 0;
-                $sumRow['hl_clicks_L1'] = 0;
-                $sumRow['hl_l1_cpc'] = 0;
-            }
-            
-            // HL LIFE CPC
-            $sumRow['hl_avg_cpc'] = $sumRow['hl_campaign_id'] ? $hlAvgCpcData->get($sumRow['hl_campaign_id'], 0) : 0;
-            
-            // HL AD CVR = (hl_sold_L30 / hl_clicks_L30) * 100
-            $sumRow['hl_ad_cvr'] = $sumRow['hl_clicks_L30'] > 0
-                ? round(($sumRow['hl_sold_L30'] / $sumRow['hl_clicks_L30']) * 100, 2) : 0;
-            
-            // HL SBID fields
-            $hlParentCampaignIdStr = $sumRow['hl_campaign_id'] ? (string)$sumRow['hl_campaign_id'] : null;
-            $hlParentLastSbid = '';
-            $hlParentSbidM = '';
-            if ($hlParentCampaignIdStr && isset($hlLastSbidMap[$hlParentCampaignIdStr])) {
-                $hlParentLastSbid = $hlLastSbidMap[$hlParentCampaignIdStr];
-            } else {
-                $hlCampNameForSbid = $sumRow['hl_campaignName'];
-                if ($hlCampNameForSbid) {
-                    $hlNormName = strtoupper(trim(rtrim($hlCampNameForSbid, '.')));
-                    if (isset($hlLastSbidMap['name_' . $hlNormName])) {
-                        $hlParentLastSbid = $hlLastSbidMap['name_' . $hlNormName];
-                    }
-                }
-            }
-            if ($hlParentCampaignIdStr && isset($hlSbidMMap[$hlParentCampaignIdStr])) {
-                $hlParentSbidM = $hlSbidMMap[$hlParentCampaignIdStr];
-            } else {
-                $hlCampNameForSbid = $sumRow['hl_campaignName'];
-                if ($hlCampNameForSbid) {
-                    $hlNormName = strtoupper(trim(rtrim($hlCampNameForSbid, '.')));
-                    if (isset($hlSbidMMap['name_' . $hlNormName])) {
-                        $hlParentSbidM = $hlSbidMMap['name_' . $hlNormName];
-                    }
-                }
-            }
-            $sumRow['hl_last_sbid'] = $hlParentLastSbid;
-            $sumRow['hl_sbid_m'] = $hlParentSbidM;
-
-            $hlParentSbidFromDb = 0.0;
-            if ($hlParentCampaignIdStr && isset($hlSbidMap[$hlParentCampaignIdStr])) {
-                $hlParentSbidFromDb = (float) $hlSbidMap[$hlParentCampaignIdStr];
-            } elseif (!empty($sumRow['hl_campaignName'])) {
-                $hlNormParentSbid = strtoupper(trim(rtrim($sumRow['hl_campaignName'], '.')));
-                if (isset($hlSbidMap['name_'.$hlNormParentSbid])) {
-                    $hlParentSbidFromDb = (float) $hlSbidMap['name_'.$hlNormParentSbid];
-                }
-            }
-            if ($hlParentSbidFromDb <= 0 && $hlParentLastSbid !== '' && is_numeric($hlParentLastSbid)) {
-                $hlParentSbidFromDb = (float) $hlParentLastSbid;
-            }
-            $sumRow['hl_sbid'] = $hlParentSbidFromDb;
-            
-            // ad_pause: true if neither KW nor PT nor HL is ENABLED
-            $sumRow['ad_pause'] = !($kwParentEnabled || $ptParentEnabled || $hlParentHasEnabled);
-            $sumRow['has_campaigns'] = $sumRow['hasCampaign'] || $hasParentPtCampaign || $hasParentHlCampaign;
-            
             // Price for parent (average of children with prices)
             $childPrices = $rows->pluck('price')->filter(fn($p) => is_numeric($p) && $p > 0);
             $sumRow['price'] = $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0;
 
             $finalResult[] = (object) $sumRow;
-        }
-
-        // Ensure all KW/KW. suffix campaigns from DB are represented in the view (e.g. 113 PARENT X KW)
-        // Normalize so "PARENT 15 FR KW" and "PARENT 15 FR KW." count as same campaign (no duplicate rows)
-        $normalizeKwCampaignKey = function ($name) {
-            $n = strtoupper(trim((string) $name));
-            return $n !== '' ? rtrim($n, '.') : '';
-        };
-        $kwSuffixCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($r) {
-            $n = trim($r->campaignName ?? '');
-            return str_ends_with($n, ' KW') || str_ends_with($n, ' KW.');
-        });
-        $representedKwCampaigns = [];
-        foreach ($finalResult as $r) {
-            $cn = trim($r->campaignName ?? '');
-            if ($cn !== '' && (str_ends_with($cn, ' KW') || str_ends_with($cn, ' KW.'))) {
-                $representedKwCampaigns[$normalizeKwCampaignKey($cn)] = true;
-            }
-        }
-        $addedNormalizedKw = [];
-        foreach ($kwSuffixCampaignsL30 as $rec) {
-            $cn = trim($rec->campaignName ?? '');
-            $cnNorm = $normalizeKwCampaignKey($cn);
-            if ($cnNorm === '' || isset($representedKwCampaigns[$cnNorm]) || isset($addedNormalizedKw[$cnNorm])) {
-                continue;
-            }
-            $addedNormalizedKw[$cnNorm] = true;
-            $baseSku = trim(preg_replace('/\s+KW\.?\s*$/i', '', $cn));
-            // PARENT X KW campaigns: show as parent summary row (one row per campaign)
-            $isParentKw = str_starts_with(strtoupper($baseSku), 'PARENT ') && strlen($baseSku) > 7;
-            $parentLabel = $isParentKw ? trim(substr($baseSku, 7)) : $baseSku; // "15 FR" from "PARENT 15 FR"
-            $orphanRow = [
-                '(Child) sku' => $isParentKw ? ('PARENT ' . $parentLabel) : $baseSku,
-                'Parent' => $parentLabel,
-                'parent' => $parentLabel,
-                'is_parent_summary' => $isParentKw,
-                'rating' => null,
-                'reviews' => null,
-                'A_L30' => 0,
-                'A_L15' => 0,
-                'A_L7' => 0,
-                'Sess30' => 0,
-                'Sess7' => 0,
-                'price' => null,
-                'price_lmpa' => null,
-                'sessions_l60' => 0,
-                'units_ordered_l60' => 0,
-                'INV' => 0,
-                'INV_AMZ' => 0,
-                'is_missing_amazon' => true,
-                'L30' => 0,
-                'fba' => null,
-                'Total_pft' => 0,
-                'T_Sale_l30' => 0,
-                'PFT_percentage' => 0,
-                'ROI_percentage' => 0,
-                'T_COGS' => 0,
-                'ad_updates' => $adUpdates,
-                'percentage' => $percentage,
-                'LP_productmaster' => 0,
-                'Ship_productmaster' => 0,
-                'NRL' => 'REQ',
-                'NRA' => 'RA',
-                'NR' => 'REQ',
-                'FBA' => null,
-                'SPRICE' => null,
-                'Spft' => null,
-                'SROI' => null,
-                'ad_spend' => (float) ($rec->spend ?? 0),
-                'Listed' => null,
-                'Live' => null,
-                'APlus' => null,
-                'lmp_price' => null,
-                'lmp_link' => null,
-                'lmp_asin' => null,
-                'lmp_title' => null,
-                'lmp_entries' => [],
-                'lmp_entries_total' => 0,
-                'kw_spend_L30' => (float) ($rec->spend ?? 0),
-                'pmt_spend_L30' => 0,
-                'kw_campaign_status' => $rec->campaignStatus && trim((string)$rec->campaignStatus) !== '' ? $rec->campaignStatus : 'ENABLED',
-                'ad_pause' => ($rec->campaignStatus && trim((string)$rec->campaignStatus) !== '') ? (strtoupper($rec->campaignStatus) !== 'ENABLED') : false,
-                'pt_campaign_status' => null,
-                'has_campaigns' => true,
-                'hasCampaign' => true,
-                'has_own_kw_campaign' => true,
-                'campaignBudgetAmount' => $rec->campaignBudgetAmount ?? 0,
-                'utilization_budget' => $rec->campaignBudgetAmount ?? 0,
-                'campaign_id' => $rec->campaign_id ?? null,
-                'campaignName' => $rec->campaignName ?? '',
-                'campaignStatus' => $rec->campaignStatus && trim((string)$rec->campaignStatus) !== '' ? $rec->campaignStatus : 'ENABLED',
-                'l7_spend' => 0,
-                'l1_spend' => 0,
-                'l2_spend' => 0,
-                'l7_cpc' => 0,
-                'l1_cpc' => 0,
-                'l2_cpc' => 0,
-                'l2_clicks' => 0,
-                'avg_cpc' => ($rec->campaign_id ?? null) ? $avgCpcData->get($rec->campaign_id, 0) : 0,
-                'l7_clicks' => 0,
-                'l7_sales' => 0,
-                'spend_l7_col' => 0,
-                'l7_purchases' => 0,
-                'kw_sales_L30' => (float) ($rec->sales30d ?? 0),
-                'pmt_sales_L30' => 0,
-                'l30_clicks' => (int) ($rec->clicks ?? 0),
-                'l30_spend' => (float) ($rec->spend ?? 0),
-                'l30_sales' => (float) ($rec->sales30d ?? 0),
-                'l30_purchases' => (int) ($rec->unitsSoldClicks30d ?? 0),
-                'pt_spend_L30' => 0,
-                'pt_sales_L30' => 0,
-                'pt_clicks_L30' => 0,
-                'pt_sold_L30' => 0,
-                'pt_spend_L7' => 0,
-                'pt_sales_L7' => 0,
-                'pt_clicks_L7' => 0,
-                'pt_sold_L7' => 0,
-                'pt_spend_L1' => 0,
-                'pt_clicks_L1' => 0,
-                'pt_spend_L2' => 0,
-                'pt_clicks_L2' => 0,
-                'pt_l2_cpc' => 0,
-                'pt_campaignName' => null,
-                'pt_campaignBudgetAmount' => 0,
-                'pt_campaign_id' => null,
-                'hl_campaignName' => null,
-                'hl_campaignBudgetAmount' => 0,
-                'hl_campaign_id' => null,
-                'hl_campaign_status' => null,
-                'hl_spend_L30' => 0,
-                'hl_sales_L30' => 0,
-                'SPEND_L30' => (float) ($rec->spend ?? 0),
-                'AD_Spend_L30' => (float) ($rec->spend ?? 0),
-                'SALES_L30' => (float) ($rec->sales30d ?? 0),
-                'AD%' => 0,
-                'GPFT%' => 0,
-                'GROI%' => 0,
-                'PFT%' => 0,
-                'NROI%' => 0,
-                'buyer_link' => null,
-                'seller_link' => null,
-                'shopify_id' => null,
-                'Spft%' => null,
-                'SGPFT' => null,
-                'acos' => 0,
-                'ACOS' => 0,
-                'ad_cvr' => 0,
-                'image_path' => null,
-                'checklist' => '',
-                'seo_audit_history' => [],
-                'has_custom_sprice' => false,
-            ];
-            $fbaOrphan = $fbaInventoryService->resolve($baseSku);
-            $orphanRow['FBA_Quantity'] = $fbaOrphan ? (int) ($fbaOrphan->quantity_available ?? 0) : 0;
-            $orphanRow['FBA_SKU'] = $fbaOrphan ? ($fbaOrphan->seller_sku ?? null) : null;
-            $this->applyAmazonTabulatorFbaSuffixZeroFbaInvAdPauseOverlay($orphanRow);
-            $finalResult[] = (object) $orphanRow;
         }
 
         // Save PFT% and ROI_percentage to AmazonDataView value column after processing all rows
@@ -2778,7 +866,6 @@ class OverallAmazonController extends Controller
                     'PFT' => $row->{'PFT%'} ?? 0,
                     'ROI' => $row->ROI_percentage ?? 0,
                     'GPFT' => $row->{'GPFT%'} ?? 0,
-                    'AD_percent' => $row->{'AD%'} ?? 0,
                 ]);
                 
                 $amazonDataView->value = $merged;
@@ -2789,54 +876,9 @@ class OverallAmazonController extends Controller
             }
         }
 
-        // Calculate campaign totals using LATEST L30 row per campaign (MAX(id)) approach
-        // This matches ChannelMasterController::fetchAdMetricsFromTables() exactly
-        
-        // KW: SP campaigns NOT ending with PT or FBA - get latest L30 row per campaign
-        $kwTotalLatestIds = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('MAX(id) as id')
-            ->where('report_date_range', 'L30')
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
-            ->groupBy('campaignName')
-            ->pluck('id');
-        $total_kw_spend = $kwTotalLatestIds->isNotEmpty()
-            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $kwTotalLatestIds)->sum('spend')
-            : 0;
-        
-        // PT: SP campaigns ending with PT (not FBA PT) - get latest L30 row per campaign
-        $ptTotalLatestIds = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('MAX(id) as id')
-            ->where('report_date_range', 'L30')
-            ->where(function ($q) {
-                $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'");
-            })
-            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
-            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
-            ->groupBy('campaignName')
-            ->pluck('id');
-        $total_pt_spend = $ptTotalLatestIds->isNotEmpty()
-            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $ptTotalLatestIds)->sum('spend')
-            : 0;
-        
-        // HL: SB campaigns - get latest L30 row per campaign
-        $hlTotalLatestIds = DB::table('amazon_sb_campaign_reports')
-            ->selectRaw('MAX(id) as id')
-            ->where('report_date_range', 'L30')
-            ->groupBy('campaignName')
-            ->pluck('id');
-        $total_hl_spend = $hlTotalLatestIds->isNotEmpty()
-            ? DB::table('amazon_sb_campaign_reports')->whereIn('id', $hlTotalLatestIds)->sum('cost')
-            : 0;
-
         return response()->json([
             'message' => 'Data fetched successfully',
             'data' => $finalResult,
-            'campaign_totals' => [
-                'kw_spend_L30' => round((float) $total_kw_spend, 2),
-                'pt_spend_L30' => round((float) $total_pt_spend, 2),
-                'hl_spend_L30' => round((float) $total_hl_spend, 2),
-            ],
             'status' => 200,
         ]);
     }
@@ -3114,50 +1156,16 @@ class OverallAmazonController extends Controller
         $spriceFloat = floatval($sprice);
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * 0.80 - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
         
-        // Get AD% from the product
-        $adPercent = 0;
-        $amazonDatasheet = AmazonDatasheet::where('sku', $sku)->first();
+        // SPFT = SGPFT (without AD% deduction)
+        $spft = $sgpft;
         
-        if ($amazonDatasheet) {
-            $price = floatval($amazonDatasheet->price ?? 0);
-            $unitsL30 = floatval($amazonDatasheet->units_ordered_l30 ?? 0);
-            
-            $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('report_date_range', 'L30')
-                ->get()
-                ->first(function ($item) use ($sku) {
-                    $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
-                });
-            
-            $amazonSpCampaignReportsPtL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('report_date_range', 'L30')
-                ->get()
-                ->first(function ($item) use ($sku) {
-                    $cleanName = strtoupper(trim($item->campaignName));
-                    return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'));
-                });
-            
-            $kw_spend_l30 = $amazonSpCampaignReportsL30->cost ?? 0;
-            $pmt_spend_l30 = $amazonSpCampaignReportsPtL30->cost ?? 0;
-            $totalSpend = $kw_spend_l30 + $pmt_spend_l30;
-            
-            $totalRevenue = $price * $unitsL30;
-            $adPercent = $totalRevenue > 0 ? ($totalSpend / $totalRevenue) * 100 : 0;
-        }
-        
-        // SPFT = SGPFT - AD%
-        $spft = round($sgpft - $adPercent, 2);
-        
-        // SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
-        $adDecimal = $adPercent / 100;
+        // SROI = ((SPRICE * 0.80 - ship - lp) / lp) * 100 (without AD% deduction)
         $sroi = round(
-            $lp > 0 ? (($spriceFloat * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+            $lp > 0 ? (($spriceFloat * 0.80 - $ship - $lp) / $lp) * 100 : 0,
             2
         );
         
-        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
+        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'spft' => $spft, 'sroi' => $sroi]);
 
         $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
 
@@ -3405,37 +1413,97 @@ class OverallAmazonController extends Controller
                 return response()->json($result);
             }
 
-            // Match Pricing Master CVR Shopify B2C behavior exactly by routing through
-            // CvrMasterController::pushPriceToAmazon(marketplace=shopifyb2c).
-            Log::info('applyAmazonPrice: About to push to Shopify', [
-                'sku' => $statusSku !== '' ? $statusSku : strtoupper(trim($skuForAmazon)),
-                'price_being_sent' => $priceFloat,
-                'price_original_from_request' => $price
+            // Check if we should also update Amazon's minimum price constraint
+            $updateMinPriceConstraint = $request->input('update_amazon_min_price', false);
+            
+            Log::info('Checking Amazon min price update parameter', [
+                'update_amazon_min_price_param' => $updateMinPriceConstraint,
+                'request_all' => $request->all()
             ]);
             
-            $shopifyPush = $this->pushShopifyB2CViaCvrController(
-                $statusSku !== '' ? $statusSku : strtoupper(trim($skuForAmazon)),
-                $priceFloat
-            );
+            if ($updateMinPriceConstraint) {
+                Log::info('Updating Amazon minimum price constraint', [
+                    'sku' => $skuForAmazon,
+                    'min_price' => $priceFloat
+                ]);
+                
+                try {
+                    $constraintResult = $service->updateCompetitivePriceConstraints($skuForAmazon, $priceFloat);
+                    
+                    if (isset($constraintResult['errors']) && !empty($constraintResult['errors'])) {
+                        Log::warning('Amazon minimum price constraint update failed (non-blocking)', [
+                            'sku' => $skuForAmazon,
+                            'errors' => $constraintResult['errors']
+                        ]);
+                        // Don't fail the whole operation, just log the warning
+                    } else {
+                        Log::info('Amazon minimum price constraint updated successfully', [
+                            'sku' => $skuForAmazon,
+                            'min_price' => $priceFloat
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Amazon minimum price constraint update exception (non-blocking)', [
+                        'sku' => $skuForAmazon,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            // Check if we should push to Shopify (default true for backward compatibility)
+            $pushShopify = $request->input('push_shopify', true);
             
-            // Save status based on Shopify push result - only mark as pushed if Shopify succeeds
-            $this->saveSpriceStatus($statusSku, ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error');
-            
-            Log::info('Amazon price update successful', [
-                'status_sku' => $statusSku,
-                'amazon_api_sku' => $skuForAmazon,
-                'asin_param' => $asinParam,
-                'price' => $priceFloat,
-                'shopify_push_ok' => $shopifyPush['ok'] ?? false,
-                'shopify_push_message' => $shopifyPush['message'] ?? null,
-            ]);
-            
-            return response()->json(array_merge(is_array($result) ? $result : [], [
+            $responseData = array_merge(is_array($result) ? $result : [], [
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
-                'shopify_push' => $shopifyPush,
-                'S_STATUS' => ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error',
-            ]));
+            ]);
+            
+            if ($pushShopify) {
+                // Match Pricing Master CVR Shopify B2C behavior exactly by routing through
+                // CvrMasterController::pushPriceToAmazon(marketplace=shopifyb2c).
+                Log::info('applyAmazonPrice: About to push to Shopify', [
+                    'sku' => $statusSku !== '' ? $statusSku : strtoupper(trim($skuForAmazon)),
+                    'price_being_sent' => $priceFloat,
+                    'price_original_from_request' => $price
+                ]);
+                
+                $shopifyPush = $this->pushShopifyB2CViaCvrController(
+                    $statusSku !== '' ? $statusSku : strtoupper(trim($skuForAmazon)),
+                    $priceFloat
+                );
+                
+                // Save status based on Shopify push result - only mark as pushed if Shopify succeeds
+                $this->saveSpriceStatus($statusSku, ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error');
+                
+                // Save Shopify status separately
+                $this->saveShopifyStatus($statusSku, ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error');
+                
+                Log::info('Amazon price update successful with Shopify', [
+                    'status_sku' => $statusSku,
+                    'amazon_api_sku' => $skuForAmazon,
+                    'asin_param' => $asinParam,
+                    'price' => $priceFloat,
+                    'shopify_push_ok' => $shopifyPush['ok'] ?? false,
+                    'shopify_push_message' => $shopifyPush['message'] ?? null,
+                ]);
+                
+                $responseData['shopify_push'] = $shopifyPush;
+                $responseData['S_STATUS'] = ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error';
+            } else {
+                // Only save Amazon status when Shopify is skipped
+                $this->saveSpriceStatus($statusSku, 'pushed');
+                
+                Log::info('Amazon price update successful (Shopify skipped)', [
+                    'status_sku' => $statusSku,
+                    'amazon_api_sku' => $skuForAmazon,
+                    'asin_param' => $asinParam,
+                    'price' => $priceFloat,
+                ]);
+                
+                $responseData['SPRICE_STATUS'] = 'pushed';
+            }
+            
+            return response()->json($responseData);
         } catch (\Exception $e) {
             // Save error status
             $this->saveSpriceStatus($statusSku, 'error');
@@ -3452,6 +1520,227 @@ class OverallAmazonController extends Controller
                     'message' => 'An error occurred: ' . $e->getMessage()
                 ]]
             ], 500);
+        }
+    }
+
+    /**
+     * Push price to Shopify B2C independently
+     */
+    public function pushShopifyB2CPrice(Request $request)
+    {
+        $sku = strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $request->input('sku', ''))));
+        $price = $request->input('price');
+        
+        // Log request
+        Log::info('pushShopifyB2CPrice: Request received', [
+            'sku' => $sku,
+            'price' => $price
+        ]);
+        
+        if ($sku === '') {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'SKU is required.']]
+            ], 400);
+        }
+        
+        if ($price === null || $price === '') {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'Price is required.']]
+            ], 400);
+        }
+        
+        $priceFloat = is_numeric($price) ? (float) $price : null;
+        
+        if ($priceFloat === null || $priceFloat <= 0 || $priceFloat < 0.01 || $priceFloat > 999999.99) {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be between $0.01 and $999,999.99.']]
+            ], 400);
+        }
+        
+        $priceFloat = round($priceFloat, 2);
+        
+        try {
+            $shopifyPush = $this->pushShopifyB2CViaCvrController($sku, $priceFloat);
+            
+            // Save Shopify status separately
+            $this->saveShopifyStatus($sku, ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error');
+            
+            Log::info('Shopify B2C price push result', [
+                'sku' => $sku,
+                'price' => $priceFloat,
+                'shopify_push_ok' => $shopifyPush['ok'] ?? false,
+                'shopify_push_message' => $shopifyPush['message'] ?? null,
+            ]);
+            
+            return response()->json([
+                'shopify_push' => $shopifyPush,
+                'S_STATUS' => ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error',
+            ]);
+        } catch (\Exception $e) {
+            $this->saveShopifyStatus($sku, 'error');
+            Log::error('Exception in pushShopifyB2CPrice', [
+                'sku' => $sku,
+                'price' => $priceFloat,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Save Shopify status to database
+     */
+    private function saveShopifyStatus($sku, $status)
+    {
+        try {
+            $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+            $existing = is_array($amazonDataView->value) ? $amazonDataView->value : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+            if (!is_array($existing)) $existing = [];
+            $existing['S_STATUS'] = $status;
+            $existing['S_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            $amazonDataView->value = $existing;
+            $amazonDataView->save();
+            Log::info('Shopify status saved', ['sku' => $sku, 'status' => $status]);
+        } catch (\Exception $e) {
+            Log::error('Failed to save Shopify status', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Push price to ProLightSounds (PLS) Shopify store
+     */
+    public function pushPlsPrice(Request $request)
+    {
+        $sku = strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $request->input('sku', ''))));
+        $price = $request->input('price');
+        
+        Log::info('pushPlsPrice: Request received', [
+            'sku' => $sku,
+            'price' => $price
+        ]);
+        
+        if ($sku === '') {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'SKU is required.']]
+            ], 400);
+        }
+        
+        if ($price === null || $price === '') {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'Price is required.']]
+            ], 400);
+        }
+        
+        $priceFloat = is_numeric($price) ? (float) $price : null;
+        
+        if ($priceFloat === null || $priceFloat <= 0 || $priceFloat < 0.01 || $priceFloat > 999999.99) {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be between $0.01 and $999,999.99.']]
+            ], 400);
+        }
+        
+        $priceFloat = round($priceFloat, 2);
+        
+        try {
+            $plsPush = $this->pushPlsViaCvrController($sku, $priceFloat);
+            
+            // Save PLS status separately
+            $this->savePlsStatus($sku, ($plsPush['ok'] ?? false) ? 'pushed' : 'error');
+            
+            Log::info('ProLightSounds price push result', [
+                'sku' => $sku,
+                'price' => $priceFloat,
+                'pls_push_ok' => $plsPush['ok'] ?? false,
+                'pls_push_message' => $plsPush['message'] ?? null,
+            ]);
+            
+            return response()->json([
+                'pls_push' => $plsPush,
+                'PLS_STATUS' => ($plsPush['ok'] ?? false) ? 'pushed' : 'error',
+            ]);
+        } catch (\Exception $e) {
+            $this->savePlsStatus($sku, 'error');
+            Log::error('Exception in pushPlsPrice', [
+                'sku' => $sku,
+                'price' => $priceFloat,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to ProLightSounds via CVR Master Controller
+     */
+    private function pushPlsViaCvrController(string $sku, float $price): array
+    {
+        try {
+            $req = Request::create('/cvr-master-push-price', 'POST', [
+                'sku' => strtoupper(trim($sku)),
+                'price' => round($price, 2),
+                'marketplace' => 'pls',
+            ]);
+
+            $res = app(CvrMasterController::class)->pushPriceToAmazon($req);
+            $http = method_exists($res, 'getStatusCode') ? (int) $res->getStatusCode() : 200;
+            $payload = [];
+            if (method_exists($res, 'getContent')) {
+                $raw = $res->getContent();
+                if (is_string($raw) && $raw !== '') {
+                    $decoded = json_decode($raw, true);
+                    $payload = is_array($decoded) ? $decoded : [];
+                }
+            }
+            if ($payload === [] && method_exists($res, 'getData')) {
+                $d = $res->getData(true);
+                $payload = is_array($d) ? $d : (is_object($d) ? json_decode(json_encode($d), true) : []);
+            }
+            $ok = !empty($payload['success']);
+            if ($http >= 400) {
+                $ok = false;
+            }
+
+            return [
+                'ok' => $ok,
+                'message' => $payload['message'] ?? ($ok ? 'ProLightSounds push successful.' : 'ProLightSounds push failed.'),
+                'status_code' => $http,
+                'errors' => $payload['errors'] ?? null,
+                'data' => $payload['data'] ?? null,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Amazon tab -> PLS push exception', [
+                'sku' => $sku,
+                'price' => $price,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'ok' => false,
+                'message' => 'ProLightSounds push exception: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Save ProLightSounds status to database
+     */
+    private function savePlsStatus($sku, $status)
+    {
+        try {
+            $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+            $existing = is_array($amazonDataView->value) ? $amazonDataView->value : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+            if (!is_array($existing)) $existing = [];
+            $existing['PLS_STATUS'] = $status;
+            $existing['PLS_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            $amazonDataView->value = $existing;
+            $amazonDataView->save();
+            Log::info('PLS status saved', ['sku' => $sku, 'status' => $status]);
+        } catch (\Exception $e) {
+            Log::error('Failed to save PLS status', ['sku' => $sku, 'error' => $e->getMessage()]);
         }
     }
 
@@ -3922,11 +2211,10 @@ class OverallAmazonController extends Controller
             $data = json_decode($response->getContent(), true);
 
             // Auto-save daily summary in background (non-blocking)
-            $this->saveDailySummaryIfNeeded($data['data'] ?? [], $data['campaign_totals'] ?? []);
+            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
 
             return response()->json([
-                'data' => $data['data'] ?? [],
-                'campaign_totals' => $data['campaign_totals'] ?? []
+                'data' => $data['data'] ?? []
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Amazon data for Tabulator: ' . $e->getMessage());
@@ -4322,7 +2610,7 @@ class OverallAmazonController extends Controller
      * Auto-save daily summary snapshot (only once per day)
      * Uses JSON storage - flexible and matches JavaScript exactly
      */
-    private function saveDailySummaryIfNeeded($products, $campaignTotals = [])
+    private function saveDailySummaryIfNeeded($products)
     {
         try {
             $today = now()->toDateString();
@@ -4348,7 +2636,6 @@ class OverallAmazonController extends Controller
             $totalSoldCount = 0;
             $zeroSoldCount = 0;
             $prcGtLmpCount = 0;
-            $totalSpendL30 = 0;
             $totalPftAmt = 0;
             $totalSalesAmt = 0;
             $totalLpAmt = 0;
@@ -4364,7 +2651,6 @@ class OverallAmazonController extends Controller
             // Loop through each row (EXACT JavaScript forEach logic)
             foreach ($validProducts as $row) {
                 $totalSkuCount++;
-                $totalSpendL30 += floatval($row['AD_Spend_L30'] ?? 0);
                 $totalPftAmt += floatval($row['Total_pft'] ?? 0);
                 $totalSalesAmt += floatval($row['T_Sale_l30'] ?? 0);
                 $totalLpAmt += floatval($row['LP_productmaster'] ?? 0) * floatval($row['A_L30'] ?? 0);
@@ -4433,18 +2719,10 @@ class OverallAmazonController extends Controller
             // Calculate averages and percentages (EXACT JavaScript logic)
             $avgPrice = $totalAmazonL30 > 0 ? $totalWeightedPrice / $totalAmazonL30 : 0;
             $avgCVR = $totalViews > 0 ? ($totalAmazonL30 / $totalViews * 100) : 0;
-            $tcosPercent = $totalSalesAmt > 0 ? (($totalSpendL30 / $totalSalesAmt) * 100) : 0;
             $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
-            $nroiPercent = $groiPercent - $tcosPercent;
             
             // Calculate GPFT % (average gross profit)
             $avgGpftPercent = $totalSalesAmt > 0 ? (($totalSalesAmt - $totalLpAmt) / $totalSalesAmt * 100) : 0;
-            
-            // Get campaign spend totals from the corrected campaign data
-            $kwSpendL30 = floatval($campaignTotals['kw_spend_L30'] ?? 0);
-            $ptSpendL30 = floatval($campaignTotals['pt_spend_L30'] ?? 0);
-            $hlSpendL30 = floatval($campaignTotals['hl_spend_L30'] ?? 0);
-            $totalCampaignSpend = $kwSpendL30 + $ptSpendL30 + $hlSpendL30;
             
             // Store ALL metrics in JSON (flexible!)
             $summaryData = [
@@ -4460,16 +2738,9 @@ class OverallAmazonController extends Controller
                 'missing_amazon_count' => $missingAmazonCount,
                 
                 // Financial Totals
-                'total_spend_l30' => round($totalSpendL30, 2), // From product-level data
                 'total_pft_amt' => round($totalPftAmt, 2),
                 'total_sales_amt' => round($totalSalesAmt, 2),
                 'total_lp_amt' => round($totalLpAmt, 2),
-                
-                // Campaign Spend Breakdown (from corrected campaign totals)
-                'kw_spend_l30' => round($kwSpendL30, 2),
-                'pt_spend_l30' => round($ptSpendL30, 2),
-                'hl_spend_l30' => round($hlSpendL30, 2),
-                'total_campaign_spend' => round($totalCampaignSpend, 2),
                 
                 // Inventory
                 'total_amazon_inv' => round($totalAmazonInv, 2),
@@ -4478,9 +2749,7 @@ class OverallAmazonController extends Controller
                 'total_views' => $totalViews,
                 
                 // Calculated Percentages
-                'tcos_percent' => round($tcosPercent, 2),
                 'groi_percent' => round($groiPercent, 2),
-                'nroi_percent' => round($nroiPercent, 2),
                 'cvr_percent' => round($avgCVR, 2),
                 'gpft_percent' => round($avgGpftPercent, 2),
                 
