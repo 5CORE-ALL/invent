@@ -4023,14 +4023,11 @@ PROMPT;
         try {
             $validated = $request->validate([
                 'sku' => 'required|string',
-                'audit_suggestion' => 'nullable|string|max:100',
+                'audit_suggestion' => 'nullable|string|max:500',
                 'is_fixed' => 'nullable|boolean',
-                'link_data' => 'nullable|array',
-                'link_data.*' => 'nullable|url',
-                'screenshots' => 'nullable|array',
-                'screenshots.*' => 'nullable|image|max:5120', // max 5MB each
-                'voice_notes' => 'nullable|array',
-                'voice_notes.*' => 'nullable|file|mimes:webm,mp3,wav,ogg|max:10240', // max 10MB each
+                'link_data' => 'nullable|string', // Accept single string
+                'screenshot' => 'nullable|image|max:5120', // Accept single file
+                'voice_note' => 'nullable|file|mimes:webm,mp3,wav,ogg|max:10240', // Accept single file
             ]);
 
             // Find product by SKU
@@ -4054,42 +4051,25 @@ PROMPT;
             // Update audit suggestion
             $values['audit_suggestion'] = $validated['audit_suggestion'];
             
-            // Handle multiple link data
-            if (isset($validated['link_data']) && is_array($validated['link_data'])) {
-                $links = array_filter($validated['link_data']); // Remove empty values
-                if (!empty($links)) {
-                    $values['audit_link_data'] = array_values($links); // Re-index array
-                }
+            // Handle link data (single string)
+            if (!empty($validated['link_data'])) {
+                $values['audit_link_data'] = $validated['link_data'];
             }
             
-            // Handle multiple screenshots
-            if ($request->has('screenshots')) {
-                $screenshotPaths = [];
-                foreach ($request->file('screenshots') as $index => $screenshot) {
-                    if ($screenshot) {
-                        $screenshotName = 'audit_screenshot_' . $validated['sku'] . '_' . time() . '_' . $index . '.' . $screenshot->getClientOriginalExtension();
-                        $screenshotPath = $screenshot->storeAs('audit_screenshots', $screenshotName, 'public');
-                        $screenshotPaths[] = $screenshotPath;
-                    }
-                }
-                if (!empty($screenshotPaths)) {
-                    $values['audit_screenshots'] = $screenshotPaths;
-                }
+            // Handle screenshot (single file)
+            if ($request->hasFile('screenshot')) {
+                $screenshot = $request->file('screenshot');
+                $screenshotName = 'audit_screenshot_' . $validated['sku'] . '_' . time() . '.' . $screenshot->getClientOriginalExtension();
+                $screenshotPath = $screenshot->storeAs('audit_screenshots', $screenshotName, 'public');
+                $values['audit_screenshot'] = $screenshotPath;
             }
             
-            // Handle multiple voice notes
-            if ($request->has('voice_notes')) {
-                $voiceNotePaths = [];
-                foreach ($request->file('voice_notes') as $index => $voiceNote) {
-                    if ($voiceNote) {
-                        $voiceNoteName = 'audit_voice_note_' . $validated['sku'] . '_' . time() . '_' . $index . '.' . $voiceNote->getClientOriginalExtension();
-                        $voiceNotePath = $voiceNote->storeAs('audit_voice_notes', $voiceNoteName, 'public');
-                        $voiceNotePaths[] = $voiceNotePath;
-                    }
-                }
-                if (!empty($voiceNotePaths)) {
-                    $values['audit_voice_notes'] = $voiceNotePaths;
-                }
+            // Handle voice note (single file)
+            if ($request->hasFile('voice_note')) {
+                $voiceNote = $request->file('voice_note');
+                $voiceNoteName = 'audit_voice_note_' . $validated['sku'] . '_' . time() . '.' . $voiceNote->getClientOriginalExtension();
+                $voiceNotePath = $voiceNote->storeAs('audit_voice_notes', $voiceNoteName, 'public');
+                $values['audit_voice_note'] = $voiceNotePath;
             }
             
             $product->Values = $values;

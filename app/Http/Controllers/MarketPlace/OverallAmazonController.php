@@ -4718,7 +4718,8 @@ class OverallAmazonController extends Controller
             ]);
             
             $sku = trim($validated['sku']);
-            $marketplace = $validated['marketplace'] ?? 'amazon';
+            // Normalize marketplace to lowercase to match the getCompetitors filter
+            $marketplace = strtolower($validated['marketplace'] ?? 'amazon');
             
             // Check if this exact record already exists
             $existing = AmazonSkuCompetitor::where('sku', $sku)

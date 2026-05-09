@@ -364,15 +364,30 @@
                         <!-- Audit Suggestion with Voice-to-Text -->
                         <div class="mb-3">
                             <label for="editAuditSuggestion" class="form-label fw-bold">
-                                Audit Suggestion (Max 100 characters)
+                                Audit Suggestion (Max 500 characters)
                                 <button type="button" class="btn btn-sm btn-danger ms-2" id="voiceToTextBtn" title="Voice to Text">
                                     <i class="fas fa-microphone"></i>
                                 </button>
                                 <span id="voiceStatus" class="badge bg-warning ms-2" style="display: none;">Listening...</span>
                             </label>
-                            <textarea class="form-control" id="editAuditSuggestion" name="audit_suggestion" rows="3" maxlength="100" placeholder="Enter audit suggestion or click microphone to speak..."></textarea>
+                            <textarea class="form-control" id="editAuditSuggestion" name="audit_suggestion" rows="5" maxlength="500" placeholder="Enter audit suggestion or click microphone to speak..."></textarea>
                             <div class="form-text">
-                                <span id="charCount">0</span> / 100 characters
+                                <span id="charCount">0</span> / 500 characters
+                            </div>
+                            
+                            <!-- A+ Reference Links -->
+                            <div class="alert alert-info mt-3">
+                                <strong><i class="fas fa-lightbulb me-2"></i>A+ Content Reference Links:</strong>
+                                <ul class="mb-0 mt-2" style="font-size: 13px;">
+                                    <li><a href="https://advertising.amazon.com/solutions/products/a-plus-content" target="_blank" rel="noopener">Amazon A+ Content Overview - Official Guide</a></li>
+                                    <li><a href="https://sellercentral.amazon.com/gp/help/external/G202102950" target="_blank" rel="noopener">A+ Content Manager - Amazon Seller Central Help</a></li>
+                                    <li><a href="https://advertising.amazon.com/library/guides/a-plus-content" target="_blank" rel="noopener">A+ Content Best Practices & Examples</a></li>
+                                    <li><a href="https://www.junglescout.com/blog/amazon-a-plus-content/" target="_blank" rel="noopener">Complete A+ Content Guide - Jungle Scout</a></li>
+                                    <li><a href="https://www.helium10.com/blog/amazon-a-plus-content/" target="_blank" rel="noopener">A+ Content Strategy & Tips - Helium 10</a></li>
+                                    <li><a href="https://www.amzscout.net/blog/amazon-a-plus-content/" target="_blank" rel="noopener">A+ Content Tutorial & Examples - AMZScout</a></li>
+                                    <li><a href="https://www.shopify.com/partners/blog/amazon-a-plus-content" target="_blank" rel="noopener">How to Create A+ Content - Shopify Guide</a></li>
+                                    <li><a href="https://ecomcrew.com/amazon-a-plus-content/" target="_blank" rel="noopener">A+ Content Design Ideas - EcomCrew</a></li>
+                                </ul>
                             </div>
                         </div>
                         
@@ -853,6 +868,7 @@
                     formatter: function(cell) {
                         const value = cell.getValue() || cell.getRow().getData()['DB'] || '';
                         const sku = cell.getRow().getData().SKU;
+                        const escapedSku = sku.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         const cleanUrl = value ? value.trim() : '';
                         
                         if (cleanUrl && cleanUrl.match(/^https?:\/\//i)) {
@@ -861,13 +877,13 @@
                                     <a href="${cleanUrl}" target="_blank" class="text-decoration-none" style="color: #2c6ed5;" title="Open DB Link">
                                         <i class="fas fa-link"></i>
                                     </a>
-                                    <button class="btn btn-sm btn-link p-0" onclick="openDBModal('${sku}', '${cleanUrl.replace(/'/g, "\\'")}')" title="Edit DB Link" style="color: #6c757d;">
+                                    <button class="btn btn-sm btn-link p-0" onclick="openDBModal('${escapedSku}', '${cleanUrl.replace(/'/g, "\\'")}')" title="Edit DB Link" style="color: #6c757d;">
                                         <i class="fas fa-edit" style="font-size: 12px;"></i>
                                     </button>
                                 </div>
                             `;
                         } else {
-                            return `<button class="btn btn-sm btn-link p-0" onclick="openDBModal('${sku}', '')" title="Add DB Link" style="color: #28a745;">
+                            return `<button class="btn btn-sm btn-link p-0" onclick="openDBModal('${escapedSku}', '')" title="Add DB Link" style="color: #28a745;">
                                 <i class="fas fa-plus"></i>
                             </button>`;
                         }
@@ -880,7 +896,8 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU;
-                        return `<button class="btn btn-sm btn-info" onclick="viewCompetitors('${sku}')" title="View Competitors"><i class="fas fa-search"></i></button>`;
+                        const escapedSku = sku.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        return `<button class="btn btn-sm btn-info" onclick="viewCompetitors('${escapedSku}')" title="View Competitors"><i class="fas fa-search"></i></button>`;
                     }
                 },
                 {
@@ -891,17 +908,21 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const sku = cell.getRow().getData().SKU;
+                        // Properly escape SKU for use in onclick
+                        const escapedSku = sku.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        const escapedValue = value ? value.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
+                        
                         if (value && value.trim()) {
                             return `
                                 <div style="display: inline-flex; align-items: center; gap: 5px;">
-                                    <div class="audit-dot" onclick="editAudit('${sku}', '${value.replace(/'/g, "\\'")}')" title="${value}"></div>
-                                    <button class="btn btn-sm btn-link p-0" onclick="viewAuditHistory('${sku}')" title="View History">
+                                    <div class="audit-dot" onclick="editAudit('${escapedSku}', '${escapedValue}')" title="${value}"></div>
+                                    <button class="btn btn-sm btn-link p-0" onclick="viewAuditHistory('${escapedSku}')" title="View History">
                                         <i class="fas fa-history"></i>
                                     </button>
                                 </div>
                             `;
                         }
-                        return `<button class="btn btn-sm btn-link p-0" onclick="editAudit('${sku}', '')" title="Add Audit"><i class="fas fa-plus"></i></button>`;
+                        return `<button class="btn btn-sm btn-link p-0" onclick="editAudit('${escapedSku}', '')" title="Add Audit"><i class="fas fa-plus"></i></button>`;
                     }
                 },
                 {
@@ -912,6 +933,7 @@
                     formatter: function(cell) {
                         const premiumImage = cell.getValue();
                         const sku = cell.getRow().getData().SKU;
+                        const escapedSku = sku.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         
                         if (premiumImage && premiumImage.trim()) {
                             return `
@@ -920,13 +942,13 @@
                                          style="width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;" 
                                          onclick="window.open('/storage/${premiumImage}', '_blank')"
                                          title="Click to view full size">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="openImageUploadModal('${sku}', 'premium')" title="Edit Image">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="openImageUploadModal('${escapedSku}', 'premium')" title="Edit Image">
                                         <i class="fas fa-edit"></i>
                                     </button>
                                 </div>
                             `;
                         } else {
-                            return `<button class="btn btn-sm btn-outline-success" onclick="openImageUploadModal('${sku}', 'premium')" title="Upload Image">
+                            return `<button class="btn btn-sm btn-outline-success" onclick="openImageUploadModal('${escapedSku}', 'premium')" title="Upload Image">
                                 <i class="fas fa-upload"></i>
                             </button>`;
                         }
@@ -940,6 +962,7 @@
                     formatter: function(cell) {
                         const standardImage = cell.getValue();
                         const sku = cell.getRow().getData().SKU;
+                        const escapedSku = sku.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         
                         if (standardImage && standardImage.trim()) {
                             return `
@@ -948,13 +971,13 @@
                                          style="width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;" 
                                          onclick="window.open('/storage/${standardImage}', '_blank')"
                                          title="Click to view full size">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="openImageUploadModal('${sku}', 'standard')" title="Edit Image">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="openImageUploadModal('${escapedSku}', 'standard')" title="Edit Image">
                                         <i class="fas fa-edit"></i>
                                     </button>
                                 </div>
                             `;
                         } else {
-                            return `<button class="btn btn-sm btn-outline-success" onclick="openImageUploadModal('${sku}', 'standard')" title="Upload Image">
+                            return `<button class="btn btn-sm btn-outline-success" onclick="openImageUploadModal('${escapedSku}', 'standard')" title="Upload Image">
                                 <i class="fas fa-upload"></i>
                             </button>`;
                         }
@@ -967,9 +990,10 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU;
+                        const escapedSku = sku.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         const statusToggle = cell.getValue() || 'red';
                         const statusClass = statusToggle === 'green' ? 'green' : 'red';
-                        return `<button class="status-toggle-btn ${statusClass}" data-sku="${sku}" onclick="toggleStatus('${sku}', '${statusToggle}')" title="Toggle Status"></button>`;
+                        return `<button class="status-toggle-btn ${statusClass}" data-sku="${sku}" onclick="toggleStatus('${escapedSku}', '${statusToggle}')" title="Toggle Status"></button>`;
                     }
                 },
                 {
@@ -979,7 +1003,8 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU;
-                        return `<button class="btn btn-sm btn-primary" onclick="pushData('${sku}')" title="Push"><i class="fas fa-paper-plane"></i></button>`;
+                        const escapedSku = sku.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        return `<button class="btn btn-sm btn-primary" onclick="pushData('${escapedSku}')" title="Push"><i class="fas fa-paper-plane"></i></button>`;
                     }
                 }
             ]
