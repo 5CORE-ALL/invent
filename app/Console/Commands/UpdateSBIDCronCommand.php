@@ -224,7 +224,8 @@ class UpdateSBIDCronCommand extends Command
                 }
 
                 $campaignId = $matched['campaign_id'];
-                if ($campaignIdsFilter !== null && ! in_array((string) $campaignId, $campaignIdsFilter, true)) {
+                // FIX: Convert filter to strings for consistent comparison (campaign_id from DB is string, filter may be int)
+                if ($campaignIdsFilter !== null && ! in_array((string) $campaignId, array_map('strval', $campaignIdsFilter), true)) {
                     continue;
                 }
                 $budget = $matched['budget_amount_micros'] ? $matched['budget_amount_micros'] / 1000000 : null;

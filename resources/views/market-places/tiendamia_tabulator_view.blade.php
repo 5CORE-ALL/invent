@@ -554,7 +554,22 @@
         function updateSelectedCount() {
             const count = selectedSkus.size;
             $('#tm-selected-skus-count').text(count + ' SKU' + (count !== 1 ? 's' : '') + ' selected');
-            $('#tm-discount-input-container').toggle(count > 0);
+            
+            // Show/hide badges in top bar
+            if (count > 0) {
+                $('#tm-selected-rows-count').text(count + ' selected').show();
+                $('#tm-clear-selection-btn').show();
+            } else {
+                $('#tm-selected-rows-count').hide();
+                $('#tm-clear-selection-btn').hide();
+            }
+        }
+
+        function updateTmRowCounter() {
+            if (!table) return;
+            const data = table.getData('active');
+            const total = allRows.length;
+            $('#tm-table-row-counter').text(data.length + ' of ' + total + ' rows');
         }
 
         function updateTmSelectAllCheckbox() {
@@ -795,13 +810,13 @@
                         return [];
                     }
                     allRows = Array.isArray(response) ? response : [];
-                    const filtered = computeFiltered();
-                    updateSummary(filtered);
                     queueMicrotask(function() {
+                        applyClientFilters();
+                        updateTmRowCounter();
                         tmResyncSelectColumn();
                         updateTmSelectAllCheckbox();
                     });
-                    return filtered;
+                    return allRows;
                 },
                 layout: 'fitDataStretch',
                 pagination: true,
@@ -1100,11 +1115,21 @@
                 ],
             });
 
-            $('#tm-price-mode-btn').on('click', function() {
-                if (!table) return;
-                const order = ['off', 'decrease', 'increase', 'same'];
-                const i = order.indexOf(tmPriceMode);
-                tmPriceMode = order[(i + 1) % order.length];
+            // Apply filters when table is built
+            table.on('tableBuilt', function() {
+                applyClientFilters();
+            });
+
+            // Apply filters after data is loaded
+            table.on('dataLoaded', function() {
+                applyClientFilters();
+            });
+
+            // Price mode dropdown handler
+            $(document).on('click', '.tm-price-mode-item', function(e) {
+                e.preventDefault();
+                const mode = $(this).data('mode');
+                tmPriceMode = mode;
                 syncTmPriceModeUi();
             });
 
@@ -1162,10 +1187,11 @@
                 cell.getRow().update({ sgpft: sgpft, sroi: sroi });
                 tmPatchAllRowsSku(sku, { sprice: sprice, sgpft: sgpft, sroi: sroi });
                 tmSaveSpriceUpdates([{ sku: sku, sprice: sprice }]);
-                updateSummary(computeFiltered());
+                const filtered = table.getData('active');
+                updateSummary(filtered);
             });
 
-            $('#tm-row-type-filter, #tm-inv-filter, #tm-stock-filter, #tm-gpft-filter, #tm-roi-filter, #tm-ml30-filter, #tm-map-filter')
+            $('#tm-row-type-filter, #tm-inv-filter, #tm-stock-filter, #tm-gpft-filter, #tm-roi-filter, #tm-ml30-filter, #tm-map-filter, #tm-dil-filter')
                 .on('change', applyClientFilters);
             let searchTimer = null;
             $('#tm-sku-search').on('input', function() {
@@ -1174,7 +1200,9 @@
             });
 
             $('#tm-refresh-btn').on('click', function() {
-                table.setData(TM_TABULATOR_DATA_URL);
+                table.setData(TM_TABULATOR_DATA_URL).then(function() {
+                    applyClientFilters();
+                });
             });
 
             $('#tm-export-btn').on('click', function() {
