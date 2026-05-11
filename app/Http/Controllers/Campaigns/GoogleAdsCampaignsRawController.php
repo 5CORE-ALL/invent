@@ -168,7 +168,7 @@ class GoogleAdsCampaignsRawController extends Controller
                     'command' => $labelForLog,
                     'message' => "Command started in background for {$campaignCount} campaign(s). Processing may take several minutes. Check the campaign budgets/bids in a few minutes to verify completion.",
                     'output' => "Running: {$command} (async mode)\nCampaigns: {$campaignCount}\n\nThe process is running in the background. This page won't show the detailed output, but you can:\n1. Wait 2-3 minutes\n2. Refresh the data\n3. Verify the budgets/bids were updated\n\nOr check logs: tail -f storage/logs/laravel.log",
-                    'async': true,
+                    'async' => true,
                 ], 200);
             } catch (\Throwable $e) {
                 // Fall back to synchronous execution
