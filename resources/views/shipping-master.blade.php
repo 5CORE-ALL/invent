@@ -279,6 +279,11 @@
         .table-responsive tbody td.hide-item-wt-act {
             display: none;
         }
+        /* Hide Item Weight DECL (LB) column */
+        .table-responsive thead th.hide-item-wt-decl,
+        .table-responsive tbody td.hide-item-wt-decl {
+            display: none;
+        }
 
         .table {
             margin-bottom: 0;
@@ -712,7 +717,7 @@
                                             <option value="lb_gt50">&gt; 50 lb</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter item-dim-header">
+                                    <th class="th-has-filter item-dim-header hide-item-wt-decl">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item WT DECL<br>(LB)</div>
                                         <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
@@ -1332,7 +1337,7 @@
 
                     // WT DECL column
                     const wtDeclCell = document.createElement('td');
-                    wtDeclCell.className = 'text-center';
+                    wtDeclCell.className = 'text-center hide-item-wt-decl';
                     wtDeclCell.textContent = cellVal(item.wt_decl, 2);
                     row.appendChild(wtDeclCell);
 

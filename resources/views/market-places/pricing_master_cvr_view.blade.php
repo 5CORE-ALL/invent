@@ -852,8 +852,8 @@
                                     <span class="status-circle default"></span> 0-4%</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="4-7">
                                     <span class="status-circle green"></span> 4-7%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="7-10">
-                                    <span class="status-circle green"></span> 7-10%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="7-13">
+                                    <span class="status-circle green"></span> 7-13%</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="10+">
                                     <span class="status-circle pink"></span> 10%+</a></li>
                         </ul>
@@ -3433,7 +3433,7 @@ title: "Dil %",
                     if (cvrRange === '3-4') return cvr >= 3 && cvr < 4;
                     if (cvrRange === '0-4') return cvr >= 0 && cvr < 4;
                     if (cvrRange === '4-7') return cvr >= 4 && cvr < 7;
-                    if (cvrRange === '7-10') return cvr >= 7 && cvr < 10;
+                    if (cvrRange === '7-13') return cvr >= 7 && cvr < 13;
                     if (cvrRange === '10+') return cvr >= 10;
                     return true;
                 });
@@ -3668,7 +3668,7 @@ title: "Dil %",
                         if (cvrRange === '3-4') return cvr >= 3 && cvr < 4;
                         if (cvrRange === '0-4') return cvr >= 0 && cvr < 4;
                         if (cvrRange === '4-7') return cvr >= 4 && cvr < 7;
-                        if (cvrRange === '7-10') return cvr >= 7 && cvr < 10;
+                        if (cvrRange === '7-13') return cvr >= 7 && cvr < 13;
                         if (cvrRange === '10+') return cvr >= 10;
                         return true;
                     });

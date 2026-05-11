@@ -97,7 +97,7 @@
                         <option value="3-4">3-4%</option>
                         <option value="0-4">0-4%</option>
                         <option value="4-7">4-7%</option>
-                        <option value="7-10">7-10%</option>
+                        <option value="7-13">7-13%</option>
                         <option value="10plus">10%+</option>
                     </select>
 
@@ -438,7 +438,7 @@
                             // getCvrColor logic from Amazon
                             if (cvr <= 4) color = '#a00211'; // red
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink
                             
                             return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
@@ -1083,7 +1083,7 @@
                         if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
                         if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
                         if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
-                        if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
+                        if (cvrFilter === '7-13') return cvr > 7 && cvr <= 13;
                         if (cvrFilter === '10plus') return cvr > 10;
                         return true;
                     });

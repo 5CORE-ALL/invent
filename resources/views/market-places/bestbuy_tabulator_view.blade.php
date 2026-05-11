@@ -449,6 +449,9 @@
 
         // Custom price rounding function to round to .99 endings
         function roundToRetailPrice(price) {
+            if (price < 20.99) {
+                return +price.toFixed(2);
+            }
             // Round to the nearest dollar and subtract 0.01 to make it .99
             const roundedDollar = Math.ceil(price);
             return roundedDollar - 0.01;

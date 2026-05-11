@@ -1075,7 +1075,7 @@
                                 let color = '';
                                 if (cvr <= 4) color = '#a00211'; // red
                                 else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                                else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                                else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                                 else color = '#e83e8c'; // pink
                                 
                                 return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
@@ -1113,7 +1113,7 @@
                                 let color = '';
                                 if (cvr <= 4) color = '#a00211'; // red
                                 else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                                else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                                else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                                 else color = '#e83e8c'; // pink
                                 
                                 return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
@@ -1172,7 +1172,7 @@
                                 let color = '';
                                 if (cvr <= 4) color = '#a00211';
                                 else if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                                else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                                else if (cvr > 7 && cvr <= 13) color = '#28a745';
                                 else color = '#e83e8c';
                                 
                                 return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>${arrowHtml}`.trim();

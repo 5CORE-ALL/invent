@@ -1605,7 +1605,7 @@
                     let color = '';
                     if (cvr <= 4) color = '#a00211';
                     else if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                    else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                    else if (cvr > 7 && cvr <= 13) color = '#28a745';
                     else color = '#e83e8c';
                     return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
                 }
@@ -1888,11 +1888,37 @@
                             formatter: function(cell) {
                                 const row = cell.getRow().getData();
                                 if (row.is_parent) return '';
-                                const cvr = fbaCvrL30FromRow(row);
-                                if ((parseFloat(row.AMZ_Sess30) || 0) === 0) {
-                                    return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                                const cvrL30 = fbaCvrL30FromRow(row);
+                                const cvrL60 = fbaCvrL60FromRow(row);
+                                const tol = 0.1;
+                                let arrowHtml = '';
+                                let dotColor = '#008000'; // green by default
+                                const sku = row['(Child) sku'] || '';
+                                if (sku) {
+                                    let arrowColor = '#6c757d';
+                                    let arrowIcon = 'fa-minus';
+                                    if (cvrL30 > cvrL60 + tol) {
+                                        // CVR 30 > CVR 60 (improving)
+                                        arrowColor = '#28a745';
+                                        arrowIcon = 'fa-arrow-up';
+                                        dotColor = '#28a745'; // green
+                                    } else if (cvrL30 < cvrL60 - tol) {
+                                        // CVR 60 > CVR 30 (declining)
+                                        arrowColor = '#a00211';
+                                        arrowIcon = 'fa-arrow-down';
+                                        dotColor = '#a00211'; // red
+                                    } else {
+                                        // CVR 30 equals CVR 60 (within tolerance)
+                                        dotColor = '#ffc107'; // yellow
+                                    }
+                                    arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvrL60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
+                                    const dotBtn = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" title="View CVR chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`;
+                                    arrowHtml = ` ${dotBtn}${arrowHtml}`;
                                 }
-                                return fbaCvrColoredHtml(cvr);
+                                if ((parseFloat(row.AMZ_Sess30) || 0) === 0) {
+                                    return `<span style="color: #a00211; font-weight: 600;">0.0%</span>${arrowHtml}`.trim();
+                                }
+                                return `${fbaCvrColoredHtml(cvrL30)}${arrowHtml}`.trim();
                             },
                             sorter: function(a, b, aRow, bRow) {
                                 return fbaCvrL30FromRow(aRow.getData()) - fbaCvrL30FromRow(bRow.getData());

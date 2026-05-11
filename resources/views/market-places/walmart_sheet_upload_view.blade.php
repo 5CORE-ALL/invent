@@ -352,7 +352,7 @@
                             <option value="3-4">3-4%</option>
                             <option value="0-4">0-4%</option>
                             <option value="4-7">4-7%</option>
-                            <option value="7-10">7-10%</option>
+                            <option value="7-13">7-13%</option>
                             <option value="10plus">10%+</option>
                         </select>
                     </div>
@@ -1248,6 +1248,9 @@
 
         // Custom price rounding function to round to .99 endings
         function roundToRetailPrice(price) {
+            if (price < 20.99) {
+                return +price.toFixed(2);
+            }
             // Round to the nearest dollar and subtract 0.01 to make it .99
             const roundedDollar = Math.ceil(price);
             return roundedDollar - 0.01;
@@ -2020,7 +2023,7 @@
                         if (cvr === 0) color = '#6c757d'; // gray for 0
                         else if (cvr <= 4) color = '#a00211'; // red
                         else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                        else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                        else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                         else color = '#ff1493'; // pink (>10)
                         
                         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
@@ -2748,7 +2751,7 @@
                     if (cvrFilter === '3-4') return cvrPercent > 3 && cvrPercent <= 4;
                     if (cvrFilter === '0-4') return cvrPercent >= 0 && cvrPercent <= 4;
                     if (cvrFilter === '4-7') return cvrPercent > 4 && cvrPercent <= 7;
-                    if (cvrFilter === '7-10') return cvrPercent > 7 && cvrPercent <= 10;
+                    if (cvrFilter === '7-13') return cvrPercent > 7 && cvrPercent <= 13;
                     if (cvrFilter === '10plus') return cvrPercent > 10;
                     return true;
                 });

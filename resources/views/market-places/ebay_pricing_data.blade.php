@@ -391,7 +391,7 @@
                             // getCvrColor logic from inc/dec page
                             if (scvrValue <= 4) color = '#a00211'; // red
                             else if (scvrValue > 4 && scvrValue <= 7) color = '#ffc107'; // yellow
-                            else if (scvrValue > 7 && scvrValue <= 10) color = '#28a745'; // green
+                            else if (scvrValue > 7 && scvrValue <= 13) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink
                             
                             return `<span style="color: ${color}; font-weight: 600;">${scvrValue.toFixed(1)}%</span>`;

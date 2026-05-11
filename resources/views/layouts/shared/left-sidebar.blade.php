@@ -2021,6 +2021,10 @@
                     <ul class="side-nav-third-level">
                         <li><a href="{{ url('plsAnalysis') }}">PLS Analytics</a></li>
 
+                        <li><a href="{{ route('pls.pricing') }}">PLS Pricing</a></li>
+
+                        <li><a href="{{ route('pls.sales') }}">PLS Sales (30 Days)</a></li>
+
                         <li>
                             <a href="{{ route('zero.pls') }}">PLS 0 view</a>
                         </li>

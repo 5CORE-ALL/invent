@@ -3874,6 +3874,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-all-pls-skus', [PlsController::class, 'updateAllPlsSkus']);
     Route::post('/pls/save-nr', [PlsController::class, 'saveNrToDatabase']);
     Route::post('/pls/update-listed-live', [PlsController::class, 'updateListedLive']);
+    
+    // PLS Sales (Last 30 Days)
+    Route::get('/pls-sales', [PlsController::class, 'salesView'])->name('pls.sales');
+    Route::get('/pls-sales-data-json', [PlsController::class, 'salesDataJson']);
+    
+    // PLS Pricing
+    Route::get('/pls-pricing', [PlsController::class, 'pricingView'])->name('pls.pricing');
+    Route::get('/pls-pricing-data-json', [PlsController::class, 'pricingDataJson']);
+    Route::post('/save-pls-sprice', [PlsController::class, 'savePlsSprice']);
     Route::post('/pls-analytics/import', [PlsController::class, 'importPlsAnalytics'])->name('pls.analytics.import');
     Route::get('/pls-analytics/export', [PlsController::class, 'exportPlsAnalytics'])->name('pls.analytics.export');
     Route::get('/pls-analytics/sample', [PlsController::class, 'downloadSample'])->name('pls.analytics.sample');

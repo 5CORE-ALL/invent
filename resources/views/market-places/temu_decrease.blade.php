@@ -1849,10 +1849,16 @@
         }
 
         function roundToRetailPrice(price) {
+            if (price < 20.99) {
+                return +price.toFixed(2);
+            }
             const roundedDollar = Math.ceil(price);
             return +(roundedDollar - 0.01).toFixed(2);
         }
         function roundToRetailPrice49(price) {
+            if (price < 20.99) {
+                return +price.toFixed(2);
+            }
             const roundedDollar = Math.ceil(price);
             return +(roundedDollar - 0.51).toFixed(2);
         }
@@ -2778,7 +2784,7 @@
                     width: 60,
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
-                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                         return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
                     }
                 },
@@ -2790,7 +2796,7 @@
                     width: 60,
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
-                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                         return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
                     }
                 },
@@ -2808,17 +2814,25 @@
                         let arrowHtml = '';
                         let arrowColor = '#6c757d';
                         let arrowIcon = 'fa-minus';
+                        let dotColor = '#008000'; // green by default
                         if (val > cvr60 + tol) {
+                            // CVR 30 > CVR 60 (improving)
                             arrowColor = '#28a745';
                             arrowIcon = 'fa-arrow-up';
+                            dotColor = '#28a745'; // green
                         } else if (val < cvr60 - tol) {
+                            // CVR 60 > CVR 30 (declining)
                             arrowColor = '#a00211';
                             arrowIcon = 'fa-arrow-down';
+                            dotColor = '#a00211'; // red
+                        } else {
+                            // CVR 30 equals CVR 60 (within tolerance)
+                            dotColor = '#ffc107'; // yellow
                         }
                         arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
-                        const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                         const sku = rowData.sku || '';
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>` : '';
                         return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml} ${dotBtn}`.trim();
                     }
                 },

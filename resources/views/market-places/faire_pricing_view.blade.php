@@ -726,6 +726,9 @@
         }
 
         function frRoundToRetailPrice(price) {
+            if (price < 20.99) {
+                return +price.toFixed(2);
+            }
             return Math.ceil(price) - 0.01;
         }
 

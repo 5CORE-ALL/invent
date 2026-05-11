@@ -268,7 +268,12 @@
             $('#select-all-checkbox').prop('checked', filteredSkus.size > 0 && [...filteredSkus].every(s => selectedSkus.has(s)));
         }
 
-        function roundToRetailPrice(price) { return Math.ceil(price) - 0.01; }
+        function roundToRetailPrice(price) { 
+            if (price < 20.99) {
+                return +price.toFixed(2);
+            }
+            return Math.ceil(price) - 0.01; 
+        }
 
         /** |INV − PP Stock| ≤ 3 → MAP; > 3 → N MP (same as Wayfair / TikTok / Reverb). */
         function ppInvPpStockDiff(ourInv, ppInv) {

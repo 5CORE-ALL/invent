@@ -546,6 +546,9 @@
 
         // Custom price rounding function to round to .99 endings
         function roundToRetailPrice(price) {
+            if (price < 20.99) {
+                return +price.toFixed(2);
+            }
             // Round to the nearest dollar and subtract 0.01 to make it .99
             const roundedDollar = Math.ceil(price);
             return roundedDollar - 0.01;
@@ -1138,7 +1141,11 @@
                     field: "Views",
                     hozAlign: "center",
                     width: 50,
-                    sorter: "number"
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const views = parseFloat(cell.getValue()) || 0;
+                        return Math.round(views / 10);
+                    }
                 },
                 {
                     title: "CVR%",
@@ -1149,10 +1156,11 @@
                         const rowData = cell.getRow().getData();
                         const l30 = parseFloat(rowData['RV L30']) || 0;
                         const views = parseFloat(rowData['Views']) || 0;
+                        const adjustedViews = views / 10;
                         
-                        if (views === 0) return '<span style="color: #6c757d;">0%</span>';
+                        if (adjustedViews === 0) return '<span style="color: #6c757d;">0%</span>';
                         
-                        const cvr = (l30 / views) * 100;
+                        const cvr = (l30 / adjustedViews) * 100;
                         let color = '';
                         
                         if (cvr < 1) color = '#a00211';
@@ -1609,10 +1617,11 @@
             const cvrFilter = $('#cvr-filter').val();
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
-                    // Use Reverb fields: RV L30 and Views
+                    // Use Reverb fields: RV L30 and Views (adjusted Views/10)
                     const wl30 = parseFloat(data['RV L30']) || 0;
                     const views = parseFloat(data['Views']) || 0;
-                    const cvrPercent = views > 0 ? (wl30 / views) * 100 : 0;
+                    const adjustedViews = views / 10;
+                    const cvrPercent = adjustedViews > 0 ? (wl30 / adjustedViews) * 100 : 0;
 
                     if (cvrFilter === '0-0') return cvrPercent === 0;
                     if (cvrFilter === '0-2') return cvrPercent > 0 && cvrPercent <= 2;

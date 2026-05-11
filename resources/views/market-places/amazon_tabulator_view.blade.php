@@ -779,7 +779,7 @@
             const cvr = (aL30 / sess30) * 100;
             let color = '#a00211';
             if (cvr > 4 && cvr <= 7) color = '#ffc107';
-            else if (cvr > 7 && cvr <= 10) color = '#28a745';
+            else if (cvr > 7 && cvr <= 13) color = '#28a745';
             else if (cvr > 10) color = '#e83e8c';
             return '<span style="color: ' + color + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>';
         }
@@ -2267,11 +2267,17 @@
 
             // Helper: round to retail (.99 endings)
             function roundToRetailPrice(price) {
+                if (price < 20.99) {
+                    return +price.toFixed(2);
+                }
                 const roundedDollar = Math.ceil(price);
                 return +(roundedDollar - 0.01).toFixed(2);
             }
             // Helper: round to retail (.49 endings) — use when .99 would match current price so S PRC stays visible
             function roundToRetailPrice49(price) {
+                if (price < 20.99) {
+                    return +price.toFixed(2);
+                }
                 const roundedDollar = Math.ceil(price);
                 return +(roundedDollar - 0.51).toFixed(2);
             }
@@ -3030,7 +3036,7 @@
                             
                             if (cvr <= 4) color = '#a00211'; // red
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink
                             
                             return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
@@ -3065,7 +3071,7 @@
                             let color = '';
                             if (cvr <= 4) color = '#a00211'; // red
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink
                             return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
                         },
@@ -3099,17 +3105,25 @@
                             const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
                             const tol = 0.1;
                             let arrowHtml = '';
+                            let dotColor = '#008000'; // green by default
                             if (sku && isListed) {
                                 let arrowColor = '#6c757d';
                                 let arrowIcon = 'fa-minus';
                                 if (cvrL30 > cvrL60 + tol) {
+                                    // CVR 30 > CVR 60 (improving)
                                     arrowColor = '#28a745';
                                     arrowIcon = 'fa-arrow-up';
+                                    dotColor = '#28a745'; // green
                                 } else if (cvrL30 < cvrL60 - tol) {
+                                    // CVR 60 > CVR 30 (declining)
                                     arrowColor = '#a00211';
                                     arrowIcon = 'fa-arrow-down';
+                                    dotColor = '#a00211'; // red
+                                } else {
+                                    // CVR 30 equals CVR 60 (within tolerance)
+                                    dotColor = '#ffc107'; // yellow
                                 }
-                                arrowHtml = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart (vs L60: ${cvrL60.toFixed(1)}%)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></button>`;
+                                arrowHtml = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart (vs L60: ${cvrL60.toFixed(1)}%)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; margin-right: 2px; vertical-align: middle;"></span><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></button>`;
                             }
 
                             if (sess30 === 0) {
@@ -3120,7 +3134,7 @@
                             let color = '';
                             if (cvr <= 4) color = '#a00211';
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
                             else color = '#e83e8c';
                             return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${arrowHtml}`.trim();
                         },
