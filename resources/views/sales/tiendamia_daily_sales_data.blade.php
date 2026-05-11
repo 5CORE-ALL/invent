@@ -442,6 +442,24 @@
                 }, 100);
             });
 
+            // Fetch catalog-wide metrics (matching tiendamia-pricing and all-marketplace-master)
+            function fetchCatalogMetrics() {
+                $.ajax({
+                    url: '/tiendamia-catalog-metrics',
+                    method: 'GET',
+                    success: function(response) {
+                        if (response.success) {
+                            // Update GPFT and ROI badges with catalog-wide metrics (rounded to whole numbers)
+                            $('#pft-percentage-badge').text('GPFT %: ' + Math.round(response.gpft) + '%');
+                            $('#roi-percentage-badge').text('ROI %: ' + Math.round(response.roi) + '%');
+                        }
+                    },
+                    error: function() {
+                        console.log('Could not fetch catalog metrics');
+                    }
+                });
+            }
+
             // Update summary stats
             function updateSummary() {
                 const data = table.getData("active");
@@ -486,14 +504,10 @@
                 });
 
                 const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-                const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
-                const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
                 $('#total-sales-badge').text('Total Sales: $' + Math.round(totalRevenue).toLocaleString());
-                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
                 $('#pft-total-badge').text('GPFT Total: $' + Math.round(totalPft).toLocaleString());
 
@@ -505,6 +519,9 @@
                 }
 
                 $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
+                
+                // Fetch and display catalog-wide GPFT% and ROI%
+                fetchCatalogMetrics();
             }
 
             // Build Column Visibility Dropdown

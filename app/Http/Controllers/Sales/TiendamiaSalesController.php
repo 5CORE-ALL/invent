@@ -37,7 +37,7 @@ class TiendamiaSalesController extends Controller
 
         // Get marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Tiendamia')->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 83;
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
 
         $data = [];
         foreach ($orders as $order) {
@@ -185,6 +185,39 @@ class TiendamiaSalesController extends Controller
         } catch (\Exception $e) {
             Log::error('Error saving Tiendamia column visibility: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to save preferences'], 500);
+        }
+    }
+
+    public function getCatalogMetrics(Request $request)
+    {
+        try {
+            // Get catalog-wide metrics from marketplace_daily_metrics
+            $metric = \App\Models\MarketplaceDailyMetric::where('channel', 'Tiendamia')
+                ->latest('date')
+                ->first();
+
+            if ($metric) {
+                return response()->json([
+                    'success' => true,
+                    'gpft' => round($metric->pft_percentage, 0),
+                    'roi' => round($metric->roi_percentage, 0),
+                    'total_sales' => round($metric->total_sales, 2),
+                    'total_pft' => round($metric->total_pft, 2),
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'gpft' => 0,
+                'roi' => 0,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Tiendamia catalog metrics: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'gpft' => 0,
+                'roi' => 0,
+            ], 500);
         }
     }
 }

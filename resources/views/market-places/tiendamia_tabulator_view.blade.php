@@ -1,1213 +1,3192 @@
-@extends('layouts.vertical', ['title' => 'Tiendamia Princing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Tiendamia Pricing Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
-    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
-        .tabulator-col .tabulator-col-sorter { display: none !important; }
+        .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
+        /* Vertical column headers */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
-            white-space: nowrap; height: 78px; display: flex; align-items: center;
-            justify-content: center; font-size: 11px; font-weight: 600;
-        }
-        .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
-        .tabulator .tabulator-row { min-height: 50px; }
-
-        #tiendamia-products-table .tabulator-header,
-        #tiendamia-products-table .tabulator-header .tabulator-col {
-            background-color: #17a2b8 !important;
-            color: #fff !important;
-            border-color: rgba(255, 255, 255, 0.22) !important;
-        }
-        #tiendamia-products-table .tabulator-header .tabulator-col .tabulator-col-title {
-            color: #fff !important;
-        }
-        #tiendamia-products-table .tabulator-header .tabulator-col.tabulator-moving,
-        #tiendamia-products-table .tabulator-header .tabulator-col.tabulator-range-highlight {
-            background-color: #138496 !important;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            transform: rotate(180deg);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
         }
 
-        .tabulator .tabulator-footer {
-            background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important;
-            padding: 10px 16px !important;
+        .tabulator .tabulator-header .tabulator-col {
+            height: 80px !important;
         }
-        .tabulator .tabulator-footer .tabulator-paginator {
-            display: flex; align-items: center; justify-content: center; gap: 4px;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
-            font-size: 14px !important; font-weight: 500 !important;
-            min-width: 36px !important; height: 36px !important; line-height: 36px !important;
-            padding: 0 10px !important; border-radius: 8px !important;
-            border: 1px solid #e2e8f0 !important; background: #fff !important;
-            color: #475569 !important; cursor: pointer; transition: all 0.15s ease !important;
-            text-align: center !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
-            background: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #1e293b !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
-            background: #4361ee !important; border-color: #4361ee !important;
-            color: #fff !important; font-weight: 600 !important;
-            box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
-        }
+
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
-            padding-right: 0 !important;
+            padding-right: 0px !important;
         }
 
-        .tm-manual-dropdown { position: relative; display: inline-block; }
-        .tm-manual-dropdown .dropdown-menu {
-            position: absolute; top: 100%; left: 0; z-index: 1050;
-            display: none; min-width: 200px; padding: .5rem 0; margin: 0;
-            background: #fff; border: 1px solid #dee2e6; border-radius: .375rem;
-            box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .075);
+        /* Custom pagination label */
+        .tabulator-paginator label {
+            margin-right: 5px;
         }
-        .tm-manual-dropdown.show .dropdown-menu { display: block; }
-        .tm-dropdown-item {
-            display: block; width: 100%; padding: .5rem 1rem; clear: both;
-            font-weight: 400; color: #212529; text-decoration: none;
-            background: transparent; border: 0; cursor: pointer; white-space: nowrap;
-        }
-        .tm-dropdown-item:hover { background: #e9ecef; }
-        .tm-sc { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; border: 1px solid #ddd; }
-        .tm-sc.def { background: #6c757d; }
-        .tm-sc.red { background: #dc3545; }
-        .tm-sc.yellow { background: #ffc107; }
-        .tm-sc.green { background: #28a745; }
-        .tm-sc.pink { background: #e83e8c; }
 
+        /* ========== STATUS INDICATORS ========== */
+        .status-circle {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .status-circle.default {
+            background-color: #6c757d;
+        }
+
+        .status-circle.red {
+            background-color: #dc3545;
+        }
+
+        .status-circle.yellow {
+            background-color: #ffc107;
+        }
+
+        .status-circle.blue {
+            background-color: #3591dc;
+        }
+
+        .status-circle.green {
+            background-color: #28a745;
+        }
+
+        .status-circle.pink {
+            background-color: #e83e8c;
+        }
+
+        /* ========== DROPDOWN STYLING ========== */
+        .manual-dropdown-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .manual-dropdown-container .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            display: none;
+            min-width: 200px;
+            padding: 0.5rem 0;
+            margin: 0;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+
+        .manual-dropdown-container.show .dropdown-menu {
+            display: block;
+        }
+
+        .dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 0.5rem 1rem;
+            clear: both;
+            font-weight: 400;
+            color: #212529;
+            text-align: inherit;
+            text-decoration: none;
+            white-space: nowrap;
+            background-color: transparent;
+            border: 0;
+            cursor: default;
+        }
+
+        .dropdown-item:hover {
+            color: #1e2125;
+            background-color: #e9ecef;
+        }
+
+        /* NRP (REQ / NR) — stored in tiendamia_shop_data_views / tiendamia_two_shop_data_views value.NRP */
+
+        /* Summary badges — horizontal scroll on narrow viewports (same as eBay 2 pricing) */
         #summary-stats .ebay2-summary-badge-row {
-            display: flex; flex-wrap: nowrap; align-items: stretch;
-            gap: clamp(0.2rem, 0.5vw, 0.45rem); width: 100%;
-            overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
         }
         #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 1 1 0; min-width: 0;
+            flex: 1 1 0;
+            min-width: 0;
             font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
             padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
-            font-weight: bold; box-sizing: border-box;
-            display: inline-flex; align-items: center; justify-content: center;
-            text-align: center; white-space: nowrap;
-        }
-
-        #tmUploadPriceModal .modal-header {
-            background-color: #26b9bd !important;
-            color: #fff !important;
-            border-bottom: 0;
-        }
-        #tmUploadPriceModal .modal-header .btn-close {
-            filter: brightness(0) invert(1);
-            opacity: 0.9;
-        }
-        #tmUploadPriceModal .tm-upload-warning {
-            background-color: #fffbeb;
-            border: 1px solid #fcd34d;
-            color: #92400e;
-            border-radius: 6px;
-            padding: 0.75rem 1rem;
-            font-size: 0.9rem;
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
         }
     </style>
 @endsection
 
-@section('content')
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
+@section('script')
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+@endsection
 
-                    <div class="modal fade" id="tmUploadPriceModal" tabindex="-1" aria-labelledby="tmUploadPriceModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-dialog-centered">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title d-flex align-items-center gap-2 mb-0" id="tmUploadPriceModalLabel">
-                                        <i class="fas fa-file-import"></i> Import prices
-                                    </h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+@section('content')
+    @include('layouts.shared.page-title', [
+        'page_title' => 'Tiendamia Pricing Analytics',
+        'sub_title' => 'Tiendamia Pricing Analytics',
+    ])
+    <div class="toast-container"></div>
+    <div class="row">
+        <div class="card shadow-sm">
+            <div class="card-body py-3">
+                {{-- <h4>Tiendamia Analytics</h4> --}}
+
+                <!-- Upload Section -->
+                <div class="mb-3 p-3 bg-light rounded">
+                    <form action="{{ route('tiendamia.upload.csv') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="file" name="csv_file" class="form-control" accept=".csv" required
+                                style="max-width: 300px;">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload"></i> Upload File
+                            </button>
+                        </div>
+                        <small class="text-muted">Upload Tiendamia export file (accepts .csv, .txt, .tsv, .xlsx, .xls - auto-detects format). Columns: Offer SKU, Product SKU, Price, Quantity, Offer state. This will replace all price data.</small>
+                    </form>
+                </div>
+
+                @if (session('success'))
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        {{ session('success') }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                @endif
+
+                @if (session('error'))
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        {{ session('error') }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                @endif
+
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <select id="row-type-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">All Rows</option>
+                        <option value="parent">Parent Rows</option>
+                        <option value="sku" selected>SKU Rows</option>
+                    </select>
+
+                    <select id="inventory-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">All Inventory</option>
+                        <option value="zero">0 Inventory</option>
+                        <option value="more" selected>More than 0</option>
+                    </select>
+
+                    <select id="tiendamia-stock-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">Stock</option>
+                        <option value="zero">0 Stock</option>
+                        <option value="more">More than 0</option>
+                    </select>
+
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="50plus">Above 50%</option>
+                        </select>
+                    </div>
+
+                    <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">ROI %</option>
+                        <option value="lt40">&lt;40%</option>
+                        <option value="40-75">40 to 75%</option>
+                        <option value="75-125">75 to 125%</option>
+                        <option value="125-175">125 to 175%</option>
+                        <option value="175-250">175 to 250%</option>
+                        <option value="gt250">&gt;250%</option>
+                    </select>
+
+                    <select id="ad-click-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">Ad Click</option>
+                        <option value="zero">0 Clicks</option>
+                        <option value="has">Has Clicks</option>
+                    </select>
+
+                    <select id="tl30-filter" class="form-select form-select-sm" style="width: 130px;"
+                        title="Excludes 0 inventory items">
+                        <option value="all">T L30</option>
+                        <option value="0">0</option>
+                        <option value="0-10">0-10</option>
+                        <option value="10+">10+</option>
+                    </select>
+
+                    <!-- DIL Filter -->
+                    <div class="dropdown manual-dropdown-container">
+                        <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item column-filter active" href="#" data-column="dil_percent"
+                                    data-color="all">
+                                    <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
+                                    data-color="red">
+                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
+                                    data-color="yellow">
+                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
+                                    data-color="green">
+                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
+                                    data-color="pink">
+                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
+
+                    <!-- Column Visibility Dropdown -->
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-eye"></i> Columns
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
+                            style="max-height: 400px; overflow-y: auto;">
+                        </ul>
+                    </div>
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
+                        <i class="fa fa-eye"></i> Show All
+                    </button>
+
+                    <button id="export-btn" class="btn btn-sm btn-info">
+                        <i class="fas fa-file-excel"></i> Export CSV
+                    </button>
+
+                    <button id="price-mode-btn" class="btn btn-sm btn-secondary"
+                        title="Cycle mode: Off → Decrease → Increase">
+                        <i class="fas fa-exchange-alt"></i> Price Mode
+                    </button>
+
+                    <button type="button" id="toggle-utilized-columns-btn" class="btn btn-sm btn-secondary">
+                        <i class="fa fa-filter"></i> Show Key Columns
+                    </button>
+                </div>
+
+                <!-- Ads/Utilized Count Section (shown when Show Key Columns is on) -->
+                <div id="utilized-count-section" class="mt-2 p-3 bg-light rounded border d-none">
+                    <h6 class="mb-2"><i class="fa-solid fa-chart-line me-1"></i>Key Stats</h6>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-sku-count" data-ads-filter="all"
+                            style="color: black; font-weight: bold; background-color: #adb5bd; cursor: default;"
+                            title="Click to show all">Total SKU: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-campaign-count"
+                            data-ads-filter="campaign"
+                            style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: default;"
+                            title="Click to filter: has campaign">Campaign: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="ad-sku-count" data-ads-filter="ad-sku"
+                            style="color: black; font-weight: bold; background-color: #b8d4a8; cursor: default;"
+                            title="Click to filter: SKU active in ads with &gt;0 inventory">Ad SKU: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="missing-campaign-count"
+                            data-ads-filter="missing"
+                            style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: default;"
+                            title="Click to filter: missing ad (no campaign, INV&gt;0, not NRA)">Missing Ad: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="nra-missing-count"
+                            data-ads-filter="nra-missing"
+                            style="color: black; font-weight: bold; background-color: #ffe69c; cursor: default;"
+                            title="Click to filter: NRA missing">NRA MISSING: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="zero-inv-count" data-ads-filter="zero-inv"
+                            style="color: black; font-weight: bold; background-color: #ffda6a; cursor: default;"
+                            title="Click to filter: zero inventory">Zero INV: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="nra-count" data-ads-filter="nra"
+                            style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: default;"
+                            title="Click to filter: NRA">NRA: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="ra-count" data-ads-filter="ra"
+                            style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: default;"
+                            title="Click to filter: RA">RA: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-spend-l30-badge"
+                            data-ads-filter="total-spend-l30"
+                            style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: default;"
+                            title="Click to filter: has L30 spend">L30 Spend: $0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-spend-l7-badge"
+                            data-ads-filter="total-spend-l7"
+                            style="color: black; font-weight: bold; background-color: #b8cfe5; cursor: default;"
+                            title="Click to filter: has L7 spend">L7 Spend: $0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-budget-badge" data-ads-filter="budget"
+                            style="color: black; font-weight: bold; background-color: #ced4da; cursor: default;"
+                            title="Click to filter: has budget">Budget: $0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-sales-badge"
+                            data-ads-filter="ad-sales"
+                            style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: default;"
+                            title="Click to filter: has ad sales">Ad Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="total-ad-sold-badge"
+                            style="color: black; font-weight: bold; background-color: #f8b4d9;"
+                            title="Total L30 Ad Sold">Total L30 Ad Sold: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-clicks-badge"
+                            data-ads-filter="ad-clicks"
+                            style="color: black; font-weight: bold; background-color: #a5d6e8; cursor: default;"
+                            title="Click to filter: has ad clicks">Ad Clicks: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="avg-clicks-badge"
+                            style="color: black; font-weight: bold; background-color: #b8d4e3;"
+                            title="Avg Clicks = Total Clicks / Total Ad SKU">Avg Clicks: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="avg-acos-badge" data-ads-filter="avg-acos"
+                            style="color: black; font-weight: bold; background-color: #ffe69c; cursor: default;"
+                            title="Click to filter: has spend/sales">Avg ACOS: 0%</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="roas-badge" data-ads-filter="roas"
+                            style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: default;"
+                            title="Click to filter: has spend/sales">ROAS: 0.00</span>
+                    </div>
+                    <!-- Campaign Upload: Hidden for Tiendamia (no ads) -->
+                    <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top" style="display: none !important;">
+                        <label class="form-label mb-0 me-1 text-nowrap" style="font-size: 0.8rem;"><i
+                                class="fa-solid fa-upload me-1"></i>Campaign:</label>
+                        <input type="file" id="l7-upload-file" accept=".xlsx,.xls,.csv"
+                            class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="l7-upload-btn" class="btn btn-sm btn-primary"
+                            title="Upload L7 Report" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L7
+                        </button>
+                        <input type="file" id="l30-upload-file" accept=".xlsx,.xls,.csv"
+                            class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="l30-upload-btn" class="btn btn-sm btn-primary"
+                            title="Upload L30 Report" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L30
+                        </button>
+                        <span id="upload-status-container" class="ms-2" style="font-size: 0.7rem;"></span>
+                    </div>
+                </div>
+
+                <!-- Summary Stats -->
+                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                    <h6 class="mb-3">Summary
+                        ({{ rtrim(rtrim(number_format((float) ($tiendamiaPercentage ?? 80), 2, '.', ''), '0'), '.') }}% Margin)
+                    </h6>
+                    <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                        <span class="badge bg-primary fs-6 p-2 badge-no-chart" data-metric="total_sales"
+                            id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: default;"
+                            title="Summary metric (½s) for daily trend">Sales: $0</span>
+                        <span class="badge bg-success fs-6 p-2 badge-no-chart" data-metric="total_pft"
+                            id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor: default;"
+                            title="Summary metric (½s) for daily trend">PFT: $0</span>
+                        <span class="badge bg-info fs-6 p-2 badge-no-chart" data-metric="avg_gpft" id="avg-gpft-badge"
+                            style="color: black; font-weight: bold; cursor: default;" title="Summary metric for daily trend">GPFT:
+                            0%</span>
+                        <span class="badge bg-warning fs-6 p-2 badge-no-chart" data-metric="avg_price"
+                            id="avg-price-badge" style="color: black; font-weight: bold; cursor: default;"
+                            title="Summary metric for daily trend">Price: $0</span>
+                        <span class="badge bg-success fs-6 p-2 badge-no-chart" data-metric="total_l30"
+                            id="total-l30-badge" style="color: black; font-weight: bold; cursor: default;"
+                            title="Summary metric for daily trend">M L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 badge-no-chart" id="zero-sold-count-badge" data-metric="zero_sold_count"
+                            style="color: white; font-weight: bold; cursor: default;"
+                            title="Click to filter ½s for daily trend">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2 badge-no-chart" id="more-sold-count-badge" data-metric="sold_count"
+                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: default;"
+                            title="Click to filter ½s for daily trend">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2 badge-no-chart" data-metric="avg_roi"
+                            id="roi-percent-badge" style="color: black; font-weight: bold; cursor: default;"
+                            title="Summary metric for daily trend">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2 badge-no-chart" id="missing-count-badge" data-metric="missing_count"
+                            style="color: white; font-weight: bold; cursor: default;"
+                            title="Click to filter ½s for daily trend">Missing L: 0</span>
+                        <span class="badge fs-6 p-2 badge-no-chart" id="map-count-badge" data-metric="map_count"
+                            style="background-color: #198754; color: #fff; font-weight: bold; cursor: default;"
+                            title="Click to filter ½s for daily trend">Map: 0</span>
+                        <span class="badge fs-6 p-2 badge-no-chart" id="inv-tt-stock-badge" data-metric="nmap_count"
+                            style="color: white; font-weight: bold; cursor: default; background-color: #a71d2a;"
+                            title="Click to filter ½s for daily trend">N Map: 0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <!-- Discount Input Box -->
+                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="selected-skus-count" class="fw-bold"></span>
+                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
+                            <option value="percentage">Percentage</option>
+                            <option value="value">Value ($)</option>
+                        </select>
+                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
+                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                            <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
+                    </div>
+                </div>
+                <div id="tiendamia-table-wrapper"
+                    style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                    <!-- SKU Search -->
+                    <div class="p-2 bg-light border-bottom">
+                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    </div>
+                    <!-- Table body -->
+                    <div id="tiendamia-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Badge Trend Modal (top-aligned like eBay 3 / Faire badge charts — not vertically centered) -->
+    <div class="modal fade" id="ttBadgeChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl shadow-none modal-dialog-scrollable"
+            style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0" id="ttBadgeChartModalTitle">Tiendamia - Badge Trend</h6>
+                    <div class="d-flex align-items-center gap-2 me-2">
+                        <select id="ttBadgeChartRangeSelect" class="form-select form-select-sm bg-white"
+                            style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-2 pb-2">
+                    <div id="ttBadgeChartContainer" style="height: 38vh; display: none; flex-direction: row; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0;">
+                            <canvas id="ttBadgeChartCanvas"></canvas>
+                        </div>
+                        <div
+                            style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div>
+                                <div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Highest</div>
+                                <div id="ttBadgeChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-
                                 </div>
-                                <div class="modal-body">
-                                    <div class="mb-3">
-                                        <label for="tm-price-file" class="form-label mb-1">
-                                            <i class="fas fa-file-alt text-primary me-1"></i>File
-                                        </label>
-                                        <input type="file" class="form-control" id="tm-price-file" name="price_file" accept=".txt,.csv,.tsv,.xlsx,.xls,.ods">
-                                        <div class="form-text">
-                                            Row 1 = headers. Needs a <strong>SKU</strong> column (e.g. Offer SKU, SKU) and a <strong>Price</strong> column.
-                                            <strong>Simple CSV:</strong> two columns only — column 1 = SKU, column 2 = price. TAB / comma / semicolon auto-detected; Excel uses the active sheet. Full Mirakl / <code>teinda.txt</code> export also works.
-                                        </div>
-                                    </div>
-                                    <div class="tm-upload-warning mb-3">
-                                        <i class="fas fa-info-circle text-warning me-2"></i>
-                                        Import replaces all rows in <code>tiendamia_price_uploads</code>. The grid shows TM price from that table when the SKU exists in your catalog (no separate catalog update on import).
-                                    </div>
-                                    <div id="tm-upload-price-result" class="small" role="status"></div>
+                            </div>
+                            <div>
+                                <div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Median</div>
+                                <div id="ttBadgeChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-
                                 </div>
-                                <div class="modal-footer border-top">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn text-white" id="tm-upload-price-btn" style="background-color:#26b9bd;border-color:#26b9bd;">
-                                        <i class="fas fa-file-import me-1"></i>Import
-                                    </button>
+                            </div>
+                            <div>
+                                <div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Lowest</div>
+                                <div id="ttBadgeChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-
                                 </div>
                             </div>
                         </div>
                     </div>
-
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <select id="tm-row-type-filter" class="form-select form-select-sm" style="width:120px;">
-                            <option value="all" selected>All Rows</option>
-                            <option value="parents">Parents</option>
-                            <option value="skus">SKUs</option>
-                        </select>
-
-                        <select id="tm-inv-filter" class="form-select form-select-sm" style="width:140px;">
-                            <option value="all">All Inventory</option>
-                            <option value="zero">0 Inventory</option>
-                            <option value="more" selected>More than 0</option>
-                        </select>
-
-                        <select id="tm-stock-filter" class="form-select form-select-sm" style="width:140px;">
-                            <option value="all">TM Stock</option>
-                            <option value="zero">0 TM Stock</option>
-                            <option value="more">More than 0</option>
-                        </select>
-
-                        <select id="tm-gpft-filter" class="form-select form-select-sm" style="width:130px;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0–10%</option>
-                            <option value="10-20">10–20%</option>
-                            <option value="20-30">20–30%</option>
-                            <option value="30-40">30–40%</option>
-                            <option value="40-50">40–50%</option>
-                            <option value="50plus">Above 50%</option>
-                        </select>
-
-                        <select id="tm-roi-filter" class="form-select form-select-sm" style="width:130px;">
-                            <option value="all">ROI%</option>
-                            <option value="lt40">&lt; 40%</option>
-                            <option value="40-75">40–75%</option>
-                            <option value="75-125">75–125%</option>
-                            <option value="125-175">125–175%</option>
-                            <option value="175-250">175–250%</option>
-                            <option value="gt250">&gt; 250%</option>
-                        </select>
-
-                        <select id="tm-ml30-filter" class="form-select form-select-sm" style="width:130px;" title="Excludes 0 inventory rows when filtering bands">
-                            <option value="all">ML30</option>
-                            <option value="0">0</option>
-                            <option value="0-10">1–10</option>
-                            <option value="10plus">10+</option>
-                        </select>
-
-                        <select id="tm-map-filter" class="form-select form-select-sm" style="width:120px;">
-                            <option value="all">Map</option>
-                            <option value="map">Map only</option>
-                            <option value="nmap">N Map only</option>
-                        </select>
-
-                        <div class="tm-manual-dropdown">
-                            <button class="btn btn-light btn-sm tm-dil-toggle" type="button" id="tm-dil-btn">
-                                <span class="tm-sc def"></span>DIL%
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="tm-dropdown-item tm-dil-item active" href="#" data-color="all">
-                                    <span class="tm-sc def"></span>All DIL</a></li>
-                                <li><a class="tm-dropdown-item tm-dil-item" href="#" data-color="red">
-                                    <span class="tm-sc red"></span>Red (&lt;16.7%)</a></li>
-                                <li><a class="tm-dropdown-item tm-dil-item" href="#" data-color="yellow">
-                                    <span class="tm-sc yellow"></span>Yellow (16.7–25%)</a></li>
-                                <li><a class="tm-dropdown-item tm-dil-item" href="#" data-color="green">
-                                    <span class="tm-sc green"></span>Green (25–50%)</a></li>
-                                <li><a class="tm-dropdown-item tm-dil-item" href="#" data-color="pink">
-                                    <span class="tm-sc pink"></span>Pink (50%+)</a></li>
-                            </ul>
-                        </div>
-
-                        <input type="text" id="tm-sku-search" class="form-control form-control-sm"
-                            style="max-width:220px;" placeholder="Search SKU...">
-
-                        <button type="button" id="tm-refresh-btn" class="btn btn-sm btn-outline-primary">
-                            <i class="fa fa-refresh"></i> Refresh
-                        </button>
-                        <button type="button" id="tm-export-btn" class="btn btn-sm btn-success">
-                            <i class="fas fa-file-csv"></i> Export CSV
-                        </button>
-                        <button type="button" class="btn btn-sm text-white" data-bs-toggle="modal" data-bs-target="#tmUploadPriceModal" style="background-color:#26b9bd;border-color:#26b9bd;">
-                            <i class="fas fa-file-import me-1"></i> Import prices
-                        </button>
-
-                        {{-- One button cycles: Off → Decrease → Increase → Same price → Off --}}
-                        <button type="button" id="tm-price-mode-btn" class="btn btn-sm btn-secondary"
-                            title="Click to cycle: Off → Decrease → Increase → Same price → Off">
-                            <i class="fas fa-exchange-alt"></i> Price mode
-                        </button>
+                    <div id="ttBadgeChartLoading" class="text-center py-3" style="display: none;">
+                        <span class="spinner-border spinner-border-sm me-2"></span>Loading chart...
                     </div>
-
-                    <div id="tm-discount-input-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
-                        <div class="d-flex align-items-center flex-wrap gap-2">
-                            <span id="tm-selected-skus-count" class="fw-bold text-secondary"></span>
-                            <span id="tm-same-price-hint" class="small text-muted" style="display:none;">Same price: % / $ ignored — SPRICE = Price.</span>
-                            <select id="tm-discount-type-select" class="form-select form-select-sm" style="width:120px;">
-                                <option value="percentage">Percentage</option>
-                                <option value="value">Value ($)</option>
-                            </select>
-                            <input type="number" id="tm-discount-value-input" class="form-control form-control-sm"
-                                placeholder="Enter %" step="0.01" style="width:110px;">
-                            <button type="button" id="tm-apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
-                            <button type="button" id="tm-clear-sprice-btn" class="btn btn-danger btn-sm">
-                                <i class="fas fa-eraser"></i> Clear SPRICE
-                            </button>
-                        </div>
+                    <div id="ttBadgeChartNoData" class="text-center py-3 text-muted" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2 d-block"></i>
+                        No daily snapshots yet. Open this page on separate days to build history (saved automatically).
                     </div>
-
-                    <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                        <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
-                            <span class="badge bg-primary fs-6 p-2" id="tm-total-sales-badge" style="font-weight:700;">Sales: $0</span>
-                            <span class="badge bg-warning fs-6 p-2" id="tm-total-ml30-badge" style="font-weight:700;color:#111;">ML30: 0</span>
-                            <span class="badge bg-success fs-6 p-2" id="tm-total-profit-badge" style="font-weight:700;">Profit: $0</span>
-                            <span class="badge bg-info fs-6 p-2" id="tm-avg-gpft-badge" style="font-weight:700;color:#111;">GPFT: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2" id="tm-missing-badge" style="font-weight:700;">Missing L: 0</span>
-                            <span class="badge fs-6 p-2" id="tm-map-badge" style="font-weight:700;background:#198754;color:#fff;">Map: 0</span>
-                            <span class="badge fs-6 p-2" id="tm-nmap-badge" style="font-weight:700;background:#a71d2a;color:#fff;">N Map: 0</span>
-                            <span class="badge fs-6 p-2" id="tm-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2" id="tm-more-sold-badge" style="font-weight:700;background:#b6e0fe;color:#0f172a;">&gt;0 Sold: 0</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="tm-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
-                        </div>
-                    </div>
-
-                    <div id="tiendamia-products-table"></div>
                 </div>
             </div>
         </div>
     </div>
 @endsection
 
-@section('script-bottom')
-    {{-- jQuery is already loaded in layouts/vertical head; avoid a second copy that can reset globals. --}}
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script>
-        let table = null;
-        let allRows = [];
-        let tmDilColor = 'all';
+@php
+    $ttpCfg = [
+        'dataJson' => route('tiendamia.data.json'),
+        'saveSprice' => route('tiendamia.save.sprice'),
+        'saveNrp' => route('tiendamia.save.nrp'),
+        'columnGet' => route('tiendamia.column.get'),
+        'columnSet' => route('tiendamia.column.set'),
+        'summaryChannel' => 'tiendamia',
+    ];
+@endphp
 
-        /** 'off' | 'decrease' | 'increase' | 'same' */
-        let tmPriceMode = 'off';
+@section('script-bottom')
+    <script>
+        const TTP_CFG = @json($ttpCfg);
+        const DEFAULT_TIENDAMIA_MARGIN_PERCENT = Number(@json($tiendamiaPercentage ?? 80));
+        const DEFAULT_TIENDAMIA_MARGIN_FACTOR = DEFAULT_TIENDAMIA_MARGIN_PERCENT / 100;
+        // Key columns: hidden by default, only show when "Show Key Columns" btn is clicked
+        const ADS_ONLY_COLUMN_FIELDS = ['hasCampaign', 'NR', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold',
+            'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'
+        ];
+        const ALWAYS_HIDDEN_COLUMNS = []; // Parent column visible like CVR/pricing master
+        let table = null;
+        let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiendamia_campaign_reports
+        let decreaseModeActive = false;
+        let increaseModeActive = false;
         let selectedSkus = new Set();
 
-        const TM_SELECT_FIELD = '_tm_select';
+        // Toast notification function
+        function showToast(message, type = 'info') {
+            const toastContainer = document.querySelector('.toast-container');
+            if (!toastContainer) return;
 
-        function tmToast(msg, type) {
-            if (window.toastr) {
-                if (type === 'error') toastr.error(msg);
-                else if (type === 'warning') toastr.warning(msg);
-                else toastr.success(msg);
+            const toast = document.createElement('div');
+            toast.className =
+                `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+            toastContainer.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+            toast.addEventListener('hidden.bs.toast', () => toast.remove());
+        }
+
+        function getRowMarginFactor(rowData) {
+            const rowMarginFactor = Number(rowData?.percentage);
+            return Number.isFinite(rowMarginFactor) && rowMarginFactor > 0 ?
+                rowMarginFactor :
+                DEFAULT_TIENDAMIA_MARGIN_FACTOR;
+        }
+
+        /** Parsed abs(INV−TT Stock) from MAP; null if not legacy Diff| / N Map|. N Map badge uses only > 3. */
+        function ttAbsDiffFromMapValue(mapValue) {
+            if (mapValue == null || typeof mapValue !== 'string') return null;
+            const v = mapValue.trim();
+            let rest = '';
+            if (v.startsWith('N Map|')) {
+                rest = v.slice('N Map|'.length);
+            } else if (v.startsWith('Diff|')) {
+                rest = v.slice('Diff|'.length);
             } else {
-                alert(msg);
+                return null;
             }
+            const n = parseFloat(String(rest).trim());
+            return Number.isFinite(n) ? Math.abs(n) : null;
         }
 
-        const TM_UPLOAD_PRICE_URL = @json(route('tiendamia.products.upload.price'));
-        const TM_TABULATOR_DATA_URL = @json(route('tiendamia.products.tabulator.data'));
-
-        function tmFormatPriceUploadError(j, status, rawBody) {
-            if (j && typeof j.errors === 'object' && j.errors !== null) {
-                const vals = Object.values(j.errors).flat().filter(Boolean);
-                if (vals.length) {
-                    return String(vals[0]);
-                }
-            }
-            if (j && j.message) {
-                return String(j.message);
-            }
-            if (j && j.error) {
-                return String(j.error);
-            }
-            if (status === 419) {
-                return 'Session expired (419). Refresh the page and try again.';
-            }
-            if (status >= 400 && rawBody && rawBody.length < 800) {
-                return 'HTTP ' + status + ': ' + rawBody.replace(/<[^>]+>/g, ' ').trim().slice(0, 400);
-            }
-            if (status >= 400) {
-                return 'HTTP ' + status + ' — upload failed.';
-            }
-            return 'Upload failed.';
-        }
-
-        function roundToRetailPrice(price) {
-            return Math.ceil(price) - 0.01;
-        }
-
-        function tmPatchAllRowsSku(sku, patch) {
-            for (let i = 0; i < allRows.length; i++) {
-                const r = allRows[i];
-                if (r && r.sku === sku && !r.is_parent) {
-                    Object.assign(r, patch);
-                    break;
-                }
-            }
-        }
-
-        function tmRowsForSku(sku) {
-            if (!table) return [];
-            let rows = [];
-            if (typeof table.searchRows === 'function') {
-                try {
-                    rows = table.searchRows('sku', '=', sku) || [];
-                } catch (e) {
-                    rows = [];
-                }
-            }
-            if (rows.length) return rows;
-            return table.getRows().filter(function(r) {
-                const d = r.getData();
-                return d && String(d.sku) === String(sku) && !d.is_parent;
-            });
-        }
-
-        function tmResyncSelectColumn() {
-            if (!table || typeof table.showColumn !== 'function') return;
-            if (tmPriceMode !== 'off') {
-                table.showColumn(TM_SELECT_FIELD);
-            }
-        }
-
-        function syncTmPriceModeUi() {
-            const $btn = $('#tm-price-mode-btn');
-            if (table && typeof table.hideColumn === 'function' && typeof table.showColumn === 'function') {
-                if (tmPriceMode === 'off') {
-                    table.hideColumn(TM_SELECT_FIELD);
-                    selectedSkus.clear();
-                    $('#tm-select-all-checkbox').prop('checked', false);
-                } else {
-                    table.showColumn(TM_SELECT_FIELD);
-                }
-            }
-            $btn.removeClass('btn-secondary btn-warning btn-success btn-danger btn-primary btn-info');
-            $('#tm-same-price-hint').toggle(tmPriceMode === 'same');
-            const discDisabled = tmPriceMode === 'same';
-            $('#tm-discount-type-select, #tm-discount-value-input').prop('disabled', discDisabled);
-            if (tmPriceMode === 'off') {
-                $btn.addClass('btn-secondary').html('<i class="fas fa-exchange-alt"></i> Price mode');
-            } else if (tmPriceMode === 'decrease') {
-                $btn.addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> Decrease ON');
-            } else if (tmPriceMode === 'increase') {
-                $btn.addClass('btn-primary').html('<i class="fas fa-arrow-up"></i> Increase ON');
-            } else if (tmPriceMode === 'same') {
-                $btn.addClass('btn-info').html('<i class="fas fa-equals"></i> Same price ON');
-            }
-            updateSelectedCount();
-            if (table && typeof table.redraw === 'function') {
-                table.redraw(true);
-            }
-            updateTmSelectAllCheckbox();
-        }
-
-        function money(v) {
-            const n = parseFloat(v);
-            if (!Number.isFinite(n)) return '—';
-            return '$' + n.toFixed(2);
-        }
-
-        function tmStrictNMapFromMap(mapVal) {
-            const s = (mapVal || '').trim();
-            return s.startsWith('N Map');
-        }
-
-        function tmDilBucket(row) {
-            const inv = parseFloat(row.inv) || 0;
-            const ov = parseFloat(row.ov_l30) || 0;
-            if (inv === 0) return 'all';
-            const dil = (ov / inv) * 100;
-            if (dil < 16.66) return 'red';
-            if (dil < 25) return 'yellow';
-            if (dil < 50) return 'green';
-            return 'pink';
-        }
-
-        function updateSummary(rows) {
-            let totalSales = 0, totalMl30 = 0, totalProfit = 0;
-            let gpftSum = 0, gpftCount = 0;
-            let roiSum = 0, roiCount = 0;
-            let missingCount = 0, mapCount = 0, nmapCount = 0;
-            let zeroSold = 0, moreSold = 0;
-
-            rows.forEach(row => {
-                if (row.is_parent) return;
-                const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
-                const ml30 = parseFloat(row.al30 != null ? row.al30 : row.m_l30) || 0;
-                const profit = parseFloat(row.profit) || 0;
-                const mapVal = (row.map || '').trim();
-
-                if (!isMissing) {
-                    totalProfit += ml30 * profit;
-                    totalSales += parseFloat(row.sales) || 0;
-                    const gpft = parseFloat(row.gpft);
-                    if (Number.isFinite(gpft)) { gpftSum += gpft; gpftCount++; }
-                    const groi = parseFloat(row.groi);
-                    if (Number.isFinite(groi)) { roiSum += groi; roiCount++; }
-                }
-
-                totalMl30 += ml30;
-                if (ml30 === 0) zeroSold++; else moreSold++;
-                if (isMissing) missingCount++;
-                if (!isMissing && mapVal === 'Map') mapCount++;
-                else if (!isMissing && tmStrictNMapFromMap(mapVal)) nmapCount++;
-            });
-
-            const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
-            const avgRoi = roiCount > 0 ? roiSum / roiCount : 0;
-
-            $('#tm-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
-            $('#tm-total-ml30-badge').text('ML30: ' + totalMl30.toLocaleString());
-            $('#tm-total-profit-badge').text('Profit: $' + Math.round(totalProfit).toLocaleString());
-            $('#tm-avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
-            $('#tm-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
-            $('#tm-map-badge').text('Map: ' + mapCount.toLocaleString());
-            $('#tm-nmap-badge').text('N Map: ' + nmapCount.toLocaleString());
-            $('#tm-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
-            $('#tm-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
-            $('#tm-avg-roi-badge').text('ROI: ' + Math.round(avgRoi) + '%');
-        }
-
-        function gpftMatchesBand(gpft, band) {
-            if (band === 'all') return true;
-            const v = parseFloat(gpft) || 0;
-            if (band === 'negative') return v < 0;
-            if (band === '0-10') return v >= 0 && v < 10;
-            if (band === '10-20') return v >= 10 && v < 20;
-            if (band === '20-30') return v >= 20 && v < 30;
-            if (band === '30-40') return v >= 30 && v < 40;
-            if (band === '40-50') return v >= 40 && v < 50;
-            if (band === '50plus') return v >= 50;
-            return true;
-        }
-
-        function roiMatchesBand(groi, band) {
-            if (band === 'all') return true;
-            const roi = parseFloat(groi) || 0;
-            if (band === 'lt40') return roi < 40;
-            if (band === '40-75') return roi >= 40 && roi < 75;
-            if (band === '75-125') return roi >= 75 && roi < 125;
-            if (band === '125-175') return roi >= 125 && roi < 175;
-            if (band === '175-250') return roi >= 175 && roi < 250;
-            if (band === 'gt250') return roi >= 250;
-            return true;
-        }
-
-        function computeFiltered() {
-            const rowType = $('#tm-row-type-filter').val();
-            const invF = $('#tm-inv-filter').val();
-            const stockF = $('#tm-stock-filter').val();
-            const gpftF = $('#tm-gpft-filter').val();
-            const roiF = $('#tm-roi-filter').val();
-            const ml30F = $('#tm-ml30-filter').val();
-            const mapF = $('#tm-map-filter').val();
-            const q = ($('#tm-sku-search').val() || '').trim().toLowerCase();
-
-            return allRows.filter(row => {
-                if (row.is_parent) return true;
-
-                const parent = (row.parent || '').trim();
-                if (rowType === 'parents' && !parent) return false;
-                if (rowType === 'skus' && parent) return false;
-
-                const inv = parseInt(row.inv, 10) || 0;
-                if (invF === 'zero' && inv !== 0) return false;
-                if (invF === 'more' && inv <= 0) return false;
-
-                const st = parseInt(row.tm_stock, 10) || 0;
-                if (stockF === 'zero' && st !== 0) return false;
-                if (stockF === 'more' && st <= 0) return false;
-
-                if (ml30F !== 'all' && inv <= 0) return false;
-                const ml30 = parseFloat(row.al30 != null ? row.al30 : row.m_l30) || 0;
-                if (ml30F === '0' && ml30 !== 0) return false;
-                if (ml30F === '0-10' && !(ml30 > 0 && ml30 <= 10)) return false;
-                if (ml30F === '10plus' && !(ml30 > 10)) return false;
-
-                if (!gpftMatchesBand(row.gpft, gpftF)) return false;
-                if (!roiMatchesBand(row.groi, roiF)) return false;
-
-                const mapVal = (row.map || '').trim();
-                if (mapF === 'map' && mapVal !== 'Map') return false;
-                if (mapF === 'nmap' && !tmStrictNMapFromMap(mapVal)) return false;
-
-                if (tmDilColor !== 'all' && tmDilBucket(row) !== tmDilColor) return false;
-
-                if (q && String(row.sku || '').toLowerCase().indexOf(q) === -1) return false;
-                return true;
-            });
-        }
-
-        function applyClientFilters() {
-            if (!table) return;
-            const filtered = computeFiltered();
-            table.setData(filtered);
-            updateSummary(filtered);
-            tmResyncSelectColumn();
-            updateTmSelectAllCheckbox();
-        }
-
-        function updateSelectedCount() {
-            const count = selectedSkus.size;
-            $('#tm-selected-skus-count').text(count + ' SKU' + (count !== 1 ? 's' : '') + ' selected');
-            
-            // Show/hide badges in top bar
-            if (count > 0) {
-                $('#tm-selected-rows-count').text(count + ' selected').show();
-                $('#tm-clear-selection-btn').show();
-            } else {
-                $('#tm-selected-rows-count').hide();
-                $('#tm-clear-selection-btn').hide();
-            }
-        }
-
-        function updateTmRowCounter() {
-            if (!table) return;
-            const data = table.getData('active');
-            const total = allRows.length;
-            $('#tm-table-row-counter').text(data.length + ' of ' + total + ' rows');
-        }
-
-        function updateTmSelectAllCheckbox() {
-            if (!table) return;
-            const data = table.getData();
-            const skus = data.filter(function(row) { return row && !row.is_parent && row.sku; }).map(function(r) { return r.sku; });
-            if (skus.length === 0) {
-                $('#tm-select-all-checkbox').prop('checked', false);
-                return;
-            }
-            const allSel = skus.every(function(s) { return selectedSkus.has(s); });
-            $('#tm-select-all-checkbox').prop('checked', allSel);
-        }
-
-        function tmSaveSpriceUpdates(updates) {
-            fetch('{{ route('tiendamia.products.save.sprice') }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({ updates: updates }),
-            }).then(function(r) { return r.json(); }).then(function(data) {
-                if (!data.success) {
-                    tmToast(data.error || 'Save failed', 'error');
-                }
-            }).catch(function() {
-                tmToast('Save failed', 'error');
-            });
-        }
-
-        function applyTmDiscount() {
-            if (tmPriceMode === 'off') {
-                tmToast('Turn on a price mode first (click Price mode)', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                tmToast('Please select at least one SKU', 'error');
-                return;
-            }
-            const discountType = $('#tm-discount-type-select').val();
-            const discountValue = parseFloat($('#tm-discount-value-input').val());
-            if (tmPriceMode !== 'same') {
-                if (isNaN(discountValue) || discountValue === 0) {
-                    tmToast('Please enter a valid discount value', 'error');
-                    return;
-                }
-            }
-            let updatedCount = 0;
-            const updates = [];
-            selectedSkus.forEach(function(sku) {
-                const rowData = allRows.find(function(r) { return r && r.sku === sku && !r.is_parent; });
-                if (!rowData) return;
-                const currentPrice = parseFloat(rowData.price) || 0;
-                if (currentPrice <= 0) return;
-                let newSprice;
-                if (tmPriceMode === 'same') {
-                    newSprice = Math.round(currentPrice * 100) / 100;
-                    if (newSprice < 0.99) {
-                        newSprice = 0.99;
-                    }
-                } else if (discountType === 'percentage') {
-                    newSprice = tmPriceMode === 'increase'
-                        ? currentPrice * (1 + discountValue / 100)
-                        : currentPrice * (1 - discountValue / 100);
-                    newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
-                } else {
-                    newSprice = tmPriceMode === 'increase'
-                        ? currentPrice + discountValue
-                        : currentPrice - discountValue;
-                    newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
-                }
-                const margin = parseFloat(rowData._margin) || 1;
-                const lp = parseFloat(rowData.lp) || 0;
-                const mShip = parseFloat(rowData.m_ship) || 0;
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp - mShip) / newSprice) * 100) : 0;
-                const sroi = lp > 0 ? Math.round(((newSprice * margin - lp - mShip) / lp) * 100) : 0;
-                tmPatchAllRowsSku(sku, { sprice: newSprice, sgpft: sgpft, sroi: sroi });
-                const found = tmRowsForSku(sku);
-                if (found.length) {
-                    found[0].update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
-                }
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-            if (updates.length) {
-                tmSaveSpriceUpdates(updates);
-            }
-            $('#tm-discount-value-input').val('');
-            const label = tmPriceMode === 'same' ? 'Same price' : (tmPriceMode === 'increase' ? 'Increase' : 'Discount');
-            tmToast(label + ' applied to ' + updatedCount + ' SKU(s)', 'success');
-            applyClientFilters();
-        }
-
-        function clearTmSpriceForSelected() {
-            if (selectedSkus.size === 0) {
-                tmToast('Please select SKUs first', 'error');
-                return;
-            }
-            if (!confirm('Clear SPRICE for ' + selectedSkus.size + ' selected SKU(s)?')) {
-                return;
-            }
-            let clearedCount = 0;
-            const updates = [];
-            selectedSkus.forEach(function(sku) {
-                tmPatchAllRowsSku(sku, { sprice: 0, sgpft: 0, sroi: 0 });
-                const found = tmRowsForSku(sku);
-                if (found.length) {
-                    found[0].update({ sprice: 0, sgpft: 0, sroi: 0 });
-                }
-                updates.push({ sku: sku, sprice: 0 });
-                clearedCount++;
-            });
-            if (updates.length) {
-                tmSaveSpriceUpdates(updates);
-            }
-            tmToast('SPRICE cleared for ' + clearedCount + ' SKU(s)', 'success');
-            applyClientFilters();
+        function ttIsStrictNMapMapValue(mapValue, isMissing) {
+            if (isMissing) return false;
+            const d = ttAbsDiffFromMapValue(mapValue);
+            return d !== null && d > 3;
         }
 
         $(document).ready(function() {
-            $(document).on('click', '.tm-dil-toggle', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                $(this).closest('.tm-manual-dropdown').toggleClass('show');
+            let ttBadgeChartInstance = null;
+            let ttBadgeChartDays = 30;
+            let ttBadgeChartMetricKey = '';
+            let ttBadgeChartAjax = null;
+            const ttBadgeDollarMetrics = ['total_sales', 'avg_price', 'total_pft', 'total_cogs'];
+            const ttBadgePercentMetrics = ['avg_gpft', 'avg_roi', 'avg_dil'];
+            const ttBadgeMetricLabels = {
+                total_sales: 'Sales',
+                total_pft: 'Profit',
+                avg_gpft: 'GPFT',
+                avg_price: 'Price',
+                total_l30: 'M L30',
+                avg_roi: 'ROI%',
+                avg_dil: 'Avg DIL%',
+                total_cogs: 'COGS',
+                zero_sold_count: '0 Sold',
+                sold_count: '> 0 Sold',
+                missing_count: 'Missing L',
+                map_count: 'Map',
+                nmap_count: 'N Map',
+                inv_tt_stock_count: 'N Map',
+            };
+
+            function ttFormatChartValue(v) { 
+                const num = Number(v) || 0;
+                if (ttBadgeDollarMetrics.includes(ttBadgeChartMetricKey)) return '$' + Math.round(num)
+                    .toLocaleString('en-US');
+                if (ttBadgePercentMetrics.includes(ttBadgeChartMetricKey)) return num.toFixed(1) + '%';
+                return Math.round(num).toLocaleString('en-US');
+            }
+
+            function ttBadgeChartBrand() {
+                return (TTP_CFG.summaryChannel === 'tiendamia2') ? 'Tiendamia 2' : 'Tiendamia';
+            }
+
+            function ttBadgeChartModalTitle() {
+                const label = ttBadgeMetricLabels[ttBadgeChartMetricKey] || ttBadgeChartMetricKey;
+                return `${ttBadgeChartBrand()} — ${label} (Daily snapshot)`;
+            }
+
+            function openTtBadgeChartModal(metricKey, opts) {
+                const resetDays = !(opts && opts.keepRange);
+                ttBadgeChartMetricKey = metricKey;
+                if (resetDays) {
+                    ttBadgeChartDays = 30;
+                    $('#ttBadgeChartRangeSelect').val('30');
+                }
+                $('#ttBadgeChartModalTitle').text(ttBadgeChartModalTitle());
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('ttBadgeChartModal')).show();
+                loadTtBadgeChart();
+            }
+
+            let ttBadgeHoverTimer = null;
+            $(document).on('mouseenter', '.badge-no-chart', function() {
+                const metric = $(this).data('metric');
+                if (!metric) return;
+                ttBadgeHoverTimer = setTimeout(function() {
+                    openTtBadgeChartModal(metric, { keepRange: false });
+                }, 500);
             });
-            $(document).on('click', function(e) {
-                if (!$(e.target).closest('.tm-manual-dropdown').length) {
-                    $('.tm-manual-dropdown').removeClass('show');
+            $(document).on('mouseleave', '.badge-no-chart', function() {
+                if (ttBadgeHoverTimer) {
+                    clearTimeout(ttBadgeHoverTimer);
+                    ttBadgeHoverTimer = null;
                 }
             });
-            $(document).on('click', '.tm-dil-item', function(e) {
-                e.preventDefault();
-                const color = $(this).data('color') || 'all';
-                tmDilColor = color;
-                $('.tm-dil-item').removeClass('active');
-                $(this).addClass('active');
-                const sc = color === 'all' ? 'def' : color;
-                $('#tm-dil-btn').find('.tm-sc').attr('class', 'tm-sc ' + sc);
-                $('.tm-manual-dropdown').removeClass('show');
-                applyClientFilters();
+            $(document).on('mousedown', '.badge-no-chart', function() {
+                if (ttBadgeHoverTimer) {
+                    clearTimeout(ttBadgeHoverTimer);
+                    ttBadgeHoverTimer = null;
+                }
             });
 
-            const tmUploadModalEl = document.getElementById('tmUploadPriceModal');
-            if (tmUploadModalEl) {
-                tmUploadModalEl.addEventListener('show.bs.modal', function() {
-                    $('#tm-upload-price-result').empty();
-                    $('#tm-price-file').val('');
+            function renderTtBadgeChart(points) {
+                if (!Array.isArray(points) || !points.length) return false;
+                const labels = points.map(p => p.date);
+                const values = points.map(p => Number(p.value) || 0);
+                const sorted = [...values].sort((a, b) => a - b);
+                const min = sorted[0];
+                const max = sorted[sorted.length - 1];
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                $('#ttBadgeChartHighest').text(ttFormatChartValue(max));
+                $('#ttBadgeChartMedian').text(ttFormatChartValue(median));
+                $('#ttBadgeChartLowest').text(ttFormatChartValue(min));
+
+                const dotColors = values.map(function(v, i) {
+                    if (i === 0) return '#6c757d';
+                    return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#198754' : '#6c757d');
+                });
+                const pointLabelColors = values.map(function(v, i) {
+                    if (i < 7) return '#0f172a';
+                    return v < values[i - 7] ? '#dc3545' : (v > values[i - 7] ? '#198754' : '#0f172a');
+                });
+
+                const medianLinePlugin = {
+                    id: 'ttBadgeMedianLine',
+                    afterDraw: function(chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const c = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        c.save();
+                        c.setLineDash([6, 4]);
+                        c.strokeStyle = '#6c757d';
+                        c.lineWidth = 1.2;
+                        c.beginPath();
+                        c.moveTo(xScale.left, yPixel);
+                        c.lineTo(xScale.right, yPixel);
+                        c.stroke();
+                        c.restore();
+                    }
+                };
+
+                const valueLabelsPlugin = {
+                    id: 'ttBadgeValueLabels',
+                    afterDatasetsDraw: function(chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        if (!dataset || !meta || !meta.data) return;
+                        c.save();
+                        c.font = 'bold 9px Inter, system-ui, sans-serif';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        meta.data.forEach(function(point, i) {
+                            if (point == null || point.skip) return;
+                            const val = dataset.data[i];
+                            const txt = ttFormatChartValue(val);
+                            const offsetY = (i % 2 === 0) ? -8 : -16;
+                            const py = point.y + offsetY;
+                            c.lineJoin = 'round';
+                            c.lineWidth = 3;
+                            c.strokeStyle = 'rgba(255,255,255,0.92)';
+                            c.strokeText(txt, point.x, py);
+                            c.fillStyle = pointLabelColors[i] || '#0f172a';
+                            c.fillText(txt, point.x, py);
+                        });
+                        c.restore();
+                    }
+                };
+
+                const canvas = document.getElementById('ttBadgeChartCanvas');
+                if (!canvas || typeof Chart === 'undefined') return false;
+                if (ttBadgeChartInstance) ttBadgeChartInstance.destroy();
+
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const range = dataMax - dataMin || 1;
+                const yMin = Math.max(0, dataMin - range * 0.1);
+                const yMax = dataMax + range * 0.1;
+
+                ttBadgeChartInstance = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: ttBadgeMetricLabels[ttBadgeChartMetricKey] ||
+                                ttBadgeChartMetricKey,
+                            data: values,
+                            borderColor: '#06b6d4',
+                            backgroundColor: 'rgba(6, 182, 212, 0.12)',
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            borderWidth: 2,
+                            tension: 0.25,
+                            fill: true
+                        }]
+                    },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 22, left: 2, right: 2, bottom: 2 } },
+                        scales: {
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: {
+                                    callback: function(value) {
+                                        return ttFormatChartValue(value);
+                                    }
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    autoSkip: true,
+                                    maxTicksLimit: 30,
+                                    font: { size: 8 }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return (ttBadgeMetricLabels[ttBadgeChartMetricKey] || 'Value') +
+                                            ': ' + ttFormatChartValue(ctx.parsed.y);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                return true;
+            }
+
+            function loadTtBadgeChart() {
+                if (!ttBadgeChartMetricKey) return;
+                if (ttBadgeChartAjax) ttBadgeChartAjax.abort();
+                $('#ttBadgeChartNoData').hide();
+                $('#ttBadgeChartContainer').hide();
+                $('#ttBadgeChartLoading').show();
+
+                ttBadgeChartAjax = $.ajax({
+                    url: TTP_CFG.badgeChart,
+                    method: 'GET',
+                    data: {
+                        metric: ttBadgeChartMetricKey,
+                        days: ttBadgeChartDays,
+                        channel: TTP_CFG.summaryChannel
+                    },
+                    success: function(res) {
+                        ttBadgeChartAjax = null;
+                        $('#ttBadgeChartLoading').hide();
+                        const points = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+                        if (renderTtBadgeChart(points)) {
+                            $('#ttBadgeChartContainer').css({
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'stretch'
+                            }).show();
+                        } else {
+                            $('#ttBadgeChartNoData').show();
+                        }
+                    },
+                    error: function() {
+                        ttBadgeChartAjax = null;
+                        $('#ttBadgeChartLoading').hide();
+                        $('#ttBadgeChartNoData').show();
+                    }
                 });
             }
 
-            $(document).on('click', '#tm-upload-price-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const inputEl = document.getElementById('tm-price-file');
-                const $out = $('#tm-upload-price-result');
-                const $btn = $('#tm-upload-price-btn');
-                const meta = document.querySelector('meta[name="csrf-token"]');
-                const csrf = meta ? meta.getAttribute('content') : '';
-                if (!inputEl || !inputEl.files || !inputEl.files.length) {
-                    const msg = 'Choose a file first.';
-                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': msg }));
-                    tmToast(msg, 'error');
-                    return;
-                }
-                if (!csrf) {
-                    const msg = 'Missing CSRF token. Refresh the page.';
-                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': msg }));
-                    tmToast(msg, 'error');
-                    return;
-                }
-                const fd = new FormData();
-                fd.append('price_file', inputEl.files[0]);
-                fd.append('_token', csrf);
-                $btn.prop('disabled', true);
-                $out.empty().append($('<span/>', { 'class': 'text-muted', 'text': 'Importing…' }));
-                fetch(TM_UPLOAD_PRICE_URL, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'X-CSRF-TOKEN': csrf,
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: fd,
-                }).then(function(r) {
-                    return r.text().then(function(text) {
-                        let j = null;
-                        if (text) {
-                            try {
-                                j = JSON.parse(text);
-                            } catch (err) {
-                                j = { success: false, error: text.slice(0, 500) };
-                            }
-                        } else {
-                            j = { success: false, error: 'Empty response (HTTP ' + r.status + ').' };
-                        }
-                        return { ok: r.ok, status: r.status, j: j, raw: text };
-                    });
-                }).then(function(res) {
-                    const j = res.j;
-                    if (!res.ok || !j.success) {
-                        const err = tmFormatPriceUploadError(j, res.status, res.raw || '');
-                        $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': err }));
-                        tmToast(err, 'error');
-                        return;
-                    }
-                    let msg = 'Imported ' + j.rows_stored + ' row(s) into tiendamia_price_uploads.';
-                    if (j.skipped_empty_offer_sku > 0) {
-                        msg += ' Skipped (empty SKU): ' + j.skipped_empty_offer_sku + '.';
-                    }
-                    tmToast(msg, 'success');
-                    if (tmUploadModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                        const inst = bootstrap.Modal.getInstance(tmUploadModalEl);
-                        if (inst) {
-                            inst.hide();
-                        }
-                    }
-                    if (table) {
-                        table.setData(TM_TABULATOR_DATA_URL);
-                    }
-                }).catch(function(err) {
-                    const errMsg = (err && err.message) ? String(err.message) : 'Network error.';
-                    $out.empty().append($('<span/>', { 'class': 'text-danger', 'text': errMsg }));
-                    tmToast(errMsg, 'error');
-                }).finally(function() {
-                    $btn.prop('disabled', false);
-                });
+            // Badge chart disabled for Tiendamia (no backend endpoint)
+            // $(document).on('click', '.badge-no-chart', function(e) {
+            //     e.stopPropagation();
+            //     const m = $(this).data('metric');
+            //     if (m) {
+            //         openTtBadgeChartModal(m, { keepRange: false });
+            //     }
+            // });
+
+            $(document).on('change', '#ttBadgeChartRangeSelect', function() {
+                const raw = $(this).val();
+                const days = raw === '0' ? 0 : (parseInt(raw, 10) || 30);
+                if (days === ttBadgeChartDays) return;
+                ttBadgeChartDays = days;
+                $('#ttBadgeChartModalTitle').text(ttBadgeChartModalTitle());
+                loadTtBadgeChart();
             });
 
-            table = new Tabulator('#tiendamia-products-table', {
-                ajaxURL: TM_TABULATOR_DATA_URL,
-                ajaxResponse: function(url, params, response) {
-                    if (response && response.error) {
-                        console.error(response.error);
-                        allRows = [];
-                        return [];
-                    }
-                    allRows = Array.isArray(response) ? response : [];
-                    queueMicrotask(function() {
-                        applyClientFilters();
-                        updateTmRowCounter();
-                        tmResyncSelectColumn();
-                        updateTmSelectAllCheckbox();
+            // Discount type dropdown change handler
+            $('#discount-type-select').on('change', function() {
+                const discountType = $(this).val();
+                const $input = $('#discount-percentage-input');
+
+                if (discountType === 'percentage') {
+                    $input.attr('placeholder', 'Enter %');
+                } else {
+                    $input.attr('placeholder', 'Enter $');
+                }
+            });
+
+            // Single Price Mode button: Off -> Decrease ON -> Increase ON -> Off
+            function syncPriceModeUi() {
+                const $btn = $('#price-mode-btn');
+                const selectColumn = table.getColumn('_select');
+                if (decreaseModeActive) {
+                    $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                    selectColumn.show();
+                    return;
+                }
+                if (increaseModeActive) {
+                    $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                    selectColumn.show();
+                    return;
+                }
+                $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+                    .html('<i class="fas fa-exchange-alt"></i> Price Mode');
+                selectColumn.hide();
+                selectedSkus.clear();
+                updateSelectedCount();
+            }
+
+            $('#price-mode-btn').on('click', function() {
+                if (!decreaseModeActive && !increaseModeActive) {
+                    decreaseModeActive = true;
+                    increaseModeActive = false;
+                } else if (decreaseModeActive) {
+                    decreaseModeActive = false;
+                    increaseModeActive = true;
+                } else {
+                    decreaseModeActive = false;
+                    increaseModeActive = false;
+                }
+                syncPriceModeUi();
+            });
+
+            // Toggle Utilized Columns - Show only columns that match tiendamia/utilized page (like temu-decrease Show Key Columns)
+            let utilizedColumnsVisible = false;
+            let originalColumnVisibilityUtilized = {};
+            const utilizedColumnFields = ['(Child) sku', 'INV', 'L30', 'Tiendamia Dil%', 'M L30', 'M L60', 'NR',
+                'Tiendamia Stock', 'Tiendamia Price', 'GPFT%', 'ROI%', 'MAP', 'Missing'
+            ];
+
+            $('#toggle-utilized-columns-btn').on('click', function() {
+                utilizedColumnsVisible = !utilizedColumnsVisible;
+
+                if (utilizedColumnsVisible) {
+                    table.getColumns().forEach(function(column) {
+                        const field = column.getField();
+                        if (field) {
+                            originalColumnVisibilityUtilized[field] = column.isVisible();
+                        }
                     });
-                    return allRows;
-                },
-                layout: 'fitDataStretch',
-                pagination: true,
-                paginationSize: 100,
-                paginationSizeSelector: [50, 100, 200, 500],
-                paginationCounter: 'rows',
-                initialSort: [{ column: 'sku', dir: 'asc' }],
-                columns: [
-                    {
-                        title: "<input type=\"checkbox\" id=\"tm-select-all-checkbox\">",
-                        field: TM_SELECT_FIELD,
-                        hozAlign: 'center',
-                        headerSort: false,
-                        width: 40,
-                        visible: false,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent) return '';
-                            const sku = rowData.sku;
-                            const enc = encodeURIComponent(String(sku));
-                            const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                            return '<input type="checkbox" class="tm-sku-select-checkbox" data-sku-enc="' + enc + '" ' + isChecked + '>';
+                    table.getColumns().forEach(function(column) {
+                        const field = column.getField();
+                        if (field && !utilizedColumnFields.includes(field)) {
+                            column.hide();
+                        } else if (field && utilizedColumnFields.includes(field)) {
+                            column
+                        .show(); // show by iterating so hidden columns (e.g. ads_price) are found
                         }
-                    },
-                    {
-                        title: 'Parent',
-                        field: 'parent',
-                        width: 120,
-                        visible: false,
-                        formatter: function(cell) {
-                            const v = cell.getValue() || '';
-                            if (!v) return '<span style="color:#adb5bd;">–</span>';
-                            return '<span style="color:#0d6efd;font-size:11px;font-weight:600;">' +
-                                String(v).replace(/</g, '&lt;') + '</span>';
-                        }
-                    },
-                    {
-                        title: 'Image',
-                        field: 'image',
-                        width: 60,
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const src = cell.getValue();
-                            if (!src) return '';
-                            return '<img src="' + String(src).replace(/"/g, '&quot;') + '" alt="" ' +
-                                'style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'">';
-                        }
-                    },
-                    {
-                        title: 'SKU',
-                        field: 'sku',
-                        minWidth: 180,
-                        frozen: true,
-                        headerFilter: 'input',
-                        cssClass: 'fw-bold text-primary',
-                    },
-                    {
-                        title: 'INV',
-                        field: 'inv',
-                        width: 55,
-                        hozAlign: 'center',
-                        sorter: 'number',
-                        formatter: function(cell) {
-                            const v = parseInt(cell.getValue(), 10) || 0;
-                            if (v === 0) return '<span style="color:#dc3545;font-weight:600;">0</span>';
-                            return '<span style="font-weight:600;">' + v + '</span>';
-                        }
-                    },
-                    {
-                        title: 'TM Stock',
-                        field: 'tm_stock',
-                        width: 65,
-                        hozAlign: 'center',
-                        sorter: 'number',
-                        formatter: function(cell) {
-                            const v = parseInt(cell.getValue(), 10) || 0;
-                            if (v === 0) return '<span style="color:#dc3545;font-weight:600;">0</span>';
-                            return '<span style="font-weight:600;">' + v + '</span>';
-                        }
-                    },
-                    {
-                        title: 'OV L30',
-                        field: 'ov_l30',
-                        width: 60,
-                        hozAlign: 'center',
-                        sorter: 'number',
-                        formatter: function(cell) {
-                            return '<span style="font-weight:700;">' + (parseInt(cell.getValue(), 10) || 0) + '</span>';
-                        }
-                    },
-                    {
-                        title: 'Dil',
-                        field: 'dil_percent',
-                        width: 55,
-                        hozAlign: 'center',
-                        sorter: 'number',
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const inv = parseFloat(row.inv) || 0;
-                            const ov = parseFloat(row.ov_l30) || 0;
-                            if (inv === 0) return '<span style="color:#6c757d;">0%</span>';
-                            const dil = (ov / inv) * 100;
-                            const color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(dil) + '%</span>';
-                        }
-                    },
-                    {
-                        title: 'ML30',
-                        field: 'm_l30',
-                        width: 55,
-                        hozAlign: 'center',
-                        sorter: 'number',
-                        formatter: function(cell) {
-                            return '<span style="font-weight:700;">' + (parseInt(cell.getValue(), 10) || 0) + '</span>';
-                        }
-                    },
-                    {
-                        title: 'ML60',
-                        field: 'm_l60',
-                        width: 55,
-                        hozAlign: 'center',
-                        sorter: 'number',
-                        formatter: function(cell) {
-                            return '<span style="font-weight:700;">' + (parseInt(cell.getValue(), 10) || 0) + '</span>';
-                        }
-                    },
-                    {
-                        title: 'Price',
-                        field: 'price',
-                        width: 72,
-                        hozAlign: 'right',
-                        sorter: 'number',
-                        formatter: function(cell) { return money(cell.getValue()); }
-                    },
-                    {
-                        title: 'LMP',
-                        field: 'lmp',
-                        hozAlign: 'center',
-                        width: 56,
-                        headerSort: false,
-                        formatter: function() {
-                            const redDot = '<span style="display:inline-flex;width:14px;height:14px;border-radius:50%;background:#dc3545;"></span>';
-                            return '<span title="No LMP data for Tiendamia feed">' + redDot + '</span>';
-                        }
-                    },
-                    {
-                        title: 'Missing L',
-                        field: 'missing',
-                        width: 72,
-                        hozAlign: 'center',
-                        formatter: function(cell) {
-                            const value = (cell.getValue() || '').toString().trim().toUpperCase();
-                            if (value === 'M') return '<span class="badge bg-danger">L</span>';
-                            return '';
-                        }
-                    },
-                    {
-                        title: 'Map',
-                        field: 'map',
-                        hozAlign: 'center',
-                        width: 90,
-                        formatter: function(cell) {
-                            const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (val.startsWith('N Map|')) {
-                                const part = val.split('|')[1];
-                                const ad = Math.abs(parseFloat(String(part || '').trim()) || 0);
-                                if (Number.isFinite(ad) && ad <= 3) {
-                                    return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                    });
+                    $(this).html('<i class="fa fa-filter"></i> Show All Columns');
+                    $(this).removeClass('btn-secondary btn-primary').addClass('btn-danger');
+                    $('#utilized-count-section').removeClass('d-none');
+                    $('#summary-stats').addClass('d-none');
+                    updateUtilizedCounts();
+                } else {
+                    // Restore by iterating stored keys (getColumns() may only return visible columns when some are hidden)
+                    Object.keys(originalColumnVisibilityUtilized).forEach(function(field) {
+                        try {
+                            const column = table.getColumn(field);
+                            if (column) {
+                                if (originalColumnVisibilityUtilized[field]) {
+                                    column.show();
+                                } else {
+                                    column.hide();
                                 }
-                                return '<span style="color:#dc3545;font-weight:bold;">N Map (' + String(part).replace(/</g, '&lt;') + ')</span>';
                             }
-                            return '';
+                        } catch (e) {
+                            console.log('Restore column not found: ' + field);
                         }
-                    },
-                    {
-                        title: 'GPFT',
-                        field: 'gpft',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        formatter: function(cell) {
-                            const v = parseFloat(cell.getValue());
-                            if (!Number.isFinite(v)) return '<span style="color:#6c757d;">–</span>';
-                            if (v === 0) return '0%';
-                            const color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
-                        }
-                    },
-                    {
-                        title: 'GROI',
-                        field: 'groi',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        formatter: function(cell) {
-                            const v = parseFloat(cell.getValue()) || 0;
-                            let color;
-                            if (v < 40) color = '#a00211';
-                            else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else color = '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
-                        }
-                    },
-                    {
-                        title: 'Profit',
-                        field: 'profit',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        formatter: function(cell) { return money(cell.getValue()); }
-                    },
-                    {
-                        title: 'Sales',
-                        field: 'sales',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        formatter: function(cell) { return money(cell.getValue()); }
-                    },
-                    {
-                        title: 'LP',
-                        field: 'lp',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        formatter: function(cell) { return money(cell.getValue()); }
-                    },
-                    {
-                        title: 'Ship',
-                        field: 'ship',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        formatter: function(cell) { return money(cell.getValue()); }
-                    },
-                    {
-                        title: 'WT ACT',
-                        field: 'wt_act',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        width: 78,
-                        formatter: function(cell) {
-                            const v = cell.getValue();
-                            if (v === null || v === undefined || v === '') return '<span style="color:#6c757d;">—</span>';
-                            const n = parseFloat(v);
-                            if (!Number.isFinite(n)) return '<span style="color:#6c757d;">—</span>';
-                            return '<span style="font-weight:600;">' + n.toFixed(2) + '</span>';
-                        }
-                    },
-                    {
-                        title: 'M Ship',
-                        field: 'm_ship',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        width: 78,
-                        formatter: function(cell) { return money(cell.getValue()); }
-                    },
-                    {
-                        title: 'Sprice',
-                        field: 'sprice',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        editor: 'number',
-                        editorParams: { min: 0, step: 0.01 },
-                        formatter: function(cell) {
-                            const v = parseFloat(cell.getValue()) || 0;
-                            return '<span style="font-weight:600;padding:2px 6px;border-radius:3px;">' + money(v) + '</span>';
-                        }
-                    },
-                    {
-                        title: 'SPFT',
-                        field: 'sgpft',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        formatter: function(cell) {
-                            const v = parseFloat(cell.getValue());
-                            if (!Number.isFinite(v) || v === 0) return '0%';
-                            const color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
-                        }
-                    },
-                    {
-                        title: 'SROI',
-                        field: 'sroi',
-                        sorter: 'number',
-                        hozAlign: 'right',
-                        formatter: function(cell) {
-                            const v = parseFloat(cell.getValue());
-                            if (!Number.isFinite(v) || v === 0) return '0%';
-                            let color;
-                            if (v < 40) color = '#a00211';
-                            else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#3591dc';
-                            else if (v < 250) color = '#28a745';
-                            else color = '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
-                        }
-                    },
-                ],
+                    });
+                    $(this).html('<i class="fa fa-filter"></i> Show Key Columns');
+                    $(this).removeClass('btn-danger btn-primary').addClass('btn-secondary');
+                    $('#utilized-count-section').addClass('d-none');
+                    $('#summary-stats').removeClass('d-none');
+                    adsBadgeFilter = null;
+                    $('#utilized-count-section .ads-section-badge').removeClass(
+                        'border border-3 border-dark');
+                    applyFilters();
+                }
             });
 
-            // Apply filters when table is built
-            table.on('tableBuilt', function() {
-                applyClientFilters();
-            });
-
-            // Apply filters after data is loaded
-            table.on('dataLoaded', function() {
-                applyClientFilters();
-            });
-
-            // Price mode dropdown handler
-            $(document).on('click', '.tm-price-mode-item', function(e) {
-                e.preventDefault();
-                const mode = $(this).data('mode');
-                tmPriceMode = mode;
-                syncTmPriceModeUi();
-            });
-
-            syncTmPriceModeUi();
-
-            $('#tm-discount-type-select').on('change', function() {
-                const t = $(this).val();
-                $('#tm-discount-value-input').attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
-            });
-
-            $('#tm-apply-discount-btn').on('click', function() { applyTmDiscount(); });
-            $('#tm-discount-value-input').on('keypress', function(e) {
-                if (e.which === 13) applyTmDiscount();
-            });
-            $('#tm-clear-sprice-btn').on('click', function() { clearTmSpriceForSelected(); });
-
-            $(document).on('change', '#tm-select-all-checkbox', function() {
-                if (!table) return;
+            // Select all checkbox handler
+            $(document).on('change', '#select-all-checkbox', function() {
                 const isChecked = $(this).prop('checked');
-                table.getData().forEach(function(row) {
-                    if (!row || row.is_parent || !row.sku) return;
+                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent
+                    .startsWith('PARENT ')));
+
+                filteredData.forEach(row => {
                     if (isChecked) {
-                        selectedSkus.add(row.sku);
+                        selectedSkus.add(row['(Child) sku']);
                     } else {
-                        selectedSkus.delete(row.sku);
+                        selectedSkus.delete(row['(Child) sku']);
                     }
                 });
-                $('.tm-sku-select-checkbox').prop('checked', isChecked);
+
+                $('.sku-select-checkbox').each(function() {
+                    const sku = $(this).data('sku');
+                    $(this).prop('checked', selectedSkus.has(sku));
+                });
+
                 updateSelectedCount();
             });
 
-            $(document).on('change', '.tm-sku-select-checkbox', function() {
-                const enc = $(this).attr('data-sku-enc');
-                const sku = enc ? decodeURIComponent(enc) : '';
+            // Individual checkbox handler
+            $(document).on('change', '.sku-select-checkbox', function() {
+                const sku = $(this).data('sku');
                 if ($(this).prop('checked')) {
                     selectedSkus.add(sku);
                 } else {
                     selectedSkus.delete(sku);
                 }
                 updateSelectedCount();
-                updateTmSelectAllCheckbox();
+                updateSelectAllCheckbox();
             });
 
+            // Apply discount button
+            $('#apply-discount-btn').on('click', function() {
+                applyDiscount();
+            });
+
+            // Apply discount on Enter key
+            $('#discount-percentage-input').on('keypress', function(e) {
+                if (e.which === 13) {
+                    applyDiscount();
+                }
+            });
+
+            // Clear SPRICE button
+            $('#clear-sprice-btn').on('click', function() {
+                clearSpriceForSelected();
+            });
+
+            // 0 Sold badge click handler (same mutual exclusivity as ebay2-tabulator-view)
+            let zeroSoldFilterActive = false;
+            $('#zero-sold-count-badge').on('click', function() {
+                zeroSoldFilterActive = !zeroSoldFilterActive;
+                moreSoldFilterActive = false;
+                missingFilterActive = false;
+                mapFilterActive = false;
+                invTTStockFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
+                applyFilters();
+            });
+
+            // > 0 Sold badge click handler
+            let moreSoldFilterActive = false;
+            $('#more-sold-count-badge').on('click', function() {
+                moreSoldFilterActive = !moreSoldFilterActive;
+                zeroSoldFilterActive = false;
+                missingFilterActive = false;
+                mapFilterActive = false;
+                invTTStockFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
+                applyFilters();
+            });
+
+            // Missing L badge click handler
+            let missingFilterActive = false;
+            $('#missing-count-badge').on('click', function() {
+                missingFilterActive = !missingFilterActive;
+                if (missingFilterActive) {
+                    mapFilterActive = false;
+                    invTTStockFilterActive = false;
+                    $(this).addClass('border border-3 border-dark');
+                    $('#map-count-badge, #inv-tt-stock-badge').removeClass('border border-3 border-dark');
+                } else {
+                    $(this).removeClass('border border-3 border-dark');
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
+                applyFilters();
+            });
+
+            // Map badge click handler
+            let mapFilterActive = false;
+            $('#map-count-badge').on('click', function() {
+                mapFilterActive = !mapFilterActive;
+                if (mapFilterActive) {
+                    missingFilterActive = false;
+                    invTTStockFilterActive = false;
+                    $(this).addClass('border border-3 border-dark');
+                    $('#missing-count-badge, #inv-tt-stock-badge').removeClass('border border-3 border-dark');
+                } else {
+                    $(this).removeClass('border border-3 border-dark');
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
+                applyFilters();
+            });
+
+            // N Map badge — same scope as MAP column / ebay2 N Map badge
+            let invTTStockFilterActive = false;
+            $('#inv-tt-stock-badge').on('click', function() {
+                invTTStockFilterActive = !invTTStockFilterActive;
+                if (invTTStockFilterActive) {
+                    missingFilterActive = false;
+                    mapFilterActive = false;
+                    $(this).addClass('border border-3 border-dark');
+                    $('#missing-count-badge, #map-count-badge').removeClass('border border-3 border-dark');
+                } else {
+                    $(this).removeClass('border border-3 border-dark');
+                }
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
+                applyFilters();
+            });
+
+            // Ads section badge filter (like tiendamia utilized page) - toggle on click
+            let adsBadgeFilter = null;
+            $(document).on('click', '.ads-section-badge', function() {
+                const filter = $(this).data('ads-filter');
+                adsBadgeFilter = (adsBadgeFilter === filter) ? null : filter;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
+                if (adsBadgeFilter) {
+                    $('#utilized-count-section .ads-section-badge[data-ads-filter="' + adsBadgeFilter +
+                        '"]').addClass('border border-3 border-dark');
+                }
+                missingFilterActive = false;
+                mapFilterActive = false;
+                invTTStockFilterActive = false;
+                zeroSoldFilterActive = false;
+                moreSoldFilterActive = false;
+                applyFilters();
+                if (typeof updateUtilizedCounts === 'function') updateUtilizedCounts();
+            });
+
+            // ========== MANUAL DROPDOWN FUNCTIONALITY ==========
+            $(document).on('click', '.manual-dropdown-container .btn', function(e) {
+                e.stopPropagation();
+                const container = $(this).closest('.manual-dropdown-container');
+
+                $('.manual-dropdown-container').not(container).removeClass('show');
+                container.toggleClass('show');
+            });
+
+            $(document).on('click', '.column-filter', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const $item = $(this);
+                const column = $item.data('column');
+                const color = $item.data('color');
+                const container = $item.closest('.manual-dropdown-container');
+                const button = container.find('.btn');
+
+                container.find('.column-filter').removeClass('active');
+                $item.addClass('active');
+
+                const statusCircle = $item.find('.status-circle').clone();
+                const text = $item.text().trim();
+                button.html('').append(statusCircle).append(' DIL%');
+
+                container.removeClass('show');
+                applyFilters();
+            });
+
+            $(document).on('click', function() {
+                $('.manual-dropdown-container').removeClass('show');
+            });
+
+            // Update selected count display
+            function updateSelectedCount() {
+                const count = selectedSkus.size;
+                $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
+                $('#discount-input-container').toggle(count > 0);
+            }
+
+            // Update select all checkbox state
+            function updateSelectAllCheckbox() {
+                if (!table) return;
+
+                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith(
+                    'PARENT ')));
+
+                if (filteredData.length === 0) {
+                    $('#select-all-checkbox').prop('checked', false);
+                    return;
+                }
+
+                const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
+                const allFilteredSelected = filteredSkus.size > 0 && [...filteredSkus].every(sku => selectedSkus
+                    .has(sku));
+
+                $('#select-all-checkbox').prop('checked', allFilteredSelected);
+            }
+
+            // Custom price rounding function
+            function roundToRetailPrice(price) {
+                // Don't round if price is below 20.99
+                if (price < 20.99) {
+                    return price;
+                }
+                const roundedDollar = Math.ceil(price);
+                return roundedDollar - 0.01;
+            }
+
+            // Apply discount to selected SKUs
+            function applyDiscount() {
+                const discountType = $('#discount-type-select').val();
+                const discountValue = parseFloat($('#discount-percentage-input').val());
+
+                if (isNaN(discountValue) || discountValue === 0) {
+                    showToast('Please enter a valid discount value', 'error');
+                    return;
+                }
+
+                if (selectedSkus.size === 0) {
+                    showToast('Please select at least one SKU', 'error');
+                    return;
+                }
+
+                let updatedCount = 0;
+                const updates = [];
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows("(Child) sku", "=", sku);
+
+                    if (rows.length > 0) {
+                        const row = rows[0];
+                        const rowData = row.getData();
+                        const currentPrice = parseFloat(rowData['Tiendamia Price']) || 0;
+
+                        if (currentPrice > 0) {
+                            let newSprice;
+
+                            if (discountType === 'percentage') {
+                                if (increaseModeActive) {
+                                    newSprice = currentPrice * (1 + discountValue / 100);
+                                } else {
+                                    newSprice = currentPrice * (1 - discountValue / 100);
+                                }
+                            } else {
+                                if (increaseModeActive) {
+                                    newSprice = currentPrice + discountValue;
+                                } else {
+                                    newSprice = currentPrice - discountValue;
+                                }
+                            }
+
+                            newSprice = roundToRetailPrice(newSprice);
+                            newSprice = Math.max(0.99, newSprice);
+
+                            const percentage = getRowMarginFactor(rowData);
+                            const lp = rowData['LP_productmaster'] || 0;
+                            const ship = rowData['Ship_productmaster'] || 0;
+
+                            const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) /
+                                newSprice) * 100 * 100) / 100 : 0;
+                            const spft = sgpft;
+                            const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) *
+                                100 * 100) / 100 : 0;
+
+                            row.update({
+                                SPRICE: newSprice,
+                                SGPFT: sgpft,
+                                SPFT: spft,
+                                SROI: sroi,
+                                has_custom_sprice: true
+                            });
+
+                            updates.push({
+                                sku: sku,
+                                sprice: newSprice
+                            });
+
+                            updatedCount++;
+                        }
+                    }
+                });
+
+                if (updates.length > 0) {
+                    saveSpriceUpdates(updates);
+                }
+
+                showToast(
+                    `${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on TT Price`,
+                    'success');
+                $('#discount-percentage-input').val('');
+            }
+
+            // Clear SPRICE for selected SKUs
+            function clearSpriceForSelected() {
+                if (selectedSkus.size === 0) {
+                    showToast('Please select SKUs first', 'error');
+                    return;
+                }
+
+                if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
+                    return;
+                }
+
+                let clearedCount = 0;
+                const updates = [];
+
+                table.getRows().forEach(row => {
+                    const rowData = row.getData();
+                    const sku = rowData['(Child) sku'];
+
+                    if (selectedSkus.has(sku)) {
+                        row.update({
+                            SPRICE: 0,
+                            SGPFT: 0,
+                            SPFT: 0,
+                            SROI: 0
+                        });
+
+                        updates.push({
+                            sku: sku,
+                            sprice: 0
+                        });
+
+                        clearedCount++;
+                    }
+                });
+
+                if (updates.length > 0) {
+                    saveSpriceUpdates(updates);
+                }
+
+                showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
+            }
+
+            // Save SPRICE updates to backend
+            function ttEscHtmlAttr(val) {
+                if (val == null || val === '') return '';
+                return String(val).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            }
+
+            /** NRP save: same pattern as Amazon's NRA/NRL save (fetch API + JSON). */
+            function ttSaveNrp(data, onSuccess, onFail) {
+                console.log('🟡 ttSaveNrp called with:', data);
+                onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
+                onFail = typeof onFail === 'function' ? onFail : function() {};
+                const saveUrl = TTP_CFG.saveNrp;
+                console.log('🟡 Save URL:', saveUrl);
+                
+                if (!saveUrl) {
+                    console.error('❌ TTP_CFG.saveNrp is not configured');
+                    showToast('NRP save URL missing.', 'error');
+                    onFail();
+                    return;
+                }
+
+                var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+                console.log('🟡 CSRF token:', csrfToken ? 'Found' : 'Missing');
+
+                const payload = {
+                    sku: data.sku,
+                    field: 'NRP',
+                    value: data.value
+                };
+                console.log('🟡 Sending payload:', payload);
+
+                fetch(saveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify(payload)
+                })
+                .then(function(res) {
+                    console.log('🟡 Response status:', res.status);
+                    if (!res.ok) {
+                        return res.text().then(function(t) {
+                            console.error('❌ Response error text:', t);
+                            throw new Error(res.status === 419 ? 'Session expired. Please refresh the page.' : (t || 'Save failed (' + res.status + ')'));
+                        });
+                    }
+                    return res.json();
+                })
+                .then(function(responseData) {
+                    console.log('🟡 Response data:', responseData);
+                    if (responseData.success) {
+                        console.log('✅ Success response received');
+                        onSuccess();
+                    } else {
+                        console.warn('⚠️ NRP not saved:', responseData.message || responseData.error || 'unknown');
+                        onFail();
+                    }
+                })
+                .catch(function(err) {
+                    console.error('❌ Error saving NRP:', err);
+                    showToast(err.message || 'Error saving NRP.', 'error');
+                    onFail();
+                });
+            }
+
+            function saveSpriceUpdates(updates) {
+                $.ajax({
+                    url: TTP_CFG.saveSprice,
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        updates: updates
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            console.log('SPRICE updates saved successfully:', response.updated,
+                                'records');
+                            if (response.errors && response.errors.length > 0) {
+                                console.warn('Some updates had errors:', response.errors);
+                            }
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error saving SPRICE updates:', xhr);
+                        let errorMessage = 'Error saving SPRICE updates to database';
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMessage += ': ' + xhr.responseJSON.error;
+                        }
+                        showToast(errorMessage, 'error');
+                    }
+                });
+            }
+
+            // Initialize Tabulator
+            table = new Tabulator("#tiendamia-table", {
+                ajaxURL: TTP_CFG.dataJson,
+                ajaxResponse: function(url, params, response) {
+                    var data = Array.isArray(response) ? response : (response && response.data);
+                    if (data && Array.isArray(data)) {
+                        data.forEach(function(row) {
+                            // Only backend-inserted parent summary rows have Parent = "PARENT {name}" (with space)
+                            if (row.Parent && String(row.Parent).startsWith('PARENT ')) {
+                                row.is_parent = true;
+                                if (!row['(Child) sku'] || row['(Child) sku'] === '') row[
+                                    '(Child) sku'] = row.Parent;
+                                if (!row.Child_sku || row.Child_sku === '') row.Child_sku = row
+                                    .Parent;
+                            }
+                        });
+                        return data;
+                    }
+                    return response;
+                },
+                ajaxSorting: false,
+                layout: "fitDataStretch",
+                pagination: true,
+                paginationSize: 100,
+                paginationSizeSelector: [10, 25, 50, 100, 200],
+                paginationCounter: "rows",
+                columnCalcs: "both",
+                langs: {
+                    "default": {
+                        "pagination": {
+                            "page_size": "SKU Count"
+                        }
+                    }
+                },
+                // No initialSort so backend order is preserved: children then PARENT row after each group (parent SKU visible)
+                initialSort: [],
+                rowFormatter: function(row) {
+                    const d = row.getData();
+                    if (d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '))) {
+                        row.getElement().style.backgroundColor = "rgba(255, 243, 205, 0.85)";
+                    }
+                },
+                columns: [{
+                        title: "Image",
+                        field: "image_path",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))
+                                return '<span style="color:#6c757d;">-</span>';
+                            const value = cell.getValue();
+                            if (value && value !== '-') {
+                                const esc = (v) => String(v).replace(/"/g, '&quot;').replace(/</g,
+                                    '&lt;');
+                                return `<img src="${esc(value)}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling && (this.nextElementSibling.style.display='inline');"><span style="display:none; font-size:10px; color:#999;">No image</span>`;
+                            }
+                            return '';
+                        },
+                        headerSort: false,
+                        width: 80
+                    },
+                    {
+                        title: "Parent",
+                        field: "Parent",
+                        headerFilter: "input",
+                        headerFilterPlaceholder: "Search Parent...",
+                        cssClass: "text-muted",
+                        tooltip: true,
+                        frozen: true,
+                        width: 150,
+                        visible: true
+                    },
+                    {
+                        title: "SKU",
+                        field: "(Child) sku",
+                        headerFilter: "input",
+                        headerFilterPlaceholder: "Search SKU...",
+                        cssClass: "text-primary fw-bold",
+                        tooltip: true,
+                        width: 250,
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const rowData = row.getData();
+                            const cellVal = cell.getValue();
+                            const isParentRow = rowData.is_parent === true ||
+                                (rowData.Parent && String(rowData.Parent).startsWith('PARENT ')) ||
+                                (cellVal && String(cellVal).startsWith('PARENT '));
+                            const safe = (s) => (s == null ? '' : String(s)).replace(/</g, '&lt;')
+                                .replace(/"/g, '&quot;');
+                            if (isParentRow) {
+                                // Prefer Parent field so "PARENT X" always shows (backend sets Parent = "PARENT {name}")
+                                const text = (rowData.Parent != null && rowData.Parent !== '') ?
+                                    String(rowData.Parent) :
+                                    (cellVal && String(cellVal).startsWith('PARENT ')) ? String(
+                                        cellVal) :
+                                    (rowData['(Child) sku'] != null && rowData['(Child) sku'] !==
+                                        '') ? String(rowData['(Child) sku']) :
+                                    (rowData.Child_sku != null && rowData.Child_sku !== '') ?
+                                    String(rowData.Child_sku) :
+                                    'PARENT';
+                                return '<span class="fw-bold" style="color:#0d6efd;font-size:14px;display:inline-block;padding:4px 8px;background:rgba(13,110,253,0.12);border-radius:4px;">' +
+                                    safe(text) + '</span>';
+                            }
+                            const sku = cellVal ?? rowData['(Child) sku'] ?? rowData['Child_sku'] ??
+                                '';
+                            const displaySku = safe(sku);
+                            return '<span class="fw-bold">' + displaySku +
+                                '</span> <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="' +
+                                safe(sku) + '" title="Copy SKU"></i>';
+                        }
+                    },
+                    {
+                        title: "INV",
+                        field: "INV",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number"
+                    },
+                    {
+                        title: "OV L30",
+                        field: "L30",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number"
+                    },
+                    {
+                        title: "Dil",
+                        field: "Tiendamia Dil%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            const cellVal = cell.getValue();
+                            if (isParent && (cellVal === null || cellVal === undefined ||
+                                    cellVal === '' || cellVal === '-'))
+                            return '<span style="color:#6c757d;">-</span>';
+                            const INV = parseFloat(rowData.INV) || 0;
+                            const OVL30 = parseFloat(rowData['L30']) || 0;
+                            const dilFromCell = parseFloat(cellVal);
+                            const dil = (isParent && !isNaN(dilFromCell)) ? dilFromCell : (INV ===
+                                0 ? 0 : (OVL30 / INV) * 100);
+                            if (isParent && INV === 0 && (cellVal === null || cellVal ===
+                                    undefined || cellVal === ''))
+                            return '<span style="color:#6c757d;">-</span>';
+                            if (INV === 0 && !isParent)
+                            return '<span style="color: #6c757d;">0%</span>';
+                            let color = '';
+                            if (dil < 16.66) color = '#a00211';
+                            else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                            else if (dil >= 25 && dil < 50) color = '#28a745';
+                            else color = '#e83e8c';
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "M L30",
+                        field: "M L30",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (isParent && (raw === null || raw === undefined || raw === '' ||
+                                    raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (isParent && isNaN(value))
+                            return '<span style="color:#6c757d;">-</span>';
+                            return `<span style="font-weight: 700;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "M L60",
+                        field: "M L60",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (isParent && (raw === null || raw === undefined || raw === '' ||
+                                    raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (isParent && isNaN(value))
+                            return '<span style="color:#6c757d;">-</span>';
+                            return `<span style="font-weight: 700;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "Stock",
+                        field: "Tiendamia Stock",
+                        hozAlign: "center",
+                        width: 60,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const raw = cell.getValue();
+                            if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ') && (
+                                    raw === '-' || raw === null || raw === undefined))
+                            return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (value === 0) {
+                                return '<span style="color: #dc3545; font-weight: 600;">0</span>';
+                            }
+                            return `<span style="font-weight: 600;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "Ship",
+                        field: "Tiendamia Ship",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 70,
+                        visible: false,
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (isParent && (raw === '-' || raw === null || raw === undefined ||
+                                    raw === '')) return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (isParent && isNaN(value))
+                            return '<span style="color:#6c757d;">-</span>';
+                            return `$${value.toFixed(2)}`;
+                        }
+                    },
+                    {
+                        title: "Missing L",
+                        field: "Missing",
+                        hozAlign: "center",
+                        width: 70,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            
+                            if (isParent && (value === '-' || value === null)) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            
+                            // Same as Amazon: exclude NRP='NRA' from showing Missing L
+                            const nrpValue = String(rowData.nrp || '').trim().toUpperCase();
+                            if (value === 'M' && nrpValue !== 'NRA') {
+                                return '<span style="color: #dc3545; font-weight: bold; font-size: 16px;">M</span>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: "Missing Ad",
+                        field: "hasCampaign",
+                        hozAlign: "center",
+                        width: 80,
+                        visible: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const hasCampaign = row.hasCampaign === true || row.hasCampaign ===
+                                'true' || row.hasCampaign === 1;
+                            const nraValue = (row.NR || '').trim();
+                            let dotColor, title;
+                            if (nraValue === 'NRA') {
+                                dotColor = 'yellow';
+                                title = 'NRA - Not Required';
+                            } else {
+                                dotColor = hasCampaign ? 'green' : 'red';
+                                title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
+                            }
+                            return `<div style="display: flex; align-items: center; justify-content: center;"><span class="status-circle ${dotColor}" title="${title}"></span></div>`;
+                        }
+                    },
+                    {
+                        title: "NRA",
+                        field: "NR",
+                        hozAlign: "center",
+                        width: 70,
+                        visible: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData()['(Child) sku'];
+                            const value = (cell.getValue()?.trim()) || 'RA';
+                            return `
+                            <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-field="NR"
+                                style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
+                                <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
+                                <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
+                            </select>
+                        `;
+                        }
+                    },
+                    {
+                        title: "Ad CVR %",
+                        field: "ad_cvr_pct",
+                        hozAlign: "right",
+                        width: 90,
+                        visible: false,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const value = cell.getValue();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (value === null || value === undefined || value === '' || value ===
+                                '-') return '<span style="color:#6c757d;">-</span>';
+                            const pct = parseFloat(value);
+                            if (isNaN(pct)) return '<span style="color:#6c757d;">-</span>';
+                            return '<span style="font-weight:600;">' + pct.toFixed(2) + '%</span>';
+                        }
+                    },
+                    {
+                        title: "Price",
+                        field: "ads_price",
+                        hozAlign: "right",
+                        width: 80,
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return value > 0 ? '$' + value.toFixed(2) : (value === 0 ?
+                                '<span style="color:#999;">0</span>' : '-');
+                        }
+                    },
+                    {
+                        title: "Budget",
+                        field: "budget",
+                        hozAlign: "right",
+                        width: 100,
+                        visible: false,
+                        editor: "number",
+                        editorParams: {
+                            min: 0,
+                            step: 0.01
+                        },
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || value === '')
+                            return '<span style="color:#999;">-</span>';
+                            return '$' + parseFloat(value).toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Spend",
+                        field: "spend",
+                        hozAlign: "right",
+                        width: 100,
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Ad Sold",
+                        field: "ad_sold",
+                        hozAlign: "right",
+                        width: 100,
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "Ad Clicks",
+                        field: "ad_clicks",
+                        hozAlign: "right",
+                        width: 100,
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "ACOS",
+                        field: "acos",
+                        hozAlign: "right",
+                        width: 100,
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return Math.round(value) + '%';
+                        }
+                    },
+                    {
+                        title: "Out ROAS",
+                        field: "out_roas",
+                        hozAlign: "right",
+                        width: 100,
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "In ROAS",
+                        field: "in_roas",
+                        hozAlign: "right",
+                        width: 100,
+                        visible: false,
+                        editor: "number",
+                        editorParams: {
+                            min: 0,
+                            step: 0.01
+                        },
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Status",
+                        field: "status",
+                        hozAlign: "center",
+                        width: 130,
+                        visible: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData()['(Child) sku'];
+                            const value = cell.getValue() || 'Not Created';
+                            const colors = {
+                                "Active": "#10b981",
+                                "Inactive": "#ef4444",
+                                "Not Created": "#eab308"
+                            };
+                            const selectedColor = colors[value] || "#6b7280";
+                            return `
+                            <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-field="status"
+                                style="width: 120px; border: 1px solid #d1d5db; padding: 4px 8px; font-size: 0.875rem; color: ${selectedColor}; font-weight: 500;">
+                                <option value="Active" ${value === 'Active' ? 'selected' : ''} style="color: #10b981;">Active</option>
+                                <option value="Inactive" ${value === 'Inactive' ? 'selected' : ''} style="color: #ef4444;">Inactive</option>
+                                <option value="Not Created" ${value === 'Not Created' ? 'selected' : ''} style="color: #eab308;">Not Created</option>
+                            </select>
+                        `;
+                        }
+                    },
+                    {
+                        title: "Campaign",
+                        field: "campaign_name",
+                        headerSort: false,
+                        width: 200,
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === '')
+                        return '<span style="color: #999;">-</span>';
+                            return value;
+                        }
+                    },
+                    {
+                        title: "MAP",
+                        field: "MAP",
+                        hozAlign: "center",
+                        width: 90,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            const isMissing = String(rowData.Missing || '').trim().toUpperCase() === 'M';
+                            const nrpValue = String(rowData.nrp || '').trim().toUpperCase();
+                            const inv = parseFloat(rowData.INV) || 0;
+                            
+                            if (isParent && (!value || value === '-')) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            
+                            // Same as Amazon: exclude items that are Missing L or have NRP='NRA'
+                            if (!isParent && isMissing) return '';
+                            
+                            // Only show mapping status for INV > 0 and NRP != 'NRA'
+                            if (inv <= 0 || nrpValue === 'NRA') return '';
+                            
+                            if (value === 'Map') {
+                                return '<span style="font-size: 20px; color: #28a745;">🟢</span>';
+                            } else if (value && (value.startsWith('N Map|') || value.startsWith('Diff|'))) {
+                                const d = ttAbsDiffFromMapValue(value);
+                                if (d !== null && d <= 3) {
+                                    return '<span style="font-size: 20px; color: #28a745;">🟢</span>';
+                                }
+                                const signed = value.split('|')[1] || '';
+                                const absVal = Math.abs(parseFloat(signed)) || 0;
+                                return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                        <span style="font-size: 16px; color: #dc3545;">🔴</span>
+                                        <span style="font-size: 11px; color: #dc3545; font-weight: 600;">${Math.round(absVal)}</span>
+                                    </div>`;
+                            }
+                            return isParent ? '<span style="color:#6c757d;">-</span>' : '';
+                        }
+                    },
+                    {
+                        title: "Prc",
+                        field: "Tiendamia Price",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (isParent && (raw === null || raw === undefined || raw === '' ||
+                                    raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (isParent && isNaN(value))
+                            return '<span style="color:#6c757d;">-</span>';
+                            if (value === 0) {
+                                return `<span style="color: #a00211; font-weight: 700;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
+                            }
+                            return `<span style="font-weight: 700;">$${value.toFixed(2)}</span>`;
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "GPFT%",
+                        field: "GPFT%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (value === null || value === undefined || value === '' || value ===
+                                '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return isParent ?
+                                '<span style="color:#6c757d;">-</span>' : '';
+                            let color = '';
+                            if (percent < 10) color = '#a00211';
+                            else if (percent >= 10 && percent < 15) color = '#ffc107';
+                            else if (percent >= 15 && percent < 20) color = '#3591dc';
+                            else if (percent >= 20 && percent <= 40) color = '#28a745';
+                            else color = '#e83e8c';
+                            return `<span style="color: ${color}; font-weight: 700;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "ROI%",
+                        field: "ROI%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (value === null || value === undefined || value === '' || value ===
+                                '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return isParent ?
+                                '<span style="color:#6c757d;">-</span>' : '';
+                            let color = '';
+                            if (percent < 50) color = '#a00211';
+                            else if (percent >= 50 && percent < 100) color = '#ffc107';
+                            else if (percent >= 100 && percent < 150) color = '#28a745';
+                            else color = '#e83e8c';
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "Profit",
+                        field: "Profit",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (isParent && (raw === null || raw === undefined || raw === '' ||
+                                    raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (isParent && isNaN(value))
+                            return '<span style="color:#6c757d;">-</span>';
+                            let color = value >= 0 ? '#28a745' : '#a00211';
+                            return `<span style="color: ${color}; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "T Profit",
+                        field: "T Profit",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aData = aRow.getData();
+                            const bData = bRow.getData();
+                            const aProfit = parseFloat(aData.Profit || 0);
+                            const bProfit = parseFloat(bData.Profit || 0);
+                            const aTtl30 = parseFloat(aData['M L30'] || 0);
+                            const bTtl30 = parseFloat(bData['M L30'] || 0);
+                            return (aTtl30 * aProfit) - (bTtl30 * bProfit);
+                        },
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            const profit = parseFloat(rowData.Profit || 0);
+                            const ttl30 = parseFloat(rowData['M L30'] || 0);
+                            const value = ttl30 * profit;
+                            if (isParent && !Number.isFinite(value))
+                            return '<span style="color:#6c757d;">-</span>';
+                            const color = value >= 0 ? '#28a745' : '#a00211';
+                            return `<span style="color: ${color}; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        },
+                        width: 85
+                    },
+                    {
+                        title: "Sales M L30",
+                        field: "Sales M L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (isParent && (raw === null || raw === undefined || raw === '' ||
+                                    raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (isParent && isNaN(value))
+                            return '<span style="color:#6c757d;">-</span>';
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "Sales M L60",
+                        field: "Sales M L60",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (isParent && (raw === null || raw === undefined || raw === '' ||
+                                    raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (isParent && isNaN(value))
+                            return '<span style="color:#6c757d;">-</span>';
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "LP",
+                        field: "LP_productmaster",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "Ship",
+                        field: "Ship_productmaster",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "<input type='checkbox' id='select-all-checkbox'>",
+                        field: "_select",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 40,
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const sku = rowData['(Child) sku'];
+                            const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                            return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
+                        }
+                    },
+                    {
+                        title: "SPRICE",
+                        field: "SPRICE",
+                        hozAlign: "center",
+                        editor: "number",
+                        editorParams: {
+                            min: 0,
+                            step: 0.01
+                        },
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            const rowData = cell.getRow().getData();
+                            const hasCustom = rowData.has_custom_sprice;
+                            const status = rowData.SPRICE_STATUS;
+
+                            let bgColor = '';
+                            if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
+                            else if (status === 'applied') bgColor = 'background-color: #d4edda;';
+                            else if (status === 'error') bgColor = 'background-color: #f8d7da;';
+                            else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
+
+                            return `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">$${value.toFixed(2)}</span>`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "SGPFT",
+                        field: "SGPFT",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            let color = '';
+
+                            if (percent < 10) color = '#a00211';
+                            else if (percent >= 10 && percent < 15) color = '#ffc107';
+                            else if (percent >= 15 && percent < 20) color = '#3591dc';
+                            else if (percent >= 20 && percent <= 40) color = '#28a745';
+                            else color = '#e83e8c';
+
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "SPFT",
+                        field: "SPFT",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            let color = '';
+
+                            if (percent < 10) color = '#a00211';
+                            else if (percent >= 10 && percent < 15) color = '#ffc107';
+                            else if (percent >= 15 && percent < 20) color = '#3591dc';
+                            else if (percent >= 20 && percent <= 40) color = '#28a745';
+                            else color = '#e83e8c';
+
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "SROI",
+                        field: "SROI",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 50,
+                        minWidth: 50,
+                        maxWidth: 50,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            let color = '';
+
+                            if (percent < 50) color = '#a00211';
+                            else if (percent >= 50 && percent < 100) color = '#ffc107';
+                            else if (percent >= 100 && percent < 150) color = '#28a745';
+                            else color = '#e83e8c';
+
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "NRP",
+                        field: "nrp",
+                        hozAlign: "center",
+                        width: 56,
+                        minWidth: 52,
+                        headerSort: true,
+                        accessor: function(value, data) {
+                            const val = data && data.nrp != null ? data.nrp : value;
+                            if (val === null || val === undefined) return '';
+                            return String(val).trim().toUpperCase();
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent || (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            let value = cell.getValue();
+                            if (value === null || value === undefined || value === '') {
+                                value = rowData.nrp;
+                            }
+                            if (value === null || value === undefined) {
+                                value = '';
+                            } else {
+                                value = String(value).trim().toUpperCase();
+                            }
+                            // Default to RA if empty or invalid (same as Amazon NRA)
+                            if (!value || value === '' || !['RA', 'NRA', 'LATER'].includes(value)) {
+                                value = 'RA';
+                            }
+                            const sku = String(rowData['(Child) sku'] || '');
+                            const parent = rowData.Parent != null ? String(rowData.Parent) : '';
+                            const skuAttr = ttEscHtmlAttr(sku);
+                            const parentAttr = ttEscHtmlAttr(parent);
+                            
+                            // Color based on value (same as Amazon)
+                            let bgColor = '#28a745'; // green for RA
+                            if (value === 'NRA') bgColor = '#dc3545'; // red
+                            else if (value === 'LATER') bgColor = '#ffc107'; // yellow
+                            
+                            return (
+                                '<select class="form-select form-select-sm nrp-nr-select" ' +
+                                'data-sku="' + skuAttr + '" data-parent="' + parentAttr + '" ' +
+                                'style="width:50px;border:1px solid gray;padding:2px;font-size:20px;text-align:center;background-color:' + bgColor + ';color:#000;" ' +
+                                'aria-label="NRP">' +
+                                '<option value="RA"' + (value === 'RA' ? ' selected' : '') + '>🟢</option>' +
+                                '<option value="NRA"' + (value === 'NRA' ? ' selected' : '') + '>🔴</option>' +
+                                '<option value="LATER"' + (value === 'LATER' ? ' selected' : '') + '>🟡</option>' +
+                                '</select>'
+                            );
+                        }
+                    }
+                ]
+            });
+
+            $(document).on('change', '#tiendamia-table .nrp-nr-select', function() {
+                console.log('🔵 NRP dropdown changed');
+                const $el = $(this);
+                const newValue = String($el.val() || '').trim().toUpperCase();
+                const sku = $el.data('sku');
+                const parent = $el.data('parent');
+                console.log('🔵 SKU:', sku, 'New Value:', newValue);
+                
+                if (!sku || !table) {
+                    console.error('❌ Missing SKU or table');
+                    return;
+                }
+                
+                // Update color immediately (same as Amazon NRA)
+                if (newValue === 'NRA') {
+                    $el.css({'backgroundColor': '#dc3545', 'color': '#000'}); // red
+                } else if (newValue === 'RA') {
+                    $el.css({'backgroundColor': '#28a745', 'color': '#000'}); // green
+                } else if (newValue === 'LATER') {
+                    $el.css({'backgroundColor': '#ffc107', 'color': '#000'}); // yellow
+                }
+                
+                const rows = table.searchRows('(Child) sku', '=', sku);
+                const row = rows && rows.length ? rows[0] : null;
+                const prevNrp = row ? row.getData().nrp : undefined;
+                console.log('🔵 Previous NRP:', prevNrp);
+                
+                // Update Tabulator row immediately, then persist (revert on failure)
+                if (row) {
+                    row.update({ nrp: newValue });
+                }
+                
+                console.log('🔵 Calling ttSaveNrp with:', { sku: sku, value: newValue });
+                ttSaveNrp(
+                    { sku: sku, parent: parent, value: newValue },
+                    function() {
+                        console.log('✅ NRP saved successfully');
+                        showToast('NRP saved', 'success');
+                    },
+                    function() {
+                        console.error('❌ NRP save failed, reverting');
+                        $el.val(prevNrp || 'RA');
+                        if (row) {
+                            row.update({ nrp: prevNrp || 'RA' });
+                        }
+                    }
+                );
+            });
+
+            // SKU Search: run applyFilters() so Ad Click and other filters stay applied (missing campaign stays hidden when Ad Click filter is on)
+            $('#sku-search').on('keyup', function() {
+                applyFilters();
+            });
+
+            // SPRICE cell edited - save to database
             table.on('cellEdited', function(cell) {
-                if (cell.getField() !== 'sprice') return;
-                const d = cell.getRow().getData();
-                if (d.is_parent) return;
-                const sku = d.sku;
-                const sprice = parseFloat(cell.getValue()) || 0;
-                const margin = parseFloat(d._margin) || 1;
-                const lp = parseFloat(d.lp) || 0;
-                const mShip = parseFloat(d.m_ship) || 0;
-                const sgpft = sprice > 0 ? Math.round(((sprice * margin - lp - mShip) / sprice) * 100) : 0;
-                const sroi = lp > 0 ? Math.round(((sprice * margin - lp - mShip) / lp) * 100) : 0;
-                cell.getRow().update({ sgpft: sgpft, sroi: sroi });
-                tmPatchAllRowsSku(sku, { sprice: sprice, sgpft: sgpft, sroi: sroi });
-                tmSaveSpriceUpdates([{ sku: sku, sprice: sprice }]);
-                const filtered = table.getData('active');
-                updateSummary(filtered);
+                const field = cell.getField();
+                if (field === 'SPRICE') {
+                    const row = cell.getRow();
+                    const rowData = row.getData();
+                    const sku = rowData['(Child) sku'];
+                    const newSprice = parseFloat(cell.getValue()) || 0;
+
+                    const percentage = getRowMarginFactor(rowData);
+                    const lp = rowData['LP_productmaster'] || 0;
+                    const ship = rowData['Ship_productmaster'] || 0;
+
+                    const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) /
+                        newSprice) * 100 * 100) / 100 : 0;
+                    const spft = sgpft;
+                    const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 *
+                        100) / 100 : 0;
+
+                    row.update({
+                        SGPFT: sgpft,
+                        SPFT: spft,
+                        SROI: sroi,
+                        has_custom_sprice: true
+                    });
+
+                    saveSpriceUpdates([{
+                        sku: sku,
+                        sprice: newSprice
+                    }]);
+                } else if (field === 'in_roas') {
+                    // Ads feature - disabled for Tiendamia (no ads)
+                    showToast('In ROAS editing not available for Tiendamia', 'info');
+                    return;
+                } else if (field === 'budget') {
+                    // Ads feature - disabled for Tiendamia (no ads)
+                    showToast('Budget editing not available for Tiendamia', 'info');
+                    return;
+                }
             });
 
-            $('#tm-row-type-filter, #tm-inv-filter, #tm-stock-filter, #tm-gpft-filter, #tm-roi-filter, #tm-ml30-filter, #tm-map-filter, #tm-dil-filter')
-                .on('change', applyClientFilters);
-            let searchTimer = null;
-            $('#tm-sku-search').on('input', function() {
-                clearTimeout(searchTimer);
-                searchTimer = setTimeout(applyClientFilters, 200);
-            });
-
-            $('#tm-refresh-btn').on('click', function() {
-                table.setData(TM_TABULATOR_DATA_URL).then(function() {
-                    applyClientFilters();
+            // NRA and Status editable selects (utilized columns) - save to tiendamia.utilized.update
+            $(document).on('change', '.editable-select', function() {
+                const sku = $(this).data('sku');
+                const field = $(this).data('field');
+                const value = $(this).val();
+                if (!sku || !field) return;
+                const rows = table.searchRows("(Child) sku", "=", sku);
+                const row = rows && rows.length ? rows[0] : null;
+                let oldValue = null;
+                if (row) {
+                    const rowData = row.getData();
+                    oldValue = rowData[field];
+                    rowData[field] = value;
+                    row.update(rowData);
+                }
+                const $select = $(this);
+                $.ajax({
+                    url: '{{ route('tiendamia.utilized.update') }}',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: JSON.stringify({
+                        sku: sku,
+                        field: field,
+                        value: value,
+                        channel: TTP_CFG.summaryChannel
+                    }),
+                    success: function(response) {
+                        if (response && response.success) {
+                            showToast(field === 'NR' ? 'NRA updated' : (field ===
+                                'variation_req' ? 'Variation Req updated' : (field ===
+                                    'video_req' ? 'Video Req updated' : 'Status updated'
+                                    )), 'success');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        if (row && oldValue !== null) {
+                            const rowData = row.getData();
+                            rowData[field] = oldValue;
+                            row.update(rowData);
+                            $select.val(oldValue);
+                        }
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr
+                            .responseJSON.message : ('Failed to update: ' + (xhr.statusText ||
+                                error));
+                        showToast(msg, 'error');
+                    }
                 });
             });
 
-            $('#tm-export-btn').on('click', function() {
-                const name = 'tiendamia_princing_' + new Date().toISOString().slice(0, 10) + '.csv';
-                table.download('csv', name);
+            // Video Uploaded checkbox - save to tiendamia.utilized.update
+            $(document).on('change', '.video-uploaded-checkbox', function() {
+                const sku = $(this).data('sku');
+                const field = $(this).data('field');
+                const value = $(this).prop('checked') ? '1' : '0';
+                if (!sku || !field) return;
+                const rows = table.searchRows("(Child) sku", "=", sku);
+                const row = rows && rows.length ? rows[0] : null;
+                const oldValue = row ? row.getData()[field] : null;
+                if (row) {
+                    const rowData = row.getData();
+                    rowData[field] = value === '1' ? 1 : 0;
+                    row.update(rowData);
+                }
+                const $cb = $(this);
+                $.ajax({
+                    url: '{{ route('tiendamia.utilized.update') }}',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: JSON.stringify({
+                        sku: sku,
+                        field: field,
+                        value: value,
+                        channel: TTP_CFG.summaryChannel
+                    }),
+                    success: function(response) {
+                        if (response && response.success) {
+                            showToast('Video Uploaded updated', 'success');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        if (row && oldValue !== null && oldValue !== undefined) {
+                            const rowData = row.getData();
+                            rowData[field] = oldValue;
+                            row.update(rowData);
+                            $cb.prop('checked', oldValue === 1 || oldValue === '1');
+                        }
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr
+                            .responseJSON.message : ('Failed to update: ' + (xhr.statusText ||
+                                error));
+                        showToast(msg, 'error');
+                    }
+                });
+            });
+
+            // L7 / L30 Upload: button triggers file input, then upload on file select
+            function doUploadReport(fileInput, reportRange, statusContainerId) {
+                const file = fileInput.files[0];
+                if (!file) return;
+                const $status = $('#' + statusContainerId);
+                $status.removeClass('d-none').html('<span class="text-primary">Uploading...</span>');
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('report_range', reportRange);
+                $.ajax({
+                    url: '{{ route('tiendamia.utilized.upload') }}',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function(response) {
+                        if (response && response.success) {
+                            showToast(response.message || 'Upload successful', 'success');
+                            if (table) table.replaceData();
+                            $status.html('<span class="text-success">' + (response.message || 'Done') +
+                                '</span>');
+                        } else {
+                            showToast(response.message || 'Upload failed', 'error');
+                            $status.html('<span class="text-danger">' + (response.message || 'Failed') +
+                                '</span>');
+                        }
+                        setTimeout(function() {
+                            $status.addClass('d-none').html('');
+                        }, 4000);
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON
+                            .message : 'Upload failed';
+                        showToast(msg, 'error');
+                        $status.html('<span class="text-danger">' + msg + '</span>');
+                        setTimeout(function() {
+                            $status.addClass('d-none').html('');
+                        }, 4000);
+                    }
+                });
+                fileInput.value = '';
+            }
+            $('#l7-upload-btn').on('click', function() {
+                $('#l7-upload-file').off('change').on('change', function() {
+                    doUploadReport(this, 'L7', 'upload-status-container');
+                }).trigger('click');
+            });
+            $('#l30-upload-btn').on('click', function() {
+                $('#l30-upload-file').off('change').on('change', function() {
+                    doUploadReport(this, 'L30', 'upload-status-container');
+                }).trigger('click');
+            });
+
+            // Copy SKU button handler
+            $(document).on('click', '.copy-sku-btn', function(e) {
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                navigator.clipboard.writeText(sku).then(() => {
+                    showToast(`Copied: ${sku}`, 'success');
+                });
+            });
+
+            // Helper: parent summary rows must never be hidden by filters
+            function isParentRow(data) {
+                return data && (data.is_parent === true || (data.Parent && String(data.Parent).startsWith(
+                    'PARENT ')));
+            }
+
+            // Apply filters
+            function applyFilters() {
+                const rowTypeFilter = $('#row-type-filter').val();
+                const inventoryFilter = $('#inventory-filter').val();
+                const gpftFilter = $('#gpft-filter').val();
+                const roiFilter = $('#roi-filter').val();
+                const adClickFilter = $('#ad-click-filter').val();
+                const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
+
+                table.clearFilter();
+
+                // Row type filter
+                if (rowTypeFilter === 'parent') {
+                    table.addFilter(function(data) {
+                        return isParentRow(data);
+                    });
+                } else if (rowTypeFilter === 'sku') {
+                    table.addFilter(function(data) {
+                        return !isParentRow(data);
+                    });
+                }
+
+                // Inventory filter (parent rows always visible)
+                if (inventoryFilter === 'zero') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        return parseFloat(data.INV) === 0;
+                    });
+                } else if (inventoryFilter === 'more') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        return parseFloat(data.INV) > 0;
+                    });
+                }
+
+                // Tiendamia Stock filter (parent rows always visible)
+                const tiendamiaStockFilter = $('#tiendamia-stock-filter').val();
+                if (tiendamiaStockFilter === 'zero') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        return parseFloat(data['Tiendamia Stock']) === 0;
+                    });
+                } else if (tiendamiaStockFilter === 'more') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        return parseFloat(data['Tiendamia Stock']) > 0;
+                    });
+                }
+
+                // GPFT filter (parent rows always visible)
+                if (gpftFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        const gpft = parseFloat(data['GPFT%']) || 0;
+                        if (gpftFilter === 'negative') return gpft < 0;
+                        if (gpftFilter === '50plus') return gpft >= 50;
+                        const [min, max] = gpftFilter.split('-').map(Number);
+                        return gpft >= min && gpft < max;
+                    });
+                }
+
+                // ROI % filter (parent rows always visible)
+                if (roiFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        const roi = parseFloat(data['ROI%']);
+                        if (isNaN(roi)) return false;
+                        if (roiFilter === 'lt40') return roi < 40;
+                        if (roiFilter === '40-75') return roi >= 40 && roi < 75;
+                        if (roiFilter === '75-125') return roi >= 75 && roi < 125;
+                        if (roiFilter === '125-175') return roi >= 125 && roi < 175;
+                        if (roiFilter === '175-250') return roi >= 175 && roi < 250;
+                        if (roiFilter === 'gt250') return roi >= 250;
+                        return true;
+                    });
+                }
+
+                // Ad Click filter (parent rows always visible)
+                if (adClickFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data
+                            .hasCampaign === 1;
+                        const clicks = parseInt(data.ad_clicks, 10) || 0;
+                        if (!hasCampaign) return false;
+                        if (adClickFilter === 'zero') return clicks === 0;
+                        if (adClickFilter === 'has') return clicks > 0;
+                        return true;
+                    });
+                }
+
+                // T L30 filter (parent rows always visible; excludes 0 inventory items for child rows only)
+                const tl30Filter = $('#tl30-filter').val();
+                if (tl30Filter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        const inv = parseFloat(data.INV) || 0;
+                        if (inv <= 0) return false;
+                        const ttL30 = parseFloat(data['M L30']) || 0;
+                        if (tl30Filter === '0') return ttL30 === 0;
+                        if (tl30Filter === '0-10') return ttL30 > 0 && ttL30 <= 10;
+                        if (tl30Filter === '10+') return ttL30 > 10;
+                        return true;
+                    });
+                }
+
+                // DIL filter (parent rows always visible)
+                if (dilFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        const inv = parseFloat(data['INV']) || 0;
+                        const l30 = parseFloat(data['L30']) || 0;
+                        const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+
+                        if (dilFilter === 'red') return dil < 16.66;
+                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                        if (dilFilter === 'pink') return dil >= 50;
+                        return true;
+                    });
+                }
+
+                // 0 Sold filter (parent rows always visible)
+                if (zeroSoldFilterActive) {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        return parseFloat(data['M L30']) === 0;
+                    });
+                }
+
+                // > 0 Sold filter (parent rows always visible)
+                if (moreSoldFilterActive) {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        return parseFloat(data['M L30']) > 0;
+                    });
+                }
+
+                // Missing filter (parent rows always visible)
+                if (missingFilterActive) {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        // Same as column logic: show Missing L only if Missing='M' AND NRP != 'NRA'
+                        const nrpValue = String(data.nrp || '').trim().toUpperCase();
+                        return data.Missing === 'M' && nrpValue !== 'NRA';
+                    });
+                }
+
+                // Map filter (parent rows always visible)
+                if (mapFilterActive) {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
+                        return data.MAP === 'Map' && !isMissing;
+                    });
+                }
+
+                // N Map filter — legacy Diff|/N Map| rows with |diff| > 3 only (≤3 is Map)
+                if (invTTStockFilterActive) {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return true;
+                        const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
+                        return ttIsStrictNMapMapValue(data['MAP'], isMissing);
+                    });
+                }
+
+                // Ads section badge filter (parent rows always visible)
+                if (typeof utilizedColumnsVisible !== 'undefined' && utilizedColumnsVisible && adsBadgeFilter) {
+                    switch (adsBadgeFilter) {
+                        case 'all':
+                            break;
+                        case 'campaign':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const hasCampaign = data.hasCampaign === true || data.hasCampaign ===
+                                    'true' || data.hasCampaign === 1;
+                                return hasCampaign;
+                            });
+                            break;
+                        case 'ad-sku':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const hasCampaign = data.hasCampaign === true || data.hasCampaign ===
+                                    'true' || data.hasCampaign === 1;
+                                const inv = parseFloat(data.INV) || 0;
+                                return hasCampaign && inv > 0;
+                            });
+                            break;
+                        case 'missing':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const hasCampaign = data.hasCampaign === true || data.hasCampaign ===
+                                    'true' || data.hasCampaign === 1;
+                                const nr = (data.NR || '').trim();
+                                const inv = parseFloat(data.INV) || 0;
+                                return !hasCampaign && inv > 0 && nr !== 'NRA';
+                            });
+                            break;
+                        case 'nra-missing':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const hasCampaign = data.hasCampaign === true || data.hasCampaign ===
+                                    'true' || data.hasCampaign === 1;
+                                const nr = (data.NR || '').trim();
+                                return !hasCampaign && nr === 'NRA';
+                            });
+                            break;
+                        case 'zero-inv':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                return parseFloat(data.INV) <= 0;
+                            });
+                            break;
+                        case 'nra':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                return (data.NR || '').trim() === 'NRA';
+                            });
+                            break;
+                        case 'ra':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                return (data.NR || '').trim() === 'RA';
+                            });
+                            break;
+                        case 'total-spend':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const spend = parseFloat(data.spend) || 0;
+                                return spend > 0;
+                            });
+                            break;
+                        case 'total-spend-l30':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const spendL30 = parseFloat(data.spend_l30) || 0;
+                                return spendL30 > 0;
+                            });
+                            break;
+                        case 'total-spend-l7':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const spendL7 = parseFloat(data.spend_l7) || 0;
+                                return spendL7 > 0;
+                            });
+                            break;
+                        case 'budget':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const b = data.budget;
+                                return b !== null && b !== undefined && b !== '' && (parseFloat(b) || 0) >
+                                0;
+                            });
+                            break;
+                        case 'ad-clicks':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const clicks = parseInt(data.ad_clicks, 10) || 0;
+                                return clicks > 0;
+                            });
+                            break;
+                        case 'ad-sales':
+                        case 'avg-acos':
+                        case 'roas':
+                            table.addFilter(function(data) {
+                                if (isParentRow(data)) return true;
+                                const spend = parseFloat(data.spend) || 0;
+                                const outRoas = parseFloat(data.out_roas) || 0;
+                                return spend > 0 && outRoas > 0;
+                            });
+                            break;
+                    }
+                }
+
+                // SKU search: show only rows where (Child) sku or Parent contains the term (parent rows must match too)
+                const skuSearchVal = $('#sku-search').val();
+                if (skuSearchVal && skuSearchVal.trim() !== '') {
+                    const term = skuSearchVal.trim().toLowerCase();
+                    table.addFilter(function(data) {
+                        const sku = (data['(Child) sku'] || '').toString().toLowerCase();
+                        const parent = (data.Parent || '').toString().toLowerCase();
+                        const matchSku = sku.indexOf(term) !== -1;
+                        const matchParent = parent.indexOf(term) !== -1;
+                        if (isParentRow(data)) return matchSku || matchParent;
+                        return matchSku;
+                    });
+                }
+
+                updateSummary();
+            }
+
+            $('#row-type-filter, #inventory-filter, #gpft-filter, #roi-filter, #tiendamia-stock-filter, #ad-click-filter, #tl30-filter')
+                .on('change', function() {
+                    applyFilters();
+                });
+
+            // Update summary badges
+            function updateSummary() {
+                const data = table.getData('active').filter(row => {
+                    return !(row.Parent && row.Parent.startsWith('PARENT '));
+                });
+
+                let totalSales = 0,
+                    totalPft = 0,
+                    totalRevenue = 0,
+                    totalCogs = 0,
+                    totalPrice = 0,
+                    priceCount = 0;
+                let totalInv = 0,
+                    totalL30 = 0,
+                    zeroSoldCount = 0,
+                    moreSoldCount = 0;
+                let missingCount = 0,
+                    mapCount = 0,
+                    invTTStockCount = 0;
+
+                data.forEach(row => {
+                    const l30 = parseFloat(row['M L30']) || 0;
+                    const profit = parseFloat(row['Profit']) || 0;
+                    const sales = parseFloat(row['Sales M L30']) || 0;
+                    const lp = parseFloat(row['LP_productmaster']) || 0;
+                    
+                    totalSales += sales;
+                    totalPft += l30 * profit;
+                    totalRevenue += sales;
+                    totalCogs += l30 * lp;
+
+                    const price = parseFloat(row['Tiendamia Price']) || 0;
+                    if (price > 0) {
+                        totalPrice += price;
+                        priceCount++;
+                    }
+
+                    totalInv += parseFloat(row.INV) || 0;
+                    totalL30 += parseFloat(row['M L30']) || 0;
+
+                    if (l30 === 0) {
+                        zeroSoldCount++;
+                    } else {
+                        moreSoldCount++;
+                    }
+
+                    const isMissing = String(row['Missing'] || '').trim().toUpperCase() === 'M';
+                    if (isMissing) {
+                        missingCount++;
+                    }
+
+                    const mapValue = row['MAP'];
+                    if (mapValue === 'Map' && !isMissing) {
+                        mapCount++;
+                    }
+
+                    if (ttIsStrictNMapMapValue(mapValue, isMissing)) {
+                        invTTStockCount++;
+                    }
+                });
+
+                // Calculate weighted GPFT% and ROI% (same as all-marketplace-master)
+                const avgGpft = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
+                const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
+                const avgRoi = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+
+                $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
+                $('#total-pft-amt-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
+                $('#avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
+                $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
+                $('#total-l30-badge').text(`M L30: ${totalL30.toLocaleString()}`);
+                $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
+                $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
+                $('#roi-percent-badge').text(`ROI%: ${Math.round(avgRoi)}%`);
+                $('#missing-count-badge').text(`Missing L: ${missingCount}`);
+                $('#map-count-badge').text(`Map: ${mapCount}`);
+                $('#inv-tt-stock-badge').text('N Map: ' + invTTStockCount.toLocaleString());
+            }
+
+            // Update Ads/Utilized count section (from table data: campaign, NR, spend, etc.)
+            function updateUtilizedCounts() {
+                if (!table) return;
+                const data = table.getData('all').filter(row => {
+                    const sku = row['(Child) sku'] || '';
+                    return sku && !String(row.Parent || '').startsWith('PARENT ');
+                });
+                const processedSkus = new Set();
+                const zeroInvSkus = new Set();
+                const adSkuSet = new Set(); // SKU active in ads (hasCampaign) with >0 inventory
+                let validSkuCount = 0,
+                    missingCount = 0,
+                    nraMissingCount = 0,
+                    nraCount = 0;
+                let totalSpend = 0,
+                    totalSpendL30 = 0,
+                    totalSpendL7 = 0,
+                    totalAdSales = 0,
+                    totalBudget = 0,
+                    totalAdClicks = 0,
+                    totalAdSold = 0;
+
+                data.forEach(row => {
+                    const sku = row['(Child) sku'] || '';
+                    if (!sku) return;
+                    const hasCampaign = row.hasCampaign === true || row.hasCampaign === 'true' || row
+                        .hasCampaign === 1;
+                    const nr = (row.NR || '').trim();
+                    const inv = parseFloat(row.INV) || 0;
+
+                    if (!processedSkus.has(sku)) {
+                        processedSkus.add(sku);
+                        validSkuCount++;
+                        if (nr === 'NRA') nraCount++;
+                    }
+                    if (hasCampaign && inv > 0) adSkuSet.add(sku);
+                    if (inv <= 0) zeroInvSkus.add(sku);
+                    if (!hasCampaign) {
+                        if (nr === 'NRA') {
+                            if (!processedSkus.has('nm_' + sku)) {
+                                processedSkus.add('nm_' + sku);
+                                nraMissingCount++;
+                            }
+                        } else if (inv > 0) {
+                            if (!processedSkus.has('m_' + sku)) {
+                                processedSkus.add('m_' + sku);
+                                missingCount++;
+                            }
+                        }
+                    }
+                    totalSpend += parseFloat(row.spend) || 0;
+                    totalSpendL30 += parseFloat(row.spend_l30) || 0;
+                    totalSpendL7 += parseFloat(row.spend_l7) || 0;
+                    totalBudget += parseFloat(row.budget) || 0;
+                    totalAdClicks += parseInt(row.ad_clicks, 10) || 0;
+                    totalAdSold += parseInt(row.ad_sold, 10) || 0;
+                    const outRoas = parseFloat(row.out_roas) || 0;
+                    const spend = parseFloat(row.spend) || 0;
+                    if (outRoas > 0 && spend > 0) totalAdSales += spend * outRoas;
+                });
+                const zeroInvCount = zeroInvSkus.size;
+
+                const raCount = Math.max(0, validSkuCount - nraCount);
+                const avgAcos = totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
+                const roas = totalSpend > 0 ? totalAdSales / totalSpend : 0;
+                const avgClicks = adSkuSet.size > 0 ? totalAdClicks / adSkuSet.size : 0;
+
+                $('#total-sku-count').text('Total SKU: ' + validSkuCount);
+                $('#total-campaign-count').text('Campaign: ' + totalDistinctCampaigns);
+                $('#ad-sku-count').text('Ad SKU: ' + adSkuSet.size);
+                $('#missing-campaign-count').text('Missing Ad: ' + missingCount);
+                $('#nra-missing-count').text('NRA MISSING: ' + nraMissingCount);
+                $('#zero-inv-count').text('Zero INV: ' + zeroInvCount);
+                $('#nra-count').text('NRA: ' + nraCount);
+                $('#ra-count').text('RA: ' + raCount);
+                $('#total-spend-l30-badge').text('L30 Spend: $' + Math.round(totalSpendL30).toLocaleString());
+                $('#total-spend-l7-badge').text('L7 Spend: $' + Math.round(totalSpendL7).toLocaleString());
+                $('#total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }));
+                $('#total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
+                $('#total-ad-sold-badge').text('Total L30 Ad Sold: ' + totalAdSold.toLocaleString());
+                $('#total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
+                $('#avg-clicks-badge').text('Avg Clicks: ' + Math.round(avgClicks).toLocaleString());
+                $('#avg-acos-badge').text('Avg ACOS: ' + Math.round(avgAcos) + '%');
+                $('#roas-badge').text('ROAS: ' + roas.toFixed(2));
+            }
+
+            // Build Column Visibility Dropdown
+            function buildColumnDropdown() {
+                const columns = table.getColumns();
+                let html = '';
+
+                columns.forEach(col => {
+                    const field = col.getField();
+                    const title = col.getDefinition().title;
+                    if (field && field !== '_select' && title) {
+                        const isVisible = col.isVisible();
+                        html += `<li class="dropdown-item">
+                        <label style="cursor: default; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" class="column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
+                            ${title.replace(/<[^>]*>/g, '')}
+                        </label>
+                    </li>`;
+                    }
+                });
+
+                $('#column-dropdown-menu').html(html);
+            }
+
+            function saveColumnVisibilityToServer() {
+                const visibility = {};
+                table.getColumns().forEach(col => {
+                    const field = col.getField();
+                    if (field && field !== '_select') {
+                        // Never persist ads columns or Parent as visible
+                        visibility[field] = (ADS_ONLY_COLUMN_FIELDS.includes(field) || ALWAYS_HIDDEN_COLUMNS
+                            .includes(field)) ? false : col.isVisible();
+                    }
+                });
+
+                $.ajax({
+                    url: TTP_CFG.columnSet,
+                    method: 'POST',
+                    data: {
+                        visibility: visibility,
+                        channel: TTP_CFG.summaryChannel,
+                        _token: '{{ csrf_token() }}'
+                    }
+                });
+            }
+
+            function applyColumnVisibilityFromServer() {
+                $.ajax({
+                    url: TTP_CFG.columnGet,
+                    method: 'GET',
+                    data: {
+                        channel: TTP_CFG.summaryChannel
+                    },
+                    success: function(visibility) {
+                        if (visibility && Object.keys(visibility).length > 0) {
+                            Object.keys(visibility).forEach(field => {
+                                if (ADS_ONLY_COLUMN_FIELDS.includes(field) ||
+                                    ALWAYS_HIDDEN_COLUMNS.includes(field))
+                            return; // never show ads or Parent from server
+                                const col = table.getColumn(field);
+                                if (col) {
+                                    if (visibility[field]) {
+                                        col.show();
+                                    } else {
+                                        col.hide();
+                                    }
+                                }
+                            });
+                        }
+                        // Force ads columns and Parent hidden by default
+                        [...ADS_ONLY_COLUMN_FIELDS, ...ALWAYS_HIDDEN_COLUMNS].forEach(field => {
+                            try {
+                                const col = table.getColumn(field);
+                                if (col) col.hide();
+                            } catch (e) {}
+                        });
+                        buildColumnDropdown();
+                    }
+                });
+            }
+
+            // Wait for table to be built
+            table.on('tableBuilt', function() {
+                buildColumnDropdown();
+                applyColumnVisibilityFromServer();
+            });
+
+            table.on('dataLoaded', function() {
+                function afterLoad() {
+                    setTimeout(function() {
+                        applyFilters();
+                        updateSummary();
+                        updateUtilizedCounts();
+                    }, 100);
+                }
+                // Campaign count disabled for Tiendamia (no campaigns)
+                // fetch(TTP_CFG.distinctCampaign)
+                //     .then(function(r) {
+                //         return r.json();
+                //     })
+                //     .then(function(res) {
+                //         if (res && typeof res.totalDistinctCampaigns !== 'undefined') {
+                //             totalDistinctCampaigns = parseInt(res.totalDistinctCampaigns, 10) || 0;
+                //         }
+                //         afterLoad();
+                //     })
+                //     .catch(function() {
+                //         afterLoad();
+                //     });
+                afterLoad(); // Call directly since no campaign data needed
+            });
+
+            table.on('renderComplete', function() {
+                setTimeout(function() {
+                    updateSummary();
+                    updateUtilizedCounts();
+                }, 100);
+            });
+
+            // Toggle column from dropdown
+            document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
+                if (e.target.classList.contains('column-toggle')) {
+                    const field = e.target.dataset.field;
+                    const col = table.getColumn(field);
+                    if (col) {
+                        if (e.target.checked) {
+                            col.show();
+                        } else {
+                            col.hide();
+                        }
+                        saveColumnVisibilityToServer();
+                    }
+                }
+            });
+
+            // Show All Columns button (standard columns only; ads columns stay hidden until Show Key Columns is clicked)
+            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+                table.getColumns().forEach(col => {
+                    const field = col.getField();
+                    if (field && field !== '_select') {
+                        if (ADS_ONLY_COLUMN_FIELDS.includes(field) || ALWAYS_HIDDEN_COLUMNS
+                            .includes(field)) {
+                            col.hide();
+                        } else {
+                            col.show();
+                        }
+                    }
+                });
+                buildColumnDropdown();
+                saveColumnVisibilityToServer();
+            });
+
+            // Export CSV button
+            $('#export-btn').on('click', function() {
+                const exportData = [];
+                const visibleColumns = table.getColumns().filter(col => col.isVisible() && col
+                .getField() !== '_select');
+
+                const headers = visibleColumns.map(col => {
+                    let title = col.getDefinition().title || col.getField();
+                    return title.replace(/<[^>]*>/g, '');
+                });
+                exportData.push(headers);
+
+                const data = table.getData("active");
+                data.forEach(row => {
+                    const rowData = [];
+                    visibleColumns.forEach(col => {
+                        const field = col.getField();
+                        let value = row[field];
+
+                        if (value === null || value === undefined) {
+                            value = '';
+                        } else if (typeof value === 'number') {
+                            value = parseFloat(value.toFixed(2));
+                        } else if (typeof value === 'string') {
+                            value = value.replace(/<[^>]*>/g, '').trim();
+                        }
+                        rowData.push(value);
+                    });
+                    exportData.push(rowData);
+                });
+
+                let csv = '';
+                exportData.forEach(row => {
+                    csv += row.map(cell => {
+                        if (typeof cell === 'string' && (cell.includes(',') || cell
+                                .includes('"') || cell.includes('\n'))) {
+                            return '"' + cell.replace(/"/g, '""') + '"';
+                        }
+                        return cell;
+                    }).join(',') + '\n';
+                });
+
+                const blob = new Blob([csv], {
+                    type: 'text/csv;charset=utf-8;'
+                });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'tiendamia_pricing_export_' + new Date().toISOString().slice(0,
+                    10) + '.csv');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                showToast('Export downloaded successfully!', 'success');
             });
         });
     </script>

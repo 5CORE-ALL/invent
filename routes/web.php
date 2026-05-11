@@ -2480,6 +2480,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiendamia/daily-sales', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'index'])->name('tiendamia.daily.sales');
     Route::get('/tiendamia-daily-sales-column-visibility', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getColumnVisibility']);
     Route::post('/tiendamia-daily-sales-column-visibility', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'saveColumnVisibility']);
+    Route::get('/tiendamia-catalog-metrics', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getCatalogMetrics']);
 
     // Best Buy Pricing Routes
     Route::get('/bestbuy-pricing', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyPricingView'])->name('bestbuy.pricing');
@@ -3901,10 +3902,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // tiendamia
     Route::get('plsPricingCVR', [TiendamiaController::class, 'tiendamiaPricingCVR'])->name('tiendamia.pricing.cvr');
-    Route::get('/tiendamia-products-pricing', [TiendamiaPricingController::class, 'tabulatorView'])->name('tiendamia.products.pricing');
-    Route::get('/tiendamia-products-tabulator-data', [TiendamiaPricingController::class, 'getTabulatorData'])->name('tiendamia.products.tabulator.data');
-    Route::post('/tiendamia/save-sprice', [TiendamiaPricingController::class, 'saveSpriceUpdates'])->name('tiendamia.products.save.sprice');
-    Route::post('/tiendamia/upload-price-file', [TiendamiaPricingController::class, 'uploadPriceFile'])->name('tiendamia.products.upload.price');
+    
+    // Tiendamia Pricing Routes
+    Route::get('/tiendamia-pricing', [TiendamiaPricingController::class, 'tiendamiaTabulatorView'])->name('tiendamia.pricing');
+    Route::get('/tiendamia-data-json', [TiendamiaPricingController::class, 'tiendamiaDataJson'])->name('tiendamia.data.json');
+    Route::post('/tiendamia-upload-csv', [TiendamiaPricingController::class, 'uploadTiendamiaCsv'])->name('tiendamia.upload.csv');
+    Route::get('/tiendamia-download-sample-csv', [TiendamiaPricingController::class, 'downloadSampleCsv'])->name('tiendamia.download.sample');
+    Route::post('/tiendamia-save-sprice', [TiendamiaPricingController::class, 'saveSpriceUpdates'])->name('tiendamia.save.sprice');
+    Route::post('/tiendamia-save-nrp', [TiendamiaPricingController::class, 'saveNrp'])->name('tiendamia.save.nrp');
+    Route::get('/tiendamia-test-nrp', [TiendamiaPricingController::class, 'testNrp'])->name('tiendamia.test.nrp');
+    Route::get('/tiendamia-pricing-column-visibility', [TiendamiaPricingController::class, 'getColumnVisibility'])->name('tiendamia.column.get');
+    Route::post('/tiendamia-pricing-column-visibility', [TiendamiaPricingController::class, 'setColumnVisibility'])->name('tiendamia.column.set');
+    Route::post('/tiendamia-utilized-update', [TiendamiaPricingController::class, 'updateUtilizedField'])->name('tiendamia.utilized.update');
+    Route::post('/tiendamia-utilized-upload', function() {
+        return response()->json(['success' => false, 'message' => 'Campaign upload not available for Tiendamia (no ads)'], 400);
+    })->name('tiendamia.utilized.upload');
+
 
     // fbshop
     Route::get('fbshopAnalysis', action: [FbshopController::class, 'overallFbshop']);
