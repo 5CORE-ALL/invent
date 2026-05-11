@@ -140,6 +140,42 @@ class GoogleAdsCampaignsRawController extends Controller
         @ini_set('memory_limit', '512M');
         set_time_limit(0);
 
+        // Check if running via web request (likely to timeout for large batches)
+        $isWebRequest = php_sapi_name() !== 'cli';
+        $campaignIds = $options['--campaign-ids'] ?? '';
+        $campaignCount = $campaignIds ? count(explode(',', (string) $campaignIds)) : 0;
+
+        // If web request with many campaigns, run async to prevent timeout
+        if ($isWebRequest && $campaignCount > 10) {
+            try {
+                // Build command string for background execution
+                $cmdParts = ['php', base_path('artisan'), $command];
+                foreach ($options as $key => $value) {
+                    if (is_bool($value) && $value) {
+                        $cmdParts[] = $key;
+                    } elseif ($value !== null && $value !== false) {
+                        $cmdParts[] = $key.'='.escapeshellarg((string) $value);
+                    }
+                }
+                $cmdString = implode(' ', $cmdParts).' > /dev/null 2>&1 &';
+
+                // Execute in background
+                exec($cmdString);
+
+                return response()->json([
+                    'ok' => true,
+                    'exit_code' => 0,
+                    'command' => $labelForLog,
+                    'message' => "Command started in background for {$campaignCount} campaign(s). Processing may take several minutes. Check the campaign budgets/bids in a few minutes to verify completion.",
+                    'output' => "Running: {$command} (async mode)\nCampaigns: {$campaignCount}\n\nThe process is running in the background. This page won't show the detailed output, but you can:\n1. Wait 2-3 minutes\n2. Refresh the data\n3. Verify the budgets/bids were updated\n\nOr check logs: tail -f storage/logs/laravel.log",
+                    'async': true,
+                ], 200);
+            } catch (\Throwable $e) {
+                // Fall back to synchronous execution
+            }
+        }
+
+        // Synchronous execution (for small batches or CLI)
         try {
             $exitCode = Artisan::call($command, $options);
         } catch (\Throwable $e) {
