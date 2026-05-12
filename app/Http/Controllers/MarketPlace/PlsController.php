@@ -492,6 +492,9 @@ class PlsController extends Controller
         // 6. Get SPRICE, SGPFT, SROI from pls_data_views
         $plsDataViews = PLSDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        // 6b. Get PLS_STATUS from amazon_data_views
+        $amazonDataViews = \App\Models\AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+
         // 7. Build Result
         $data = [];
 
@@ -593,6 +596,22 @@ class PlsController extends Controller
             $row['sgpft'] = $sgpft;
             $row['sroi'] = $sroi;
             $row['has_custom_sprice'] = $hasCustomSprice;
+            
+            // Get PLS_STATUS from amazon_data_views
+            $amazonDataView = $amazonDataViews->get($pm->sku);
+            $plsStatus = null;
+            
+            if ($amazonDataView) {
+                $amazonValue = is_array($amazonDataView->value) 
+                    ? $amazonDataView->value 
+                    : (is_string($amazonDataView->value) ? json_decode($amazonDataView->value, true) : []);
+                
+                if (is_array($amazonValue)) {
+                    $plsStatus = isset($amazonValue['PLS_STATUS']) ? $amazonValue['PLS_STATUS'] : null;
+                }
+            }
+            
+            $row['pls_status'] = $plsStatus;
             
             // Total profit based on OV L30 (our sales)
             $row['total_pft_l30'] = round($gpft * $ovl30, 2);

@@ -108,21 +108,13 @@
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary fs-6 p-2" id="total-products-badge">Products: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-inventory-badge">Total Inventory: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-l30-badge">PLS L30: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge">Avg Price: $0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-gpft-badge">Avg GPFT%: 0%</span>
-                        <span class="badge fs-6 p-2" id="avg-roi-badge" style="background-color: purple; color: white;">Avg ROI%: 0%</span>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2 mt-2">
-                        <span class="badge bg-danger fs-6 p-2" id="zero-inv-badge" style="cursor: pointer;">0 Inv: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="has-inv-badge" style="cursor: pointer;">&gt; 0 Inv: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-badge" style="cursor: pointer;">0 Sold: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="has-sold-badge" style="cursor: pointer;">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-price-badge" style="cursor: pointer;">Missing: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="not-mapped-badge" style="cursor: pointer;">N MP: 0</span>
+                    <div class="d-flex gap-2 mb-2">
+                        <span class="badge bg-info fs-6 p-2 flex-fill text-center" id="total-l30-badge">PLS L30: 0</span>
+                        <span class="badge bg-warning fs-6 p-2 flex-fill text-center" id="avg-price-badge">Price: $0</span>
+                        <span class="badge bg-danger fs-6 p-2 flex-fill text-center" id="avg-gpft-badge">GPFT%: 0%</span>
+                        <span class="badge fs-6 p-2 flex-fill text-center" id="avg-roi-badge" style="background-color: purple; color: white;">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2 flex-fill text-center" id="missing-price-badge" style="cursor: pointer;">Missing: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 flex-fill text-center" id="not-mapped-badge" style="cursor: pointer;">N MP: 0</span>
                     </div>
                 </div>
             </div>
@@ -188,53 +180,47 @@
             const roiFilter = $('#roi-filter').val();
             const dilFilter = $('#dil-filter').val();
             
-            const filters = [];
-            
-            if (invFilter === 'zero') {
-                filters.push({field: 'inventory', type: '=', value: 0});
-            } else if (invFilter === 'more') {
-                filters.push({field: 'inventory', type: '>', value: 0});
-            }
-            
-            if (gpftFilter !== 'all') {
-                filters.push(function(data) {
+            // Use a single combined filter function
+            table.addFilter(function(data) {
+                // Inventory filter
+                if (invFilter === 'zero' && parseInt(data.inventory) !== 0) return false;
+                if (invFilter === 'more' && parseInt(data.inventory) <= 0) return false;
+                
+                // GPFT filter
+                if (gpftFilter !== 'all') {
                     const gpft = parseFloat(data.gpft_pct) || 0;
-                    if (gpftFilter === 'negative') return gpft < 0;
-                    if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
-                    if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
-                    if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
-                    if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                    if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '50plus') return gpft >= 50;
-                    return true;
-                });
-            }
-            
-            if (roiFilter !== 'all') {
-                filters.push(function(data) {
+                    if (gpftFilter === 'negative' && gpft >= 0) return false;
+                    if (gpftFilter === '0-10' && (gpft < 0 || gpft >= 10)) return false;
+                    if (gpftFilter === '10-20' && (gpft < 10 || gpft >= 20)) return false;
+                    if (gpftFilter === '20-30' && (gpft < 20 || gpft >= 30)) return false;
+                    if (gpftFilter === '30-40' && (gpft < 30 || gpft >= 40)) return false;
+                    if (gpftFilter === '40-50' && (gpft < 40 || gpft >= 50)) return false;
+                    if (gpftFilter === '50plus' && gpft < 50) return false;
+                }
+                
+                // ROI filter
+                if (roiFilter !== 'all') {
                     const roi = parseFloat(data.roi_pct) || 0;
-                    if (roiFilter === 'lt40') return roi < 40;
-                    if (roiFilter === '40-75') return roi >= 40 && roi < 75;
-                    if (roiFilter === '75-125') return roi >= 75 && roi < 125;
-                    if (roiFilter === '125-175') return roi >= 125 && roi < 175;
-                    if (roiFilter === '175-250') return roi >= 175 && roi < 250;
-                    if (roiFilter === 'gt250') return roi >= 250;
-                    return true;
-                });
-            }
-            
-            if (dilFilter !== 'all') {
-                filters.push(function(data) {
+                    if (roiFilter === 'lt40' && roi >= 40) return false;
+                    if (roiFilter === '40-75' && (roi < 40 || roi >= 75)) return false;
+                    if (roiFilter === '75-125' && (roi < 75 || roi >= 125)) return false;
+                    if (roiFilter === '125-175' && (roi < 125 || roi >= 175)) return false;
+                    if (roiFilter === '175-250' && (roi < 175 || roi >= 250)) return false;
+                    if (roiFilter === 'gt250' && roi < 250) return false;
+                }
+                
+                // DIL filter
+                if (dilFilter !== 'all') {
                     const dil = parseFloat(data.dil_pct) || 0;
-                    if (dilFilter === 'red') return dil < 16.7;
-                    if (dilFilter === 'yellow') return dil >= 16.7 && dil < 25;
-                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
-                    if (dilFilter === 'pink') return dil >= 50;
-                    return true;
-                });
-            }
+                    if (dilFilter === 'red' && dil >= 16.7) return false;
+                    if (dilFilter === 'yellow' && (dil < 16.7 || dil >= 25)) return false;
+                    if (dilFilter === 'green' && (dil < 25 || dil >= 50)) return false;
+                    if (dilFilter === 'pink' && dil < 50) return false;
+                }
+                
+                return true;
+            });
             
-            table.setFilter(filters);
             updateSummary();
         }
 
@@ -616,6 +602,168 @@
                     },
                     width: 60
                 },
+                {
+                    title: "P STS",
+                    field: "pls_status",
+                    hozAlign: "center",
+                    headerSort: false,
+                    tooltip: "PLS push status: ✓✓ pushed, ✗ failed, — not pushed",
+                    formatter: function(cell) {
+                        const st = cell.getValue();
+                        if (st === 'pushed' || st === 'applied') {
+                            return '<span style="color:#28a745;" title="PLS: price pushed"><i class="fa-solid fa-check-double"></i></span>';
+                        }
+                        if (st === 'error') {
+                            return '<span style="color:#dc3545;" title="PLS: push failed"><i class="fa-solid fa-xmark"></i></span>';
+                        }
+                        if (st === 'processing') {
+                            return '<span style="color:#ffc107;" title="PLS: processing..."><i class="fas fa-spinner fa-spin"></i></span>';
+                        }
+                        return '<span style="color:#adb5bd;" title="PLS: not pushed">—</span>';
+                    },
+                    width: 50
+                },
+                {
+                    title: "Push",
+                    field: "_push",
+                    hozAlign: "center",
+                    headerSort: false,
+                    tooltip: "Push price to PLS marketplace",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData.sku || '';
+                        const spriceRaw = rowData.sprice;
+                        const sprice = spriceRaw ? parseFloat(spriceRaw) : 0;
+                        const plsStatus = rowData.pls_status || null;
+                        
+                        if (!sku || !sprice || sprice <= 0) {
+                            return '<span style="color: #adb5bd;">N/A</span>';
+                        }
+                        
+                        // Determine PLS button icon and color
+                        let plsIcon = '<i class="fas fa-check"></i>';
+                        let plsColor = '#28a745'; // Green
+                        let plsTitle = 'Push to PLS';
+                        
+                        if (plsStatus === 'pushed' || plsStatus === 'applied') {
+                            plsIcon = '<i class="fa-solid fa-check-double"></i>';
+                            plsColor = '#28a745'; // Green when pushed
+                            plsTitle = 'Price pushed to PLS';
+                        } else if (plsStatus === 'error') {
+                            plsIcon = '<i class="fa-solid fa-x"></i>';
+                            plsColor = '#dc3545'; // Red
+                            plsTitle = 'Error pushing to PLS';
+                        } else if (plsStatus === 'processing') {
+                            plsIcon = '<i class="fas fa-spinner fa-spin"></i>';
+                            plsColor = '#ffc107'; // Yellow
+                            plsTitle = 'Pushing to PLS...';
+                        }
+                        
+                        return `<button type="button" class="btn btn-sm push-price-btn btn-circle" 
+                                       data-sku="${sku}" 
+                                       data-price="${spriceRaw}" 
+                                       data-status="${plsStatus || ''}" 
+                                       title="${plsTitle}" 
+                                       style="border: none; background: none; color: ${plsColor}; padding: 0; cursor: pointer; font-size: 1.3em;">
+                                    ${plsIcon}
+                                </button>`;
+                    },
+                    cellClick: function(e, cell) {
+                        // Handle button click
+                        const $target = $(e.target);
+                        
+                        if ($target.hasClass('push-price-btn') || $target.closest('.push-price-btn').length) {
+                            e.stopPropagation();
+                            const $btn = $target.hasClass('push-price-btn') ? $target : $target.closest('.push-price-btn');
+                            
+                            // Read price from fresh row data
+                            const rowData = cell.getRow().getData();
+                            const sku = rowData.sku;
+                            const price = parseFloat(rowData.sprice) || 0;
+                            
+                            if (!sku || !price || price <= 0 || isNaN(price)) {
+                                showToast('Invalid SKU or price', 'error');
+                                return;
+                            }
+                            
+                            // Disable button and show loading state
+                            $btn.prop('disabled', true);
+                            $btn.html('<i class="fas fa-clock fa-spin" style="color: #ffc107;"></i>');
+                            
+                            // Update row status to processing
+                            const row = cell.getRow();
+                            const updatedData = row.getData();
+                            updatedData.pls_status = 'processing';
+                            row.update(updatedData);
+                            
+                            // Push to PLS
+                            $.ajax({
+                                url: '/push-pls-price',
+                                method: 'POST',
+                                timeout: 120000,
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                },
+                                data: {
+                                    sku: sku,
+                                    price: price
+                                },
+                                success: function(response) {
+                                    // Check for errors in response
+                                    if (response.errors && response.errors.length > 0) {
+                                        const errorMsg = response.errors[0].message || 'Unknown error';
+                                        const row = cell.getRow();
+                                        const rowData = row.getData();
+                                        rowData.pls_status = 'error';
+                                        row.update(rowData);
+                                        
+                                        $btn.prop('disabled', false);
+                                        $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+                                        showToast(`PLS push failed: ${errorMsg}`, 'error');
+                                        return;
+                                    }
+                                    
+                                    // Success - update row data with pushed status
+                                    const row = cell.getRow();
+                                    const rowData = row.getData();
+                                    const plsPush = response.pls_push || {};
+                                    rowData.pls_status = (plsPush.ok) ? 'pushed' : 'error';
+                                    row.update(rowData);
+                                    
+                                    $btn.prop('disabled', false);
+                                    if (plsPush.ok) {
+                                        $btn.html('<i class="fas fa-check-double" style="color: #28a745;"></i>');
+                                        const msg = plsPush.message || 'Price pushed to PLS successfully';
+                                        showToast(`${msg} for SKU: ${sku}`, 'success');
+                                    } else {
+                                        $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+                                        const msg = plsPush.message || 'PLS push failed';
+                                        showToast(msg, 'error');
+                                    }
+                                    
+                                    // Update summary
+                                    updateSummary();
+                                },
+                                error: function(xhr) {
+                                    const row = cell.getRow();
+                                    const rowData = row.getData();
+                                    rowData.pls_status = 'error';
+                                    row.update(rowData);
+                                    
+                                    $btn.prop('disabled', false);
+                                    $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
+                                    
+                                    const errorMsg = xhr.responseJSON?.message || xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
+                                    showToast(`PLS push failed: ${errorMsg}`, 'error');
+                                    
+                                    // Update summary
+                                    updateSummary();
+                                }
+                            });
+                        }
+                    },
+                    width: 60
+                },
             ]
         });
 
@@ -641,10 +789,6 @@
             let gpftCount = 0;
             let totalRoi = 0;
             let roiCount = 0;
-            let zeroInv = 0;
-            let hasInv = 0;
-            let zeroSold = 0;
-            let hasSold = 0;
             let missingPrice = 0;
             let notMappedCount = 0;
 
@@ -677,9 +821,6 @@
                     totalRoi += roi;
                     roiCount++;
                 }
-
-                if (inv === 0) zeroInv++; else hasInv++;
-                if (l30 === 0) zeroSold++; else hasSold++;
                 
                 // Count N MP (Not Mapped) - same logic as MAP column formatter
                 if (missing !== 'M') {
@@ -697,16 +838,10 @@
             const avgGpft = gpftCount > 0 ? totalGpft / gpftCount : 0;
             const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
 
-            $('#total-products-badge').text(`Products: ${totalProducts}`);
-            $('#total-inventory-badge').text(`Total Inventory: ${totalInventory.toLocaleString()}`);
             $('#total-l30-badge').text(`PLS L30: ${totalPlsL30.toLocaleString()}`);
-            $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
-            $('#avg-gpft-badge').text(`Avg GPFT%: ${avgGpft.toFixed(1)}%`);
-            $('#avg-roi-badge').text(`Avg ROI%: ${avgRoi.toFixed(0)}%`);
-            $('#zero-inv-badge').text(`0 Inv: ${zeroInv}`);
-            $('#has-inv-badge').text(`> 0 Inv: ${hasInv}`);
-            $('#zero-sold-badge').text(`0 Sold: ${zeroSold}`);
-            $('#has-sold-badge').text(`> 0 Sold: ${hasSold}`);
+            $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
+            $('#avg-gpft-badge').text(`GPFT%: ${avgGpft.toFixed(1)}%`);
+            $('#avg-roi-badge').text(`ROI%: ${avgRoi.toFixed(0)}%`);
             $('#missing-price-badge').text(`Missing: ${missingPrice}`);
             $('#not-mapped-badge').text(`N MP: ${notMappedCount}`);
         }
@@ -765,33 +900,7 @@
         });
 
         // Toast notification function
-        function showToast(type, message) {
-            const bgColor = type === 'success' ? '#28a745' : '#dc3545';
-            const toast = $(`
-                <div style="position: fixed; top: 80px; right: 20px; z-index: 9999; 
-                            background: ${bgColor}; color: white; padding: 15px 20px; 
-                            border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-                            font-weight: 500; min-width: 250px;">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}
-                </div>
-            `);
-            $('body').append(toast);
-            setTimeout(() => toast.fadeOut(300, function() { $(this).remove(); }), 3000);
-        }
-
         // Badge click filters
-        $('#zero-inv-badge').on('click', function() { $('#inventory-filter').val('zero').trigger('change'); });
-        $('#has-inv-badge').on('click', function() { $('#inventory-filter').val('more').trigger('change'); });
-        $('#zero-sold-badge').on('click', function() { 
-            table.clearFilter();
-            table.addFilter({field: 'l30', type: '=', value: 0});
-            updateSummary();
-        });
-        $('#has-sold-badge').on('click', function() { 
-            table.clearFilter();
-            table.addFilter({field: 'l30', type: '>', value: 0});
-            updateSummary();
-        });
         $('#missing-price-badge').on('click', function() {
             table.clearFilter();
             table.addFilter(function(data) {
