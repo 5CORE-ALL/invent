@@ -119,6 +119,7 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
+                        <span class="badge fs-6 p-2" id="l60-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">L60 Sales: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                     </div>
                 </div>
@@ -723,6 +724,7 @@
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
             buildColumnDropdown();
+            fetchL60Sales();
         });
 
         table.on('dataLoaded', function() {
@@ -738,6 +740,47 @@
         table.on('renderComplete', function() {
             updateSummary();
         });
+
+        // Fetch L60 Sales separately
+        function fetchL60Sales() {
+            $.ajax({
+                url: '/temu/daily-data-l60',
+                method: 'GET',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    if (Array.isArray(response)) {
+                        let totalL60Sales = 0;
+                        response.forEach(row => {
+                            // Skip parent rows and empty SKUs
+                            if (row.Parent && row.Parent.startsWith('PARENT')) {
+                                return;
+                            }
+                            if (!row.contribution_sku || row.contribution_sku === '' || !row.order_id || row.order_id === '') {
+                                return;
+                            }
+
+                            const quantity = parseInt(row.quantity_purchased) || 0;
+                            const basePrice = parseFloat(row.base_price_total) || 0;
+                            const hasSales = quantity > 0 && basePrice > 0;
+                            
+                            if (hasSales) {
+                                const total = basePrice * quantity;
+                                const calculatedFbPrice = total < 27 ? basePrice + 2.99 : basePrice;
+                                totalL60Sales += quantity * calculatedFbPrice;
+                            }
+                        });
+                        
+                        $('#l60-sales-badge').text('L60 Sales: $' + totalL60Sales.toFixed(2));
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error fetching L60 sales:', xhr);
+                    $('#l60-sales-badge').text('L60 Sales: Error');
+                }
+            });
+        }
 
         // Toggle column from dropdown
         document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
