@@ -2661,6 +2661,18 @@ class ChannelMasterController extends Controller
             Log::warning('eBay 3 Y Sales calculation failed: ' . $e->getMessage());
         }
 
+        // PLS Y Sales: actual transactions from pls_sales table for yesterday
+        try {
+            $yesterday = now()->subDay()->startOfDay();
+            $yesterdayEnd = now()->subDay()->endOfDay();
+            $plsYSales = \App\Models\PlsSale::where('order_date', '>=', $yesterday)
+                ->where('order_date', '<=', $yesterdayEnd)
+                ->sum('total_amount');
+            $yesterdaySummaries['pls'] = round($plsYSales, 2);
+        } catch (\Throwable $e) {
+            Log::warning('PLS Y Sales calculation failed: ' . $e->getMessage());
+        }
+
         // Doba Y Sales: doba_daily_data total_price (line totals), day before latest order_time — same clock as Amazon.
         try {
             $dobaY = $this->computeDobaYSalesLikeAmazon();
@@ -7092,19 +7104,39 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $query = PLSProduct::where('sku', 'not like', '%Parent%');
+        // Use actual sales data from pls_sales table (last 30 days)
+        $thirtyDaysAgo = now()->subDays(30);
+        $sixtyDaysAgo = now()->subDays(60);
 
-        $l30Orders = $query->sum('p_l30');
-        $l60Orders = $query->sum('p_l60');
-        $totalQuantity = $l30Orders; // p_l30 is already units sold (quantity)
+        // L30 Sales: Last 30 days actual transactions
+        $l30SalesData = \App\Models\PlsSale::where('order_date', '>=', $thirtyDaysAgo)
+            ->selectRaw('COUNT(DISTINCT order_number) as orders, SUM(quantity) as qty, SUM(total_amount) as sales')
+            ->first();
+        
+        $l30Orders = (int) ($l30SalesData->orders ?? 0);
+        $totalQuantity = (int) ($l30SalesData->qty ?? 0);
+        $l30Sales = (float) ($l30SalesData->sales ?? 0);
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(p_l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(p_l60 * price) as total')->value('total') ?? 0;
+        // L60 Sales: 60-30 days ago actual transactions
+        $l60SalesData = \App\Models\PlsSale::where('order_date', '>=', $sixtyDaysAgo)
+            ->where('order_date', '<', $thirtyDaysAgo)
+            ->selectRaw('COUNT(DISTINCT order_number) as orders, SUM(total_amount) as sales')
+            ->first();
+        
+        $l60Orders = (int) ($l60SalesData->orders ?? 0);
+        $l60Sales = (float) ($l60SalesData->sales ?? 0);
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        // Y Sales: Yesterday's actual transactions
+        $yesterday = now()->subDay()->startOfDay();
+        $yesterdayEnd = now()->subDay()->endOfDay();
+        $ySales = \App\Models\PlsSale::where('order_date', '>=', $yesterday)
+            ->where('order_date', '<=', $yesterdayEnd)
+            ->sum('total_amount');
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'PLS')->value('channel_percentage') ?? 100;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
+
+        // Get PLS marketplace percentage from marketplace_percentages table
+        $percentage = MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
         $percentage = $percentage / 100; // convert % to fraction
 
         // Load product masters (lp, ship) keyed by SKU
@@ -7112,22 +7144,22 @@ class ChannelMasterController extends Controller
             return strtoupper($item->sku);
         });
 
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'p_l30','p_l60']);
+        // Get PLS products with current prices and L30 sales volume
+        $plsProducts = \App\Models\PLSProduct::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        // Calculate weighted GPFT and ROI using CURRENT PRICES (same as Pricing page)
+        $totalSales   = 0;
         $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
+        $totalCogs    = 0;
 
+        foreach ($plsProducts as $plsProduct) {
+            $sku       = strtoupper($plsProduct->sku);
+            $price     = (float) $plsProduct->price;
+            $plsL30    = (int) $plsProduct->p_l30;
 
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->p_l30;
-            $unitsL60  = (int) $row->p_l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
+            if ($plsL30 <= 0 || $price <= 0) {
                 continue;
             }
 
@@ -7144,43 +7176,20 @@ class ChannelMasterController extends Controller
                 $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
             }
 
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
+            // Calculate weighted by sales volume (same as Pricing page formula)
+            $sales = $price * $plsL30;
+            $profit = (($price * $percentage) - $lp - $ship) * $plsL30;
+            $cogs = $lp * $plsL30;
 
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
+            $totalSales += $sales;
+            $totalProfit += $profit;
+            $totalCogs += $cogs;
         }
 
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // Calculate profit percentages (weighted average)
+        $gProfitPct = $totalSales > 0 ? ($totalProfit / $totalSales) * 100 : 0;
+        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        $nPft = $totalSales > 0 ? ($totalProfit / $totalSales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'PLS')->first();
@@ -7190,16 +7199,17 @@ class ChannelMasterController extends Controller
 
         $result[] = [
             'Channel '   => 'PLS',
-            'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
+            'L-60 Sales' => round($l60Sales),
+            'L30 Sales'  => round($l30Sales),
+            'Y Sales'    => round($ySales),
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
             'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60'   => round($gprofitL60, 2) . '%',
+            'gprofitL60'   => '0%',  // L60 profit not calculated from actual sales yet
             'G Roi'      => round($gRoi, 2),
-            'G RoiL60'      => round($gRoiL60, 2),
+            'G RoiL60'      => 0,  // L60 ROI not calculated from actual sales yet
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($gRoi, 2),

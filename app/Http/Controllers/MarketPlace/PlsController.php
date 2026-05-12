@@ -469,6 +469,10 @@ class PlsController extends Controller
             ->values()
             ->all();
 
+        // Get PLS marketplace percentage from marketplace_percentages table
+        $plsPercentage = MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
+        $plsPercentage = $plsPercentage / 100; // convert to fraction
+
         // 3. Get inventory and L30 from shopify_skus table (like Purchasing Power page)
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
@@ -573,18 +577,18 @@ class PlsController extends Controller
             $row['pls_l30'] = $plsL30;  // PLS marketplace L30 sold
             $row['pls_l60'] = $l60;     // PLS marketplace L60 sold
             
-            // Calculate GPFT (considering ship cost)
+            // Calculate GPFT (with marketplace percentage)
             $gpft = 0;
             $gpftPct = 0;
             $roiPct = 0;
             
             if ($price > 0) {
-                $gpft = $price - $lp - $ship;
+                $gpft = ($price * $plsPercentage) - $lp - $ship;
                 $gpftPct = ($gpft / $price) * 100;
             }
             
             if ($lp > 0) {
-                $roiPct = (($price - $lp - $ship) / $lp) * 100;
+                $roiPct = ((($price * $plsPercentage) - $lp - $ship) / $lp) * 100;
             }
             
             $row['gpft'] = round($gpft, 2);

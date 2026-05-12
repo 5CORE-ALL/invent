@@ -122,6 +122,19 @@ class CalculateChannelMasterData extends Command
                         $this->info("  - N PFT %: " . ($channelData['N PFT'] ?? 'N/A'));
                     }
                     
+                    // Log PLS-specific calculations
+                    if ($channelName === 'PLS') {
+                        $this->newLine();
+                        $this->info("Processing PLS with actual sales data:");
+                        $this->info("  - L30 Sales: " . ($channelData['L30 Sales'] ?? 'N/A'));
+                        $this->info("  - Y Sales: " . ($channelData['Y Sales'] ?? 'N/A'));
+                        $this->info("  - L60 Sales: " . ($channelData['L-60 Sales'] ?? 'N/A'));
+                        $this->info("  - GPFT %: " . ($channelData['Gprofit%'] ?? 'N/A'));
+                        $this->info("  - G ROI: " . ($channelData['G Roi'] ?? 'N/A'));
+                        $this->info("  - Orders: " . ($channelData['L30 Orders'] ?? 'N/A'));
+                        $this->info("  - Using 85% marketplace percentage from marketplace_percentages table");
+                    }
+                    
                     $this->saveChannelData($channelData, $calculatedAt, $dataAsOf);
                     $bar->advance();
                 }

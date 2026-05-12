@@ -785,12 +785,11 @@
             let totalPlsL30 = 0;
             let totalPrice = 0;
             let priceCount = 0;
-            let totalGpft = 0;
-            let gpftCount = 0;
-            let totalRoi = 0;
-            let roiCount = 0;
             let missingPrice = 0;
             let notMappedCount = 0;
+            let totalSales = 0;
+            let totalProfit = 0;
+            let totalCogs = 0;
 
             data.forEach(row => {
                 const inv = parseInt(row.inventory) || 0;
@@ -801,6 +800,8 @@
                 const roi = parseFloat(row.roi_pct) || 0;
                 const plsInv = parseInt(row.pls_inventory) || 0;
                 const missing = row.missing || '';
+                const lp = parseFloat(row.lp) || 0;
+                const ship = parseFloat(row.ship) || 0;
 
                 totalInventory += inv;
                 totalPlsL30 += plsL30;
@@ -812,14 +813,16 @@
                     missingPrice++;
                 }
 
-                if (gpft !== 0) {
-                    totalGpft += gpft;
-                    gpftCount++;
-                }
-
-                if (roi !== 0) {
-                    totalRoi += roi;
-                    roiCount++;
+                // Calculate weighted GPFT and ROI (by sales volume, with 85% marketplace percentage)
+                if (plsL30 > 0 && price > 0) {
+                    const plsPercentage = 0.85; // PLS marketplace percentage (85% kept, 15% commission)
+                    const sales = price * plsL30;
+                    const profit = ((price * plsPercentage) - lp - ship) * plsL30;
+                    const cogs = lp * plsL30;
+                    
+                    totalSales += sales;
+                    totalProfit += profit;
+                    totalCogs += cogs;
                 }
                 
                 // Count N MP (Not Mapped) - same logic as MAP column formatter
@@ -835,8 +838,8 @@
             });
 
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-            const avgGpft = gpftCount > 0 ? totalGpft / gpftCount : 0;
-            const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
+            const avgGpft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
+            const avgRoi = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
 
             $('#total-l30-badge').text(`PLS L30: ${totalPlsL30.toLocaleString()}`);
             $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
