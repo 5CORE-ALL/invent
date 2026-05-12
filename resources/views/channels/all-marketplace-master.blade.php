@@ -1212,7 +1212,16 @@
                         visible: true,
                         formatter: function(cell) {
                             const value = Math.round(parseNumber(cell.getValue()));
-                            return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>`;
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'l60_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l60_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View L60 Sales Chart"></i>`;
+                            return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -3901,6 +3910,7 @@
 
             // Metric label map for titles
             const metricLabels = {
+                'l60_sales': 'L60 Sales',
                 'l30_sales': 'Sales',
                 'l30_orders': 'Orders',
                 'qty': 'Qty',

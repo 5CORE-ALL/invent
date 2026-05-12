@@ -6266,17 +6266,30 @@ class ChannelMasterController extends Controller
         }
 
         // Fetch L60 Sales and Orders from temu_daily_data_l60 table
+        // Calculate using FB Price logic (same as temu-tabulator and getDailyDataL60)
+        $l60Orders = 0;
+        $l60Sales = 0;
+        
         if (Schema::hasTable('temu_daily_data_l60')) {
-            $l60Metrics = DB::table('temu_daily_data_l60')
-                ->selectRaw('COUNT(DISTINCT order_id) as orders')
-                ->selectRaw('SUM(base_price_total * quantity_purchased) as sales')
-                ->first();
+            $l60Data = DB::table('temu_daily_data_l60')
+                ->select('order_id', 'base_price_total', 'quantity_purchased')
+                ->get();
             
-            $l60Orders = (int) ($l60Metrics->orders ?? 0);
-            $l60Sales = (float) ($l60Metrics->sales ?? 0);
-        } else {
-            $l60Orders = 0;
-            $l60Sales = 0;
+            $uniqueOrders = [];
+            foreach ($l60Data as $row) {
+                if ($row->order_id && !in_array($row->order_id, $uniqueOrders)) {
+                    $uniqueOrders[] = $row->order_id;
+                    $l60Orders++;
+                }
+                
+                $basePrice = (float) ($row->base_price_total ?? 0);
+                $quantity = (int) ($row->quantity_purchased ?? 0);
+                $total = $basePrice * $quantity;
+                
+                // Calculate FB Price: if order total < $27, add $2.99 shipping
+                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+                $l60Sales += $fbPrice * $quantity;
+            }
         }
 
         $l30Sales = $metrics->total_sales ?? 0;
@@ -6410,18 +6423,31 @@ class ChannelMasterController extends Controller
         }
 
         // Fetch L60 Sales and Orders from temu_daily_data_l60 table for Temu 2
+        // Calculate using FB Price logic (same as temu-tabulator and getDailyDataL60)
+        $l60Orders = 0;
+        $l60Sales = 0;
+        
         if (Schema::hasTable('temu_daily_data_l60')) {
-            $l60Metrics = DB::table('temu_daily_data_l60')
+            $l60Data = DB::table('temu_daily_data_l60')
                 ->where('temu_account', 'Temu 2')
-                ->selectRaw('COUNT(DISTINCT order_id) as orders')
-                ->selectRaw('SUM(base_price_total * quantity_purchased) as sales')
-                ->first();
+                ->select('order_id', 'base_price_total', 'quantity_purchased')
+                ->get();
             
-            $l60Orders = (int) ($l60Metrics->orders ?? 0);
-            $l60Sales = (float) ($l60Metrics->sales ?? 0);
-        } else {
-            $l60Orders = 0;
-            $l60Sales = 0;
+            $uniqueOrders = [];
+            foreach ($l60Data as $row) {
+                if ($row->order_id && !in_array($row->order_id, $uniqueOrders)) {
+                    $uniqueOrders[] = $row->order_id;
+                    $l60Orders++;
+                }
+                
+                $basePrice = (float) ($row->base_price_total ?? 0);
+                $quantity = (int) ($row->quantity_purchased ?? 0);
+                $total = $basePrice * $quantity;
+                
+                // Calculate FB Price: if order total < $27, add $2.99 shipping
+                $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+                $l60Sales += $fbPrice * $quantity;
+            }
         }
         
         $l30Sales = $metrics->total_sales ?? 0;
@@ -11471,6 +11497,7 @@ class ChannelMasterController extends Controller
 
             // Same metricMap as getChannelMetricChartData so value extraction matches chart exactly
             $metricMap = [
+                'l60_sales' => 'l60_sales',
                 'l30_sales' => 'l30_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
@@ -11485,7 +11512,7 @@ class ChannelMasterController extends Controller
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
             ];
-            $metrics = ['missing_l', 'nmap', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
             $out = [];
 
             foreach ($channelKeys as $channel) {
