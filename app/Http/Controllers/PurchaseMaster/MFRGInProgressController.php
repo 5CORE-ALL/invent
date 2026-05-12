@@ -261,7 +261,14 @@ class MFRGInProgressController extends Controller
 
         // No explicit select(): some installs omit columns present in migrations (e.g. `value`),
         // and SELECT * only returns columns that exist — avoids SQLSTATE[42S22] unknown column.
-        $q = MfrgProgress::query();
+        // Filter: only show items with qty > 0 AND ready_to_ship = 'No' or empty (matching ForecastAnalysisController logic)
+        $q = MfrgProgress::query()
+            ->where('qty', '>', 0)
+            ->where(function($query) {
+                $query->where('ready_to_ship', 'No')
+                      ->orWhere('ready_to_ship', '')
+                      ->orWhereNull('ready_to_ship');
+            });
         $mfrgData = $onlyTrashed ? $q->onlyTrashed()->get() : $q->get();
 
         if ($mfrgData->isEmpty()) {
@@ -273,6 +280,23 @@ class MFRGInProgressController extends Controller
         $productMasterByKey = self::buildProductMasterByKeyForMipRows($mfrgData, $normalizeSku);
         $skuToPriceMap = self::buildSkuToPriceMapForMipRows($mfrgData, $normalizeSku);
         $platformsByName = $supplierCache['platformsByName'] ?? [];
+
+        // Filter out SKUs that don't exist in product_master (to match Forecast page behavior)
+        // Forecast page only shows MIP for SKUs that exist in product_master table
+        $mfrgData = $mfrgData->filter(function($row) use ($productMasterByKey, $normalizeSku) {
+            $sku = $normalizeSku($row->sku ?? '');
+            if ($sku === '') {
+                return false;
+            }
+            // Check all SKU variations
+            $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
+            foreach ($skuVariations as $skuVar) {
+                if ($skuVar !== '' && isset($productMasterByKey[$skuVar])) {
+                    return true; // SKU exists in product_master
+                }
+            }
+            return false; // SKU not found in product_master
+        });
 
         foreach ($mfrgData as $row) {
             self::enrichSingleMipProgressRow(
@@ -286,6 +310,14 @@ class MFRGInProgressController extends Controller
                 $platformsByName
             );
         }
+
+        // Filter to only show items with stage='mip' (exclude r2s, transit, etc.)
+        // This ensures MIP page only shows items that are actually in MIP stage according to forecast_analysis
+        $mfrgData = $mfrgData->filter(function($row) {
+            $rowStage = strtolower(trim($row->stage ?? ''));
+            // Only show if stage is 'mip' or empty (empty defaults to mip for items in mfrg_progress)
+            return $rowStage === 'mip' || $rowStage === '';
+        });
 
         return $mfrgData;
     }
@@ -364,17 +396,16 @@ class MFRGInProgressController extends Controller
             $currencyFromPO = $skuToPriceMap[$sku]['currency'];
         }
 
-            $stage = 'mip'; // Default stage for MIP page - always 'mip' since this is mfrg_progress table
+            // Get stage from forecast_analysis if available, otherwise default to 'mip'
+            // This is used to filter out items that are in r2s or transit stage
+            $stage = 'mip'; // Default to 'mip' if no forecast data
             $nr = '';
             if ($forecastData->has($sku)) {
                 $forecast = $forecastData->get($sku);
                 $nr = strtoupper(trim($forecast->nr ?? ''));
-                // Optionally use forecast stage if it exists, but default to 'mip'
                 $forecastStage = $forecast->stage ?? '';
                 if (! empty($forecastStage)) {
                     $stage = strtolower(trim($forecastStage));
-                } else {
-                    $stage = 'mip'; // Always 'mip' if no forecast stage
                 }
             }
 
