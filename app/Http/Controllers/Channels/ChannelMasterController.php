@@ -5156,8 +5156,15 @@ class ChannelMasterController extends Controller
         // Get metrics from marketplace_daily_metrics table (pre-calculated, same as Amazon/eBay 2)
         $metrics = MarketplaceDailyMetric::where('channel', 'eBay 3')->latest('date')->first();
         
-        // Get L60 data from ebay3_daily_data for comparison
-        $ordersL60 = DB::table('ebay3_daily_data')->where('period', 'l60')->get();
+        // Calculate L60 Sales using date range (same as eBay 1) - NOT using period field
+        $sixtyDaysAgo = now()->subDays(60);
+        $thirtyDaysAgo = now()->subDays(30);
+        
+        $ordersL60 = DB::table('ebay3_daily_data')
+            ->where('creation_date', '>=', $sixtyDaysAgo)
+            ->where('creation_date', '<', $thirtyDaysAgo)
+            ->where('quantity', '>', 0)  // Only include orders with quantity > 0
+            ->get();
 
         // Load product masters (lp, ship) keyed by SKU
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
@@ -5169,19 +5176,27 @@ class ChannelMasterController extends Controller
         $percentageDecimal = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.85;
 
         // Calculate L60 metrics
-        $l60Orders = $ordersL60->count();
+        $l60Orders = 0;
+        $uniqueOrders = [];
         $l60Sales = 0;
         $totalProfitL60 = 0;
         $totalCogsL60 = 0;
 
         foreach ($ordersL60 as $order) {
+            // Count unique orders
+            if ($order->order_id && !in_array($order->order_id, $uniqueOrders)) {
+                $uniqueOrders[] = $order->order_id;
+                $l60Orders++;
+            }
+            
             $sku = strtoupper($order->sku ?? '');
             if (empty($sku)) continue;
 
             $qty = floatval($order->quantity ?? 1);
             $price = floatval($order->unit_price ?? 0);
             
-            $l60Sales += $price * $qty;
+            // Apply marketplace percentage to sales (seller gets 85%, eBay takes 15%)
+            $l60Sales += ($price * $qty) * $percentageDecimal;
 
             $lp = 0;
             $ship = 0;
@@ -5221,8 +5236,8 @@ class ChannelMasterController extends Controller
         $pmtSpent = $ebay3Breakdown['pmt'];
         $totalAdSpend = $kwSpent + $pmtSpent;
 
-        // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        // Calculate growth: ((L30 - L60) / L60) * 100
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
