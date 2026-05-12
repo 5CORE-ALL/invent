@@ -134,6 +134,7 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
+    const PLS_PERCENTAGE = {{ $plsPercentage ?? 100 }} / 100; // Dynamic from database
     let table = null;
 
     function showToast(message, type = 'info') {
@@ -813,11 +814,10 @@
                     missingPrice++;
                 }
 
-                // Calculate weighted GPFT and ROI (by sales volume, with 85% marketplace percentage)
+                // Calculate weighted GPFT and ROI (by sales volume, using dynamic marketplace percentage)
                 if (plsL30 > 0 && price > 0) {
-                    const plsPercentage = 0.85; // PLS marketplace percentage (85% kept, 15% commission)
                     const sales = price * plsL30;
-                    const profit = ((price * plsPercentage) - lp - ship) * plsL30;
+                    const profit = ((price * PLS_PERCENTAGE) - lp - ship) * plsL30;
                     const cogs = lp * plsL30;
                     
                     totalSales += sales;

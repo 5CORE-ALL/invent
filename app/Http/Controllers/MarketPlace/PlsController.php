@@ -444,7 +444,12 @@ class PlsController extends Controller
      */
     public function pricingView(Request $request)
     {
-        return view('market-places.pls_pricing_view');
+        // Get PLS marketplace percentage from database
+        $plsPercentage = MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
+        
+        return view('market-places.pls_pricing_view', [
+            'plsPercentage' => $plsPercentage
+        ]);
     }
 
     /**

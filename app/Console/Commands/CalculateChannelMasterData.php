@@ -124,6 +124,7 @@ class CalculateChannelMasterData extends Command
                     
                     // Log PLS-specific calculations
                     if ($channelName === 'PLS') {
+                        $plsPercentage = \App\Models\MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
                         $this->newLine();
                         $this->info("Processing PLS with actual sales data:");
                         $this->info("  - L30 Sales: " . ($channelData['L30 Sales'] ?? 'N/A'));
@@ -132,7 +133,7 @@ class CalculateChannelMasterData extends Command
                         $this->info("  - GPFT %: " . ($channelData['Gprofit%'] ?? 'N/A'));
                         $this->info("  - G ROI: " . ($channelData['G Roi'] ?? 'N/A'));
                         $this->info("  - Orders: " . ($channelData['L30 Orders'] ?? 'N/A'));
-                        $this->info("  - Using 85% marketplace percentage from marketplace_percentages table");
+                        $this->info("  - Using {$plsPercentage}% marketplace percentage from marketplace_percentages table");
                     }
                     
                     $this->saveChannelData($channelData, $calculatedAt, $dataAsOf);
