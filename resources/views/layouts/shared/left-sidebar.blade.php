@@ -2271,6 +2271,13 @@
                 </a>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ url('/sold-master') }}" class="side-nav-link">
+                    <i class="ri-shopping-cart-line"></i>
+                    <span>Sold Master</span>
+                </a>
+            </li>
+
 
 
 

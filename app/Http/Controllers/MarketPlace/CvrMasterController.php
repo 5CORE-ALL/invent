@@ -4250,4 +4250,21 @@ class CvrMasterController extends Controller
         }
         return $out;
     }
+
+    /**
+     * Display the Sold Master view
+     * 
+     * @param Request $request
+     * @return \Illuminate\View\View
+     */
+    public function soldMasterView(Request $request)
+    {
+        $mode = $request->query("mode");
+        $demo = $request->query("demo");
+
+        return view("market-places.sold_master_view", [
+            "mode" => $mode,
+            "demo" => $demo,
+        ]);
+    }
 }

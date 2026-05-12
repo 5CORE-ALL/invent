@@ -2564,6 +2564,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Pricing Master CVR Route (uses CVR Master controller)
     Route::get('/pricing-master-cvr', [CvrMasterController::class, 'pricingMasterCvrView'])->name('pricing.master.cvr');
 
+    // Sold Master Route (uses CVR Master controller)
+    Route::get('/sold-master', [CvrMasterController::class, 'soldMasterView'])->name('sold.master');
+
     // TikTok Pricing Routes (Tabulator)
     Route::get('/tiktok-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokTabulatorView'])->name('tiktok.pricing');
     Route::get('/tiktok-2-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2TabulatorView'])->name('tiktok2.pricing');
