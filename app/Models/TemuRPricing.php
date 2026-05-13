@@ -16,6 +16,7 @@ class TemuRPricing extends Model
         'product_name',
         'goods_id',
         'sku_id',
+        'sku',
         'variation',
         'product_status',
         'category',

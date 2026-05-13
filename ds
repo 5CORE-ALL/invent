@@ -1,54 +1,45 @@
-Sr.No	Item SKU	ORDER ID	WORK BY	PLATFORM	REASON	ACTION	REFUNDED BY CC	TOTAL AMOUNT ESTIMATED	ACTUAL  AMOUNT LOSS	
-Jan 3	RTRO MIC GLD BLK	04-13977-20260
-	Hrit	eBay	ordered RTRO MIC CH BLK and received GLD variant, label was correct-  opened return and refund issued	Refunded by Hrit	$33.86	33.86	33.86	
-Jan 5	MUS FLD BLU	PO-211-11812690046072407	Hrit	Temu	"opened returnless refund- Wrong item was sent
-Comment: Wring cilor"	Partial Refund	$4.67	4.67	4.67	
-Jan 7	DS CH BLU-VEL REST LVR	"05-14044-80609
-"	Hrit	Ebay 3	received: DS CH BLU   label was correct (sku in mail)	FULL Replacement		8+11.21	19.21	
-Jan 8	DS VEL RED REST-SWL	113-0258354-1594613	Hrit	Amazon	received DS CH RED REST-LVR	FULL Replacement		8+8	16	
-Jan 17	DS CH RED-VEL REST LVR
-	251461	Hrit	Shopify	received DS CH RED REST LVR label was correct- mailed	FULL Replacement		8+8	16	
-Jan 19	SS HD 1PK 3FT YLW BAG	05-14105-12545
-	Hrit	Ebay 3	ordered 2pcs, dispatched only 1pc, label correct	Required Item sent		8	8	
-Jan 22	FR 15 140 MS	PO-211-01361806894710475	Hrit	Temu	opened reshipment request- only 1 box received image given	FULL Replacement		8	8	
-Jan 22	WF 8"-890 2PC	26-14085-72265	Hrit	eBay	ordered 3pcs, llabel was correct- received 1pc, needs 2pcs	Required Item sent		8	8	
-Jan 24	WS-11 5 2PCS	PO-211-12017477304952467	Hrit	Temu	ordered WS-11 5 2PCS received WST 04-15 Pair- opened return and delivered on 23rd jan	Refunded by Hrit	$23.36	23.56+8.72	32.28	
-Jan 24	GSH HD RED
-	252836	Hrit	Shopify	ordered 2pcs received 1pc, label was correct	Required Item sent		8	8	
-Jan 26	FR 15 190 MS	113-5641107-0457040	Hrit	Amazon	received 18" instead of 15", buyer called	FULL Replacement		8+8	16	
-Jan 26	WF 15 140 4OHM GTR	PO-211-06449092414072121	Anish	Temu	ordered 2 item received only 1 	Required Item sent		8	8	
-Jan 27	SS HD 1PK BLK WOB	15-14107-00153 	Anish	eBay	wrong item sent sku: SS HD 1PK 3FT BLK WOB, label was correct	FULL Replacement		8+3.49	11.49	
-Jan 27	GRack 5N1 OVAL 2pcs	03-14149-41594	Hrit	eBay	ordered 3pcs, received only 1pc	Buyer demanded REFUND only		0	0	
-Jan 29	GSS BR 6PCS	15-14105-19219	Anish	eBay	ordered 4 sets and received 1set only- send 3sets	Required Item sent		8	8	
-Jan 31	GFS BLK 3PCS	25-14118-70140	Hrit	eBay	wrong items sent GFF TP BLK 3PCS	FULL Replacement		8+5.16	13.16	
-Jan 31	CS 04 2W WoG	10-14109-96070
-	Hrit	eBay	wrong item sent CS 06 2W 	FULL Replacement		8+7.42	15.42	
-Jan 31	WF 10120 4OHM	111-5268521-0936233	Hrit	Amazon	buyer says received only 1 speaker, label made for 2pcs	Required Item sent		8	8	
-Feb 2	WF 15 156 PP 4OHM	112-6539839-8602663	Hrit	Amazon	ordered 15" sent 12" (WF 12 156 PP 4OHM)	FULL Replacement		8+16.62	24.62	
-Feb 3	MUS FLD 4S PNK 4pcs	11-14159-94747	Hrit	eBay	buyer opened req for 3pcs- tracking shows delivered- last date 6th feb	Refunded by Hrit	$65.04	0	0	
-Feb 4	HW 405 WH 2PCS	113-9203796-4987466	Anish	Amazon	label made for 4pcs, dispatched 2pcs	Required Item sent		8	8	
-Feb 6	KS 2X HAND	PO-211-06257001626234032	Hrit	Temu	buyer called and msgd-ordered 2pcs received only 1	Required Item sent		8	8	
-Feb 7	SS SQ BLK 2 poles	PO-211-06050179318393395	Hrit	Temu	received 4 bases- called, opened reship req for 2 poles, will return 2 extra base	Required Item sent		8+110	118	bases not returned. return Label not voided
-Feb 9	DS 01 RED 3pcs	114-8473653-3774600	Anish	Amazon	ordered 3pcs, received 1 incomplete pc, label was correct	Required Item sent		8	8	
-Feb 9	WM SPK PNK	577269875093508843	Hrit	TikTok	received WF 890 instead of mics- out of stock ritu maam offered 3pc GLD	FULL Replacement		6.5+4.89	11.39	
-Feb 10	SS SQ BLK 2poles	PO-211-05976882949752742	Hrit	Temu	2 labels, 4 bases sent	Required Item sent		8+110	118	bases not returned. return Label not voided
-Feb 11	FR 15190 17 AL 2pcs	PO-211-05803059717751666	Anish	Temu	wrong quantity sent	Refund by platform	$126.22	126.22+34.34	160.56	
-Feb 12	DS 01 BR 2pcs	PO-211-07497969444473853	Hrit	Temu	ordered 3pcs, received 1pc- fedex image	Required Item sent	8	8	8	
-Feb 16	KS 1X BLU+KBB 02 BLK	PO-211-12983917143674048	Hrit	Temu	opened reship req- All that's missing is the bench to sit on; only the keyboard stand arrived.	Required Item sent	8	8	8	
-Feb 16	GFF TP GRY	18-14151-04974	Hrit	EBAY 2	gave neg feedback	FULL Replacement	1+1.82		2.82	
-Feb 18	GFS BLK	16-14215-74817
-	Hrit	eBay	received GFF TP BLK	FULL Replacement	1.82+5		6.82	
-Feb 19	WF 8"-890 4PC	 PO-211-21301589371513689	Hrit	Temu	returned, got DS CH ORG	Refunded by Hrit	35.04+8		43.04	
-Feb 19	FR 15 140 MS	111-0319326-8881853	Hrit	Amazon	buyer received only 1pc, label was correct	Required Item sent	0		0	
-Feb 19	MUS FLD BLK	 16-14219-40073	Hrit	Ebay 3	received MUS FLD PNK	FULL Replacement	8+3.36		11.36	
-Feb 20	TW BLT 180 BLK PAIR	PO-211-21053795850872988	Hrit	Temu	received WF 8"-890 2pcs	NA	19.73+9.78		29.51	
-Feb 21	KS Z1 BPNK HD	 04-14241-74707	Hrit	Ebay 3	received KS Z1 BPNK	Partial Refund	$4		4	
-Feb 23	GRack 3N1 	24920505	Hrit	Reverb	3 out of 4 separators sent, 0 out of 8 knobs and 0 out of 2 screws were sent but marked done in caps in mail when i gave proper marked image. why?	Required Item sent	3.56+1.03(letter)		4.59	
-Feb 24	10T G 2PCS	PO-211-14785037589112467
-	Hrit	Temu	sent 2pcs instead of 4pcs	Required Item sent	8		8	
-Feb 25	SS HD 1PK BLK WOB 3pcs	24973598	Hrit	Reverb	send SS HD 3FT BLK WoB 1pc	FULL Replacement	8+ 4		12	
-Feb 25	MS 080	05-14188-62238	Hrit	eBay	missing mic stand, label was correct	Required Item sent	8		8	
-Feb 26	DS CH BLU-VEL REST LVR	112-4702834-8764253	Hrit	Temu	label correct, sent black color	FULL Replacement	8+8		16	
-Feb 26	SS HD 2PK BLK BAG 2sets	26012669031528	Hrit	Doba	ordered 4pcs, sent 2pcs, canada order dropshipper furious	Refunded by Hrit	62.1+13.24		75.34	
-Feb 28	CD 90 4PCS	03-14288-65450
-	Hrit	Ebay 3	ordered 4 sets, received 2 sets	Required Item sent	8		8	
+Category	Product name	Goods ID	SKU ID	SKU	External product ID	Variation	Product status	Category	Current base price	Recommended base price	Date created	Action
+Pricing opportunity type corresponding to the template.	The product name corresponding to each product on the Pricing opportunities page.	The ID information corresponding to each product on the Pricing opportunities page. If there are multiple products, they will be separated by spaces.	Displays the ID information corresponding to each SKU on the Pricing opportunities page. If there are multiple SKUs, they will be separated by spaces.	A unique identifier that you can assign to each product or product type.	External product ID is a kind of globally recognized code used to uniquely identify products in commerce and supply chains.	Displays the variation information corresponding to the order of the SKU IDs. If there are multiple variations, they will be separated by spaces. If an SKU contains two variations, they will be separated by a forward slash (/).	Displays the product status corresponding to the order of the SKU IDs. If there are multiple variations, they will be separated by spaces. If an SKU contains two variations, they will be separated by a forward slash (/).	The category corresponding to each product on the Pricing opportunities page.	The current SKU base price.	The recommended base price has been provided based on the current retail price of the product, sales statuses of similar products, and promotional activities.	The time when the pricing opportunity was generated.	Select "Accept" to accept the recommended base price on the Pricing opportunities page
+Restricted traffic	5 Core Premium Ukulele Strings Replacement Set for Musical Instruments Smooth Tuning Easy on Fingertips for Beginners	603193249529843	49882421301655	SW L BLK 5PCS		BLACK	Active	Ukulele Accessories	2.29	0.73	2026-03-21 08:06:03	
+Restricted traffic	5 Core Guitar Stand Floor Adjustable with Neck Holder Heavy Duty Universal Support for Acoustic, Electric, Classical & Bass Guitars	602790596330683	48284693493460	GSH HD BLK		BLACK	Active	Racks	13.99	13.85	2026-03-21 10:20:08	
+Restricted traffic	5 Core Speaker Wall Mount Pair Adjustable Dual Side Clamping Bracket for Bookshelf and Surround Speakers	602643493656383	51462969277477	WST 04-15 Pair		04-15 Pair	Active	Speaker Mounts	18.69	18.60	2026-04-04 00:06:09	
+Restricted traffic	5 Core 4 Pole Speakon Connector Twist Lock Audio Speaker Plug Male 4 Conductor Cable Adapter for Speaker to Amplifier Connection	603193249477640	43216632079997	SPKN BLU 6PCS		Blue 6 PCS	Active	Speaker Cables	3.23	2.91	2026-04-04 00:23:51	
+Restricted traffic	5 Core Guitar Capo Quick Change Clamp for Acoustic Electric Guitar with Picks	602299896291057	52012725092645	CAPO AL SLV 2PCS		Silver 2 PCS	Active	Capos	3.49	2.99	2026-04-04 00:32:54	
+Restricted traffic	5 Core Guitar Capo Quick Change Clamp for Acoustic Electric Guitar with Picks	602299896291057	52012725076261	CAPO AL BLU 2PCS		Blue 2 PCS	Active	Capos	3.19	2.99	2026-04-04 00:32:54	
+Restricted traffic	5 Core Guitar Capo Quick Change Clamp for Acoustic Electric Guitar with Picks	602299896291057	52012725051685	CAPO AL YLW 2PCS		Yellow 2 PCS	Active	Capos	3.49	2.99	2026-04-04 00:32:54	
+Restricted traffic	5 Core Guitar Capo Quick Change Clamp for Acoustic Electric Guitar with Picks	602299896291057	52012725059877	CAPO AL RED 2PCS		Red 2 PCS	Active	Capos	3.49	2.99	2026-04-04 00:32:54	
+Restricted traffic	5 Core Speaker Stand Tripod Heavy Duty Adjustable PA DJ Speaker Stand Telescoping Height up to 54 Inch Universal 35mm Mount for Stage Studio Events Single Stand	602669263499311	52184523789914	SS HD 1PK ORG WOB		Orange	Active	Racks & Stands	13.49	12.30	2026-04-04 01:40:06	
+Restricted traffic	5 Core Speaker Stand Tripod Heavy Duty Adjustable PA DJ Speaker Stand Telescoping Height up to 54 Inch Universal 35mm Mount for Stage Studio Events Single Stand	602669263499311	52184523757146	SS HD 1PK BLK WOB		Black	Active	Racks & Stands	13.40	13.20	2026-04-04 01:40:06	
+Restricted traffic	5 Core Desk Mic Stand Height Adjustable Desktop Microphone Stands Metal Tripod Portable Foldable	603219019301169	36241605149364	MS MINI TRI CH		CHROME	Active	Stands	3.29	2.85	2026-04-04 03:18:34	
+Restricted traffic	5 Core Speaker Stand Adjustable Universal PA DJ Tripod Studio Monitor Stands w 35mm Insert for Home On Stage Studio Use	602507128453760	48078535017264	SS ECO 1PK YLW WoB		YELLOW	Active	Stage Speaker Stands	13.49	10.95	2026-04-04 03:28:57	
+Restricted traffic	5 Core Speaker Stand Adjustable Universal PA DJ Tripod Studio Monitor Stands w 35mm Insert for Home On Stage Studio Use	602507128453760	48078535064880	SS ECO 1PK RED WoB		RED	Active	Stage Speaker Stands	13.99	10.95	2026-04-04 03:28:57	
+Restricted traffic	5 Core Music Stand Adjustable 57" Desktop Book Stands Portable Sheet Holder All Metal Foldable Bookstand w Carrying Bag & Clip Black	602223660623512	42993293723325	MUS FLD RED		RED	Active	Sheet Music Stands	8.91	7.19	2026-04-04 03:36:52	
+Restricted traffic	5 Core Music Stand Adjustable 57" Desktop Book Stands Portable Sheet Holder All Metal Foldable Bookstand w Carrying Bag & Clip Black	602223660623512	42993293756093	MUS FLD YLW		YELLOW	Active	Sheet Music Stands	8.91	7.19	2026-04-04 03:36:52	
+Restricted traffic	5 Core Keyboard Stand Adjustable 21 - 33" Z Style Electric Piano Riser 330Lb Capacity Foldable Sturdy Holder For 54 61 88 Keys Instruments	603271632682653	40794270488417	KS Z1 BPNK		PINK	Active	Stands	21.65	21.23	2026-04-04 03:40:14	
+Restricted traffic	5 Core Keyboard Stand Adjustable 21 - 33" Z Style Electric Piano Riser 330Lb Capacity Foldable Sturdy Holder For 54 61 88 Keys Instruments	603271632682653	40794270504801	KS Z1 BLU		BLUE	Active	Stands	21.99	21.23	2026-04-04 03:40:14	
+Restricted traffic	5 Core Passive Crossover Network Frequency Divider with Metalised Polyester Capacitors	602305265021976	52167343895259	NW 04		2 Way Passive	Active	Band Pass	2.26	1.49	2026-04-04 03:56:03	
+Restricted traffic	5 Core Guitar Capo for Acoustic & Electric Guitar Quick Change Kapo for 6 String Banjo Mandolin & Ukulele Fast Clip On	603149226092232	48250333716347	CAPO GLD		GOLD	Active	Capos	0.89	0.59	2026-04-04 04:06:10	
+Restricted traffic	5 Core Guitar Capo for Acoustic & Electric Guitar Quick Change Kapo for 6 String Banjo Mandolin & Ukulele Fast Clip On	603149226092232	48250333749115	CAPO RED		RED	Active	Capos	0.89	0.59	2026-04-04 04:06:10	
+Restricted traffic	5 Core Guitar Capo for Acoustic & Electric Guitar Quick Change Kapo for 6 String Banjo Mandolin & Ukulele Fast Clip On	603149226092232	48250333732731	CAPO BLUE 1Pc		BLUE	Active	Capos	1.05	0.59	2026-04-04 04:06:10	
+Restricted traffic	5 Core 10 Inch Subwoofer Speaker 300W RMS Full Range Car Audio Woofer Speakers Deep Bass Replacement Component Driver	602891528013797	46326188404595	FR 10 185 AL 4OHMS		4 OHMS	Active	Component Subwoofers	40.99	39.59	2026-04-04 04:13:10	
+Restricted traffic	5 Core 8 Inch Subwoofer Speaker Deep Bass Replacement Woofer High Power Car Audio Component Speaker System	602643493658101	50981932941920	WF 8120 4 OHM 2PCS		4 Ohm 2 Pieces	Active	Component Subwoofers	36.54	21.70	2026-04-04 04:22:30	
+Restricted traffic	5 Core Passive Speaker Crossover Network Frequency Divider with Metalised Polyester Capacitors and Air Core Coils for Audio Speakers	602918371615419	36069806496192	NW 05 4PCS		1 Way Passive 4pc	Active	Grill Cloth	4.20	4.11	2026-04-04 04:23:17	
+Restricted traffic	5 Core Passive Speaker Crossover Network Frequency Divider with Metalised Polyester Capacitors and Air Core Coils for Audio Speakers	602918371615419	36069806463424	NW 05 2PCS		1 Way Passive 2pc	Active	Grill Cloth	3.80	3.08	2026-04-04 04:23:17	
+Restricted traffic	5 Core Speaker Stand Tripod Heavy Duty Adjustable PA DJ Speaker Stand Telescoping Height up to 54 Inch Universal 35mm Mount for Stage Studio Events Single Stand	602669263471879	47614678578170	SS HD 1 PK 4.5 FT GR WOB		Green	Active	Stage Speaker Stands	13.99	12.30	2026-04-04 04:24:20	
+Restricted traffic	5 Core Speaker Stand Tripod Heavy Duty Adjustable PA DJ Speaker Stand Telescoping Height up to 54 Inch Universal 35mm Mount for Stage Studio Events Single Stand	602669263471879	52184523764069	SS HD 1 PK 4.5 FT ORG WOB		Orange	Active	Stage Speaker Stands	13.99	12.30	2026-04-04 04:24:20	
+Restricted traffic	5 Core Speaker Stand Tripod Heavy Duty Adjustable PA DJ Speaker Stand Telescoping Height up to 54 Inch Universal 35mm Mount for Stage Studio Events Single Stand	602669263471879	52184523747685	SS HD 1 PK 4.5 FT YLW WOB		Yellow	Active	Stage Speaker Stands	13.99	12.30	2026-04-04 04:24:20	
+Restricted traffic	5 Core Speaker Stand Tripod Heavy Duty Adjustable Pair for PA DJ Stage & Event Telescoping Height up to 72″ Universal 35 mm Mount Pack of 2	602325666099364	52184523739493	SS HD 2 PK WH BAG		White	Active	Stage Speaker Stands	24.36	22.20	2026-04-04 04:25:11	
+Restricted traffic	5 Core 8 Inch Car Subwoofer Deep Bass Audio Replacement Woofer Speaker 4 Ohm High Power Car Audio System	602325666072815	36241605175648	WF 8"-890 2PC		8 Inch 890 2 PCS	Active	Component Subwoofers	31.49	30.59	2026-04-04 04:25:45	
+Restricted traffic	5 Core 8 Inch Car Subwoofer Deep Bass Audio Replacement Woofer Speaker 4 Ohm High Power Car Audio System	602325666072815	36241605142880	WF 8"-890 1PC		8 Inch 890	Active	Component Subwoofers	14.99	12.30	2026-04-04 04:25:45	
+Restricted traffic	5Core Conga Mic Snare Tom Microphone Drum Kit Condenser XLR Instrument Mics	603219019293094	45037698160893	CONGO 3XP Copperex		3 SET COPPER	Active	Congas	42.49	41.99	2026-04-11 02:49:27	
+Restricted traffic	5Core Conga Mic Snare Tom Microphone Drum Kit Condenser XLR Instrument Mics	603219019293094	42368376041334	CONGO 2 YLW		2 SET YELLOW	Active	Congas	39.59	35.99	2026-04-11 02:49:27	
+Restricted traffic	5Core Conga Mic Snare Tom Microphone Drum Kit Condenser XLR Instrument Mics	603219019293094	42368376004470	CONGO 2 GLD		2 SET GOLD	Active	Congas	39.59	35.99	2026-04-11 02:49:27	
+Restricted traffic	5 Core Projector Stand Floor Adjustable Universal Projectors Support for Home Office & Studio	602982359923480	49996237929014	PS RB 135 BLK		Round Base 53" Black	Active	Mounting Equipment	25.99	22.20	2026-04-15 00:15:30	
+Restricted traffic	5 Core Projector Stand Floor Adjustable Universal Projectors Support for Home Office & Studio	602982359923480	49996237961782	PS RB 135 WH		Round Base 53" White	Active	Mounting Equipment	23.99	21.30	2026-04-15 00:15:30	
+Restricted traffic	5 Core Projector Stand Floor Adjustable Universal Projectors Support for Home Office & Studio	602982359923480	49996237899318	PS RB 167 BLK		Round Base 66" Black	Active	Mounting Equipment	24.99	22.20	2026-04-15 00:15:30	
+Restricted traffic	5 Core Projector Stand Floor Adjustable Universal Projectors Support for Home Office & Studio	602982359923480	49996237932086	PS RB 167 WH		Round Base 66" White	Active	Mounting Equipment	24.99	21.30	2026-04-15 00:15:30	
+Restricted traffic	5 Core Projector Stand Floor Adjustable Universal Projectors Support for Home Office & Studio	602982359923480	49996237915702	PS SQB 135 BLK		Square Base 53' Black	Active	Mounting Equipment	21.99	19.50	2026-04-15 00:15:30	
+Restricted traffic	5 Core Projector Stand Floor Adjustable Universal Projectors Support for Home Office & Studio	602982359923480	49996237948470	PS SQB 135 WH		Square Base 53' White	Active	Mounting Equipment	19.99	19.50	2026-04-15 00:15:30	
+Restricted traffic	5 Core Projector Stand Floor Adjustable Universal Projectors Support for Home Office & Studio	602982359923480	49996237907510	PS SQB 167 BLK		Square Base 66' Black	Active	Mounting Equipment	21.99	19.50	2026-04-15 00:15:30	
+Restricted traffic	5 Core Projector Stand Floor Adjustable Universal Projectors Support for Home Office & Studio	602982359923480	49996237940278	PS SQB 167 WH		Square Base 66' White	Active	Mounting Equipment	21.99	19.50	2026-04-15 00:15:30	
+Restricted traffic	5 Core Professional Dynamic Vocal Microphone Neodymium Cardioid Unidirectional Handheld Singing Mic with Detachable XLR Cable Clip and Carry Bag	602669263514717	47404225168978	ND-7800X		Neodymium Mic Grey	Active	Vocal	8.46	8.40	2026-05-09 11:14:46	

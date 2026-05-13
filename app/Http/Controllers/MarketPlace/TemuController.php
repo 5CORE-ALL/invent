@@ -3275,11 +3275,12 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('sku');
 
-            // Fetch R Pricing data (recommended_base_price) by goods_id
-            $rPricingData = TemuRPricing::select('goods_id', 'recommended_base_price')
-                ->whereNotNull('goods_id')
+            // Fetch R Pricing data (recommended_base_price) by SKU instead of goods_id
+            $rPricingData = TemuRPricing::select('sku', 'recommended_base_price')
+                ->whereNotNull('sku')
+                ->whereNotNull('recommended_base_price')
                 ->get()
-                ->keyBy('goods_id');
+                ->keyBy('sku');
             
             $amazonData = $isTemu2Pricing
                 ? collect()
@@ -3484,8 +3485,8 @@ class TemuController extends Controller
                 $ebayMetric = $ebayData->get($sku);
                 $ebayPrice = $ebayMetric ? floatval($ebayMetric->ebay_price ?? 0) : 0;
                 
-                // Get recommended_base_price from R Pricing by goods_id
-                $rPricingItem = $goodsId ? $rPricingData->get($goodsId) : null;
+                // Get recommended_base_price from R Pricing by SKU
+                $rPricingItem = $rPricingData->get($sku);
                 $recommendedBasePrice = $rPricingItem ? $rPricingItem->recommended_base_price : null;
                 
                 $normalizedCurrentSku = $normalizeSku($sku);
@@ -4276,6 +4277,7 @@ class TemuController extends Controller
                 'Product name' => 'product_name',
                 'Goods ID' => 'goods_id',
                 'SKU ID' => 'sku_id',
+                'SKU' => 'sku',
                 'Variation' => 'variation',
                 'Product status' => 'product_status',
                 'Current base price' => 'current_base_price',
@@ -4319,9 +4321,21 @@ class TemuController extends Controller
 
             $importCount = 0;
             $errors = [];
+            
+            // Determine starting row: skip header row (0) and description row if present (1)
+            // Check if row 1 looks like a description row (contains long text explanations)
+            $startRow = 1;
+            if (count($rows) > 1) {
+                $secondRow = $rows[1];
+                $firstCellInSecondRow = isset($secondRow[0]) ? (string) $secondRow[0] : '';
+                // If the first cell in row 2 contains "corresponding to" or is very long, it's a description row
+                if (strlen($firstCellInSecondRow) > 50 || stripos($firstCellInSecondRow, 'corresponding to') !== false) {
+                    $startRow = 2; // Skip both header (0) and description (1) rows
+                }
+            }
 
-            // Process data rows (skip header)
-            for ($i = 1; $i < count($rows); $i++) {
+            // Process data rows (skip header and description rows if present)
+            for ($i = $startRow; $i < count($rows); $i++) {
                 $row = $rows[$i];
                 
                 // Skip empty rows
@@ -4335,6 +4349,7 @@ class TemuController extends Controller
                         'product_name' => isset($columnIndices['product_name']) ? ($row[$columnIndices['product_name']] ?? null) : null,
                         'goods_id' => isset($columnIndices['goods_id']) ? ($row[$columnIndices['goods_id']] ?? null) : null,
                         'sku_id' => isset($columnIndices['sku_id']) ? ($row[$columnIndices['sku_id']] ?? null) : null,
+                        'sku' => isset($columnIndices['sku']) ? ($row[$columnIndices['sku']] ?? null) : null,
                         'variation' => isset($columnIndices['variation']) ? ($row[$columnIndices['variation']] ?? null) : null,
                         'product_status' => isset($columnIndices['product_status']) ? ($row[$columnIndices['product_status']] ?? null) : null,
                         'category' => isset($columnIndices['category']) ? ($row[$columnIndices['category']] ?? null) : null,

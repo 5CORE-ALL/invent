@@ -325,6 +325,80 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Map / Miss / NMap for PLS — same rules as pls-pricing badges.
+     * Missing: INV > 0 AND price <= 0
+     * N Map: missing !== 'M' AND ((INV > 0 AND PLS_INV = 0 AND INV > 3) OR (INV > 0 AND PLS_INV > 0 AND |INV - PLS_INV| > 3))
+     * Map: missing !== 'M' AND NOT N Map (difference ≤ 3)
+     */
+    private function getPlsLiveMapMissNMapFromPricingData(): array
+    {
+        try {
+            $req = Request::create('/pls-pricing-data-json', 'GET');
+            $plsCtrl = app(\App\Http\Controllers\MarketPlace\PlsController::class);
+            $response = $plsCtrl->pricingDataJson($req);
+            $rows = json_decode($response->getContent(), true);
+            if (!is_array($rows)) {
+                return $this->getMapAndMissCounts('pls');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+            $totalViews = 0;
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $inv = (float) ($row['inventory'] ?? 0);
+                $plsInv = (float) ($row['pls_inventory'] ?? 0);
+                $price = (float) ($row['price'] ?? 0);
+                $missing = (string) ($row['missing'] ?? '');
+
+                // Count Missing: INV > 0 AND price <= 0 (same as pls-pricing badge logic)
+                if ($inv > 0 && $price <= 0) {
+                    $miss++;
+                }
+
+                // Count N Map: missing !== 'M' AND inventory mismatch > 3 (same as pls-pricing badge logic)
+                if ($missing !== 'M') {
+                    // Case 1: Our inventory > 0, PLS inventory = 0, and difference > 3
+                    if ($inv > 0 && $plsInv === 0.0 && $inv > 3) {
+                        $nmap++;
+                    }
+                    // Case 2: Both have inventory but difference > 3
+                    elseif ($inv > 0 && $plsInv > 0) {
+                        if ($inv !== $plsInv && abs($inv - $plsInv) > 3) {
+                            $nmap++;
+                        } else {
+                            // Within tolerance (≤3) - counts as Map
+                            $map++;
+                        }
+                    }
+                    // Case 3: Our inventory > 0, PLS inventory = 0, but within tolerance (≤3)
+                    elseif ($inv > 0 && $plsInv === 0.0 && $inv <= 3) {
+                        $map++;
+                    }
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => $totalViews,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('PLS live map/miss/nmap fallback: ' . $e->getMessage());
+            return $this->getMapAndMissCounts('pls');
+        }
+    }
+
+    /**
      * Map / Miss / NMap for Best Buy USA — same rules as bestbuy-pricing (MISSING + N Map badges).
      * Miss: REQ + INV>0 + BB Price=0
      * Map / NMap: REQ + INV>0 + BB Price>0 + |INV − BB INV| ≤ 3 (map) or > 3 (NMap)
@@ -7194,8 +7268,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'PLS')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('pls');
+        // Get Map and Miss counts from PLS pricing page data (live calculation - same as pls-pricing badges)
+        $mapMissCounts = $this->getPlsLiveMapMissNMapFromPricingData();
 
         $result[] = [
             'Channel '   => 'PLS',
