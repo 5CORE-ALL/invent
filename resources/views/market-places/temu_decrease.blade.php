@@ -4684,7 +4684,45 @@
             
             // Handle SPRICE edit
             if (field === 'sprice') {
-                const newSprice = parseFloat(cell.getValue());
+                const cellValue = cell.getValue();
+                
+                // Check if the value is empty/null/blank (user is clearing the field)
+                if (cellValue === '' || cellValue === null || cellValue === undefined || String(cellValue).trim() === '') {
+                    // Clear the sprice from database
+                    $.ajax({
+                        url: '/temu-clear-sprice',
+                        method: 'POST',
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            skus: [data['sku']]
+                        },
+                        success: function(response) {
+                            // Update row to reflect cleared values
+                            row.update({ 
+                                sprice: null,
+                                spft_percent: null,
+                                sroi_percent: null
+                            });
+                            row.reformat();
+                            showToast('SPRICE cleared successfully', 'success');
+                        },
+                        error: function(xhr) {
+                            showToast('Failed to clear SPRICE', 'error');
+                            cell.restoreOldValue();
+                        }
+                    });
+                    return;
+                }
+                
+                const newSprice = parseFloat(cellValue);
+                
+                // Check if the parsed value is a valid number
+                if (isNaN(newSprice)) {
+                    showToast('SPRICE must be a valid number', 'error');
+                    cell.restoreOldValue();
+                    return;
+                }
+                
                 if (newSprice < 0) {
                     showToast('SPRICE cannot be negative', 'error');
                     cell.restoreOldValue();
