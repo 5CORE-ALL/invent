@@ -2666,6 +2666,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);
 
+    // Shopify Wholesales Sales Routes
+    Route::get('/shopify-wholesales/sales-data', [\App\Http\Controllers\Sales\ShopifyWholesalesController::class, 'getData'])->name('shopify-wholesales.sales.data');
+    Route::get('/shopify-wholesales/sales', [\App\Http\Controllers\Sales\ShopifyWholesalesController::class, 'index'])->name('shopify-wholesales.sales');
+    Route::get('/shopify-wholesales-column-visibility', [\App\Http\Controllers\Sales\ShopifyWholesalesController::class, 'getColumnVisibility']);
+    Route::post('/shopify-wholesales-column-visibility', [\App\Http\Controllers\Sales\ShopifyWholesalesController::class, 'saveColumnVisibility']);
+
     // Walmart Sales Routes
     Route::get('/walmart/daily-sales', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'index'])->name('walmart.daily.sales');
     Route::get('/walmart/daily-sales-data', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'getData'])->name('walmart.daily.sales.data');
