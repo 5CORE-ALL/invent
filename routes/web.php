@@ -67,6 +67,7 @@ use App\Http\Controllers\Channels\SetupAccountChannelController;
 use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
 use App\Http\Controllers\ChannelTabulatorColumnController;
+use App\Http\Controllers\AuditMasterController;
 use App\Http\Controllers\ComplianceCertificateController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
@@ -4244,7 +4245,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/shoppable-video/sixteen-ration', 'sixteenRation')->name('sixteen.ration');
         Route::get('/sixteen-ration-video/view-data', 'getSixteenRatioVideoData');
-        Route::post('/sixteen-ration-video/save', 'savesixteenRationVideo');
+        Route::post('/sixteen-ration-video/save', 'saveSixteenRationVideo');
         Route::post('/sixteen-ration-video/import', 'importSixteenRationVideo');
         Route::get('/sixteen-ration-video/export', 'exportSixteenRationVideo');
     });
@@ -4911,6 +4912,34 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/upload-files', [ComplianceCertificateController::class, 'uploadFiles'])->name('compliance-certificates.upload-files');
         Route::post('/delete-file', [ComplianceCertificateController::class, 'deleteFile'])->name('compliance-certificates.delete-file');
         Route::post('/bulk-update', [ComplianceCertificateController::class, 'bulkUpdate'])->name('compliance-certificates.bulk-update');
+    });
+
+    // Audit Master
+    Route::prefix('audit-master')->group(function () {
+        Route::get('/cc-messages-audit', [AuditMasterController::class, 'ccMessagesAudit'])->name('audit.master.cc.messages');
+        Route::get('/cc-return-audit', [AuditMasterController::class, 'ccReturnAudit'])->name('audit.master.cc.return');
+        Route::get('/cc-replacement-audit', [AuditMasterController::class, 'ccReplacementAudit'])->name('audit.master.cc.replacement');
+
+        // Audit modal API (dynamic params, save, history)
+        Route::get('/parameters', [AuditMasterController::class, 'getAuditConfig'])->name('audit.master.parameters');
+        Route::post('/audits',    [AuditMasterController::class, 'storeAudit'])->name('audit.master.audits.store');
+        Route::get('/audits',     [AuditMasterController::class, 'getAuditHistory'])->name('audit.master.audits.history');
+        Route::get('/audits/{id}', [AuditMasterController::class, 'showAudit'])
+            ->whereNumber('id')
+            ->name('audit.master.audits.show');
+
+        // Agent-wise KPI panel (top-of-page summary + score history per agent)
+        Route::get('/agent-kpis', [AuditMasterController::class, 'getAgentKpis'])->name('audit.master.agent.kpis');
+
+        // Audit parameter administration (gated to ADMIN_EMAILS in controller)
+        Route::post('/parameters/manage',         [AuditMasterController::class, 'storeParameter'])
+            ->name('audit.master.parameters.store');
+        Route::put('/parameters/manage/{id}',     [AuditMasterController::class, 'updateParameter'])
+            ->whereNumber('id')
+            ->name('audit.master.parameters.update');
+        Route::delete('/parameters/manage/{id}',  [AuditMasterController::class, 'destroyParameter'])
+            ->whereNumber('id')
+            ->name('audit.master.parameters.destroy');
     });
 
     Route::post('/channel-promotion/store', [ChannelPromotionMasterController::class, 'storeOrUpdatePromotion']);

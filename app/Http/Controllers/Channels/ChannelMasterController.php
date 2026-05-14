@@ -126,6 +126,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Spatie\FlareClient\Api;
 
 class ChannelMasterController extends Controller
@@ -2467,11 +2468,39 @@ class ChannelMasterController extends Controller
             // Get paginated data
             $offset = ($page - 1) * $size;
             $channels = $query->skip($offset)->take($size)->get();
-            
+
+            // Build channel-name -> logo / seller_link maps from channel_master so the
+            // pre-calculated table doesn't need extra columns of its own.
+            $logoMap = [];
+            $sellerLinkMap = [];
+            $hasLogo = Schema::hasColumn('channel_master', 'logo');
+            $hasSellerLink = Schema::hasColumn('channel_master', 'seller_link');
+
+            if ($hasLogo || $hasSellerLink) {
+                $names = $channels->pluck('channel')->filter()->unique()->values();
+                if ($names->isNotEmpty()) {
+                    $select = ['channel'];
+                    if ($hasLogo) $select[] = 'logo';
+                    if ($hasSellerLink) $select[] = 'seller_link';
+
+                    $rows = ChannelMaster::whereIn('channel', $names)->get($select);
+                    foreach ($rows as $r) {
+                        if ($hasLogo) {
+                            $logoMap[$r->channel] = $r->logo ?: null;
+                        }
+                        if ($hasSellerLink) {
+                            $sellerLinkMap[$r->channel] = $r->seller_link ?: null;
+                        }
+                    }
+                }
+            }
+
             // Format data for frontend (match expected format)
-            $formattedData = $channels->map(function($channel) {
+            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap) {
                 return [
                     'Channel ' => $channel->channel,
+                    'logo' => $logoMap[$channel->channel] ?? null,
+                    'seller_link' => $sellerLinkMap[$channel->channel] ?? null,
                     'sheet_link' => $channel->sheet_link,
                     'channel_percentage' => $channel->channel_percentage,
                     'type' => $channel->type,
@@ -2611,6 +2640,12 @@ class ChannelMasterController extends Controller
         }
         if (Schema::hasColumn('channel_master', 'addition_sheet')) {
             $columns[] = 'addition_sheet';
+        }
+        if (Schema::hasColumn('channel_master', 'logo')) {
+            $columns[] = 'logo';
+        }
+        if (Schema::hasColumn('channel_master', 'seller_link')) {
+            $columns[] = 'seller_link';
         }
         
         $channels = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
@@ -3046,6 +3081,8 @@ class ChannelMasterController extends Controller
             
             $row = [
                 'Channel '       => ucfirst($channel),
+                'logo'           => $channelRow->logo ?? null,
+                'seller_link'    => $channelRow->seller_link ?? null,
                 'Link'           => null,
                 'sheet_link'     => $channelRow->sheet_link,
                 'L-60 Sales'     => 0,
@@ -10398,6 +10435,8 @@ class ChannelMasterController extends Controller
             'addition_sheet' => 'nullable|url',
             'type' => 'nullable|string',
             'channel_percentage' => 'nullable|numeric',
+            'logo' => 'nullable|image|mimes:jpg,jpeg,png,gif,svg,webp|max:2048',
+            'seller_link' => 'nullable|url|max:1000',
             // 'status' => 'required|in:Active,In Active,To Onboard,In Progress',
             // 'executive' => 'nullable|string',
             // 'b_link' => 'nullable|string',
@@ -10410,6 +10449,22 @@ class ChannelMasterController extends Controller
             if (!Schema::hasColumn('channel_master', 'addition_sheet')) {
                 unset($validatedData['addition_sheet']);
             }
+
+            // Logo column may not exist yet (pre-migration); strip if missing
+            if (!Schema::hasColumn('channel_master', 'logo')) {
+                unset($validatedData['logo']);
+            }
+
+            // seller_link column may not exist yet (pre-migration); strip if missing
+            if (!Schema::hasColumn('channel_master', 'seller_link')) {
+                unset($validatedData['seller_link']);
+            }
+
+            // Handle logo upload (saved under storage/app/public/channel-logos/)
+            if ($request->hasFile('logo') && Schema::hasColumn('channel_master', 'logo')) {
+                $validatedData['logo'] = $this->storeChannelLogo($request->file('logo'));
+            }
+
             // Set default status to 'Active' if not provided
             if (!isset($validatedData['status'])) {
                 $validatedData['status'] = 'Active';
@@ -10431,10 +10486,29 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Persist an uploaded channel logo and return the public-relative path
+     * (e.g. "channel-logos/1716743521_abc.png") suitable to combine with
+     * asset('storage/...') on the frontend.
+     */
+    private function storeChannelLogo(\Illuminate\Http\UploadedFile $file): string
+    {
+        $ext = $file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'png';
+        $filename = time() . '_' . uniqid() . '.' . $ext;
+        $file->storeAs('public/channel-logos', $filename);
+
+        return 'channel-logos/' . $filename;
+    }
+
+    /**
      * Store a update channel in storage.
      */
     public function update(Request $request)
     {
+        $request->validate([
+            'logo' => 'nullable|image|mimes:jpg,jpeg,png,gif,svg,webp|max:2048',
+            'seller_link' => 'nullable|url|max:1000',
+        ]);
+
         $originalChannel = $request->input('original_channel');
         $updatedChannel = $request->input('channel');
         $sheetUrl = $request->input('sheet_url');
@@ -10444,6 +10518,7 @@ class ChannelMasterController extends Controller
         $target = $request->input('target');
         $missingLink = $request->input('missing_link');
         $additionSheet = $request->input('addition_sheet');
+        $sellerLink = $request->input('seller_link');
 
         $channel = ChannelMaster::where('channel', $originalChannel)->first();
 
@@ -10464,6 +10539,22 @@ class ChannelMasterController extends Controller
         }
         if (Schema::hasColumn('channel_master', 'addition_sheet')) {
             $channel->addition_sheet = $additionSheet;
+        }
+
+        // Save seller_link (the field is always sent from the form, including empty
+        // string when the user clears it; treat blank as NULL)
+        if (Schema::hasColumn('channel_master', 'seller_link') && $request->has('seller_link')) {
+            $channel->seller_link = ($sellerLink !== '' && $sellerLink !== null) ? $sellerLink : null;
+        }
+
+        // Handle logo upload (replace existing if a new file is provided)
+        if ($request->hasFile('logo') && Schema::hasColumn('channel_master', 'logo')) {
+            $oldLogo = $channel->logo;
+            $channel->logo = $this->storeChannelLogo($request->file('logo'));
+
+            if ($oldLogo) {
+                Storage::delete('public/' . ltrim($oldLogo, '/'));
+            }
         }
         
         $channel->save();

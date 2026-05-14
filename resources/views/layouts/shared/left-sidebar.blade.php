@@ -85,6 +85,35 @@
                 </a>
             </li>
 
+            {{-- Audit Master --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#auditMaster" aria-expanded="false"
+                    aria-controls="auditMaster" class="side-nav-link">
+                    <i class="ri-file-search-line"></i>
+                    <span>Audit Master</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="auditMaster">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('audit.master.cc.messages') }}">
+                                <i class="ri-message-3-line me-2"></i>CC Messages Audit
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('audit.master.cc.return') }}">
+                                <i class="ri-arrow-go-back-line me-2"></i>CC Return Audit
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('audit.master.cc.replacement') }}">
+                                <i class="ri-refresh-line me-2"></i>CC Replacement Audit
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
 
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#channelSidebarPages" aria-expanded="false"
@@ -739,9 +768,9 @@
                                                 <li>
                                                     <a href="{{ route('nine.ration') }}">9:16 RATIO</a>
                                                 </li>
-                                                {{-- <li>
+                                                <li>
                                                     <a href="{{ route('sixteen.ration') }}">16:9 RATIO</a>
-                                                </li> --}}
+                                                </li>
                                             </ul>
                                         </div>
                                     </li>

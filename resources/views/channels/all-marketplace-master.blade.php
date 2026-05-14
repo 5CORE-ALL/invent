@@ -12,6 +12,71 @@
             background-color: #f5f7fa !important;
         }
 
+        /* Channel logo thumbnail (Img column) */
+        .channel-logo-thumb {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            border-radius: 4px;
+            background: #fff;
+            border: 1px solid #e9ecef;
+            padding: 1px;
+            display: inline-block;
+        }
+
+        .channel-logo-link {
+            display: inline-block;
+            line-height: 0;
+            text-decoration: none;
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+
+        .channel-logo-link:hover .channel-logo-thumb {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.15);
+        }
+
+        .channel-logo-placeholder {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            background: #f1f3f5;
+            border: 1px dashed #ced4da;
+            color: #adb5bd;
+            font-size: 12px;
+        }
+
+        /* Logo preview inside Add / Edit channel modals */
+        .channel-logo-preview {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            border-radius: 6px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            overflow: hidden;
+        }
+
+        .channel-logo-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .channel-logo-preview .placeholder-text {
+            color: #adb5bd;
+            font-size: 11px;
+            text-align: center;
+            line-height: 1.1;
+            padding: 4px;
+        }
+
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
@@ -415,10 +480,29 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <form id="channelForm">
+                    <form id="channelForm" enctype="multipart/form-data">
                         <div class="mb-3">
                             <label for="channelName" class="form-label">Channel Name</label>
                             <input type="text" class="form-control" id="channelName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="channelLogo" class="form-label">Channel Logo</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <div id="channelLogoPreview" class="channel-logo-preview">
+                                    <span class="placeholder-text">No logo</span>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <input type="file" class="form-control" id="channelLogo"
+                                        accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp">
+                                    <small class="text-muted">PNG, JPG, GIF, SVG, or WEBP. Max 2 MB.</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="channelSellerLink" class="form-label">Seller Link</label>
+                            <input type="url" class="form-control" id="channelSellerLink"
+                                placeholder="https://..." maxlength="1000">
+                            <small class="text-muted">When provided, the channel logo will link to this URL.</small>
                         </div>
                         <div class="mb-3">
                             <label for="channelUrl" class="form-label">Sheet Link</label>
@@ -456,11 +540,31 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <form id="editChannelForm">
+                    <form id="editChannelForm" enctype="multipart/form-data">
                         <input type="hidden" id="originalChannel" name="original_channel">
+                        <input type="hidden" id="editExistingLogo">
                         <div class="mb-3">
                             <label for="editChannelName" class="form-label">Channel Name</label>
                             <input type="text" class="form-control" id="editChannelName" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelLogo" class="form-label">Channel Logo</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <div id="editChannelLogoPreview" class="channel-logo-preview">
+                                    <span class="placeholder-text">No logo</span>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <input type="file" class="form-control" id="editChannelLogo"
+                                        accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp">
+                                    <small class="text-muted">Choose a file to replace the current logo. Max 2 MB.</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelSellerLink" class="form-label">Seller Link</label>
+                            <input type="url" class="form-control" id="editChannelSellerLink"
+                                placeholder="https://..." maxlength="1000">
+                            <small class="text-muted">When provided, the channel logo will link to this URL.</small>
                         </div>
                         <div class="mb-3">
                             <label for="editChannelUrl" class="form-label">Sheet URL</label>
@@ -1034,6 +1138,32 @@
                     if (typeof showToast === 'function') showToast('error', msg);
                 },
                 columns: [{
+                        title: "Img",
+                        field: "logo",
+                        frozen: true,
+                        width: 60,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const logo = cell.getValue();
+                            const channel = (rowData['Channel '] || '').trim();
+                            const sellerLink = (rowData['seller_link'] || '').trim();
+
+                            const imgHtml = logo
+                                ? `<img src="/storage/${logo}" alt="${channel}" class="channel-logo-thumb" onerror="this.style.display='none'"/>`
+                                : `<span class="channel-logo-placeholder" title="No logo">
+                                       <i class="fas fa-image text-muted"></i>
+                                   </span>`;
+
+                            if (sellerLink) {
+                                const safeLink = sellerLink.replace(/"/g, '&quot;');
+                                return `<a href="${safeLink}" target="_blank" rel="noopener noreferrer" title="Open seller page" class="channel-logo-link">${imgHtml}</a>`;
+                            }
+                            return imgHtml;
+                        }
+                    },
+                    {
                         title: "Channel",
                         field: "Channel ",
                         frozen: true,
@@ -2938,6 +3068,8 @@
                                     const target = rowData['target'] || 0;
                                     const missingLink = rowData['missing_link'] || '';
                                     const additionSheet = rowData['addition_sheet'] || '';
+                                    const logo = rowData['logo'] || '';
+                                    const sellerLink = rowData['seller_link'] || '';
 
                                     // Populate modal
                                     $('#editChannelName').val(channel);
@@ -2946,7 +3078,19 @@
                                     $('#editTarget').val(target);
                                     $('#editMissingLink').val(missingLink);
                                     $('#editAdditionSheet').val(additionSheet);
+                                    $('#editChannelSellerLink').val(sellerLink);
                                     $('#originalChannel').val(channel);
+
+                                    // Reset file input + show current logo (if any)
+                                    $('#editChannelLogo').val('');
+                                    $('#editExistingLogo').val(logo);
+                                    if (logo) {
+                                        $('#editChannelLogoPreview').html(
+                                            `<img src="/storage/${logo}" alt="${channel}"/>`);
+                                    } else {
+                                        $('#editChannelLogoPreview').html(
+                                            '<span class="placeholder-text">No logo</span>');
+                                    }
 
                                     // Open modal
                                     const modalElement = document.getElementById(
@@ -4312,6 +4456,8 @@
                     const target = rowData['target'] || 0;
                     const missingLink = rowData['missing_link'] || '';
                     const additionSheet = rowData['addition_sheet'] || '';
+                    const logo = rowData['logo'] || '';
+                    const sellerLink = rowData['seller_link'] || '';
 
                     // Populate modal fields
                     $('#editChannelName').val(channel);
@@ -4320,7 +4466,19 @@
                     $('#editTarget').val(target);
                     $('#editMissingLink').val(missingLink);
                     $('#editAdditionSheet').val(additionSheet);
+                    $('#editChannelSellerLink').val(sellerLink);
                     $('#originalChannel').val(channel);
+
+                    // Reset file input + show current logo (if any)
+                    $('#editChannelLogo').val('');
+                    $('#editExistingLogo').val(logo);
+                    if (logo) {
+                        $('#editChannelLogoPreview').html(
+                            `<img src="/storage/${logo}" alt="${channel}"/>`);
+                    } else {
+                        $('#editChannelLogoPreview').html(
+                            '<span class="placeholder-text">No logo</span>');
+                    }
 
                     // Show modal using Bootstrap 5 API
                     const modalElement = document.getElementById('editChannelModal');
@@ -4386,42 +4544,97 @@
                 }, 2000); // Reset after 2 seconds
             });
 
+            // Live preview when picking a logo in the Add Channel modal
+            $(document).on('change', '#channelLogo', function() {
+                const file = this.files && this.files[0];
+                const $preview = $('#channelLogoPreview');
+                if (!file) {
+                    $preview.html('<span class="placeholder-text">No logo</span>');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    $preview.html(`<img src="${e.target.result}" alt="logo preview"/>`);
+                };
+                reader.readAsDataURL(file);
+            });
+
+            // Live preview when picking a new logo in the Edit Channel modal
+            $(document).on('change', '#editChannelLogo', function() {
+                const file = this.files && this.files[0];
+                const $preview = $('#editChannelLogoPreview');
+                if (!file) {
+                    // Restore the existing logo (if any) when file picker is cleared
+                    const existing = $('#editExistingLogo').val();
+                    if (existing) {
+                        $preview.html(`<img src="/storage/${existing}" alt="logo"/>`);
+                    } else {
+                        $preview.html('<span class="placeholder-text">No logo</span>');
+                    }
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    $preview.html(`<img src="${e.target.result}" alt="logo preview"/>`);
+                };
+                reader.readAsDataURL(file);
+            });
+
+            // Reset Add modal preview when the modal closes
+            $(document).on('hidden.bs.modal', '#addChannelModal', function() {
+                $('#channelLogoPreview').html('<span class="placeholder-text">No logo</span>');
+            });
+
             // Save channel form handler
             $(document).on('click', '#saveChannelBtn', function() {
                 const channelName = $('#channelName').val().trim();
                 const channelUrl = $('#channelUrl').val().trim();
                 const additionSheet = $('#additionSheet').val().trim();
                 const type = $('#type').val().trim();
+                const sellerLink = $('#channelSellerLink').val().trim();
+                const logoFile = $('#channelLogo')[0].files[0];
 
                 if (!channelName || !channelUrl || !type) {
                     showToast('error', 'All fields are required');
                     return;
                 }
 
+                const formData = new FormData();
+                formData.append('channel', channelName);
+                formData.append('sheet_link', channelUrl);
+                formData.append('addition_sheet', additionSheet);
+                formData.append('type', type);
+                formData.append('seller_link', sellerLink);
+                if (logoFile) {
+                    formData.append('logo', logoFile);
+                }
+                formData.append('_token', $('meta[name="csrf-token"]').attr('content'));
+
                 $.ajax({
                     url: '/channel_master/store',
                     method: 'POST',
-                    data: {
-                        channel: channelName,
-                        sheet_link: channelUrl,
-                        addition_sheet: additionSheet,
-                        type: type,
-                        _token: $('meta[name="csrf-token"]').attr('content')
-                    },
+                    data: formData,
+                    processData: false,
+                    contentType: false,
                     success: function(res) {
                         if (res.success) {
                             const modal = bootstrap.Modal.getInstance(document.getElementById(
                                 'addChannelModal'));
                             if (modal) modal.hide();
                             $('#channelForm')[0].reset();
+                            $('#channelSellerLink').val('');
+                            $('#channelLogoPreview').html('<span class="placeholder-text">No logo</span>');
                             table.setData(); // Reload data
                             showToast('success', 'Channel added successfully');
                         } else {
                             showToast('error', res.message || 'Failed to add channel');
                         }
                     },
-                    error: function() {
-                        showToast('error', 'Error submitting form');
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Error submitting form';
+                        showToast('error', msg);
                     }
                 });
             });
@@ -4435,39 +4648,54 @@
                 const missingLink = $('#editMissingLink').val().trim();
                 const additionSheet = $('#editAdditionSheet').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
+                const sellerLink = $('#editChannelSellerLink').val().trim();
+                const logoFile = $('#editChannelLogo')[0].files[0];
 
                 if (!channel || !sheetUrl) {
                     showToast('error', 'Channel Name and Sheet URL are required');
                     return;
                 }
 
+                const formData = new FormData();
+                formData.append('channel', channel);
+                formData.append('sheet_url', sheetUrl);
+                formData.append('type', type);
+                formData.append('target', target);
+                formData.append('missing_link', missingLink);
+                formData.append('addition_sheet', additionSheet);
+                formData.append('original_channel', originalChannel);
+                formData.append('seller_link', sellerLink);
+                if (logoFile) {
+                    formData.append('logo', logoFile);
+                }
+                formData.append('_token', $('meta[name="csrf-token"]').attr('content'));
+
                 $.ajax({
                     url: '/channel_master/update',
                     method: 'POST',
-                    data: {
-                        channel: channel,
-                        sheet_url: sheetUrl,
-                        type: type,
-                        target: target,
-                        missing_link: missingLink,
-                        addition_sheet: additionSheet,
-                        original_channel: originalChannel,
-                        _token: $('meta[name="csrf-token"]').attr('content')
-                    },
+                    data: formData,
+                    processData: false,
+                    contentType: false,
                     success: function(res) {
                         if (res.success) {
                             const modal = bootstrap.Modal.getInstance(document.getElementById(
                                 'editChannelModal'));
                             if (modal) modal.hide();
                             $('#editChannelForm')[0].reset();
+                            $('#editChannelSellerLink').val('');
+                            $('#editChannelLogoPreview').html('<span class="placeholder-text">No logo</span>');
+                            $('#editExistingLogo').val('');
                             table.setData(); // Reload data
                             showToast('success', 'Channel updated successfully');
                         } else {
                             showToast('error', res.message || 'Update failed');
                         }
                     },
-                    error: function() {
-                        showToast('error', 'Error updating channel');
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Error updating channel';
+                        showToast('error', msg);
                     }
                 });
             });
