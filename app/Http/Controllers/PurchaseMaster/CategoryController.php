@@ -4022,12 +4022,16 @@ PROMPT;
     {
         try {
             $validated = $request->validate([
-                'sku' => 'required|string',
-                'audit_suggestion' => 'nullable|string|max:500',
-                'is_fixed' => 'nullable|boolean',
-                'link_data' => 'nullable|string', // Accept single string
-                'screenshot' => 'nullable|image|max:5120', // Accept single file
-                'voice_note' => 'nullable|file|mimes:webm,mp3,wav,ogg|max:10240', // Accept single file
+                'sku'                => 'required|string',
+                'audit_suggestion'   => 'nullable|string|max:500',
+                'is_fixed'           => 'nullable|boolean',
+                // link_data is accepted as an array (up to 4 URLs). Each item is optional / nullable.
+                'link_data'          => 'nullable|array|max:4',
+                'link_data.*'        => 'nullable|string|max:2048',
+                // screenshot is accepted as an array of images (multi-select). Each ≤ 5MB.
+                'screenshot'         => 'nullable|array',
+                'screenshot.*'       => 'nullable|image|max:5120',
+                'voice_note'         => 'nullable|file|mimes:webm,mp3,wav,ogg|max:10240',
             ]);
 
             // Normalize SKU (replace non-breaking spaces with regular spaces) — same
@@ -4055,28 +4059,52 @@ PROMPT;
 
             // Update audit suggestion
             $values['audit_suggestion'] = $validated['audit_suggestion'];
-            
-            // Handle link data (single string)
-            if (!empty($validated['link_data'])) {
-                $values['audit_link_data'] = $validated['link_data'];
+
+            // Handle link data (array of up to 4 URLs).
+            // We overwrite whenever the client sent the field at all, even if all
+            // slots are blank — that way clearing every URL in the UI actually
+            // clears the saved value on the server.
+            if ($request->has('link_data')) {
+                $links = (array) $request->input('link_data', []);
+                $links = array_values(array_filter(array_map(function ($l) {
+                    return is_string($l) ? trim($l) : '';
+                }, $links), function ($l) {
+                    return $l !== '';
+                }));
+                $values['audit_link_data'] = $links;
             }
-            
-            // Handle screenshot (single file)
+
+            // Handle screenshots (multi-file upload). Append to existing array so old
+            // screenshots are preserved when the user adds new ones.
             if ($request->hasFile('screenshot')) {
-                $screenshot = $request->file('screenshot');
-                $screenshotName = 'audit_screenshot_' . $validated['sku'] . '_' . time() . '.' . $screenshot->getClientOriginalExtension();
-                $screenshotPath = $screenshot->storeAs('audit_screenshots', $screenshotName, 'public');
-                $values['audit_screenshot'] = $screenshotPath;
+                $existing = isset($values['audit_screenshot']) ? $values['audit_screenshot'] : [];
+                // Back-compat: old saves stored a single string — wrap it into an array.
+                if (is_string($existing) && $existing !== '') {
+                    $existing = [$existing];
+                } elseif (!is_array($existing)) {
+                    $existing = [];
+                }
+
+                foreach ((array) $request->file('screenshot') as $idx => $screenshot) {
+                    if (!$screenshot) continue;
+                    $ext  = $screenshot->getClientOriginalExtension() ?: 'png';
+                    $name = 'audit_screenshot_'.preg_replace('/[^A-Za-z0-9_\-]/', '_', $validated['sku']).'_'.time().'_'.$idx.'.'.$ext;
+                    $path = $screenshot->storeAs('audit_screenshots', $name, 'public');
+                    if ($path) {
+                        $existing[] = $path;
+                    }
+                }
+                $values['audit_screenshot'] = $existing;
             }
-            
+
             // Handle voice note (single file)
             if ($request->hasFile('voice_note')) {
                 $voiceNote = $request->file('voice_note');
-                $voiceNoteName = 'audit_voice_note_' . $validated['sku'] . '_' . time() . '.' . $voiceNote->getClientOriginalExtension();
+                $voiceNoteName = 'audit_voice_note_' . $validated['sku'] . '_' . time() . '.' . ($voiceNote->getClientOriginalExtension() ?: 'webm');
                 $voiceNotePath = $voiceNote->storeAs('audit_voice_notes', $voiceNoteName, 'public');
                 $values['audit_voice_note'] = $voiceNotePath;
             }
-            
+
             $product->Values = $values;
             $product->save();
 

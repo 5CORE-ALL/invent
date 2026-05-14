@@ -349,7 +349,7 @@
 
     <!-- Edit Audit Modal -->
     <div class="modal fade" id="editAuditSuggestionModal" tabindex="-1" aria-labelledby="editAuditSuggestionModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
                     <h5 class="modal-title" id="editAuditSuggestionModalLabel">
@@ -391,23 +391,26 @@
                             </div>
                         </div>
                         
-                        <!-- Link Data -->
+                        <!-- Link Data (up to 4 URLs) -->
                         <div class="mb-3">
-                            <label for="auditLinkData" class="form-label fw-bold">
+                            <label class="form-label fw-bold">
                                 <i class="fas fa-link text-danger me-1"></i>Link Data
                             </label>
-                            <input type="url" class="form-control" id="auditLinkData" name="link_data" placeholder="Enter URL...">
-                            <div class="form-text">Add a related link (will appear as red link icon)</div>
+                            <input type="url" class="form-control mb-2" id="auditLinkData"  name="link_data[]" placeholder="Enter URL #1...">
+                            <input type="url" class="form-control mb-2" id="auditLinkData2" name="link_data[]" placeholder="Enter URL #2...">
+                            <input type="url" class="form-control mb-2" id="auditLinkData3" name="link_data[]" placeholder="Enter URL #3...">
+                            <input type="url" class="form-control"      id="auditLinkData4" name="link_data[]" placeholder="Enter URL #4...">
+                            <div class="form-text">Add up to 4 related links (will appear as red link icons)</div>
                         </div>
-                        
-                        <!-- Screenshot (Snippet) -->
+
+                        <!-- Screenshot (Snippet) — multi-select -->
                         <div class="mb-3">
                             <label for="auditScreenshot" class="form-label fw-bold">
                                 <i class="fas fa-camera text-primary me-1"></i>Screenshot (Snippet)
                             </label>
-                            <input type="file" class="form-control" id="auditScreenshot" name="screenshot" accept="image/*">
-                            <div class="form-text">Upload a screenshot or image snippet</div>
-                            <div id="screenshotPreview" class="mt-2"></div>
+                            <input type="file" class="form-control" id="auditScreenshot" name="screenshot[]" accept="image/*" multiple>
+                            <div class="form-text">Upload one or more screenshots / image snippets (max 5MB each)</div>
+                            <div id="screenshotPreview" class="mt-2 d-flex flex-wrap gap-2"></div>
                         </div>
                         
                         <!-- Voice Note -->
@@ -1395,9 +1398,76 @@
         $('#dbLinkModal').modal('show');
     }
 
+    // Normalize a value that may be a JSON-encoded string, a plain string, or an array.
+    function toArray(value) {
+        if (value == null || value === '') return [];
+        if (Array.isArray(value)) return value.filter(v => v !== null && v !== '');
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed.startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    if (Array.isArray(parsed)) return parsed.filter(v => v !== null && v !== '');
+                } catch (e) { /* fall through */ }
+            }
+            return [trimmed];
+        }
+        return [];
+    }
+
     function editAudit(sku, currentValue) {
+        // Start from a clean slate every time.
         $('#editAuditSku').val(sku);
-        $('#editAuditSuggestion').val(currentValue);
+        $('#editAuditSuggestion').val(currentValue || '');
+        $('#charCount').text((currentValue || '').length);
+        $('#auditLinkData, #auditLinkData2, #auditLinkData3, #auditLinkData4').val('');
+        $('#auditScreenshot').val('');
+        $('#screenshotPreview').empty();
+        $('#voiceNotePreview').empty();
+        window.audioBlob = null;
+
+        // Look up the row in the cached tabulator data so we can restore the
+        // previously-saved links, screenshots and voice note for editing.
+        const rowData = (tableData || []).find(r => r && r.SKU === sku) || {};
+
+        // 4 link inputs — preload up to 4 URLs.
+        const links = toArray(rowData.audit_link_data);
+        const linkInputs = ['#auditLinkData', '#auditLinkData2', '#auditLinkData3', '#auditLinkData4'];
+        links.slice(0, 4).forEach((url, i) => {
+            $(linkInputs[i]).val(url || '');
+        });
+
+        // Existing screenshots — show as thumbnails with a "Saved" badge so the
+        // user can distinguish them from newly-added files.
+        const screenshots = toArray(rowData.audit_screenshot);
+        if (screenshots.length) {
+            const $preview = $('#screenshotPreview');
+            screenshots.forEach((path) => {
+                if (!path) return;
+                const url = path.startsWith('http') ? path : ('/storage/' + path.replace(/^\/+/, ''));
+                $preview.append(`
+                    <div class="position-relative" title="${path}">
+                        <a href="${url}" target="_blank">
+                            <img src="${url}" class="img-thumbnail" style="width: 110px; height: 110px; object-fit: cover;">
+                        </a>
+                        <span class="badge bg-info position-absolute top-0 start-0" style="font-size: 9px;">Saved</span>
+                    </div>
+                `);
+            });
+        }
+
+        // Existing voice note.
+        const voiceNote = rowData.audit_voice_note;
+        if (voiceNote) {
+            const vurl = String(voiceNote).startsWith('http') ? voiceNote : ('/storage/' + String(voiceNote).replace(/^\/+/, ''));
+            $('#voiceNotePreview').html(`
+                <audio controls class="w-100 mt-2">
+                    <source src="${vurl}">
+                </audio>
+                <small class="text-muted d-block">Previously saved voice note</small>
+            `);
+        }
+
         $('#editAuditSuggestionModal').modal('show');
     }
 
@@ -1441,19 +1511,21 @@
             formData.append('sku', sku);
             formData.append('audit_suggestion', auditSuggestion);
 
-            const linkData = $('#auditLinkData').val();
-            if (linkData) {
-                formData.append('link_data', linkData);
-            }
+            // Up to 4 link URLs — always send all 4 slots (even empty) so that
+            // clearing a previously-saved URL actually persists on the server.
+            ['#auditLinkData', '#auditLinkData2', '#auditLinkData3', '#auditLinkData4'].forEach(sel => {
+                formData.append('link_data[]', ($(sel).val() || '').trim());
+            });
 
-            const screenshot = $('#auditScreenshot')[0].files[0];
-            if (screenshot) {
-                // Pre-flight check: server allows max 5MB for screenshots.
-                if (screenshot.size > 5 * 1024 * 1024) {
-                    showToast('Screenshot must be 5MB or smaller (selected: ' + (screenshot.size / 1024 / 1024).toFixed(2) + ' MB)', 'error');
+            // Multi-file screenshots — pre-check 5MB / each before sending.
+            const screenshotFiles = $('#auditScreenshot')[0].files || [];
+            for (let i = 0; i < screenshotFiles.length; i++) {
+                const f = screenshotFiles[i];
+                if (f.size > 5 * 1024 * 1024) {
+                    showToast(`"${f.name}" is ${(f.size / 1024 / 1024).toFixed(2)} MB — each screenshot must be 5MB or smaller`, 'error');
                     return;
                 }
-                formData.append('screenshot', screenshot);
+                formData.append('screenshot[]', f);
             }
 
             if (window.audioBlob) {
@@ -1471,7 +1543,7 @@
                 $('#editAuditSuggestionModal').modal('hide');
                 table.setData('/a-plus-images-master-data-view');
 
-                $('#auditLinkData').val('');
+                $('#auditLinkData, #auditLinkData2, #auditLinkData3, #auditLinkData4').val('');
                 $('#auditScreenshot').val('');
                 $('#screenshotPreview').html('');
                 $('#voiceNotePreview').html('');
@@ -1561,20 +1633,25 @@
         recognition.start();
     });
 
-    // Screenshot preview
+    // Screenshot preview (supports multi-select)
     $('#auditScreenshot').on('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
+        const files = e.target.files || [];
+        const $preview = $('#screenshotPreview').empty();
+
+        if (!files.length) return;
+
+        Array.from(files).forEach(file => {
             const reader = new FileReader();
-            reader.onload = function(e) {
-                $('#screenshotPreview').html(`
-                    <img src="${e.target.result}" class="img-thumbnail" style="max-width: 200px; max-height: 200px;">
+            reader.onload = function(ev) {
+                $preview.append(`
+                    <div class="position-relative" title="${file.name}">
+                        <img src="${ev.target.result}" class="img-thumbnail" style="width: 110px; height: 110px; object-fit: cover;">
+                        <span class="badge bg-dark position-absolute bottom-0 start-0" style="font-size: 10px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${file.name}</span>
+                    </div>
                 `);
             };
             reader.readAsDataURL(file);
-        } else {
-            $('#screenshotPreview').html('');
-        }
+        });
     });
 
     // Voice Note Recording
