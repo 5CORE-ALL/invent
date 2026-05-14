@@ -110,6 +110,11 @@
                                 <i class="ri-refresh-line me-2"></i>CC Replacement Audit
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ route('audit.master.cc.shipping') }}">
+                                <i class="ri-truck-line me-2"></i>CC Shipping Audit
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>

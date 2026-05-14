@@ -127,6 +127,34 @@ class AuditMasterController extends Controller
         return view('audit-master.cc-replacement-audit', compact('channels'));
     }
 
+    /**
+     * Display the CC Shipping Audit page.
+     */
+    public function ccShippingAudit()
+    {
+        $channelsWithLogo = $this->getActiveChannelsWithLogo();
+        $channels = array_column($channelsWithLogo, 'channel');
+
+        // Per-channel last audit timestamp so the Audit button can colour itself
+        // (red / blue / green) based on age — same UX as cc-messages-audit.
+        $lastAuditMap = AuditResult::where('module', 'cc_shipping')
+            ->selectRaw('channel, MAX(GREATEST(COALESCE(audit_date, "1970-01-01"), DATE(created_at))) AS last_at')
+            ->groupBy('channel')
+            ->pluck('last_at', 'channel')
+            ->toArray();
+
+        $channelsWithLogo = array_map(function ($row) use ($lastAuditMap) {
+            $row['last_audited_at'] = $lastAuditMap[$row['channel']] ?? null;
+            return $row;
+        }, $channelsWithLogo);
+
+        $isAuditAdmin = $this->isAuditAdmin();
+
+        return view('audit-master.cc-shipping-audit', compact(
+            'channels', 'channelsWithLogo', 'isAuditAdmin'
+        ));
+    }
+
     // =====================================================================
     //  Audit System APIs (used by the audit modal on every audit page)
     // =====================================================================
@@ -152,9 +180,17 @@ class AuditMasterController extends Controller
                 'max_score', 'weight', 'is_critical', 'sort_order',
             ]);
 
-        $grades = AuditGrade::where('is_active', true)
-            ->orderByDesc('min_score')
-            ->get(['grade', 'min_score', 'max_score', 'color', 'description']);
+        // Module-scoped grade bands (falls back to global rows when the module
+        // has no overrides of its own).
+        $grades = AuditGrade::bandsForModule($module)
+            ->map(fn ($g) => [
+                'grade'       => $g->grade,
+                'min_score'   => (float) $g->min_score,
+                'max_score'   => (float) $g->max_score,
+                'color'       => $g->color,
+                'description' => $g->description,
+            ])
+            ->values();
 
         // Latest audit for this channel (so the modal can pre-fill)
         $latest = null;
@@ -172,7 +208,7 @@ class AuditMasterController extends Controller
             'parameters' => $params,
             'grades'     => $grades,
             'latest'     => $latest,
-            'critical_fail_reasons' => $this->defaultCriticalFailReasons(),
+            'critical_fail_reasons' => $this->defaultCriticalFailReasons($module),
             'is_admin'   => $this->isAuditAdmin(),
         ]);
     }
@@ -425,7 +461,7 @@ class AuditMasterController extends Controller
         if ($hasCriticalFailure) {
             $grade = 'F';
         } else {
-            $band = AuditGrade::forScore($totalScore);
+            $band = AuditGrade::forScore($totalScore, $module);
             $grade = $band->grade ?? 'F';
         }
 
@@ -683,8 +719,24 @@ class AuditMasterController extends Controller
         ]);
     }
 
-    private function defaultCriticalFailReasons(): array
+    private function defaultCriticalFailReasons(string $module = 'cc_messages'): array
     {
+        if ($module === 'cc_shipping') {
+            return [
+                'Wrong shipping carrier',
+                'Wrong shipping address',
+                'Wrong package weight (charge adjustment)',
+                'Wrong product shipped',
+                'Duplicate shipment created',
+                'Invalid / missing tracking upload',
+                'SLA breach (label generated late)',
+                'International compliance violation',
+                'Hazardous goods mishandled',
+                'Customs documentation missing',
+            ];
+        }
+
+        // Default: cc_messages and other modules
         return [
             'No response within 24 hours',
             'Marketplace policy violation',

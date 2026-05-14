@@ -4919,6 +4919,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/cc-messages-audit', [AuditMasterController::class, 'ccMessagesAudit'])->name('audit.master.cc.messages');
         Route::get('/cc-return-audit', [AuditMasterController::class, 'ccReturnAudit'])->name('audit.master.cc.return');
         Route::get('/cc-replacement-audit', [AuditMasterController::class, 'ccReplacementAudit'])->name('audit.master.cc.replacement');
+        Route::get('/cc-shipping-audit', [AuditMasterController::class, 'ccShippingAudit'])->name('audit.master.cc.shipping');
 
         // Audit modal API (dynamic params, save, history)
         Route::get('/parameters', [AuditMasterController::class, 'getAuditConfig'])->name('audit.master.parameters');

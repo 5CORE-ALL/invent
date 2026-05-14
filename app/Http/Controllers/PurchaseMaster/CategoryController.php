@@ -4030,15 +4030,20 @@ PROMPT;
                 'voice_note' => 'nullable|file|mimes:webm,mp3,wav,ogg|max:10240', // Accept single file
             ]);
 
-            // Find product by SKU
-            $product = ProductMaster::where('sku', $validated['sku'])
-                ->where('sku', 'NOT LIKE', 'PARENT %')
-                ->first();
+            // Normalize SKU (replace non-breaking spaces with regular spaces) — same
+            // pattern used by updateDBLink / uploadImage so PARENT rows are accepted too.
+            $normalizedSku = str_replace("\u{00a0}", ' ', $validated['sku']);
+
+            $product = ProductMaster::where('sku', $normalizedSku)->first();
+
+            if (!$product) {
+                $product = ProductMaster::where('sku', $validated['sku'])->first();
+            }
 
             if (!$product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found',
+                    'message' => 'Product not found for SKU: '.$validated['sku'],
                 ], 404);
             }
 

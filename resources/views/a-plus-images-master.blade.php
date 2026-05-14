@@ -610,11 +610,82 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "aplus_tabulator_column_visibility";
+    const CSRF_TOKEN = '{{ csrf_token() }}';
     let table = null;
     let tableData = [];
     let lqsPlayInterval = null;
     let currentLqsIndex = 0;
     let sortedLqsData = [];
+
+    // Safe JSON fetch wrapper.
+    // - Always sends Accept: application/json + X-Requested-With so Laravel returns JSON
+    //   for validation/auth/CSRF/exception responses instead of HTML.
+    // - Detects HTML responses (PHP error pages, 419 CSRF, 413 too large, login redirects)
+    //   and surfaces a readable error instead of the cryptic "Unexpected token '<'".
+    // - Parses Laravel validation (422) errors into a single readable message.
+    async function safeJsonFetch(url, options = {}) {
+        const opts = { ...options };
+        const headers = new Headers(opts.headers || {});
+
+        if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+        if (!headers.has('X-Requested-With')) headers.set('X-Requested-With', 'XMLHttpRequest');
+        if (!headers.has('X-CSRF-TOKEN')) headers.set('X-CSRF-TOKEN', CSRF_TOKEN);
+
+        // Do NOT force Content-Type when body is FormData — the browser must set the boundary.
+        const isFormData = (typeof FormData !== 'undefined') && (opts.body instanceof FormData);
+        if (!isFormData && opts.body && !headers.has('Content-Type')) {
+            headers.set('Content-Type', 'application/json');
+        }
+
+        opts.headers = headers;
+
+        let response;
+        try {
+            response = await fetch(url, opts);
+        } catch (networkErr) {
+            throw new Error('Network error: ' + (networkErr.message || 'request failed'));
+        }
+
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        const text = await response.text();
+
+        // HTML / non-JSON response — translate into a useful message.
+        if (!contentType.includes('application/json')) {
+            if (response.status === 419) {
+                throw new Error('Session expired (CSRF). Please refresh the page and try again.');
+            }
+            if (response.status === 413) {
+                throw new Error('File too large. Please upload a smaller file.');
+            }
+            if (response.status === 401 || response.status === 403) {
+                throw new Error('Not authorized. Please log in again.');
+            }
+            if (response.status >= 500) {
+                throw new Error('Server error (' + response.status + '). Check Laravel logs.');
+            }
+            // Generic fallback (likely an HTML error page from PHP).
+            throw new Error('Unexpected server response (' + response.status + '). The server returned HTML instead of JSON — this usually means a PHP error, exceeded upload limit, or expired session.');
+        }
+
+        let data;
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch (parseErr) {
+            throw new Error('Invalid JSON response from server.');
+        }
+
+        if (!response.ok) {
+            // Laravel validation error shape: { message, errors: { field: [msg, ...] } }
+            if (response.status === 422 && data && data.errors) {
+                const firstField = Object.keys(data.errors)[0];
+                const firstMsg = Array.isArray(data.errors[firstField]) ? data.errors[firstField][0] : data.errors[firstField];
+                throw new Error(firstMsg || data.message || 'Validation failed');
+            }
+            throw new Error((data && (data.message || data.error)) || ('Request failed (' + response.status + ')'));
+        }
+
+        return data;
+    }
 
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -659,6 +730,13 @@
         console.log("Initializing Tabulator...");
         table = new Tabulator("#aplus-table", {
             ajaxURL: "/a-plus-images-master-data-view",
+            ajaxConfig: {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': CSRF_TOKEN
+                }
+            },
             ajaxSorting: false,
             layout: "fitData",
             pagination: true,
@@ -1224,23 +1302,18 @@
         $('#saveAddAPlusImagesBtn').on('click', async function() {
             const sku = $('#addAPlusImagesSku').val();
             const db = $('#addDB').val();
-            
+
             if (!sku) {
                 showToast('Please select a SKU', 'error');
                 return;
             }
 
             try {
-                const response = await fetch('/a-plus-images-master/store', {
+                const result = await safeJsonFetch('/a-plus-images-master/store', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
                     body: JSON.stringify({ sku, db })
                 });
 
-                const result = await response.json();
                 if (result.success) {
                     showToast('Data added successfully', 'success');
                     $('#addAPlusImagesModal').modal('hide');
@@ -1249,7 +1322,7 @@
                     showToast(result.message || 'Failed to add data', 'error');
                 }
             } catch (error) {
-                showToast('Error: ' + error.message, 'error');
+                showToast(error.message || 'Failed to add data', 'error');
             }
         });
 
@@ -1276,17 +1349,13 @@
             $('#aPlusImagesImportProgress').show().find('.progress-bar').css('width', '50%');
 
             try {
-                const response = await fetch('/a-plus-images-master/import', {
+                const result = await safeJsonFetch('/a-plus-images-master/import', {
                     method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
                     body: formData
                 });
 
-                const result = await response.json();
                 $('#aPlusImagesImportProgress').find('.progress-bar').css('width', '100%');
-                
+
                 if (result.success) {
                     $('#aPlusImagesImportResult')
                         .removeClass('alert-danger')
@@ -1307,7 +1376,13 @@
                     showToast('Import failed', 'error');
                 }
             } catch (error) {
-                showToast('Error: ' + error.message, 'error');
+                $('#aPlusImagesImportProgress').hide();
+                $('#aPlusImagesImportResult')
+                    .removeClass('alert-success')
+                    .addClass('alert-danger')
+                    .html(`<i class="fa fa-exclamation-circle me-2"></i>${error.message}`)
+                    .show();
+                showToast(error.message || 'Import failed', 'error');
             }
         });
     });
@@ -1336,16 +1411,11 @@
         }
 
         try {
-            const response = await fetch('/a-plus-images-master/update-db-link', {
+            const result = await safeJsonFetch('/a-plus-images-master/update-db-link', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
                 body: JSON.stringify({ sku, db: dbLink })
             });
 
-            const result = await response.json();
             if (result.success) {
                 showToast('DB link updated successfully', 'success');
                 $('#dbLinkModal').modal('hide');
@@ -1354,53 +1424,53 @@
                 showToast(result.message || 'Failed to update DB link', 'error');
             }
         } catch (error) {
-            showToast('Error: ' + error.message, 'error');
+            showToast(error.message || 'Failed to update DB link', 'error');
         }
     });
 
     $('#saveEditAuditBtn').on('click', async function() {
         const sku = $('#editAuditSku').val();
         const auditSuggestion = $('#editAuditSuggestion').val();
+        const saveBtn = $(this);
+        const originalHtml = saveBtn.html();
 
         try {
-            // Use FormData to support file uploads
+            saveBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving...');
+
             const formData = new FormData();
             formData.append('sku', sku);
             formData.append('audit_suggestion', auditSuggestion);
-            
-            // Add link data if present
+
             const linkData = $('#auditLinkData').val();
             if (linkData) {
                 formData.append('link_data', linkData);
             }
-            
-            // Add screenshot if present
+
             const screenshot = $('#auditScreenshot')[0].files[0];
             if (screenshot) {
+                // Pre-flight check: server allows max 5MB for screenshots.
+                if (screenshot.size > 5 * 1024 * 1024) {
+                    showToast('Screenshot must be 5MB or smaller (selected: ' + (screenshot.size / 1024 / 1024).toFixed(2) + ' MB)', 'error');
+                    return;
+                }
                 formData.append('screenshot', screenshot);
             }
-            
-            // Add voice note if present
+
             if (window.audioBlob) {
                 const voiceNoteFile = new File([window.audioBlob], `voice_note_${Date.now()}.webm`, { type: 'audio/webm' });
                 formData.append('voice_note', voiceNoteFile);
             }
 
-            const response = await fetch('/a-plus-images-master/update-audit-suggestion', {
+            const result = await safeJsonFetch('/a-plus-images-master/update-audit-suggestion', {
                 method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
                 body: formData
             });
 
-            const result = await response.json();
             if (result.success) {
                 showToast('Audit updated successfully', 'success');
                 $('#editAuditSuggestionModal').modal('hide');
                 table.setData('/a-plus-images-master-data-view');
-                
-                // Reset form
+
                 $('#auditLinkData').val('');
                 $('#auditScreenshot').val('');
                 $('#screenshotPreview').html('');
@@ -1410,7 +1480,9 @@
                 showToast(result.message || 'Failed to update audit', 'error');
             }
         } catch (error) {
-            showToast('Error: ' + error.message, 'error');
+            showToast(error.message || 'Failed to update audit', 'error');
+        } finally {
+            saveBtn.prop('disabled', false).html(originalHtml);
         }
     });
 
@@ -1422,22 +1494,22 @@
     // Fixed button functionality
     $('#fixedAuditBtn').on('click', async function() {
         const sku = $('#editAuditSku').val();
-        
+        const fixedBtn = $(this);
+        const originalHtml = fixedBtn.html();
+
         try {
+            fixedBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving...');
+
             const formData = new FormData();
             formData.append('sku', sku);
-            formData.append('audit_suggestion', ''); // Clear audit
+            formData.append('audit_suggestion', '');
             formData.append('is_fixed', '1');
 
-            const response = await fetch('/a-plus-images-master/update-audit-suggestion', {
+            const result = await safeJsonFetch('/a-plus-images-master/update-audit-suggestion', {
                 method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
                 body: formData
             });
 
-            const result = await response.json();
             if (result.success) {
                 showToast('Marked as Fixed successfully!', 'success');
                 $('#editAuditSuggestionModal').modal('hide');
@@ -1446,7 +1518,9 @@
                 showToast(result.message || 'Failed to mark as fixed', 'error');
             }
         } catch (error) {
-            showToast('Error: ' + error.message, 'error');
+            showToast(error.message || 'Failed to mark as fixed', 'error');
+        } finally {
+            fixedBtn.prop('disabled', false).html(originalHtml);
         }
     });
 
@@ -1567,9 +1641,8 @@
 
     async function viewAuditHistory(sku) {
         try {
-            const response = await fetch(`/a-plus-images-master/audit-history/${encodeURIComponent(sku)}`);
-            const result = await response.json();
-            
+            const result = await safeJsonFetch(`/a-plus-images-master/audit-history/${encodeURIComponent(sku)}`);
+
             if (result.success && result.data && result.data.length > 0) {
                 let html = '<div class="list-group">';
                 result.data.forEach(item => {
@@ -1602,15 +1675,15 @@
             $('#auditHistoryModal').modal('show');
         } catch (error) {
             showToast('Error loading history: ' + error.message, 'error');
-            $('#auditHistoryContent').html('<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>Failed to load history</div>');
+            $('#auditHistoryContent').html('<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>Failed to load history: ' + error.message + '</div>');
+            $('#auditHistoryModal').modal('show');
         }
     }
 
     async function viewStatusHistory(sku) {
         try {
-            const response = await fetch(`/a-plus-images-master/status-history/${encodeURIComponent(sku)}`);
-            const result = await response.json();
-            
+            const result = await safeJsonFetch(`/a-plus-images-master/status-history/${encodeURIComponent(sku)}`);
+
             if (result.success && result.data) {
                 let html = '<table class="table table-sm"><thead><tr><th>Date</th><th>Status</th></tr></thead><tbody>';
                 result.data.forEach(item => {
@@ -1631,32 +1704,21 @@
     async function toggleStatus(sku, currentStatus) {
         const button = document.querySelector(`.status-toggle-btn[data-sku="${sku}"]`);
         if (!button || button.classList.contains('loading')) return;
-        
+
         const newStatus = currentStatus === 'green' ? 'red' : 'green';
-        
+
         try {
             button.classList.add('loading');
-            
-            const response = await fetch('/a-plus-images-master/toggle-status', {
+
+            const result = await safeJsonFetch('/a-plus-images-master/toggle-status', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ 
-                    sku: sku,
-                    status: newStatus
-                })
+                body: JSON.stringify({ sku: sku, status: newStatus })
             });
 
-            const result = await response.json();
-            
             if (result.success) {
-                // Update button appearance
                 button.classList.remove('red', 'green', 'loading');
                 button.classList.add(newStatus);
                 button.setAttribute('onclick', `toggleStatus('${sku}', '${newStatus}')`);
-                
                 showToast('Status updated successfully', 'success');
             } else {
                 showToast(result.message || 'Failed to toggle status', 'error');
@@ -1664,30 +1726,25 @@
             }
         } catch (error) {
             console.error('Error toggling status:', error);
-            showToast('Error: ' + error.message, 'error');
+            showToast(error.message || 'Failed to toggle status', 'error');
             button.classList.remove('loading');
         }
     }
 
     async function pushData(sku) {
         try {
-            const response = await fetch('/a-plus-images-master/push', {
+            const result = await safeJsonFetch('/a-plus-images-master/push', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
                 body: JSON.stringify({ sku })
             });
 
-            const result = await response.json();
             if (result.success) {
                 showToast('Data pushed successfully', 'success');
             } else {
                 showToast(result.message || 'Failed to push data', 'error');
             }
         } catch (error) {
-            showToast('Error: ' + error.message, 'error');
+            showToast(error.message || 'Failed to push data', 'error');
         }
     }
 
@@ -1712,23 +1769,10 @@
         $('#competitorsModal').modal('show');
         
         try {
-            console.log('Fetching competitors for SKU:', sku);
-            const response = await fetch(`/amazon/competitors?sku=${encodeURIComponent(sku)}`, {
-                method: 'GET',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Accept': 'application/json'
-                }
+            const data = await safeJsonFetch(`/amazon/competitors?sku=${encodeURIComponent(sku)}`, {
+                method: 'GET'
             });
-            
-            console.log('Response status:', response.status);
-            const data = await response.json();
-            console.log('Response data:', data);
-            
-            if (!response.ok) {
-                throw new Error(data.message || data.error || 'Failed to load competitors');
-            }
-            
+
             if (data.success && data.competitors && data.competitors.length > 0) {
                 renderCompetitorsList(data.competitors, data.lowest_price);
             } else {
@@ -1868,12 +1912,8 @@
         submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Adding...');
         
         try {
-            const response = await fetch('/amazon/lmp/add', {
+            await safeJsonFetch('/amazon/lmp/add', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
                 body: JSON.stringify({
                     sku: sku,
                     asin: asin,
@@ -1882,13 +1922,7 @@
                     marketplace: marketplace
                 })
             });
-            
-            const data = await response.json();
-            
-            if (!response.ok) {
-                throw new Error(data.message || 'Failed to add competitor');
-            }
-            
+
             showToast('Competitor added successfully', 'success');
             
             // Reset form
@@ -1913,23 +1947,11 @@
         }
         
         try {
-            const response = await fetch('/amazon/lmp/delete', {
+            await safeJsonFetch('/amazon/lmp/delete', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({
-                    id: competitorId
-                })
+                body: JSON.stringify({ id: competitorId })
             });
-            
-            const data = await response.json();
-            
-            if (!response.ok) {
-                throw new Error(data.message || 'Failed to delete competitor');
-            }
-            
+
             showToast('Competitor deleted successfully', 'success');
             
             // Reload competitors list
@@ -1982,52 +2004,36 @@
             return;
         }
 
-        console.log('Uploading image:', { sku, imageType, fileName: file.name });
+        if (file.size > 10 * 1024 * 1024) {
+            showToast('Image must be 10MB or smaller (selected: ' + (file.size / 1024 / 1024).toFixed(2) + ' MB)', 'error');
+            return;
+        }
 
         const formData = new FormData();
         formData.append('sku', sku);
         formData.append('image_type', imageType);
         formData.append('image_file', file);
-        formData.append('_token', '{{ csrf_token() }}');
 
-        // Disable button during upload
         const saveBtn = $('#saveImageBtn');
         const originalText = saveBtn.html();
         saveBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Uploading...');
 
         try {
-            const response = await fetch('/a-plus-images-master/upload-image', {
+            const result = await safeJsonFetch('/a-plus-images-master/upload-image', {
                 method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
                 body: formData
             });
 
-            console.log('Response status:', response.status);
-            
-            let result;
-            try {
-                result = await response.json();
-                console.log('Response data:', result);
-            } catch (parseError) {
-                const text = await response.text();
-                console.error('Failed to parse JSON response:', text);
-                throw new Error('Invalid response from server');
-            }
-
-            if (response.ok && result.success) {
+            if (result.success) {
                 showToast('Image uploaded successfully!', 'success');
                 $('#imageUploadModal').modal('hide');
                 table.setData('/a-plus-images-master-data-view');
             } else {
-                const errorMsg = result.message || result.error || 'Failed to upload image';
-                console.error('Upload failed:', errorMsg);
-                showToast(errorMsg, 'error');
+                showToast(result.message || result.error || 'Failed to upload image', 'error');
             }
         } catch (error) {
             console.error('Error uploading image:', error);
-            showToast('Error: ' + error.message, 'error');
+            showToast(error.message || 'Failed to upload image', 'error');
         } finally {
             saveBtn.prop('disabled', false).html(originalText);
         }
