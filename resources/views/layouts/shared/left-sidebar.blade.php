@@ -78,6 +78,13 @@
                 </a>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ route('compliance-certificates.index') }}" class="side-nav-link">
+                    <i class="ri-shield-check-line"></i>
+                    <span>Compliance Certificates</span>
+                </a>
+            </li>
+
 
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#channelSidebarPages" aria-expanded="false"
