@@ -268,11 +268,11 @@
             }
         }
 
-        /* Filter bar: label + control on one line; full bar stays one row */
+        /* Filter bar: label stacked on top of control; full bar stays one row */
         .deleted-filters-bar {
             display: flex;
             flex-wrap: nowrap;
-            align-items: center;
+            align-items: flex-end;
             gap: 0.5rem 0.65rem;
             overflow-x: auto;
             overflow-y: hidden;
@@ -281,8 +281,9 @@
         }
         .deleted-filters-bar .deleted-filter-item {
             display: flex;
-            align-items: center;
-            gap: 0.35rem;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.2rem;
             flex: 1 1 0;
             min-width: 0;
         }
