@@ -246,7 +246,7 @@
                         </div>
 
                         <div class="mb-3">
-                            <label for="video_unboxing" class="form-label">Shoppable</label>
+                            <label for="video_unboxing" class="form-label">Shoppable Videos</label>
                             <input type="url" class="form-control" id="video_unboxing" name="video_unboxing" placeholder="https://">
                             <select class="form-select form-select-sm mt-1" id="video_unboxing_status" name="video_unboxing_status">
                                 <option value="">-- Status --</option>
@@ -886,8 +886,8 @@
                     'Shopify Inv': item.shopify_inv !== null && item.shopify_inv !== undefined && item.shopify_inv !== '' ? Number(item.shopify_inv) : '',
                     'Product Overview': item.video_product_overview || '',
                     'Product Overview Status': item.video_product_overview_status || '',
-                    'Unboxing': item.video_unboxing || '',
-                    'Unboxing Status': item.video_unboxing_status || '',
+                    'Shoppable Videos': item.video_unboxing || '',
+                    'Shoppable Videos Status': item.video_unboxing_status || '',
                     'How To': item.video_how_to || '',
                     'How To Status': item.video_how_to_status || '',
                     'Setup': item.video_setup || '',
@@ -947,8 +947,8 @@
                     sku: sku,
                     video_product_overview: row['Product Overview'] || '',
                     video_product_overview_status: row['Product Overview Status'] || '',
-                    video_unboxing: row['Unboxing'] || '',
-                    video_unboxing_status: row['Unboxing Status'] || '',
+                    video_unboxing: row['Shoppable Videos'] || row['Unboxing'] || '',
+                    video_unboxing_status: row['Shoppable Videos Status'] || row['Unboxing Status'] || '',
                     video_how_to: row['How To'] || '',
                     video_how_to_status: row['How To Status'] || '',
                     video_setup: row['Setup'] || '',

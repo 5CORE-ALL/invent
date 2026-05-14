@@ -412,6 +412,31 @@ class ComplianceCertificateController extends Controller
             ->map(function ($h) {
                 return [
                     'id' => $h->id,
+                    'sku' => $h->sku,
+                    'action' => $h->action,
+                    'description' => $h->description,
+                    'files_uploaded' => $h->files_uploaded,
+                    'updated_by' => $h->updated_by,
+                    'created_at' => $h->created_at?->format('Y-m-d H:i:s'),
+                ];
+            });
+
+        return response()->json($history);
+    }
+
+    /**
+     * Get ALL history records across all SKUs (latest first).
+     */
+    public function getAllHistory(Request $request)
+    {
+        $limit = (int) $request->input('limit', 500);
+        $history = ComplianceCertificateHistory::orderBy('created_at', 'desc')
+            ->limit($limit)
+            ->get()
+            ->map(function ($h) {
+                return [
+                    'id' => $h->id,
+                    'sku' => $h->sku,
                     'action' => $h->action,
                     'description' => $h->description,
                     'files_uploaded' => $h->files_uploaded,

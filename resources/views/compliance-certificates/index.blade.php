@@ -164,6 +164,9 @@
                         <button type="button" class="btn btn-sm btn-warning" id="bulk-update-btn">
                             <i class="fa fa-edit"></i> Bulk Update
                         </button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="all-history-btn">
+                            <i class="fa fa-history"></i> All History
+                        </button>
                         <button type="button" class="btn btn-sm btn-info" id="export-btn">
                             <i class="fa fa-file-excel"></i> Export
                         </button>
@@ -314,6 +317,37 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-warning" id="bulk-apply-btn"><i class="fa fa-check"></i> Apply Bulk Update</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- All History Modal -->
+    <div class="modal fade" id="allHistoryModal" tabindex="-1" aria-labelledby="allHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="allHistoryModalLabel"><i class="fa fa-history"></i> Complete Activity History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <input type="text" id="all-history-search" class="form-control form-control-sm" placeholder="Search by SKU, user or description...">
+                        <select id="all-history-action-filter" class="form-select form-select-sm" style="width:auto;">
+                            <option value="">All Actions</option>
+                            <option value="created">Created</option>
+                            <option value="updated">Updated</option>
+                            <option value="uploaded">Uploaded</option>
+                            <option value="deleted">Deleted</option>
+                        </select>
+                        <span class="text-muted small ms-auto"><span id="all-history-count">0</span> record(s)</span>
+                    </div>
+                    <div id="allHistoryList" class="table-responsive" style="max-height: 60vh; overflow-y:auto;">
+                        <div class="text-center p-3"><i class="fa fa-spinner fa-spin"></i> Loading...</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -849,6 +883,20 @@
                 ]);
             });
 
+            // All History button
+            $('#all-history-btn').on('click', function() {
+                $('#all-history-search').val('');
+                $('#all-history-action-filter').val('');
+                $('#allHistoryList').html('<div class="text-center p-3"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
+                $('#allHistoryModal').modal('show');
+                loadAllHistory();
+            });
+
+            // Live filter for all-history modal
+            $('#all-history-search, #all-history-action-filter').on('input change', function() {
+                renderAllHistoryFromCache();
+            });
+
             // Bulk Update button - open modal
             $('#bulk-update-btn').on('click', function() {
                 // Build SKU list from currently visible/loaded table data
@@ -1077,6 +1125,78 @@
             $('#uploadFilesBtn').on('click', function() {
                 uploadFiles();
             });
+        }
+
+        // Cache for all-history data
+        let allHistoryCache = [];
+
+        function loadAllHistory() {
+            $.ajax({
+                url: "{{ route('compliance-certificates.all-history') }}",
+                type: 'GET',
+                success: function(history) {
+                    allHistoryCache = history || [];
+                    renderAllHistoryFromCache();
+                },
+                error: function() {
+                    $('#allHistoryList').html('<div class="alert alert-danger mb-0">Failed to load history.</div>');
+                }
+            });
+        }
+
+        function renderAllHistoryFromCache() {
+            let search = ($('#all-history-search').val() || '').toLowerCase().trim();
+            let actionFilter = $('#all-history-action-filter').val();
+
+            let filtered = allHistoryCache.filter(item => {
+                if (actionFilter && item.action !== actionFilter) return false;
+                if (search) {
+                    let hay = ((item.sku||'') + ' ' + (item.updated_by||'') + ' ' + (item.description||'')).toLowerCase();
+                    if (!hay.includes(search)) return false;
+                }
+                return true;
+            });
+
+            $('#all-history-count').text(filtered.length);
+
+            if (filtered.length === 0) {
+                $('#allHistoryList').html('<div class="alert alert-info mb-0">No history records found.</div>');
+                return;
+            }
+
+            let html = `<table class="table table-bordered table-hover table-sm align-middle mb-0">
+                <thead class="table-light" style="position:sticky; top:0; z-index:1;">
+                    <tr>
+                        <th width="80">Action</th>
+                        <th width="180">SKU</th>
+                        <th>Description</th>
+                        <th width="140">Updated By</th>
+                        <th width="160">Date & Time</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+            filtered.forEach(item => {
+                let badgeClass = 'bg-info';
+                if (item.action === 'uploaded') badgeClass = 'bg-success';
+                else if (item.action === 'deleted') badgeClass = 'bg-danger';
+                else if (item.action === 'created') badgeClass = 'bg-primary';
+
+                let safeSku = $('<div>').text(item.sku || '').html();
+                let safeDesc = $('<div>').text(item.description || '').html();
+                let safeUser = $('<div>').text(item.updated_by || '-').html();
+
+                html += `<tr>
+                    <td><span class="badge ${badgeClass} text-white">${item.action || '-'}</span></td>
+                    <td><strong>${safeSku}</strong></td>
+                    <td style="font-size:13px;">${safeDesc || '-'}</td>
+                    <td>${safeUser}</td>
+                    <td style="font-size:12px;">${item.created_at || '-'}</td>
+                </tr>`;
+            });
+
+            html += '</tbody></table>';
+            $('#allHistoryList').html(html);
         }
 
         function showHistoryModal(sku) {

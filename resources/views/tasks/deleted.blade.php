@@ -531,6 +531,14 @@
                                     <option value="high">High</option>
                                 </select>
                             </div>
+                            <div class="deleted-filter-item deleted-filter-item--priority">
+                                <label for="filter-status" class="form-label">Status</label>
+                                <select id="filter-status" class="form-select form-select-sm">
+                                    <option value="">All</option>
+                                    <option value="done">Done</option>
+                                    <option value="missed">Missed</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div id="deleted-tasks-table"></div>
@@ -750,6 +758,43 @@
                         }
                     },
                     {
+                        title: "LINKS",
+                        field: "links",
+                        width: 230,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var data = cell.getRow().getData();
+                            var links = [
+                                { label: 'L1',      url: data.link1 || data.l1 },
+                                { label: 'L2',      url: data.link2 || data.l2 },
+                                { label: 'SOP',     url: data.link3 || data.training_link },
+                                { label: 'Video',   url: data.link4 || data.video_link },
+                                { label: 'Form',    url: data.link5 || data.form_link },
+                                { label: 'Report',  url: data.link6 || data.form_report_link },
+                                { label: 'CL',      url: data.link7 || data.checklist_link },
+                                { label: 'PL',      url: data.link8 || data.pl },
+                                { label: 'Process', url: data.link9 }
+                            ];
+                            var html = links.filter(function(l) {
+                                    return l.url && String(l.url).trim() !== '' && String(l.url).trim() !== '-';
+                                })
+                                .map(function(l) {
+                                    var safeUrl = String(l.url)
+                                        .replace(/&/g, '&amp;')
+                                        .replace(/"/g, '&quot;')
+                                        .replace(/</g, '&lt;')
+                                        .replace(/>/g, '&gt;');
+                                    return '<a href="' + safeUrl + '" target="_blank" ' +
+                                           'class="badge bg-info text-white me-1 mb-1 text-decoration-none" ' +
+                                           'style="font-size: 10px; font-weight: 600;" ' +
+                                           'title="' + safeUrl + '" ' +
+                                           'onclick="event.stopPropagation();">' + l.label + '</a>';
+                                }).join('');
+                            return html || '<span style="color: #adb5bd;">-</span>';
+                        }
+                    },
+                    {
                         title: "GROUP", 
                         field: "group", 
                         width: 120,
@@ -872,6 +917,23 @@
                             if (value) {
                                 var firstName = value.trim().split(' ')[0];
                                 return '<strong style="color: #dc3545;">' + firstName + '</strong>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
+                        }
+                    },
+                    {
+                        title: "DONE DATE",
+                        field: "completion_date",
+                        width: 150,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (value && value !== '0000-00-00 00:00:00' && value !== '0000-00-00') {
+                                var date = new Date(value);
+                                if (!isNaN(date.getTime())) {
+                                    return date.toLocaleDateString() +
+                                        '<br><small style="color: #6c757d;">' + date.toLocaleTimeString() + '</small>';
+                                }
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
@@ -1099,7 +1161,17 @@
                 if (priorityValue) {
                     filters.push({field:"priority", type:"=", value:priorityValue});
                 }
-                
+
+                var statusValue = $('#filter-status').val();
+                if (statusValue) {
+                    filters.push(function(data) {
+                        var s = ((data.status || '') + '').trim().toLowerCase();
+                        if (statusValue === 'done') return s === 'done';
+                        // missed = anything that is not Done
+                        return s !== 'done';
+                    });
+                }
+
                 if (filters.length > 0) {
                     table.setFilter(filters);
                 }
@@ -1114,6 +1186,7 @@
             $('#filter-assignor').on('keyup', applyFilters);
             $('#filter-assignee').on('keyup', applyFilters);
             $('#filter-priority').on('change', applyFilters);
+            $('#filter-status').on('change', applyFilters);
 
             // Revive archived task (president access only)
             $(document).on('click', '.revive-archived-task', function() {
