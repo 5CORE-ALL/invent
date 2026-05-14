@@ -1042,9 +1042,24 @@
                 }
             });
 
-            // Export Button
+            // Export Button - exports currently filtered/visible rows only
             $('#export-btn').on('click', function() {
-                table.download("csv", "compliance_certificates.csv");
+                let filtered = table.getData("active"); // only visible rows after filters
+                if (!filtered || filtered.length === 0) {
+                    showToast('No data to export', 'warning');
+                    return;
+                }
+
+                let timestamp = new Date().toISOString().slice(0, 10);
+                let filename = `compliance_certificates_${timestamp}.csv`;
+
+                // Use Tabulator's built-in CSV export but limited to filtered rows
+                table.download("csv", filename, {
+                    delimiter: ",",
+                    bom: true
+                }, "active");
+
+                showToast(`Exported ${filtered.length} row(s)`, 'success');
             });
 
             // File Input Change
