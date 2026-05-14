@@ -1441,6 +1441,16 @@
         background-color: #0d6efd;
         color: white;
     }
+
+    /* Full-width, top-aligned chart modals */
+    .modal-chart-wide {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+    .modal-chart-wide .modal-content {
+        border-radius: 0;
+    }
     
     .modal-backdrop {
         z-index: 1040 !important;
@@ -1882,13 +1892,13 @@
     
     <!-- History Chart Modal -->
     <div class="modal fade" id="taskHistoryChartModal" tabindex="-1" aria-labelledby="taskHistoryChartModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-dialog modal-chart-wide">
         <div class="modal-content">
           <div class="modal-header text-white">
             <h5 class="modal-title"><i class="mdi mdi-chart-line me-2"></i><span id="taskHistoryChartTitle">History Trend</span></h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <div class="modal-body" style="min-height: 400px;">
+          <div class="modal-body" style="min-height: 200px;">
             <div class="mb-3 d-flex justify-content-between align-items-center">
               <div class="btn-group" role="group">
                 <button type="button" class="btn btn-sm btn-outline-primary active" data-period="7">7 Days</button>
@@ -1899,7 +1909,9 @@
                 <i class="mdi mdi-information-outline me-1"></i>Click and drag to zoom, double-click to reset
               </div>
             </div>
-            <canvas id="taskHistoryChart" style="max-height: 400px;"></canvas>
+            <div style="height: 200px;">
+              <canvas id="taskHistoryChart"></canvas>
+            </div>
           </div>
         </div>
       </div>
@@ -2312,7 +2324,7 @@
 
 <!-- TAT Line Graph Modal -->
 <div class="modal fade" id="tatChartModal" tabindex="-1" aria-labelledby="tatChartModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-chart-wide">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="tatChartModalLabel">
@@ -2321,7 +2333,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div style="height: 320px;">
+                <div style="height: 160px;">
                     <canvas id="tat-line-chart"></canvas>
                 </div>
             </div>
@@ -2331,7 +2343,7 @@
 
 <!-- Missed Line Graph Modal -->
 <div class="modal fade" id="missedChartModal" tabindex="-1" aria-labelledby="missedChartModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-chart-wide">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="missedChartModalLabel">
@@ -2340,7 +2352,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div style="height: 320px;">
+                <div style="height: 160px;">
                     <canvas id="missed-line-chart"></canvas>
                 </div>
             </div>
@@ -2532,6 +2544,10 @@
                 }
                 var labels = tatChartData.map(function(d) { return d.label; });
                 var values = tatChartData.map(function(d) { return d.avg != null ? d.avg : null; });
+                var tatNumeric = values.filter(function(v) { return v != null && !isNaN(v); });
+                var tatMin = tatNumeric.length ? Math.min.apply(null, tatNumeric) : 0;
+                var tatMax = tatNumeric.length ? Math.max.apply(null, tatNumeric) : 1;
+                if (tatMin === tatMax) { tatMax = tatMin + 1; }
                 tatLineChart = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -2568,7 +2584,9 @@
                         scales: {
                             x: { display: true, title: { display: true, text: 'Date' } },
                             y: {
-                                beginAtZero: true,
+                                beginAtZero: false,
+                                min: tatMin,
+                                max: tatMax,
                                 title: { display: true, text: 'TAT (days)' },
                                 ticks: {
                                     stepSize: 1,
@@ -2591,6 +2609,10 @@
                 }
                 var labels = missedChartData.map(function(d) { return d.label; });
                 var values = missedChartData.map(function(d) { return d.count || 0; });
+                var missedNumeric = values.filter(function(v) { return v != null && !isNaN(v); });
+                var missedMin = missedNumeric.length ? Math.min.apply(null, missedNumeric) : 0;
+                var missedMax = missedNumeric.length ? Math.max.apply(null, missedNumeric) : 1;
+                if (missedMin === missedMax) { missedMax = missedMin + 1; }
                 missedLineChart = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -2623,7 +2645,9 @@
                         scales: {
                             x: { display: true, title: { display: true, text: 'Date' } },
                             y: {
-                                beginAtZero: true,
+                                beginAtZero: false,
+                                min: missedMin,
+                                max: missedMax,
                                 title: { display: true, text: 'Count' },
                                 ticks: { stepSize: 1 }
                             }
@@ -5503,6 +5527,38 @@
         let currentTaskMetric = null;
         let currentTaskPeriod = 7;
 
+        // Defensive cleanup so a stuck/orphan modal-backdrop doesn't darken the page after close.
+        function forceCleanupModalBackdrop() {
+            // If no modals are still visible, strip any leftover backdrops + body lock.
+            const anyOpen = document.querySelector('.modal.show');
+            if (!anyOpen) {
+                document.querySelectorAll('.modal-backdrop').forEach(el => el.parentNode && el.parentNode.removeChild(el));
+                document.body.classList.remove('modal-open');
+                document.body.style.removeProperty('overflow');
+                document.body.style.removeProperty('padding-right');
+            }
+        }
+        ['taskHistoryChartModal', 'tatChartModal', 'missedChartModal'].forEach(function(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('hidden.bs.modal', function() {
+                if (id === 'taskHistoryChartModal' && taskHistoryChart) {
+                    try { taskHistoryChart.destroy(); } catch (e) {}
+                    taskHistoryChart = null;
+                }
+                if (id === 'tatChartModal' && typeof tatLineChart !== 'undefined' && tatLineChart) {
+                    try { tatLineChart.destroy(); } catch (e) {}
+                    tatLineChart = null;
+                }
+                if (id === 'missedChartModal' && typeof missedLineChart !== 'undefined' && missedLineChart) {
+                    try { missedLineChart.destroy(); } catch (e) {}
+                    missedLineChart = null;
+                }
+                // Run cleanup on next tick so Bootstrap finishes its own teardown first.
+                setTimeout(forceCleanupModalBackdrop, 50);
+            });
+        });
+
         // Stat card click handlers
         document.querySelectorAll('.task-stat-trigger').forEach(card => {
             card.addEventListener('click', function() {
@@ -5526,7 +5582,8 @@
         });
 
         function showTaskHistoryChart(metric, period, currentValue) {
-            const modal = new bootstrap.Modal(document.getElementById('taskHistoryChartModal'));
+            const modalEl = document.getElementById('taskHistoryChartModal');
+            const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
             
             // Set title based on metric
             const titles = {
@@ -5550,6 +5607,10 @@
             
             // Create new chart
             const ctx = document.getElementById('taskHistoryChart').getContext('2d');
+            const numericHist = data.values.filter(v => v != null && !isNaN(v));
+            let histMin = numericHist.length ? Math.min(...numericHist) : 0;
+            let histMax = numericHist.length ? Math.max(...numericHist) : 1;
+            if (histMin === histMax) { histMax = histMin + 1; }
             const colors = {
                 'total': { border: '#667eea', bg: 'rgba(102, 126, 234, 0.1)' },
                 'overdue': { border: '#f5576c', bg: 'rgba(245, 87, 108, 0.1)' },
@@ -5581,7 +5642,7 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    maintainAspectRatio: false,
                     interaction: {
                         intersect: false,
                         mode: 'index'
@@ -5628,7 +5689,9 @@
                     },
                     scales: {
                         y: {
-                            beginAtZero: true,
+                            beginAtZero: false,
+                            min: histMin,
+                            max: histMax,
                             ticks: {
                                 font: {
                                     size: 12
