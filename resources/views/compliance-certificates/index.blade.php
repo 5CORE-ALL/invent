@@ -1205,8 +1205,9 @@
             $('#historyModal').modal('show');
             
             $.ajax({
-                url: "{{ url('compliance-certificates/history') }}/" + encodeURIComponent(sku),
+                url: "{{ route('compliance-certificates.history') }}",
                 type: 'GET',
+                data: { sku: sku },
                 success: function(history) {
                     if (!history || history.length === 0) {
                         $('#historyList').html('<div class="alert alert-info mb-0">No history available for this SKU.</div>');

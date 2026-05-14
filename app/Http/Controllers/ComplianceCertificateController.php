@@ -402,10 +402,15 @@ class ComplianceCertificateController extends Controller
     }
 
     /**
-     * Get history records for a specific SKU.
+     * Get history records for a specific SKU (passed via query param to support special chars).
      */
-    public function getHistory(Request $request, $sku)
+    public function getHistory(Request $request)
     {
+        $sku = $request->query('sku', '');
+        if ($sku === '') {
+            return response()->json(['error' => 'SKU is required'], 422);
+        }
+
         $history = ComplianceCertificateHistory::where('sku', $sku)
             ->orderBy('created_at', 'desc')
             ->get()

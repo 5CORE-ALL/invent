@@ -4904,7 +4904,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/channels', [ComplianceCertificateController::class, 'getChannels'])->name('compliance-certificates.channels');
         Route::get('/sku-list', [ComplianceCertificateController::class, 'getSkuList'])->name('compliance-certificates.sku-list');
         Route::get('/all-history', [ComplianceCertificateController::class, 'getAllHistory'])->name('compliance-certificates.all-history');
-        Route::get('/history/{sku}', [ComplianceCertificateController::class, 'getHistory'])->name('compliance-certificates.history')->where('sku', '.*');
+        Route::get('/history', [ComplianceCertificateController::class, 'getHistory'])->name('compliance-certificates.history');
         Route::post('/', [ComplianceCertificateController::class, 'store'])->name('compliance-certificates.store');
         Route::put('/{id}', [ComplianceCertificateController::class, 'update'])->name('compliance-certificates.update');
         Route::delete('/{id}', [ComplianceCertificateController::class, 'destroy'])->name('compliance-certificates.destroy');
