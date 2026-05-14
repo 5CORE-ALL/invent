@@ -10,6 +10,7 @@ use App\Models\WalmartDataView;
 use App\Models\ProductMaster;
 use App\Models\SheinDataView;
 use App\Models\SheinDailyData;
+use App\Models\SheinDailyDataL60;
 use App\Models\ShopifySku;
 use App\Models\AmazonChannelSummary;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -673,6 +674,216 @@ class SheinController extends Controller
         } catch (\Exception $e) {
             Log::warning("Failed to parse date: {$dateString}");
             return null;
+        }
+    }
+
+    /**
+     * Upload L60 sales daily data file in chunks (same format as L30, stored in shein_daily_data_l60)
+     */
+    public function uploadDailyDataL60Chunk(Request $request)
+    {
+        try {
+            $request->validate([
+                'file' => 'required|file|mimes:xlsx,xls,csv,txt',
+                'chunk' => 'required|integer|min:0',
+                'totalChunks' => 'required|integer|min:1',
+            ]);
+
+            $file = $request->file('file');
+            $chunk = $request->input('chunk');
+            $totalChunks = $request->input('totalChunks');
+            $uploadId = $request->input('uploadId', uniqid('shein_l60_upload_'));
+
+            // Store the file temporarily
+            $tempPath = storage_path('app/temp');
+            if (!file_exists($tempPath)) {
+                mkdir($tempPath, 0755, true);
+            }
+
+            $fileName = $uploadId . '_' . $file->getClientOriginalName();
+            $filePath = $tempPath . '/' . $fileName;
+
+            // Move uploaded file on first chunk
+            if ($chunk == 0) {
+                $file->move($tempPath, $fileName);
+                
+                // Truncate the L60 table on first chunk
+                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+                SheinDailyDataL60::truncate();
+                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+                
+                Log::info('Shein L60 daily data table truncated before import');
+            }
+
+            // Load and process the spreadsheet
+            $spreadsheet = IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            // Skip first two rows (headers)
+            unset($rows[0]); // First header row
+            unset($rows[1]); // Second header row with actual column names
+
+            $totalRows = count($rows);
+            $chunkSize = ceil($totalRows / $totalChunks);
+            $startRow = $chunk * $chunkSize;
+            $endRow = min(($chunk + 1) * $chunkSize, $totalRows);
+
+            // Process only this chunk's rows
+            $chunkRows = array_slice($rows, $startRow, $endRow - $startRow, true);
+            
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                foreach ($chunkRows as $index => $row) {
+                    if (empty($row[1])) { // Skip if order_number is empty
+                        $skipped++;
+                        continue;
+                    }
+
+                    // Map columns to current Shein order export (same as L30)
+                    $insertData = [
+                        'order_type' => isset($row[0]) && $row[0] !== '' ? trim($row[0]) : null,
+                        'order_number' => isset($row[1]) && $row[1] !== '' ? trim($row[1]) : null,
+                        'exchange_order' => isset($row[2]) && $row[2] !== '' ? trim($row[2]) : null,
+                        'order_status' => isset($row[3]) && $row[3] !== '' ? trim($row[3]) : null,
+                        'shipment_mode' => isset($row[4]) && $row[4] !== '' ? trim($row[4]) : null,
+                        'urged_or_not' => isset($row[5]) && $row[5] !== '' ? trim($row[5]) : null,
+                        'is_it_lost' => isset($row[6]) && $row[6] !== '' ? trim($row[6]) : null,
+                        'whether_to_stay' => isset($row[7]) && $row[7] !== '' ? trim($row[7]) : null,
+                        'order_issue' => isset($row[8]) && $row[8] !== '' ? trim($row[8]) : null,
+                        'product_name' => isset($row[9]) && $row[9] !== '' ? trim($row[9]) : null,
+                        'product_description' => isset($row[10]) && $row[10] !== '' ? trim($row[10]) : null,
+                        'specification' => isset($row[11]) && $row[11] !== '' ? trim($row[11]) : null,
+                        'seller_sku' => isset($row[12]) && $row[12] !== '' ? trim($row[12]) : null,
+                        'shein_sku' => isset($row[13]) && $row[13] !== '' ? trim($row[13]) : null,
+                        'skc' => isset($row[14]) && $row[14] !== '' ? trim($row[14]) : null,
+                        'item_id' => isset($row[15]) && $row[15] !== '' ? trim($row[15]) : null,
+                        'product_status' => isset($row[16]) && $row[16] !== '' ? trim($row[16]) : null,
+                        'inventory_id' => isset($row[17]) && $row[17] !== '' ? trim($row[17]) : null,
+                        'exchange_id' => isset($row[18]) && $row[18] !== '' ? trim($row[18]) : null,
+                        'reason_for_replacement' => isset($row[19]) && $row[19] !== '' ? trim($row[19]) : null,
+                        'product_id_to_be_exchanged' => isset($row[20]) && $row[20] !== '' ? trim($row[20]) : null,
+                        'locked_or_not' => isset($row[21]) && $row[21] !== '' ? trim($row[21]) : null,
+                        'order_processed_on' => isset($row[22]) ? $this->parseDate($row[22]) : null,
+                        'collection_deadline' => isset($row[23]) ? $this->parseDate($row[23]) : null,
+                        'requested_shipping_time' => isset($row[24]) ? $this->parseDate($row[24]) : null,
+                        'delivery_deadline' => isset($row[25]) ? $this->parseDate($row[25]) : null,
+                        'delivery_time' => isset($row[26]) ? $this->parseDate($row[26]) : null,
+                        'tracking_number' => isset($row[27]) && $row[27] !== '' ? trim($row[27]) : null,
+                        'sellers_package' => isset($row[28]) && $row[28] !== '' ? trim($row[28]) : null,
+                        'seller_currency' => isset($row[29]) && $row[29] !== '' ? trim($row[29]) : null,
+                        'product_price' => isset($row[30]) ? $this->sanitizePrice($row[30]) : null,
+                        'coupon_discount' => isset($row[31]) ? $this->sanitizePrice($row[31]) : null,
+                        'store_campaign_discount' => isset($row[32]) ? $this->sanitizePrice($row[32]) : null,
+                        'commission' => isset($row[33]) ? $this->sanitizePrice($row[33]) : null,
+                        'estimated_merchandise_revenue' => isset($row[34]) ? $this->sanitizePrice($row[34]) : null,
+                        'fulfillment_service_fee' => isset($row[35]) ? $this->sanitizePrice($row[35]) : null,
+                        'storage_fee' => isset($row[36]) ? $this->sanitizePrice($row[36]) : null,
+                        'consumption_tax' => isset($row[37]) ? $this->sanitizePrice($row[37]) : null,
+                        'province' => isset($row[38]) && $row[38] !== '' ? trim($row[38]) : null,
+                        'city' => isset($row[39]) && $row[39] !== '' ? trim($row[39]) : null,
+                        'quantity' => 1,
+                    ];
+
+                    SheinDailyDataL60::create($insertData);
+                    $imported++;
+                }
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            // Clean up temp file on last chunk
+            if ($chunk == $totalChunks - 1) {
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Chunk $chunk processed successfully",
+                'chunk' => $chunk,
+                'totalChunks' => $totalChunks,
+                'imported' => $imported,
+                'skipped' => $skipped,
+                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error uploading Shein L60 daily data chunk: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get L60 sales statistics from shein_daily_data_l60 table
+     */
+    public function getL60Sales(Request $request)
+    {
+        try {
+            $marketplaceMarginDecimal = $this->sheinMarketplaceMarginPercent() / 100;
+
+            // Get all L60 data and calculate totals
+            $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
+            
+            $l60Data = SheinDailyDataL60::query()
+                ->where(function ($q) use ($excludedStatuses) {
+                    foreach ($excludedStatuses as $s) {
+                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
+                    }
+                })
+                ->get();
+
+            $totalOrders = 0;
+            $totalQuantity = 0;
+            $totalSales = 0;
+
+            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
+            $productMasters = $this->productMasterByNormalizedSku();
+
+            foreach ($l60Data as $row) {
+                // Count rows with order_number OR seller_sku
+                $orderNum = trim((string) ($row->order_number ?? ''));
+                $sellerSku = trim((string) ($row->seller_sku ?? ''));
+                if (!$orderNum && !$sellerSku) {
+                    continue;
+                }
+
+                $totalOrders++;
+                
+                $quantity = max(0, (int) ($row->quantity ?? 0));
+                $productPrice = (float) ($row->product_price ?? 0);
+                $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
+                
+                // Line revenue: prefer unit price × qty; fall back to Est. Revenue
+                $lineRevenue = $productPrice > 0 ? ($productPrice * $quantity) : ($estRev > 0 ? $estRev : 0);
+                
+                $totalQuantity += $quantity;
+                $totalSales += $lineRevenue;
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'total_sales' => round($totalSales, 2),
+                    'total_orders' => $totalOrders,
+                    'total_quantity' => $totalQuantity,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Shein L60 sales: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 

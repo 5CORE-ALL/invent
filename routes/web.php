@@ -67,6 +67,7 @@ use App\Http\Controllers\Channels\SetupAccountChannelController;
 use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
 use App\Http\Controllers\ChannelTabulatorColumnController;
+use App\Http\Controllers\ComplianceCertificateController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
 use App\Http\Controllers\CustomerCare\ShippingController;
@@ -2533,6 +2534,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Reverb Sales Routes (Tabulator - Daily Sales Data)
     Route::get('/reverb-sales', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'reverbSalesTabulatorView'])->name('reverb.sales');
     Route::get('/reverb/sales/daily-data', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'getDailyData'])->name('reverb.sales.daily.data');
+    Route::get('/reverb/sales/l60-sales', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'getL60Sales'])->name('reverb.sales.l60');
     Route::get('/reverb/sales/column-visibility', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'getColumnVisibility'])->name('reverb.sales.column.get');
     Route::post('/reverb/sales/column-visibility', [\App\Http\Controllers\MarketPlace\ReverbSalesController::class, 'saveColumnVisibility'])->name('reverb.sales.column.set');
     Route::get('/admin/shopify-store/{store}', function ($store) {
@@ -2602,6 +2604,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // eBay 3 Sales Routes
     Route::get('/ebay3/daily-sales-data', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'getData'])->name('ebay3.daily.sales.data');
     Route::get('/ebay3/daily-sales', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'index'])->name('ebay3.daily.sales');
+    Route::get('/ebay3/l60-sales', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'getL60Sales'])->name('ebay3.l60.sales');
     Route::get('/ebay3-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'getColumnVisibility']);
     Route::post('/ebay3-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'saveColumnVisibility']);
 
@@ -3840,7 +3843,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Shein Daily Data routes
     Route::post('/shein/upload-daily-data', [SheinController::class, 'uploadDailyDataChunk'])->name('shein.upload.daily.data');
+    Route::post('/shein/upload-daily-data-l60', [SheinController::class, 'uploadDailyDataL60Chunk'])->name('shein.upload.daily.data.l60');
     Route::get('/shein/daily-data', [SheinController::class, 'getDailyData'])->name('shein.get.daily.data');
+    Route::get('/shein/l60-sales', [SheinController::class, 'getL60Sales'])->name('shein.get.l60.sales');
     Route::get('/shein-tabulator', [SheinController::class, 'sheinTabulatorView'])->name('shein.tabulator.view');
     Route::post('/shein-column-visibility', [SheinController::class, 'saveSheinColumnVisibility'])->name('shein.save.column.visibility');
     Route::get('/shein-column-visibility', [SheinController::class, 'getSheinColumnVisibility'])->name('shein.get.column.visibility');
@@ -4892,6 +4897,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('update-fba-manual-data', 'updateFbaManualData');
     });
 
+
+    Route::prefix('compliance-certificates')->group(function () {
+        Route::get('/', [ComplianceCertificateController::class, 'index'])->name('compliance-certificates.index');
+        Route::get('/data', [ComplianceCertificateController::class, 'getData'])->name('compliance-certificates.data');
+        Route::get('/channels', [ComplianceCertificateController::class, 'getChannels'])->name('compliance-certificates.channels');
+        Route::get('/sku-list', [ComplianceCertificateController::class, 'getSkuList'])->name('compliance-certificates.sku-list');
+        Route::get('/history/{sku}', [ComplianceCertificateController::class, 'getHistory'])->name('compliance-certificates.history')->where('sku', '.*');
+        Route::post('/', [ComplianceCertificateController::class, 'store'])->name('compliance-certificates.store');
+        Route::put('/{id}', [ComplianceCertificateController::class, 'update'])->name('compliance-certificates.update');
+        Route::delete('/{id}', [ComplianceCertificateController::class, 'destroy'])->name('compliance-certificates.destroy');
+        Route::post('/upload-files', [ComplianceCertificateController::class, 'uploadFiles'])->name('compliance-certificates.upload-files');
+        Route::post('/delete-file', [ComplianceCertificateController::class, 'deleteFile'])->name('compliance-certificates.delete-file');
+        Route::post('/bulk-update', [ComplianceCertificateController::class, 'bulkUpdate'])->name('compliance-certificates.bulk-update');
+    });
+
     Route::post('/channel-promotion/store', [ChannelPromotionMasterController::class, 'storeOrUpdatePromotion']);
 
     // eBay Refresh Token Generation Routes (must be before catch-all routes)
@@ -5129,6 +5149,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Route::post('/auto-stock-balance-store', [AutoStockBalanceController::class, 'store'])->name('autostock.balance.store');
     // Route::get('/auto-stock-balance-data-list', [AutoStockBalanceController::class, 'list']);
+
+    // =============================================================================
+    // COMPLIANCE CERTIFICATES ROUTES
+    // =============================================================================
+ 
 
 });
 

@@ -83,7 +83,7 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics</h6>
+                    <h6 class="mb-3">Summary Statistics (L30)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge"
                             style="color: white; font-weight: bold;">Total Orders: 0</span>
@@ -124,6 +124,18 @@
                             style="background-color: #17a2b8; color: white; font-weight: bold; display: none;">Ads %: 0%</span>
                         <span class="badge fs-6 p-2" id="pft-percentage-filtered-badge"
                             style="background-color: #20c997; color: white; font-weight: bold; display: none;">PFT %: 0%</span>
+                    </div>
+                    <h6 class="mb-2 mt-3">L60 Statistics (Last 60 Days)</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge fs-6 p-2" id="l60-sales-badge" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-chart-line"></i> L60 Sales: $0
+                        </span>
+                        <span class="badge fs-6 p-2" id="l60-orders-badge" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-shopping-cart"></i> L60 Orders: 0
+                        </span>
+                        <span class="badge fs-6 p-2" id="l60-quantity-badge" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-box"></i> L60 Quantity: 0
+                        </span>
                     </div>
                 </div>
             </div>
@@ -182,6 +194,28 @@
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 }
             });
+
+            // Load L60 sales statistics
+            function loadL60Sales() {
+                $.ajax({
+                    url: '/ebay3/l60-sales',
+                    type: 'GET',
+                    success: function(response) {
+                        if (response.success && response.data) {
+                            const data = response.data;
+                            $('#l60-sales-badge').html(`<i class="fa fa-chart-line"></i> L60 Sales: $${parseFloat(data.total_sales).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`);
+                            $('#l60-orders-badge').html(`<i class="fa fa-shopping-cart"></i> L60 Orders: ${parseInt(data.total_orders).toLocaleString()}`);
+                            $('#l60-quantity-badge').html(`<i class="fa fa-box"></i> L60 Quantity: ${parseInt(data.total_quantity).toLocaleString()}`);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error loading L60 sales:', error);
+                    }
+                });
+            }
+
+            // Load L60 sales on page load
+            loadL60Sales();
 
             // Initialize Tabulator
             console.log("Initializing Tabulator for eBay 3 Daily Sales Data...");

@@ -54,9 +54,14 @@
             <div class="card-body py-3">
                 <h4>Shein Daily Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <!-- Upload Button -->
+                    <!-- Upload L30 Button -->
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                        <i class="fa fa-upload"></i> Upload CSV
+                        <i class="fa fa-upload"></i> Upload L30 Sales
+                    </button>
+
+                    <!-- Upload L60 Button -->
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadL60Modal">
+                        <i class="fa fa-upload"></i> Upload L60 Sales
                     </button>
 
                     <!-- Column Visibility Dropdown -->
@@ -73,14 +78,14 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
-                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
+                    <button type="button" class="btn btn-sm btn-info" id="export-btn">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics</h6>
+                    <h6 class="mb-3">Summary Statistics (L30 Data)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
@@ -91,6 +96,18 @@
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-commission-badge" style="color: white; font-weight: bold;">Commission: $0.00</span>
+                    </div>
+                    <h6 class="mb-2 mt-3">L60 Statistics</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge fs-6 p-2" id="l60-sales-badge" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-chart-line"></i> L60 Sales: $0.00
+                        </span>
+                        <span class="badge fs-6 p-2" id="l60-orders-badge" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-shopping-cart"></i> L60 Orders: 0
+                        </span>
+                        <span class="badge fs-6 p-2" id="l60-quantity-badge" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; font-weight: bold;">
+                            <i class="fa fa-box"></i> L60 Quantity: 0
+                        </span>
                     </div>
                 </div>
             </div>
@@ -112,7 +129,7 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="uploadModalLabel">Upload Shein Daily Data</h5>
+                    <h5 class="modal-title" id="uploadModalLabel">Upload Shein L30 Daily Data</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -135,6 +152,41 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="upload-btn">
                         <i class="fa fa-upload"></i> Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload L60 Modal -->
+    <div class="modal fade" id="uploadL60Modal" tabindex="-1" aria-labelledby="uploadL60ModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadL60ModalLabel">Upload Shein L60 Sales Data</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="upload-l60-form" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="file-input-l60" class="form-label">Select CSV/Excel File</label>
+                            <input type="file" class="form-control" id="file-input-l60" name="file" accept=".csv,.xlsx,.xls,.txt" required>
+                            <div class="form-text">Accepted formats: CSV, XLSX, XLS, TXT (tab-separated)</div>
+                            <div class="form-text text-info">This will upload sales data for L60 period (60 days)</div>
+                        </div>
+                        <div id="upload-l60-progress" class="mb-3" style="display: none;">
+                            <div class="progress">
+                                <div id="upload-l60-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small id="upload-l60-status" class="text-muted"></small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="upload-l60-btn">
+                        <i class="fa fa-upload"></i> Upload L60
                     </button>
                 </div>
             </div>
@@ -178,6 +230,28 @@
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             }
         });
+        
+        // Load L60 sales statistics
+        function loadL60Sales() {
+            $.ajax({
+                url: '/shein/l60-sales',
+                type: 'GET',
+                success: function(response) {
+                    if (response.success && response.data) {
+                        const data = response.data;
+                        $('#l60-sales-badge').html(`<i class="fa fa-chart-line"></i> L60 Sales: $${parseFloat(data.total_sales).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+                        $('#l60-orders-badge').html(`<i class="fa fa-shopping-cart"></i> L60 Orders: ${parseInt(data.total_orders).toLocaleString()}`);
+                        $('#l60-quantity-badge').html(`<i class="fa fa-box"></i> L60 Quantity: ${parseInt(data.total_quantity).toLocaleString()}`);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error loading L60 sales:', error);
+                }
+            });
+        }
+
+        // Load L60 sales on page load
+        loadL60Sales();
         
         // Initialize Tabulator
         console.log("Initializing Tabulator for Shein Daily Data...");
@@ -889,6 +963,89 @@
                     showToast(errorMsg, 'error');
                     $('#upload-progress').hide();
                     $('#upload-btn').prop('disabled', false);
+                }
+            });
+        }
+
+        // Upload L60 functionality
+        $('#upload-l60-btn').on('click', function() {
+            const fileInput = document.getElementById('file-input-l60');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showToast('Please select a file', 'error');
+                return;
+            }
+
+            const uploadId = 'shein_l60_' + Date.now();
+            const totalChunks = 1; // Process in single chunk for simplicity
+            
+            $('#upload-l60-progress').show();
+            $('#upload-l60-btn').prop('disabled', true);
+            
+            uploadL60Chunk(file, 0, totalChunks, uploadId);
+        });
+
+        function uploadL60Chunk(file, chunk, totalChunks, uploadId) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('chunk', chunk);
+            formData.append('totalChunks', totalChunks);
+            formData.append('uploadId', uploadId);
+
+            $.ajax({
+                url: '/shein/upload-daily-data-l60',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                xhr: function() {
+                    const xhr = new window.XMLHttpRequest();
+                    xhr.upload.addEventListener("progress", function(evt) {
+                        if (evt.lengthComputable) {
+                            const percentComplete = Math.round((evt.loaded / evt.total) * 100);
+                            $('#upload-l60-progress-bar').css('width', percentComplete + '%');
+                            $('#upload-l60-status').text('Uploading: ' + percentComplete + '%');
+                        }
+                    }, false);
+                    return xhr;
+                },
+                success: function(response) {
+                    if (response.success) {
+                        const progress = response.progress || 0;
+                        $('#upload-l60-progress-bar').css('width', progress + '%');
+                        $('#upload-l60-status').text(`Processing: ${progress}% (${response.imported || 0} imported, ${response.skipped || 0} skipped)`);
+                        
+                        if (chunk < totalChunks - 1) {
+                            // Upload next chunk
+                            uploadL60Chunk(file, chunk + 1, totalChunks, uploadId);
+                        } else {
+                            // Upload complete
+                            showToast(`L60 Upload complete! ${response.imported || 0} records imported, ${response.skipped || 0} skipped`, 'success');
+                            $('#upload-l60-progress').hide();
+                            $('#upload-l60-btn').prop('disabled', false);
+                            $('#file-input-l60').val('');
+                            $('#uploadL60Modal').modal('hide');
+                            
+                            // Reload L60 sales statistics
+                            loadL60Sales();
+                        }
+                    } else {
+                        showToast('L60 Upload failed: ' + (response.message || 'Unknown error'), 'error');
+                        $('#upload-l60-progress').hide();
+                        $('#upload-l60-btn').prop('disabled', false);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    let errorMsg = 'L60 Upload failed: ';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg += xhr.responseJSON.message;
+                    } else {
+                        errorMsg += error;
+                    }
+                    showToast(errorMsg, 'error');
+                    $('#upload-l60-progress').hide();
+                    $('#upload-l60-btn').prop('disabled', false);
                 }
             });
         }

@@ -201,6 +201,146 @@ class ReverbSalesController extends Controller
     }
 
     /**
+     * Get L60 sales statistics from reverb_daily_data table
+     */
+    public function getL60Sales(Request $request)
+    {
+        try {
+            // Check if table exists
+            if (!Schema::hasTable('reverb_daily_data')) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Reverb daily data table not found'
+                ], 404);
+            }
+
+            // Calculate L60 date range using Pacific time
+            $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
+            if ($latestRaw) {
+                $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+                $l60EndDate = $latestPacific->copy()->subDay()->toDateString();
+                $l60StartDate = $latestPacific->copy()->subDay()->subDays(59)->toDateString();
+            } else {
+                // Fallback if no data
+                $l60EndDate = Carbon::now()->toDateString();
+                $l60StartDate = Carbon::now()->subDays(60)->toDateString();
+            }
+
+            // Fetch L60 data
+            $reverbData = DB::table('reverb_daily_data')
+                ->whereNotNull('order_date')
+                ->whereBetween('order_date', [$l60StartDate, $l60EndDate])
+                // Exclude cancelled/refunded orders
+                ->where(function($query) {
+                    $query->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
+                          ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%']);
+                })
+                ->get();
+
+            // Get unique SKUs
+            $skus = $reverbData->pluck('sku')
+                ->filter(function($sku) {
+                    return !empty($sku);
+                })
+                ->unique()
+                ->values()
+                ->toArray();
+
+            // Fetch LP and Ship from ProductMaster
+            $productMasters = [];
+            if (!empty($skus)) {
+                $productMasters = ProductMaster::whereIn('sku', $skus)
+                    ->get()
+                    ->keyBy('sku');
+            }
+
+            // Get Reverb marketplace percentage
+            $mpRow = MarketplacePercentage::where('marketplace', 'Reverb')->first();
+            $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 85) : 85.0;
+            if ($percentage <= 0) {
+                $percentage = 85.0;
+            }
+            $margin = $percentage / 100.0;
+
+            $totalOrders = 0;
+            $totalQuantity = 0;
+            $totalSales = 0;
+            $totalPft = 0;
+
+            foreach ($reverbData as $item) {
+                // Skip empty order numbers and SKUs
+                if (empty($item->order_number) && empty($item->sku)) {
+                    continue;
+                }
+
+                $totalOrders++;
+                
+                $quantity = (int) ($item->quantity ?? 0);
+                $totalQuantity += $quantity;
+
+                // Revenue: product_subtotal (fallback to amount)
+                $revenue = (float) ($item->product_subtotal ?? $item->amount ?? 0);
+                $totalSales += $revenue;
+
+                // Get LP and Ship for profit calculation
+                $lp = 0;
+                $ship = 0;
+                $sku = $item->sku;
+
+                if (!empty($sku) && isset($productMasters[$sku])) {
+                    $productMaster = $productMasters[$sku];
+                    $values = is_array($productMaster->Values) 
+                        ? $productMaster->Values 
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                    
+                    // Get LP
+                    if (isset($values['lp'])) {
+                        $lp = (float) $values['lp'];
+                    } else {
+                        foreach ($values as $k => $v) {
+                            if (strtolower((string) $k) === 'lp') {
+                                $lp = (float) $v;
+                                break;
+                            }
+                        }
+                    }
+                    if ($lp === 0 && isset($productMaster->lp)) {
+                        $lp = (float) $productMaster->lp;
+                    }
+
+                    // Get Ship
+                    if (isset($values['ship'])) {
+                        $ship = (float) $values['ship'];
+                    } elseif (isset($productMaster->ship)) {
+                        $ship = (float) $productMaster->ship;
+                    }
+                }
+
+                // Calculate profit: (Revenue × margin - LP - Ship) × Quantity
+                $unitRevenue = $quantity > 0 ? $revenue / $quantity : $revenue;
+                $pft = ($unitRevenue * $margin - $lp - $ship) * $quantity;
+                $totalPft += $pft;
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'total_sales' => round($totalSales, 2),
+                    'total_orders' => $totalOrders,
+                    'total_quantity' => $totalQuantity,
+                    'total_pft' => round($totalPft, 2),
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Reverb L60 sales: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Save column visibility preferences
      */
     public function saveColumnVisibility(Request $request)

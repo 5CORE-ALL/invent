@@ -7948,6 +7948,126 @@ class ChannelMasterController extends Controller
         ];
     }
 
+    /**
+     * Shein L60 sales / orders — same logic as L30 but from shein_daily_data_l60 table
+     */
+    private function aggregateSheinDailyDataL60LikeTabulator(): ?array
+    {
+        if (! Schema::hasTable('shein_daily_data_l60')) {
+            return null;
+        }
+
+        if (! \App\Models\SheinDailyDataL60::query()->exists()) {
+            return null;
+        }
+
+        $pctRow = MarketplacePercentage::where('marketplace', 'Shein')->first();
+        $marginPct = 100.0;
+        if ($pctRow && $pctRow->percentage !== null && $pctRow->percentage !== '') {
+            $marginPct = (float) $pctRow->percentage;
+        }
+        $margin = $marginPct / 100.0;
+
+        $skuKeys = \App\Models\SheinDailyDataL60::query()
+            ->whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->selectRaw('UPPER(TRIM(seller_sku)) as k')
+            ->groupBy(DB::raw('UPPER(TRIM(seller_sku))'))
+            ->pluck('k')
+            ->filter()
+            ->values()
+            ->all();
+
+        $productMasters = $this->productMastersByNormalizedSkus($skuKeys);
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0.0;
+        $totalCogs = 0.0;
+        $totalPft = 0.0;
+        $totalWeightedPrice = 0.0;
+        $totalQuantityForPrice = 0;
+
+        foreach (\App\Models\SheinDailyDataL60::query()->orderBy('id')->cursor() as $row) {
+            $orderNum = trim((string) ($row->order_number ?? ''));
+            $sellerSku = trim((string) ($row->seller_sku ?? ''));
+            if ($orderNum === '' && $sellerSku === '') {
+                continue;
+            }
+
+            $orderStatus = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($orderStatus, 'refund')
+                || str_contains($orderStatus, 'returned')
+                || str_contains($orderStatus, 'cancelled')
+                || str_contains($orderStatus, 'closed')
+                || str_contains($orderStatus, 'exchange')) {
+                continue;
+            }
+
+            $quantity = (int) ($row->quantity ?? 0);
+            $productPrice = (float) ($row->product_price ?? 0);
+            $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
+            $lineRevenue = $productPrice > 0 ? $productPrice * $quantity : ($estRev > 0 ? $estRev : 0.0);
+            $unitPriceForPft = $productPrice > 0 ? $productPrice : ($quantity > 0 && $estRev > 0 ? $estRev / $quantity : ($estRev > 0 ? $estRev : 0.0));
+
+            $totalOrders++;
+            $totalQuantity += $quantity;
+            $totalRevenue += $lineRevenue;
+
+            if ($quantity > 0 && $unitPriceForPft > 0) {
+                $totalWeightedPrice += $unitPriceForPft * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            $skuKey = strtoupper(trim((string) ($row->seller_sku ?? '')));
+            $lp = 0.0;
+            $ship = 0.0;
+            if ($skuKey !== '' && isset($productMasters[$skuKey])) {
+                $pm = $productMasters[$skuKey];
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+
+                if (isset($values['ship'])) {
+                    $ship = (float) $values['ship'];
+                } elseif (isset($pm->ship)) {
+                    $ship = (float) $pm->ship;
+                }
+            }
+
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            $pft = ($unitPriceForPft * $margin - $lp - $ship) * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+        ];
+    }
+
     public function getSheinChannelData(Request $request)
     {
         $result = [];
@@ -8022,17 +8142,23 @@ class ChannelMasterController extends Controller
             $nRoi = (float) ($metrics?->n_roi ?? $gRoi);
         }
         
-        // L60 will be 0 until we have historical data with proper dates
+        // L60 sales from shein_daily_data_l60 table
+        $l60Agg = $this->aggregateSheinDailyDataL60LikeTabulator();
         $l60Orders = 0;
         $l60Sales = 0;
-        
-        // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-        
-        // L60 profit percentage
         $gprofitL60 = 0;
         $gRoiL60 = 0;
-
+        
+        if ($l60Agg !== null) {
+            $l60Orders = $l60Agg['total_orders'];
+            $l60Sales = $l60Agg['total_sales'];
+            $gprofitL60 = $l60Agg['pft_percentage'];
+            $gRoiL60 = $l60Agg['roi_percentage'];
+        }
+        
+        // Calculate growth: (L30 - L60) / L60 * 100 when L60 > 0
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : ($l30Sales > 0 ? 100.0 : 0);
+        
         // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
         $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
 

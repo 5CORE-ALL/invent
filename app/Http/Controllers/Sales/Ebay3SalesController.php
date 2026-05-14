@@ -250,6 +250,55 @@ class Ebay3SalesController extends Controller
         }
     }
 
+    /**
+     * Get L60 sales statistics from ebay3_orders table
+     */
+    public function getL60Sales(Request $request)
+    {
+        try {
+            // Check if table exists
+            if (!Schema::hasTable('ebay3_orders')) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'eBay 3 orders table not found'
+                ], 404);
+            }
+
+            // Calculate L60 date range (last 60 days)
+            $l60EndDate = Carbon::now()->toDateString();
+            $l60StartDate = Carbon::now()->subDays(60)->toDateString();
+
+            // Fetch L60 data
+            $ebayData = DB::table('ebay3_orders')
+                ->whereNotNull('order_date')
+                ->whereBetween('order_date', [$l60StartDate, $l60EndDate])
+                // Exclude cancelled orders
+                ->where(function($query) {
+                    $query->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%']);
+                })
+                ->get();
+
+            $totalOrders = $ebayData->count();
+            $totalQuantity = $ebayData->sum('quantity');
+            $totalSales = $ebayData->sum('sale_amount');
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'total_sales' => round($totalSales, 2),
+                    'total_orders' => $totalOrders,
+                    'total_quantity' => $totalQuantity,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching eBay 3 L60 sales: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function saveColumnVisibility(Request $request)
     {
         try {
