@@ -2234,11 +2234,51 @@
                         '<i class="fas fa-spinner fa-spin"></i> Generating...';
                     document.getElementById('downloadExcel').disabled = true;
 
+                    // Compliance field keys that should mirror the on-screen badge logic
+                    // (Battery/Wireless/Electric/GCC/Blanket/Bluetooth/Logo/Graph). For these
+                    // we render the same text the page shows: "REQ", "N/A", or a legacy value.
+                    const complianceFieldKeysForExport = new Set([
+                        'battery', 'wireless', 'electric', 'gcc', 'blanket', 'bluetooth', 'logo', 'graph'
+                    ]);
+
+                    // Mirror complianceFieldCellHtml() as plain text for Excel export so the
+                    // file matches what the user sees on the page (e.g. empty DB value -> "N/A").
+                    function complianceFieldCellText(item, key) {
+                        const v = complianceFieldStoredValue(item, key);
+                        const img = complianceFieldImagePath(item, key);
+                        const pdf = complianceFieldPdfPath(item, key);
+                        const upper = v.toUpperCase();
+                        const hasDataFile = img !== '' || pdf !== '';
+                        if (upper === 'REQ') {
+                            return hasDataFile ? 'REQ' : 'REQ';
+                        }
+                        if (upper === 'N/A' || v === '') {
+                            return 'N/A';
+                        }
+                        return v;
+                    }
+
                     // Use setTimeout to avoid UI freeze for large datasets
                     setTimeout(() => {
                         try {
-                            // Use filteredData if available, otherwise use tableData
-                            const dataToExport = filteredData.length > 0 ? filteredData : tableData;
+                            // Always export the full dataset (tableData) so on-screen
+                            // search/filter selections never reduce what gets downloaded.
+                            // Falls back to filteredData only if tableData is somehow empty.
+                            const sourceData = (Array.isArray(tableData) && tableData.length > 0)
+                                ? tableData
+                                : (Array.isArray(filteredData) ? filteredData : []);
+
+                            const dataToExport = sourceData.filter(item => {
+                                if (!item) return false;
+                                const sku = String(item.SKU || '').trim();
+                                const parent = String(item.Parent || '').trim();
+                                if (sku === '' && parent === '') return false;
+                                return true;
+                            });
+
+                            console.log('[Compliance Export] tableData:', tableData.length,
+                                'filteredData:', filteredData.length,
+                                'exporting:', dataToExport.length);
 
                             // Create worksheet data array
                             const wsData = [];
@@ -2248,6 +2288,10 @@
 
                             // Add data rows
                             dataToExport.forEach(item => {
+                                // PARENT summary rows on the page leave compliance fields blank
+                                // ("—"), so do the same in Excel and don't force N/A on them.
+                                const isParentSummaryRow = complianceRowHasParentKeyword(item);
+
                                 const row = [];
                                 columns.forEach(col => {
                                     const colDef = columnDefs[col];
@@ -2266,6 +2310,8 @@
                                             } else {
                                                 value = parseFloat(value) || 0;
                                             }
+                                        } else if (complianceFieldKeysForExport.has(key)) {
+                                            value = isParentSummaryRow ? '' : complianceFieldCellText(item, key);
                                         }
 
                                         row.push(value);
@@ -2327,8 +2373,8 @@
                             // Generate Excel file and trigger download
                             XLSX.writeFile(wb, "compliance_master_export.xlsx");
 
-                            // Show success toast
-                            showToast('success', 'Excel file downloaded successfully!');
+                            // Show success toast (include row count so you can confirm full export)
+                            showToast('success', `Excel file downloaded successfully! (${dataToExport.length} rows)`);
                         } catch (error) {
                             console.error("Excel export error:", error);
                             showToast('danger', 'Failed to export Excel file.');
