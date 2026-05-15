@@ -8,6 +8,7 @@ use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class HeroImageController extends Controller
 {
@@ -121,6 +122,10 @@ class HeroImageController extends Controller
                 $row['lqs'] = null;
             }
 
+            // Surface DB link and hero image from Values JSON (shared with A+ Images Master).
+            $row['db'] = $row['db'] ?? ($row['DB'] ?? null);
+            $row['hero_image'] = $row['hero_image'] ?? null;
+
             $result[] = $row;
         }
 
@@ -129,5 +134,133 @@ class HeroImageController extends Controller
             'data' => $result,
             'status' => 200,
         ]);
+    }
+
+    /**
+     * Update the DB link stored in product_masters.Values for a given SKU.
+     * The DB column is shared with the A+ Images Master view.
+     */
+    public function updateDBLink(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'db' => 'nullable|string|url',
+            ]);
+
+            $product = $this->findProductBySku($validated['sku']);
+
+            if (! $product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found',
+                ], 404);
+            }
+
+            $values = $this->getValuesArray($product);
+            $values['db'] = $validated['db'];
+            $values['DB'] = $validated['db'];
+
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'DB link updated successfully',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Hero Update DB Link Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update DB link: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Upload (or replace) the hero image for a SKU. Stores the file under
+     * storage/app/public/hero_images and saves the relative path in
+     * product_masters.Values.hero_image.
+     */
+    public function uploadHeroImage(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'image_file' => 'required|file|mimes:jpeg,jpg,png,gif,bmp,webp,svg|max:10240',
+            ]);
+
+            $product = $this->findProductBySku($validated['sku']);
+
+            if (! $product) {
+                Log::error('Hero upload — product not found for SKU: '.$validated['sku']);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found for SKU: '.$validated['sku'],
+                ], 404);
+            }
+
+            $values = $this->getValuesArray($product);
+
+            $imageFile = $request->file('image_file');
+            $safeSku = preg_replace('/[^A-Za-z0-9_\-]/', '_', $validated['sku']);
+            $imageName = 'hero_'.$safeSku.'_'.time().'.'.$imageFile->getClientOriginalExtension();
+
+            $directory = 'hero_images';
+            if (! Storage::disk('public')->exists($directory)) {
+                Storage::disk('public')->makeDirectory($directory);
+            }
+
+            $imagePath = $imageFile->storeAs($directory, $imageName, 'public');
+
+            $values['hero_image'] = $imagePath;
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Hero image uploaded successfully',
+                'image_path' => $imagePath,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Hero Image Upload Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload hero image: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Find a ProductMaster row by SKU, tolerating non-breaking spaces that can
+     * sneak in from spreadsheet imports.
+     */
+    private function findProductBySku(string $sku): ?ProductMaster
+    {
+        $normalizedSku = str_replace("\u{00a0}", ' ', $sku);
+
+        $product = ProductMaster::where('sku', $normalizedSku)->first();
+
+        if (! $product) {
+            $product = ProductMaster::where('sku', $sku)->first();
+        }
+
+        return $product;
+    }
+
+    /**
+     * Decode the Values JSON column into an array regardless of how Eloquent
+     * cast it.
+     */
+    private function getValuesArray(ProductMaster $product): array
+    {
+        $values = is_array($product->Values)
+            ? $product->Values
+            : json_decode((string) $product->Values, true);
+
+        return is_array($values) ? $values : [];
     }
 }

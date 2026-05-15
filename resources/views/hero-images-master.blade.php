@@ -55,6 +55,40 @@
             cursor: pointer;
         }
 
+        .edit-dot {
+            width: 10px;
+            height: 10px;
+            background-color: #2c6ed5;
+            border-radius: 50%;
+            display: inline-block;
+            cursor: pointer;
+            border: none;
+            padding: 0;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .edit-dot:hover {
+            transform: scale(1.3);
+            box-shadow: 0 0 4px rgba(44, 110, 213, 0.6);
+        }
+
+        .upload-dot {
+            width: 10px;
+            height: 10px;
+            background-color: #28a745;
+            border-radius: 50%;
+            display: inline-block;
+            cursor: pointer;
+            border: none;
+            padding: 0;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .upload-dot:hover {
+            transform: scale(1.3);
+            box-shadow: 0 0 4px rgba(40, 167, 69, 0.6);
+        }
+
         .toast-container {
             position: fixed;
             top: 20px;
@@ -265,6 +299,76 @@
                             <p class="mt-2">Loading competitors...</p>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DB Link Modal -->
+    <div class="modal fade" id="dbLinkModal" tabindex="-1" aria-labelledby="dbLinkModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                    <h5 class="modal-title" id="dbLinkModalLabel">
+                        <i class="fas fa-link me-2"></i><span id="dbModalTitle">Add DB Link</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="dbLinkForm">
+                        <input type="hidden" id="dbLinkSku" name="sku">
+                        <div class="mb-3">
+                            <label for="dbLinkInput" class="form-label fw-bold">
+                                <i class="fas fa-database text-primary me-1"></i>DB Link
+                            </label>
+                            <input type="url" class="form-control" id="dbLinkInput" name="db_link" placeholder="https://example.com/db-link" required>
+                            <div class="form-text">Enter the full URL for the DB link (shared with A+ Images Master)</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveDBLinkBtn">
+                        <i class="fas fa-save me-2"></i>Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hero Image Upload Modal -->
+    <div class="modal fade" id="heroImageUploadModal" tabindex="-1" aria-labelledby="heroImageUploadModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                    <h5 class="modal-title" id="heroImageUploadModalLabel">
+                        <i class="fas fa-upload me-2"></i>Upload Hero Image
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="heroImageUploadForm">
+                        <input type="hidden" id="heroImageUploadSku" name="sku">
+                        <div class="mb-3">
+                            <label for="heroImageFileInput" class="form-label fw-bold">
+                                <i class="fas fa-image text-primary me-1"></i>Select Hero Image
+                            </label>
+                            <input type="file" class="form-control" id="heroImageFileInput" name="image_file" accept="image/*" required>
+                            <div class="form-text">Accepted formats: JPG, PNG, GIF, BMP, WEBP, SVG (max 10MB)</div>
+                        </div>
+                        <div id="heroImagePreviewContainer" style="display: none;">
+                            <label class="form-label fw-bold">Preview:</label>
+                            <div class="text-center">
+                                <img id="heroImagePreview" src="" alt="Preview" style="max-width: 100%; max-height: 300px; border: 1px solid #ddd; border-radius: 4px; padding: 5px;">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveHeroImageBtn">
+                        <i class="fas fa-save me-2"></i>Save
+                    </button>
                 </div>
             </div>
         </div>
@@ -498,6 +602,61 @@
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU;
                         return `<button class="btn btn-sm btn-info" onclick="viewCompetitors('${sku}')" title="View Competitors"><i class="fas fa-search"></i></button>`;
+                    }
+                },
+                {
+                    title: "Hero",
+                    field: "hero_image",
+                    width: 100,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const heroImage = cell.getValue();
+                        const sku = cell.getRow().getData().SKU || '';
+                        const escapedSku = String(sku).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                        if (heroImage && String(heroImage).trim()) {
+                            const src = String(heroImage).startsWith('http')
+                                ? heroImage
+                                : '/storage/' + String(heroImage).replace(/^\/+/, '');
+                            return `
+                                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                                    <img src="${src}"
+                                         style="width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;"
+                                         onclick="window.open('${src}', '_blank')"
+                                         title="Click to view full size">
+                                    <span class="edit-dot" onclick="openHeroImageUploadModal('${escapedSku}')" title="Replace Hero Image"></span>
+                                </div>
+                            `;
+                        }
+                        return `<span class="upload-dot" onclick="openHeroImageUploadModal('${escapedSku}')" title="Upload Hero Image"></span>`;
+                    }
+                },
+                {
+                    title: "DB",
+                    field: "db",
+                    width: 80,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const value = cell.getValue() || cell.getRow().getData()['DB'] || '';
+                        const sku = cell.getRow().getData().SKU || '';
+                        const escapedSku = String(sku).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        const cleanUrl = value ? String(value).trim() : '';
+
+                        if (cleanUrl && cleanUrl.match(/^https?:\/\//i)) {
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                    <a href="${cleanUrl}" target="_blank" class="text-decoration-none" style="color: #2c6ed5;" title="Open DB Link">
+                                        <i class="fas fa-link"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-link p-0" onclick="openDBModal('${escapedSku}', '${cleanUrl.replace(/'/g, "\\'")}')" title="Edit DB Link" style="color: #6c757d;">
+                                        <i class="fas fa-edit" style="font-size: 12px;"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }
+                        return `<button class="btn btn-sm btn-link p-0" onclick="openDBModal('${escapedSku}', '')" title="Add DB Link" style="color: #28a745;">
+                            <i class="fas fa-plus"></i>
+                        </button>`;
                     }
                 }
             ]
@@ -930,6 +1089,136 @@
             showToast(error.message || 'Failed to delete competitor', 'error');
         }
     }
+
+    // ---- DB Link (shared with A+ Images Master via product_masters.Values.db) ----
+    function openDBModal(sku, currentValue) {
+        $('#dbLinkSku').val(sku);
+        $('#dbLinkInput').val(currentValue || '');
+        $('#dbModalTitle').text(currentValue ? 'Edit DB Link' : 'Add DB Link');
+        $('#dbLinkModal').modal('show');
+    }
+
+    $(document).on('click', '#saveDBLinkBtn', async function() {
+        const sku = $('#dbLinkSku').val();
+        const dbLink = ($('#dbLinkInput').val() || '').trim();
+
+        if (!dbLink) {
+            showToast('Please enter a DB link', 'error');
+            return;
+        }
+
+        const saveBtn = $(this);
+        const originalHtml = saveBtn.html();
+        saveBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving...');
+
+        try {
+            const response = await fetch('/hero-images-master/update-db-link', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ sku: sku, db: dbLink })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showToast('DB link updated successfully', 'success');
+                $('#dbLinkModal').modal('hide');
+                if (table) {
+                    table.setData('/hero-images-master-data-view');
+                }
+            } else {
+                showToast(result.message || 'Failed to update DB link', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving DB link:', error);
+            showToast(error.message || 'Failed to update DB link', 'error');
+        } finally {
+            saveBtn.prop('disabled', false).html(originalHtml);
+        }
+    });
+
+    // ---- Hero Image Upload ----
+    function openHeroImageUploadModal(sku) {
+        $('#heroImageUploadSku').val(sku);
+        $('#heroImageFileInput').val('');
+        $('#heroImagePreviewContainer').hide();
+        $('#heroImagePreview').attr('src', '');
+        $('#heroImageUploadModal').modal('show');
+    }
+
+    $(document).on('change', '#heroImageFileInput', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            $('#heroImagePreview').attr('src', ev.target.result);
+            $('#heroImagePreviewContainer').show();
+        };
+        reader.readAsDataURL(file);
+    });
+
+    $(document).on('click', '#saveHeroImageBtn', async function() {
+        const fileInput = $('#heroImageFileInput')[0];
+        const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+        const sku = $('#heroImageUploadSku').val();
+
+        if (!sku) {
+            showToast('SKU is missing', 'error');
+            return;
+        }
+
+        if (!file) {
+            showToast('Please select an image file', 'error');
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            showToast('Image must be 10MB or smaller (selected: ' + (file.size / 1024 / 1024).toFixed(2) + ' MB)', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('sku', sku);
+        formData.append('image_file', file);
+
+        const saveBtn = $(this);
+        const originalHtml = saveBtn.html();
+        saveBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Uploading...');
+
+        try {
+            const response = await fetch('/hero-images-master/upload-hero-image', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showToast('Hero image uploaded successfully!', 'success');
+                $('#heroImageUploadModal').modal('hide');
+                if (table) {
+                    table.setData('/hero-images-master-data-view');
+                }
+            } else {
+                showToast(result.message || result.error || 'Failed to upload image', 'error');
+            }
+        } catch (error) {
+            console.error('Error uploading hero image:', error);
+            showToast(error.message || 'Failed to upload image', 'error');
+        } finally {
+            saveBtn.prop('disabled', false).html(originalHtml);
+        }
+    });
 
 </script>
 @endsection
