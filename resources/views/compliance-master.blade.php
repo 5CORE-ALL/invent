@@ -669,10 +669,17 @@
         }
 
         .compliance-na-badge {
-            background-color: #fde047 !important;
-            color: #422006 !important;
+            background-color: #fff !important;
+            color: #ca8a04 !important;
             font-weight: 600;
-            border: 1px solid rgba(113, 63, 18, 0.2);
+            border: none;
+        }
+
+        .compliance-nrq-badge {
+            background-color: #fff !important;
+            color: #ca8a04 !important;
+            font-weight: 600;
+            border: none;
         }
 
         .compliance-req-badge {
@@ -1094,6 +1101,8 @@
                     if (!hasDataFile) {
                         badge = '<span class="badge rounded-pill compliance-req-badge">REQ</span>';
                     }
+                } else if (upper === 'NRQ') {
+                    badge = '<span class="badge rounded-pill compliance-nrq-badge">NRQ</span>';
                 } else if (upper === 'N/A' || v === '') {
                     badge = '<span class="badge rounded-pill compliance-na-badge">N/A</span>';
                 } else {
@@ -1964,7 +1973,7 @@
                 let logoMissingCount = 0;
                 let graphMissingCount = 0;
 
-                tableData.forEach(item => {
+                filteredData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
@@ -2088,6 +2097,7 @@
                     return true;
                 });
                 renderTable(filteredData);
+                updateCounts();
             }
 
             // Setup search functionality
