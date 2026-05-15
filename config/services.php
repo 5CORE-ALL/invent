@@ -225,6 +225,30 @@ return [
         'aws_secret_key' => env('AWS_SECRET_ACCESS_KEY'),
     ],
 
+    // Dedicated SP-API "B2" credentials used ONLY by the Hero Images Master
+    // push. Keeping these separate from `amazon_sp` means rotating credentials
+    // for one feature does not break the other (e.g. Title Master push).
+    // Each SPAPIB2_* env var falls back to its SPAPI_* counterpart when empty,
+    // so this block works even if the operator forgets to set the new keys.
+    'amazon_sp_b2' => [
+        'client_id' => env('SPAPIB2_CLIENT_ID', env('SPAPI_CLIENT_ID')),
+        'client_secret' => env('SPAPIB2_CLIENT_SECRET', env('SPAPI_CLIENT_SECRET')),
+        'refresh_token' => env('SPAPIB2_REFRESH_TOKEN', env('SPAPI_REFRESH_TOKEN')),
+        'region' => env('SPAPIB2_REGION', env('SPAPI_REGION', 'us-east-1')),
+        'marketplace_id' => env('SPAPIB2_MARKETPLACE_ID', env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER')),
+        'endpoint' => env('SPAPIB2_ENDPOINT', env('SPAPI_ENDPOINT', 'https://sellingpartnerapi-na.amazon.com')),
+        'seller_id' => env('AMAZONB2_SELLER_ID', env('AMAZON_SELLER_ID')),
+    ],
+
+    // Public HTTPS host used to serve uploaded hero images to Amazon SP-API
+    // (Amazon needs publicly reachable HTTPS URLs). Falls back to REVERB image
+    // host (already configured) and finally APP_URL. Useful for local dev:
+    // set HERO_PUBLIC_BASE_URL=https://your-tunnel.ngrok.app to push without
+    // touching APP_URL.
+    'hero_images' => [
+        'public_base_url' => env('HERO_PUBLIC_BASE_URL', env('REVERB_SKU_IMAGE_PUBLIC_BASE_URL')),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Amazon Advertising API
@@ -504,12 +528,19 @@ return [
         'key' => \App\Support\OpenAiRequest::normalizeApiKey(env('OPENAI_API_KEY')),
         'packing_vision_model' => env('OPENAI_PACKING_VISION_MODEL', 'gpt-4o-mini'),
         'title_master_stack_model' => env('OPENAI_TITLE_MASTER_STACK_MODEL', 'gpt-4o-mini'),
+        'hero_vision_model' => env('OPENAI_HERO_VISION_MODEL', 'gpt-4o-mini'),
         'organization' => ($o = env('OPENAI_ORGANIZATION')) === null || $o === '' ? null : trim($o),
         'project' => ($p = env('OPENAI_PROJECT')) === null || $p === '' ? null : trim($p),
     ],
 
     'anthropic' => [
-        'key' => env('ANTHROPIC_API_KEY'),
+        'key' => env('ANTHROPIC_API_KEY', env('CLAUDE_API_KEY')),
+        'model' => env('ANTHROPIC_MODEL', 'claude-3-haiku-20240307'),
+        // Default to Sonnet 4 because that's the model the rest of the app is
+        // currently authorised for (see ProductMasterController stack drafts).
+        // If your key only has Haiku access, set ANTHROPIC_HERO_VISION_MODEL=claude-3-haiku-20240307.
+        'hero_vision_model' => env('ANTHROPIC_HERO_VISION_MODEL', 'claude-sonnet-4-20250514'),
+        'version' => env('ANTHROPIC_API_VERSION', '2023-06-01'),
     ],
 
     'claude' => [

@@ -89,6 +89,72 @@
             box-shadow: 0 0 4px rgba(40, 167, 69, 0.6);
         }
 
+        .ai-score-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+            height: 24px;
+            padding: 0 6px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            cursor: pointer;
+            border: none;
+            line-height: 1;
+        }
+        .ai-score-badge.s-pass { background-color: #28a745; }
+        .ai-score-badge.s-warn { background-color: #ffc107; color: #212529; }
+        .ai-score-badge.s-fail { background-color: #dc3545; }
+        .ai-score-badge:hover { filter: brightness(1.08); }
+
+        #heroAnalysisBody .check-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px 12px;
+            background: #f9fafb;
+            height: 100%;
+        }
+        #heroAnalysisBody .check-card .label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: #6b7280;
+            font-weight: 600;
+        }
+        #heroAnalysisBody .check-card .value {
+            font-size: 13px;
+            color: #111827;
+            margin-top: 2px;
+        }
+        #heroAnalysisBody .pill {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        #heroAnalysisBody .pill-pass { background: #d1fae5; color: #065f46; }
+        #heroAnalysisBody .pill-fail { background: #fee2e2; color: #991b1b; }
+        #heroAnalysisBody .score-tile {
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 10px 12px;
+            text-align: center;
+            background: #fff;
+        }
+        #heroAnalysisBody .score-tile .num {
+            font-size: 22px;
+            font-weight: 700;
+        }
+        #heroAnalysisBody .score-tile .lbl {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: #6b7280;
+        }
+
         .toast-container {
             position: fixed;
             top: 20px;
@@ -331,6 +397,33 @@
                     <button type="button" class="btn btn-primary" id="saveDBLinkBtn">
                         <i class="fas fa-save me-2"></i>Save
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hero AI Analysis Modal -->
+    <div class="modal fade" id="heroAnalysisModal" tabindex="-1" aria-labelledby="heroAnalysisModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                    <h5 class="modal-title" id="heroAnalysisModalLabel">
+                        <i class="fas fa-robot me-2"></i>AI Hero Image Analysis — <span id="heroAnalysisSkuLabel"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="heroAnalysisBody">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                        <p class="mt-2 text-muted">Loading analysis…</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <small class="text-muted me-auto" id="heroAnalysisMeta"></small>
+                    <button type="button" class="btn btn-outline-primary" id="heroAnalysisRerunBtn">
+                        <i class="fas fa-sync-alt me-1"></i>Re-run analysis
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -658,28 +751,201 @@
                             <i class="fas fa-plus"></i>
                         </button>`;
                     }
+                },
+                {
+                    title: "CTR",
+                    field: "hero_ctr",
+                    width: 70,
+                    hozAlign: "center",
+                    sorter: function(a, b, aRow, bRow) {
+                        const sa = extractCtrScore(aRow.getData());
+                        const sb = extractCtrScore(bRow.getData());
+                        return (sa === null ? -1 : sa) - (sb === null ? -1 : sb);
+                    },
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+                        const sku = data.SKU || '';
+                        const escapedSku = String(sku).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        const score = extractCtrScore(data);
+
+                        if (score === null) {
+                            if (!data.hero_image) {
+                                return `<span class="text-muted" title="Upload a hero image first" style="font-size: 11px;">—</span>`;
+                            }
+                            if (!data.hero_analysis) {
+                                return `<span class="text-muted" title="Run AI analysis to get a CTR score" style="font-size: 11px;">—</span>`;
+                            }
+                            return `<span class="text-muted" style="font-size: 11px;">—</span>`;
+                        }
+
+                        let cls = 's-warn';
+                        if (score >= 8) cls = 's-pass';
+                        else if (score < 6) cls = 's-fail';
+
+                        return `<button class="ai-score-badge ${cls}" onclick="viewHeroAnalysis('${escapedSku}')" title="CTR potential — click for full analysis">${score}/10</button>`;
+                    }
+                },
+                {
+                    title: "AI",
+                    field: "hero_analysis",
+                    width: 90,
+                    hozAlign: "center",
+                    sorter: function(a, b) {
+                        const sa = (a && a.overall_score) ? parseFloat(a.overall_score) : -1;
+                        const sb = (b && b.overall_score) ? parseFloat(b.overall_score) : -1;
+                        return sa - sb;
+                    },
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+                        const sku = data.SKU || '';
+                        const escapedSku = String(sku).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        const heroImage = data.hero_image;
+                        const analysis = cell.getValue();
+
+                        if (!heroImage) {
+                            return `<span class="text-muted" title="Upload a hero image first" style="font-size: 11px;">—</span>`;
+                        }
+
+                        if (analysis && typeof analysis === 'object') {
+                            const score = (analysis.overall_score !== undefined && analysis.overall_score !== null)
+                                ? Number(analysis.overall_score) : null;
+                            const passFail = String(analysis.pass_fail || '').toUpperCase();
+                            let cls = 's-warn';
+                            if (passFail === 'PASS' || (score !== null && score >= 8)) cls = 's-pass';
+                            else if (passFail === 'FAIL' || (score !== null && score < 6)) cls = 's-fail';
+                            const label = score !== null ? `${score}/10` : (passFail || 'AI');
+                            return `
+                                <div style="display: inline-flex; align-items: center; gap: 5px;">
+                                    <button class="ai-score-badge ${cls}" onclick="viewHeroAnalysis('${escapedSku}')" title="View AI analysis">${label}</button>
+                                    <button class="btn btn-sm btn-link p-0" onclick="analyzeHero('${escapedSku}', true)" title="Re-run analysis" style="color: #6c757d;">
+                                        <i class="fas fa-sync-alt" style="font-size: 11px;"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }
+
+                        return `<button class="btn btn-sm btn-outline-primary" onclick="analyzeHero('${escapedSku}', false)" title="Analyze with AI" style="font-size: 11px; padding: 2px 8px;">
+                            <i class="fas fa-robot"></i> AI
+                        </button>`;
+                    }
+                },
+                {
+                    title: "Push",
+                    field: "hero_pushed_at",
+                    width: 90,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+                        const sku = data.SKU || '';
+                        const escapedSku = String(sku).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                        if (!data.hero_image) {
+                            return `<span class="text-muted" title="Upload a hero image first" style="font-size: 11px;">—</span>`;
+                        }
+
+                        const aiPass = (data.hero_analysis && String(data.hero_analysis.pass_fail || '').toUpperCase() === 'PASS');
+                        const statusGreen = (data.status_toggle === 'green');
+                        const approved = aiPass || statusGreen;
+
+                        const pushedAt = data.hero_pushed_at;
+                        const pushStatus = data.hero_push_status;
+                        const site = data.hero_pushed_to || 'amazon';
+
+                        // Already successfully pushed → show success state + re-push action
+                        if (pushedAt && pushStatus === 'success') {
+                            const when = new Date(pushedAt).toLocaleString();
+                            return `
+                                <div style="display: inline-flex; align-items: center; gap: 5px;">
+                                    <button class="btn btn-sm btn-success" style="font-size: 11px; padding: 2px 8px;"
+                                            onclick="pushHero('${escapedSku}', '${site}', false)"
+                                            title="Last pushed to ${escapeHtml(site)} on ${escapeHtml(when)} — click to push again">
+                                        <i class="fas fa-check"></i> Pushed
+                                    </button>
+                                </div>
+                            `;
+                        }
+
+                        // Last attempt failed → red retry button
+                        if (pushStatus === 'failed') {
+                            return `<button class="btn btn-sm btn-danger" style="font-size: 11px; padding: 2px 8px;"
+                                            onclick="pushHero('${escapedSku}', 'amazon', false)"
+                                            title="Last push failed — click to retry">
+                                        <i class="fas fa-exclamation-triangle"></i> Retry
+                                    </button>`;
+                        }
+
+                        // Never pushed: button color reflects approval state
+                        const cls = approved ? 'btn-primary' : 'btn-outline-secondary';
+                        const titleAttr = approved
+                            ? 'Push hero image to Amazon as the main product image'
+                            : 'Not approved (no PASS / status not green) — click to push anyway';
+                        return `<button class="btn btn-sm ${cls}" style="font-size: 11px; padding: 2px 8px;"
+                                        onclick="pushHero('${escapedSku}', 'amazon', ${approved ? 'false' : 'true'})"
+                                        title="${titleAttr}">
+                                    <i class="fab fa-amazon"></i> Push
+                                </button>`;
+                    }
                 }
             ]
         });
 
-        // General Search
-        $('#general-search').on('keyup', function() {
-            table.setFilter([
-                {field: "SKU", type: "like", value: this.value},
-                {field: "Parent", type: "like", value: this.value},
-                {field: "status", type: "like", value: this.value}
-            ]);
-        });
+        // ---- Search ----
+        // Single combined filter:
+        //   - General box: OR across many fields (any field contains the text)
+        //   - SKU box:     AND, must contain in SKU
+        //   - LQS box:     AND, LQS as string contains the text
+        // Typing in any box re-evaluates all three.
+        function applyHeroSearch() {
+            const general = ($('#general-search').val() || '').trim().toLowerCase();
+            const skuTerm = ($('#sku-search').val() || '').trim().toLowerCase();
+            const lqsTerm = ($('#lqs-search').val() || '').trim().toLowerCase();
 
-        // SKU Search
-        $('#sku-search').on('keyup', function() {
-            table.setFilter("SKU", "like", this.value);
-        });
+            // Nothing entered? Clear all filters.
+            if (!general && !skuTerm && !lqsTerm) {
+                table.clearFilter(true);
+                return;
+            }
 
-        // LQS Search
-        $('#lqs-search').on('keyup', function() {
-            table.setFilter("lqs", "like", this.value);
-        });
+            const generalFields = [
+                'SKU', 'Parent', 'status', 'db', 'DB', 'hero_image',
+                'buyer_link', 'seller_link', 'shopify_inv', 'lqs'
+            ];
+
+            table.setFilter(function(rowData) {
+                if (skuTerm) {
+                    const sku = String(rowData.SKU || '').toLowerCase();
+                    if (sku.indexOf(skuTerm) === -1) return false;
+                }
+                if (lqsTerm) {
+                    const lqs = String(rowData.lqs || '').toLowerCase();
+                    if (lqs.indexOf(lqsTerm) === -1) return false;
+                }
+                if (general) {
+                    let hit = false;
+                    for (let i = 0; i < generalFields.length; i++) {
+                        const v = rowData[generalFields[i]];
+                        if (v == null) continue;
+                        if (String(v).toLowerCase().indexOf(general) !== -1) {
+                            hit = true;
+                            break;
+                        }
+                    }
+                    // Also peek inside hero_analysis (verdict + pass/fail) so users
+                    // can search "fail" or part of the AI verdict text.
+                    if (!hit && rowData.hero_analysis && typeof rowData.hero_analysis === 'object') {
+                        const verdict = String(rowData.hero_analysis.final_verdict || '').toLowerCase();
+                        const pf = String(rowData.hero_analysis.pass_fail || '').toLowerCase();
+                        if (verdict.indexOf(general) !== -1 || pf.indexOf(general) !== -1) {
+                            hit = true;
+                        }
+                    }
+                    if (!hit) return false;
+                }
+                return true;
+            });
+        }
+
+        $('#general-search, #sku-search, #lqs-search').on('input', applyHeroSearch);
 
         // Update summary
         function updateSummary() {
@@ -1161,6 +1427,268 @@
         };
         reader.readAsDataURL(file);
     });
+
+    // ---- Hero AI Analysis ----
+    let currentHeroAnalysisSku = null;
+
+    function escapeHtml(text) {
+        if (text == null) return '';
+        const d = document.createElement('div');
+        d.textContent = String(text);
+        return d.innerHTML;
+    }
+
+    // Pull CTR score out of the hero_analysis blob, tolerating both numeric
+    // and "8/10" string formats that the model occasionally returns.
+    function extractCtrScore(rowData) {
+        if (!rowData) return null;
+        const a = rowData.hero_analysis;
+        if (!a || typeof a !== 'object') return null;
+        const raw = a.ctr_score;
+        if (raw === null || raw === undefined || raw === '') return null;
+        const num = parseFloat(String(raw).split('/')[0]);
+        return isNaN(num) ? null : num;
+    }
+
+    function renderHeroAnalysis(analysis, meta) {
+        const body = document.getElementById('heroAnalysisBody');
+        if (!body) return;
+
+        if (!analysis || typeof analysis !== 'object') {
+            body.innerHTML = `<div class="alert alert-warning mb-0">No analysis available.</div>`;
+            return;
+        }
+
+        const passFail = String(analysis.pass_fail || '').toUpperCase();
+        const compliance = String(analysis.marketplace_compliance || '').toUpperCase();
+        const overall = (analysis.overall_score !== undefined && analysis.overall_score !== null)
+            ? Number(analysis.overall_score) : '—';
+        const ctr = (analysis.ctr_score !== undefined && analysis.ctr_score !== null)
+            ? Number(analysis.ctr_score) : '—';
+        const conv = (analysis.conversion_score !== undefined && analysis.conversion_score !== null)
+            ? Number(analysis.conversion_score) : '—';
+
+        function pill(value, type) {
+            const v = String(value || '—').toUpperCase();
+            const cls = (type === 'pass' || v === 'PASS') ? 'pill pill-pass'
+                       : (type === 'fail' || v === 'FAIL') ? 'pill pill-fail'
+                       : 'pill';
+            return `<span class="${cls}">${escapeHtml(v)}</span>`;
+        }
+
+        function listBlock(title, items, color) {
+            const arr = Array.isArray(items) ? items : (items ? [items] : []);
+            if (!arr.length) return '';
+            const lis = arr.map(i => `<li>${escapeHtml(i)}</li>`).join('');
+            return `
+                <div class="card mb-3 border-${color}">
+                    <div class="card-header bg-${color} text-white py-2"><strong>${escapeHtml(title)}</strong></div>
+                    <div class="card-body py-2"><ul class="mb-0 ps-3">${lis}</ul></div>
+                </div>
+            `;
+        }
+
+        const checks = analysis.detailed_checks || {};
+        const checkKeys = ['background','sharpness','cropping','lighting','mobile_visibility','professionalism'];
+        const checksHtml = checkKeys.map(k => {
+            if (!checks[k]) return '';
+            return `
+                <div class="col-md-4 mb-3">
+                    <div class="check-card">
+                        <div class="label">${escapeHtml(k.replace(/_/g, ' '))}</div>
+                        <div class="value">${escapeHtml(checks[k])}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const verdict = analysis.final_verdict
+            ? `<div class="alert alert-info"><strong>Verdict:</strong> ${escapeHtml(analysis.final_verdict)}</div>`
+            : '';
+
+        body.innerHTML = `
+            <div class="row g-3 mb-3">
+                <div class="col-md-3"><div class="score-tile"><div class="num">${escapeHtml(overall)}</div><div class="lbl">Overall / 10</div></div></div>
+                <div class="col-md-3"><div class="score-tile"><div class="num">${escapeHtml(ctr)}</div><div class="lbl">CTR / 10</div></div></div>
+                <div class="col-md-3"><div class="score-tile"><div class="num">${escapeHtml(conv)}</div><div class="lbl">Conversion / 10</div></div></div>
+                <div class="col-md-3">
+                    <div class="score-tile">
+                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+                            ${pill(passFail || '—')}
+                            <small class="text-muted">Marketplace: ${pill(compliance || '—')}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            ${verdict}
+
+            ${listBlock('Critical Issues', analysis.critical_issues, 'danger')}
+            ${listBlock('Improvements', analysis.improvements, 'warning')}
+            ${listBlock('Missing Angles / Hidden Parts', analysis.missing_angles, 'secondary')}
+            ${listBlock('Possible AI / Fake Indicators', analysis.fake_or_ai_flags, 'dark')}
+
+            <h6 class="mt-3 mb-2">Detailed Checks</h6>
+            <div class="row">${checksHtml || '<div class="col-12 text-muted">No detailed checks returned.</div>'}</div>
+        `;
+
+        const metaEl = document.getElementById('heroAnalysisMeta');
+        if (metaEl) {
+            const parts = [];
+            if (meta && meta.analyzed_at) parts.push('Analyzed: ' + new Date(meta.analyzed_at).toLocaleString());
+            if (meta && meta.model) parts.push('Model: ' + meta.model);
+            metaEl.textContent = parts.join(' · ');
+        }
+    }
+
+    async function analyzeHero(sku, force) {
+        currentHeroAnalysisSku = sku;
+        $('#heroAnalysisSkuLabel').text(sku);
+        $('#heroAnalysisMeta').text('');
+        $('#heroAnalysisBody').html(`
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-3 text-muted">Analyzing hero image with AI… this can take 10–30 seconds.</p>
+            </div>
+        `);
+        const modal = new bootstrap.Modal(document.getElementById('heroAnalysisModal'));
+        modal.show();
+
+        try {
+            const response = await fetch('/hero-images-master/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ sku: sku, force: !!force })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                renderHeroAnalysis(result.analysis, {
+                    analyzed_at: result.analyzed_at,
+                    model: result.model
+                });
+                showToast('Hero image analyzed', 'success');
+                if (table) table.setData('/hero-images-master-data-view');
+            } else {
+                $('#heroAnalysisBody').html(`
+                    <div class="alert alert-danger mb-0">
+                        <strong>Analysis failed:</strong> ${escapeHtml(result.message || 'Unknown error')}
+                    </div>
+                `);
+                showToast(result.message || 'Failed to analyze image', 'error');
+            }
+        } catch (error) {
+            console.error('Hero analyze error:', error);
+            $('#heroAnalysisBody').html(`
+                <div class="alert alert-danger mb-0">
+                    <strong>Network error:</strong> ${escapeHtml(error.message || 'Request failed')}
+                </div>
+            `);
+            showToast(error.message || 'Failed to analyze image', 'error');
+        }
+    }
+
+    function viewHeroAnalysis(sku) {
+        currentHeroAnalysisSku = sku;
+        $('#heroAnalysisSkuLabel').text(sku);
+
+        const row = (tableData || []).find(r => r && r.SKU === sku);
+        if (!row || !row.hero_analysis) {
+            // Nothing cached — kick off a fresh analysis
+            analyzeHero(sku, false);
+            return;
+        }
+
+        renderHeroAnalysis(row.hero_analysis, {
+            analyzed_at: row.hero_analysis_at,
+            model: row.hero_analysis_model
+        });
+
+        const modal = new bootstrap.Modal(document.getElementById('heroAnalysisModal'));
+        modal.show();
+    }
+
+    $(document).on('click', '#heroAnalysisRerunBtn', function() {
+        if (currentHeroAnalysisSku) {
+            analyzeHero(currentHeroAnalysisSku, true);
+        }
+    });
+
+    // ---- Push Hero Image to Marketplace ----
+    async function pushHero(sku, site, force) {
+        site = site || 'amazon';
+        const siteLabel = site.charAt(0).toUpperCase() + site.slice(1);
+
+        let confirmMsg = `Push the hero image for "${sku}" to ${siteLabel} as the MAIN product image?\n\nThis will replace the current main image on the live listing.`;
+        if (force) {
+            confirmMsg += `\n\nNOTE: This SKU is not marked approved (no AI PASS and status is not green). Push anyway?`;
+        }
+        if (!confirm(confirmMsg)) return;
+
+        const cellsForSku = (table && table.getRows() || [])
+            .filter(r => (r.getData() || {}).SKU === sku)
+            .map(r => r.getCell('hero_pushed_at'))
+            .filter(Boolean);
+
+        const setBtnSpinner = (busy) => {
+            cellsForSku.forEach(cell => {
+                const el = cell.getElement().querySelector('button');
+                if (!el) return;
+                if (busy) {
+                    el.dataset.origHtml = el.innerHTML;
+                    el.disabled = true;
+                    el.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                } else if (el.dataset.origHtml) {
+                    el.innerHTML = el.dataset.origHtml;
+                    el.disabled = false;
+                }
+            });
+        };
+
+        setBtnSpinner(true);
+
+        try {
+            const response = await fetch('/hero-images-master/push', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ sku: sku, site: site, force: !!force })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showToast(`Hero pushed to ${siteLabel}: ${result.message || 'Success'}`, 'success');
+            } else if (result && result.requires_force) {
+                // Approval gate hit — let the user push anyway
+                if (confirm((result.message || 'Not approved') + '\n\nPush anyway?')) {
+                    setBtnSpinner(false);
+                    return pushHero(sku, site, true);
+                }
+                showToast('Push cancelled', 'info');
+            } else {
+                showToast(result.message || `Failed to push to ${siteLabel}`, 'error');
+            }
+        } catch (error) {
+            console.error('Push hero error:', error);
+            showToast(error.message || `Failed to push to ${siteLabel}`, 'error');
+        } finally {
+            setBtnSpinner(false);
+            if (table) {
+                table.setData('/hero-images-master-data-view');
+            }
+        }
+    }
 
     $(document).on('click', '#saveHeroImageBtn', async function() {
         const fileInput = $('#heroImageFileInput')[0];

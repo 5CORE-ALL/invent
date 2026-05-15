@@ -3344,6 +3344,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/hero-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'getHeroImagesMasterData'])->name('hero.images.master.data');
     Route::post('/hero-images-master/update-db-link', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'updateDBLink'])->name('hero.images.master.update.db');
     Route::post('/hero-images-master/upload-hero-image', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'uploadHeroImage'])->name('hero.images.master.upload.hero');
+    Route::post('/hero-images-master/analyze', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'analyzeHeroImage'])->name('hero.images.master.analyze');
+    Route::post('/hero-images-master/push', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'pushHeroImage'])->name('hero.images.master.push');
     Route::get('/trust-images-master', [\App\Http\Controllers\PurchaseMaster\TrustImageController::class, 'trustImagesMaster'])->name('trust.images.master');
     Route::get('/trust-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\TrustImageController::class, 'getTrustImagesMasterData'])->name('trust.images.master.data');
     Route::get('/ugc-images-master', [\App\Http\Controllers\PurchaseMaster\UGCImageController::class, 'ugcImagesMaster'])->name('ugc.images.master');
