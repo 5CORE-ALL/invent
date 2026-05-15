@@ -1831,12 +1831,15 @@
                 visibleRows.push(row);
             });
 
+            // updateZoneCbmBadges() must run before calculateSupplierTotals()
+            // because the supplier-totals helper now reads the rendered badge
+            // values to keep the Total CBM pill in sync with the 3 badges.
+            if (typeof updateZoneCbmBadges === 'function') {
+                updateZoneCbmBadges();
+            }
             calculateSupplierTotals(visibleRows);
             if (typeof updateFollowSupplierCount === 'function') {
                 updateFollowSupplierCount();
-            }
-            if (typeof updateZoneCbmBadges === 'function') {
-                updateZoneCbmBadges();
             }
         }
 
@@ -2726,7 +2729,6 @@
 
         // Initialize counts on page load
         setTimeout(() => {
-            calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderItems();
             updateFollowSupplierCount();
@@ -2777,7 +2779,6 @@
                     if (typeof window.filterByR2SStage === 'function') {
                         window.filterByR2SStage();
                     }
-                    calculateTotalCBM();
                     calculateTotalAmount();
                     calculateTotalOrderItems();
                     updateFollowSupplierCount();
@@ -2803,7 +2804,6 @@
                 if (wrapper) wrapper.style.display = 'none';
                 
                 if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
-                    calculateTotalCBM();
                     calculateTotalAmount();
                     calculateTotalOrderItems();
                     updateFollowSupplierCount();
@@ -2865,7 +2865,6 @@
                     document.getElementById('pending-amount').textContent = totalPending.toFixed(2);
                 }
 
-                calculateTotalCBM();
                 calculateTotalAmount();
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
@@ -2941,24 +2940,23 @@
 
         function calculateSupplierTotals(visibleRows) {
             let totalAmount = 0;
-            let totalCBM = 0;
 
             visibleRows.forEach(row => {
                 const amountCell = row.querySelector('.total-value');
                 const amountValue = parseFloat(String(amountCell?.textContent || '').trim().replace(/,/g, ''));
                 if (!isNaN(amountValue)) totalAmount += amountValue;
-
-                const cbmCell = row.querySelector('[data-column="19"]');
-                const cbmValue = parseFloat(String(cbmCell?.textContent || '').trim().replace(/,/g, ''));
-                if (!isNaN(cbmValue)) totalCBM += cbmValue;
             });
 
             const totalAmountEl = document.getElementById('total-amount');
-            const totalCbmEl = document.getElementById('total-cbm');
             const totalItemsEl = document.getElementById('total-order-items');
             if (totalAmountEl) totalAmountEl.textContent = '$' + totalAmount.toFixed(0);
-            if (totalCbmEl) totalCbmEl.textContent = totalCBM.toFixed(0);
             if (totalItemsEl) totalItemsEl.textContent = String(visibleRows.length);
+
+            // Total CBM is always the sum of the three zone badges, regardless
+            // of which supplier/rows are visible. Defer to the global helper.
+            if (typeof calculateTotalCBM === 'function') {
+                calculateTotalCBM();
+            }
         }
 
         // Filter to show only R2S stage on page load
@@ -2989,29 +2987,27 @@
 <!-- Add MIP-style filters and counts JavaScript -->
 <script>
     // Global functions for R2S stage (adapted from MIP page)
+    // Total CBM is literally the sum of the three zone badges shown above the
+    // grid (GHZ + Ningbo + Tianjin), so the pill can never disagree with the
+    // badges. updateZoneCbmBadges() is always called alongside this function,
+    // so the badge values are guaranteed to be up to date when we read them.
     function calculateTotalCBM() {
+        const badgeSelectors = [
+            '.r2s-zone-cbm-badge.r2s-zone-cbm-badge--ghz',
+            '.r2s-zone-cbm-badge.r2s-zone-cbm-badge--ningbo',
+            '.r2s-zone-cbm-badge.r2s-zone-cbm-badge--tianjin',
+        ];
         let totalCBM = 0;
-        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
-            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-            const stageSelect = row.querySelector('.editable-select-stage');
-            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-            const rowStage = rowStageSelect || rowStageAttr;
-            if (rowStage !== 'r2s') return;
-            if (row.style.display !== "none") {
-                // Total CBM is stored in td[data-column="19"] which is qty * CBM
-                const totalCbmCell = row.querySelector('td[data-column="19"]');
-                if (totalCbmCell) {
-                    const totalCbmText = totalCbmCell.textContent.trim();
-                    // Remove commas and parse
-                    if (totalCbmText !== '' && totalCbmText !== 'N/A') {
-                        const value = parseFloat(totalCbmText.replace(/,/g, ''));
-                        if (!isNaN(value)) totalCBM += value;
-                    }
-                }
-            }
+        badgeSelectors.forEach(sel => {
+            const badge = document.querySelector(sel);
+            if (!badge) return;
+            const valueSpan = badge.querySelector('.fw-bold');
+            if (!valueSpan) return;
+            const value = parseFloat(String(valueSpan.textContent || '').trim().replace(/,/g, ''));
+            if (!isNaN(value)) totalCBM += value;
         });
         const totalCbmEl = document.getElementById('total-cbm');
-        if (totalCbmEl) totalCbmEl.textContent = totalCBM.toFixed(0);
+        if (totalCbmEl) totalCbmEl.textContent = totalCBM.toFixed(2);
     }
 
     function updateZoneCbmBadges() {
@@ -3066,6 +3062,9 @@
                 }
             }
         });
+
+        // Total CBM pill = sum of the three zone badges (always consistent)
+        calculateTotalCBM();
     }
 
     function calculateTotalAmount() {
@@ -3279,7 +3278,6 @@
 
             // Update counts after a small delay to ensure DOM is updated
             setTimeout(() => {
-                calculateTotalCBM();
                 calculateTotalAmount();
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
@@ -3308,7 +3306,6 @@
             
             // Ensure counts are updated after a small delay
             setTimeout(() => {
-                calculateTotalCBM();
                 calculateTotalAmount();
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
@@ -3348,7 +3345,6 @@
                 }
                 const title = document.getElementById("current-supplier");
                 if (title) title.textContent = "-";
-                calculateTotalCBM();
                 calculateTotalAmount();
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
@@ -3368,7 +3364,6 @@
                     
                     // Ensure counts are updated after a small delay
                     setTimeout(() => {
-                        calculateTotalCBM();
                         calculateTotalAmount();
                         calculateTotalOrderItems();
                         updateFollowSupplierCount();
@@ -3414,7 +3409,6 @@
 
         // Initialize counts on page load
         setTimeout(() => {
-            calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderItems();
             updateFollowSupplierCount();
