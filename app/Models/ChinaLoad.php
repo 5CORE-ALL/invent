@@ -13,6 +13,6 @@ class ChinaLoad extends Model
 
     protected $fillable = [
         'container_sl_no', 'load', 'list_of_goods', 'shut_out',
-        'obl', 'mbl', 'container_no', 'item', 'cha_china', 'consignee'
+        'obl', 'mbl', 'container_no', 'item', 'cha_china', 'forwarder', 'consignee'
     ];
 }

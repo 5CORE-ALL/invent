@@ -309,6 +309,27 @@
                         `;
                     },
                 },
+                {
+                    title: "Forwarder",
+                    field: "forwarder",
+                    headerSort: false,
+                    formatter: function (cell) {
+                        const value = cell.getValue();
+                        const allSuppliers = @json($allSuppliers);
+                        let options = '<option value="">Select</option>';
+                        allSuppliers.forEach(function(s) {
+                            const selected = value === s.name ? 'selected' : '';
+                            options += `<option value="${s.name}" ${selected}>${s.name}</option>`;
+                        });
+                        return `
+                            <select class="form-select form-select-sm auto-save"
+                                data-column="forwarder"
+                                style="min-width: 120px; background-color: #e0eaff; color: black;">
+                                ${options}
+                            </select>
+                        `;
+                    },
+                },
                 { 
                     title: "Consignee",
                      field: "consignee",

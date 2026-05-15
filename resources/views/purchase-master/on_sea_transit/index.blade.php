@@ -443,6 +443,20 @@ document.addEventListener('DOMContentLoaded', function () {
         height: "550px",
         rowFormatter: function (row) {
             const data = row.getData();
+
+            // Check if ETA Port date has arrived or passed → highlight entire row red
+            if (data.eta_port && data.eta_port !== '' && data.eta_port !== 'dd/mm/yyyy') {
+                const etaDate = new Date(data.eta_port);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                etaDate.setHours(0, 0, 0, 0);
+                if (etaDate <= today) {
+                    row.getElement().style.backgroundColor = '#fde8ea';
+                    row.getElement().style.color = '#b02030';
+                    return;
+                }
+            }
+
             if (data.status === "On Sea") {
                 row.getElement().style.backgroundColor = "#e2f0cb";
                 row.getElement().style.opacity = "0.7";
@@ -1091,9 +1105,9 @@ document.addEventListener('DOMContentLoaded', function () {
     
     // Handle clicking on status dots to show dropdown
     document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('fa-circle') && e.target.closest('.status-container')) {
+        if ((e.target.classList.contains('fa-circle') || e.target.classList.contains('fa-check-circle')) && e.target.closest('.status-container')) {
             const container = e.target.closest('.status-container');
-            const icon = container.querySelector('.fa-circle');
+            const icon = container.querySelector('.fa-circle, .fa-check-circle');
             const select = container.querySelector('.status-select');
             
             if (select) {
@@ -1474,6 +1488,21 @@ document.addEventListener('DOMContentLoaded', function () {
                                 bgColor = isOverdue ? '#dc3545' : 'transparent';
                                 borderRadius = isOverdue ? '4px' : '0';
                                 fontWeight = isOverdue ? '700' : '600';
+
+                                // Also update the entire row background
+                                if (isOverdue) {
+                                    rowElement.style.backgroundColor = '#fde8ea';
+                                    rowElement.style.color = '#b02030';
+                                } else {
+                                    rowElement.style.backgroundColor = '';
+                                    rowElement.style.color = '';
+                                    // Re-apply "On Sea" green if applicable
+                                    const currentData = table.getRow(rowElement).getData();
+                                    if (currentData.status === 'On Sea') {
+                                        rowElement.style.backgroundColor = '#e2f0cb';
+                                        rowElement.style.opacity = '0.7';
+                                    }
+                                }
                             }
                             
                             const dateHtml = `
