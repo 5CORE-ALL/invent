@@ -403,13 +403,22 @@
                             <div class="form-text">Add up to 4 related links (will appear as red link icons)</div>
                         </div>
 
-                        <!-- Screenshot (Snippet) — multi-select -->
+                        <!-- Screenshot (Snippet) — multi-select + paste-from-clipboard -->
                         <div class="mb-3">
                             <label for="auditScreenshot" class="form-label fw-bold">
                                 <i class="fas fa-camera text-primary me-1"></i>Screenshot (Snippet)
                             </label>
                             <input type="file" class="form-control" id="auditScreenshot" name="screenshot[]" accept="image/*" multiple>
                             <div class="form-text">Upload one or more screenshots / image snippets (max 5MB each)</div>
+
+                            <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="pasteScreenshotBtn" title="Paste image from clipboard (Cmd/Ctrl+V also works anywhere in this dialog)">
+                                    <i class="fas fa-paste me-1"></i> Paste from Clipboard
+                                </button>
+                                <small class="text-muted">Take a screenshot, then click here (or press <kbd>Ctrl/Cmd</kbd>+<kbd>V</kbd>).</small>
+                                <span id="pasteStatus" class="badge bg-success" style="display: none;"></span>
+                            </div>
+
                             <div id="screenshotPreview" class="mt-2 d-flex flex-wrap gap-2"></div>
                         </div>
                         
@@ -1446,7 +1455,7 @@
                 if (!path) return;
                 const url = path.startsWith('http') ? path : ('/storage/' + path.replace(/^\/+/, ''));
                 $preview.append(`
-                    <div class="position-relative" title="${path}">
+                    <div class="position-relative saved-thumb" title="${path}">
                         <a href="${url}" target="_blank">
                             <img src="${url}" class="img-thumbnail" style="width: 110px; height: 110px; object-fit: cover;">
                         </a>
@@ -1635,16 +1644,27 @@
 
     // Screenshot preview (supports multi-select)
     $('#auditScreenshot').on('change', function(e) {
-        const files = e.target.files || [];
-        const $preview = $('#screenshotPreview').empty();
+        renderScreenshotPreview(e.target.files);
+    });
 
-        if (!files.length) return;
+    // Render thumbnails for the current FileList in the file input.
+    // Also re-appends any "Saved" thumbnails (existing screenshots loaded
+    // when the modal was opened) by leaving them in place if no new files
+    // are selected.
+    function renderScreenshotPreview(files) {
+        const $preview = $('#screenshotPreview');
+
+        // Keep already-rendered "Saved" thumbnails (they have the .saved-thumb class)
+        // and only clear newly-added previews when the file list is replaced.
+        $preview.find('.new-thumb').remove();
+
+        if (!files || !files.length) return;
 
         Array.from(files).forEach(file => {
             const reader = new FileReader();
             reader.onload = function(ev) {
                 $preview.append(`
-                    <div class="position-relative" title="${file.name}">
+                    <div class="position-relative new-thumb" title="${file.name}">
                         <img src="${ev.target.result}" class="img-thumbnail" style="width: 110px; height: 110px; object-fit: cover;">
                         <span class="badge bg-dark position-absolute bottom-0 start-0" style="font-size: 10px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${file.name}</span>
                     </div>
@@ -1652,6 +1672,121 @@
             };
             reader.readAsDataURL(file);
         });
+    }
+
+    // === Paste-from-clipboard support for screenshots ===
+    //
+    // After the user takes a screenshot (Cmd+Shift+4 on macOS, PrintScreen on
+    // Windows, Snipping Tool, etc.) the image lives on the system clipboard.
+    // We accept it two ways:
+    //   1) The "Paste from Clipboard" button reads the clipboard via the async
+    //      Clipboard API (`navigator.clipboard.read`).
+    //   2) Pressing Cmd/Ctrl+V anywhere in the dialog fires a "paste" event,
+    //      from which we can pull image items even on browsers that disallow
+    //      the async read API without explicit user gesture / permission.
+    //
+    // Both paths funnel through addClipboardImage() so behaviour is identical.
+
+    async function readClipboardImages() {
+        if (!navigator.clipboard || !navigator.clipboard.read) {
+            throw new Error('Your browser does not support reading the clipboard. Use Ctrl/Cmd+V instead.');
+        }
+
+        // navigator.clipboard.read() may require a permission prompt the first time.
+        const items = await navigator.clipboard.read();
+        const blobs = [];
+        for (const item of items) {
+            const imageType = (item.types || []).find(t => t.startsWith('image/'));
+            if (!imageType) continue;
+            const blob = await item.getType(imageType);
+            blobs.push({ blob, type: imageType });
+        }
+        if (!blobs.length) {
+            throw new Error('No image found on the clipboard. Take a screenshot first, then click Paste.');
+        }
+        return blobs;
+    }
+
+    // Merge new clipboard-blobs into the file input, render previews, and flash status.
+    function addClipboardImage(blobsOrFiles) {
+        const fileInput = document.getElementById('auditScreenshot');
+        if (!fileInput) return;
+
+        // Build a DataTransfer to safely merge with any already-selected files.
+        const dt = new DataTransfer();
+        // Keep files the user may have already chosen via "Choose files".
+        if (fileInput.files) {
+            Array.from(fileInput.files).forEach(f => dt.items.add(f));
+        }
+
+        const stamp = Date.now();
+        let addedCount = 0;
+        blobsOrFiles.forEach((entry, idx) => {
+            // entry may be a {blob, type} pair (from Clipboard API) or a real File (from paste event).
+            let file;
+            if (entry instanceof File) {
+                file = entry;
+            } else {
+                const ext = (entry.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '');
+                file = new File([entry.blob], `clipboard_${stamp}_${idx + 1}.${ext}`, { type: entry.type });
+            }
+
+            // Pre-flight 5MB check (mirrors saveEditAuditBtn).
+            if (file.size > 5 * 1024 * 1024) {
+                showToast(`"${file.name}" is ${(file.size / 1024 / 1024).toFixed(2)} MB — each screenshot must be 5MB or smaller`, 'error');
+                return;
+            }
+            dt.items.add(file);
+            addedCount++;
+        });
+
+        if (!addedCount) return;
+
+        fileInput.files = dt.files;
+        renderScreenshotPreview(fileInput.files);
+
+        const $status = $('#pasteStatus');
+        $status.text(addedCount + ' image' + (addedCount > 1 ? 's' : '') + ' pasted').show();
+        setTimeout(() => $status.fadeOut(), 1500);
+        showToast('Screenshot pasted from clipboard', 'success');
+    }
+
+    // Button: read clipboard explicitly.
+    $('#pasteScreenshotBtn').on('click', async function() {
+        const $btn = $(this);
+        const original = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Reading…');
+        try {
+            const blobs = await readClipboardImages();
+            addClipboardImage(blobs);
+        } catch (err) {
+            showToast(err.message || 'Could not read clipboard', 'error');
+        } finally {
+            $btn.prop('disabled', false).html(original);
+        }
+    });
+
+    // Keyboard: Ctrl/Cmd+V anywhere in the modal — but only when the user is NOT
+    // typing into a text field (otherwise we'd block normal text paste).
+    document.addEventListener('paste', function(e) {
+        const $modal = $('#editAuditSuggestionModal');
+        if (!$modal.hasClass('show')) return; // only when this modal is open
+
+        // If the paste target is a text input/textarea, let it paste text normally
+        // unless the clipboard contains an image (then we capture it).
+        const items = (e.clipboardData && e.clipboardData.items) || [];
+        const imageFiles = [];
+        for (const it of items) {
+            if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+                const f = it.getAsFile();
+                if (f) imageFiles.push(f);
+            }
+        }
+        if (!imageFiles.length) return;
+
+        // We have at least one image — capture the event and add it.
+        e.preventDefault();
+        addClipboardImage(imageFiles);
     });
 
     // Voice Note Recording
