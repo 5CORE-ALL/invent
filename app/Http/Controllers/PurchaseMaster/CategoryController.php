@@ -4023,7 +4023,10 @@ PROMPT;
         try {
             $validated = $request->validate([
                 'sku'                => 'required|string',
-                'audit_suggestion'   => 'nullable|string|max:500',
+                // audit_suggestion has no character limit (stored in a JSON / LONGTEXT
+                // column). MySQL's JSON column tops out at ~4 GB, so this is effectively
+                // unlimited for any realistic suggestion text.
+                'audit_suggestion'   => 'nullable|string',
                 'is_fixed'           => 'nullable|boolean',
                 // link_data is accepted as an array (up to 4 URLs). Each item is optional / nullable.
                 'link_data'          => 'nullable|array|max:4',

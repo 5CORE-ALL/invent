@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'A+ Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Audit', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -159,8 +159,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'A+ Masters',
-        'sub_title' => 'A+ Images Master Data',
+        'page_title' => 'Listing Audit',
+        'sub_title' => 'Listing Audit Data',
     ])
     
     <div class="toast-container"></div>
@@ -168,7 +168,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>A+ Images Master</h4>
+                <h4>Listing Audit</h4>
                 
                 <!-- Control Bar -->
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
@@ -364,15 +364,15 @@
                         <!-- Audit Suggestion with Voice-to-Text -->
                         <div class="mb-3">
                             <label for="editAuditSuggestion" class="form-label fw-bold">
-                                Audit Suggestion (Max 500 characters)
+                                Audit Suggestion
                                 <button type="button" class="btn btn-sm btn-danger ms-2" id="voiceToTextBtn" title="Voice to Text">
                                     <i class="fas fa-microphone"></i>
                                 </button>
                                 <span id="voiceStatus" class="badge bg-warning ms-2" style="display: none;">Listening...</span>
                             </label>
-                            <textarea class="form-control" id="editAuditSuggestion" name="audit_suggestion" rows="5" maxlength="500" placeholder="Enter audit suggestion or click microphone to speak..."></textarea>
+                            <textarea class="form-control" id="editAuditSuggestion" name="audit_suggestion" rows="5" placeholder="Enter audit suggestion or click microphone to speak..."></textarea>
                             <div class="form-text">
-                                <span id="charCount">0</span> / 500 characters
+                                <span id="charCount">0</span> characters
                             </div>
                             
                             <!-- A+ Reference Links -->
@@ -1245,7 +1245,7 @@
 
         // Export
         $('#export-btn').on('click', function() {
-            table.download("xlsx", "aplus_master_data.xlsx", {sheetName: "A+ Masters"});
+            table.download("xlsx", "listing_audit_data.xlsx", {sheetName: "Listing Audit"});
         });
 
         // LQS Play Controls

@@ -2366,7 +2366,7 @@
                             <a href="{{ route('extra.features.master') }}">Extra Features Masters</a>
                         </li>
                         <li>
-                            <a href="{{ route('a.plus.images.master') }}">A+ Images Masters</a>
+                            <a href="{{ route('a.plus.images.master') }}">Listing Audit</a>
                         </li>
                         <li>
                             <a href="{{ route('hero.images.master') }}">Hero Images Masters</a>
