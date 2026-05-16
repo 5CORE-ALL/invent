@@ -473,12 +473,41 @@ class PurchasingPowerController extends Controller
                 return response()->json(['error' => 'File is empty'], 400);
             }
 
-            // Build header index
+            // Build header index (strip BOM + lowercase + trim).
             $rawHeaders = array_shift($rows);
             $headerIndex = [];
             foreach ($rawHeaders as $i => $h) {
-                $headerIndex[strtolower(trim($h ?? ''))] = $i;
+                $clean = preg_replace('/^\xEF\xBB\xBF/', '', (string) ($h ?? ''));
+                $headerIndex[strtolower(trim($clean))] = $i;
             }
+
+            // Pick the actual date header from common variants (and a fuzzy "*date*" fallback).
+            $dateHeaderIdx = null;
+            $dateAliases = [
+                'date created', 'date_created', 'order date', 'order_date',
+                'created at', 'created_at', 'created date', 'date',
+                'purchase date', 'purchased on',
+            ];
+            foreach ($dateAliases as $alias) {
+                if (isset($headerIndex[$alias])) {
+                    $dateHeaderIdx = $headerIndex[$alias];
+                    break;
+                }
+            }
+            if ($dateHeaderIdx === null) {
+                // Fuzzy: pick the first header containing "date".
+                foreach ($headerIndex as $hdrName => $idx) {
+                    if (strpos($hdrName, 'date') !== false) {
+                        $dateHeaderIdx = $idx;
+                        break;
+                    }
+                }
+            }
+            Log::info('Purchasing Power upload: detected headers', [
+                'headers'         => array_keys($headerIndex),
+                'date_header_idx' => $dateHeaderIdx,
+                'period'          => $period,
+            ]);
 
             $col = function (string $name) use ($headerIndex, &$rowArr): ?string {
                 $key = strtolower(trim($name));
@@ -503,11 +532,48 @@ class PurchasingPowerController extends Controller
                 $orderNumber = $col('Order number');
                 if (empty($orderNumber)) { $skipped++; continue; }
 
-                // Parse date
-                $rawDate = $col('Date created');
+                // Order-date — read by index from auto-detected date column (handles header variants / BOM).
+                $rawDate = $dateHeaderIdx !== null ? ($rowArr[$dateHeaderIdx] ?? null) : null;
                 $dateCreated = null;
-                if ($rawDate) {
-                    try { $dateCreated = \Carbon\Carbon::parse($rawDate)->toDateTimeString(); } catch (\Exception $e) {}
+                if ($rawDate !== null && $rawDate !== '') {
+                    $dateStr = trim((string) $rawDate);
+                    // Strip the hyphen separator that PP sheets use: "21/03/2026 - 12:41:06" → "21/03/2026 12:41:06".
+                    $dateStr = preg_replace('/\s+-\s+/', ' ', $dateStr);
+
+                    // 1) Excel serial number (e.g. 45770.5).
+                    if (is_numeric($rawDate)) {
+                        try {
+                            $dateCreated = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $rawDate)
+                                ->format('Y-m-d H:i:s');
+                        } catch (\Throwable $e) {
+                            $dateCreated = null;
+                        }
+                    }
+
+                    // 2) Try explicit formats (PP exports use DD/MM/YYYY).
+                    if ($dateCreated === null) {
+                        foreach ([
+                            'd/m/Y H:i:s', 'd/m/Y H:i', 'd/m/Y',
+                            'd-m-Y H:i:s', 'd-m-Y H:i', 'd-m-Y',
+                            'Y-m-d H:i:s', 'Y-m-d',
+                            'm/d/Y H:i:s', 'm/d/Y',
+                        ] as $fmt) {
+                            $dt = \DateTime::createFromFormat($fmt, $dateStr);
+                            if ($dt !== false) {
+                                $dateCreated = $dt->format('Y-m-d H:i:s');
+                                break;
+                            }
+                        }
+                    }
+
+                    // 3) Last-resort: let Carbon try (handles ISO-ish strings).
+                    if ($dateCreated === null) {
+                        try {
+                            $dateCreated = \Carbon\Carbon::parse($dateStr)->toDateTimeString();
+                        } catch (\Exception $e) {
+                            $dateCreated = null;
+                        }
+                    }
                 }
 
                 $batch[] = [
@@ -555,12 +621,20 @@ class PurchasingPowerController extends Controller
 
             Log::info("Purchasing Power {$period} sales uploaded: {$imported} rows, {$skipped} skipped (table: {$tableName})");
 
+            // Auto-refresh marketplace_daily_metrics for Purchasing Power so the all-marketplace-master
+            // page reflects this upload immediately (no need to wait for cron).
+            try {
+                \Illuminate\Support\Facades\Artisan::call('app:update-marketplace-daily-metrics');
+            } catch (\Throwable $e) {
+                Log::warning('PP upload: marketplace metrics refresh failed: ' . $e->getMessage());
+            }
+
             return response()->json([
                 'success'  => true,
                 'period'   => $period,
                 'imported' => $imported,
                 'skipped'  => $skipped,
-                'message'  => "Successfully imported {$imported} {$period} orders ({$skipped} skipped)",
+                'message'  => "Successfully imported {$imported} {$period} orders ({$skipped} skipped). Metrics refreshed.",
             ]);
 
         } catch (\Exception $e) {

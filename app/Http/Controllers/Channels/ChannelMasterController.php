@@ -7751,10 +7751,9 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // L60 Sales = previous 30-day period (days 31-60).
-        // The user uploads cumulative ~60 days of sales into purchasing_power_sales_l60
-        // (this table holds BOTH last 30 + prior 30). Use Carbon to date-filter on
-        // date_created so we only count days 31-60 (matches Amazon/eBay/Walmart convention).
+        // L60 Sales = orders whose ORDER date (date_created from the uploaded file) falls in
+        // the previous 30-day window (days 31-60). Source = purchasing_power_sales_l60.
+        // L30 stays unchanged (uses purchasing_power_sales / marketplace_daily_metrics).
         $l60Orders = 0;
         $l60Sales  = 0.0;
         if (Schema::hasTable('purchasing_power_sales_l60')) {
@@ -7763,6 +7762,7 @@ class ChannelMasterController extends Controller
 
             $l60Agg = \App\Models\PurchasingPowerSaleL60::query()
                 ->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled'])
+                ->whereNotNull('date_created')
                 ->whereBetween('date_created', [$sixtyDaysAgo, $thirtyDaysAgo])
                 ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(amount), 0) as total_sales')
                 ->first();
