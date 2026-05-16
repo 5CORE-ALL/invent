@@ -997,22 +997,27 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        const sku = cell.getRow().getData().SKU;
-                        // Properly escape SKU for use in onclick
-                        const escapedSku = sku.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                        const escapedValue = value ? value.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
-                        
-                        if (value && value.trim()) {
+                        const sku   = cell.getRow().getData().SKU || '';
+
+                        // We attach SKU as a data-attribute (HTML-safe) and rely on a
+                        // delegated click handler so the audit text never has to be
+                        // smuggled through an inline onclick attribute. That avoids the
+                        // silent-failure case where the text contains a newline, double
+                        // quote, or other character that breaks the JS in the attribute.
+                        const safeSku   = htmlEscape(sku);
+                        const safeTitle = htmlEscape(value || 'Add Audit');
+
+                        if (value && String(value).trim()) {
                             return `
                                 <div style="display: inline-flex; align-items: center; gap: 5px;">
-                                    <div class="audit-dot" onclick="editAudit('${escapedSku}', '${escapedValue}')" title="${value}"></div>
-                                    <button class="btn btn-sm btn-link p-0" onclick="viewAuditHistory('${escapedSku}')" title="View History">
+                                    <div class="audit-dot js-edit-audit" data-sku="${safeSku}" title="${safeTitle}"></div>
+                                    <button class="btn btn-sm btn-link p-0 js-view-audit-history" data-sku="${safeSku}" title="View History" type="button">
                                         <i class="fas fa-history"></i>
                                     </button>
                                 </div>
                             `;
                         }
-                        return `<button class="btn btn-sm btn-link p-0" onclick="editAudit('${escapedSku}', '')" title="Add Audit"><i class="fas fa-plus"></i></button>`;
+                        return `<button class="btn btn-sm btn-link p-0 js-edit-audit" data-sku="${safeSku}" title="Add Audit" type="button"><i class="fas fa-plus"></i></button>`;
                     }
                 },
                 {
@@ -1407,6 +1412,35 @@
         $('#dbLinkModal').modal('show');
     }
 
+    // HTML-escape a value before injecting it into innerHTML / template strings.
+    // Used by Tabulator formatters so SKUs / audit text containing &, <, >, ", '
+    // never break out of the attribute or introduce script.
+    function htmlEscape(value) {
+        if (value == null) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // Delegated click handlers for the Audit column — these survive Tabulator
+    // re-renders and don't depend on inline onclick attributes.
+    $(document).on('click', '.js-edit-audit', function(e) {
+        e.preventDefault();
+        const sku = $(this).data('sku');
+        if (sku == null || sku === '') return;
+        // Always pass String(sku) — jQuery .data() can auto-cast "123" to 123.
+        editAudit(String(sku));
+    });
+    $(document).on('click', '.js-view-audit-history', function(e) {
+        e.preventDefault();
+        const sku = $(this).data('sku');
+        if (sku == null || sku === '') return;
+        viewAuditHistory(String(sku));
+    });
+
     // Normalize a value that may be a JSON-encoded string, a plain string, or an array.
     function toArray(value) {
         if (value == null || value === '') return [];
@@ -1424,20 +1458,30 @@
         return [];
     }
 
+    // Open the Edit Audit modal for a given SKU. All previously-saved fields
+    // are read from the in-memory tableData cache (which Tabulator's ajaxResponse
+    // keeps in sync). The legacy second argument `currentValue` is still accepted
+    // for back-compat, but is no longer used — tableData is the source of truth.
     function editAudit(sku, currentValue) {
+        sku = String(sku || '');
+        const rowData  = (tableData || []).find(r => r && String(r.SKU) === sku) || {};
+        const auditText = (rowData.audit_suggestion != null && rowData.audit_suggestion !== '')
+            ? rowData.audit_suggestion
+            : (currentValue || '');
+
+        // One-line trace so the user can verify in DevTools console that we
+        // found their row and what fields it carries. Safe to leave in.
+        console.debug('[editAudit]', { sku, found: !!rowData.SKU, auditText, links: rowData.audit_link_data, screenshots: rowData.audit_screenshot });
+
         // Start from a clean slate every time.
         $('#editAuditSku').val(sku);
-        $('#editAuditSuggestion').val(currentValue || '');
-        $('#charCount').text((currentValue || '').length);
+        $('#editAuditSuggestion').val(auditText);
+        $('#charCount').text((auditText || '').length);
         $('#auditLinkData, #auditLinkData2, #auditLinkData3, #auditLinkData4').val('');
         $('#auditScreenshot').val('');
         $('#screenshotPreview').empty();
         $('#voiceNotePreview').empty();
         window.audioBlob = null;
-
-        // Look up the row in the cached tabulator data so we can restore the
-        // previously-saved links, screenshots and voice note for editing.
-        const rowData = (tableData || []).find(r => r && r.SKU === sku) || {};
 
         // 4 link inputs — preload up to 4 URLs.
         const links = toArray(rowData.audit_link_data);
@@ -1548,8 +1592,15 @@
             });
 
             if (result.success) {
+                // Push the freshly-saved values straight into the local cache
+                // and the live Tabulator row so re-clicking the red dot shows
+                // the new data immediately, without waiting on table.setData().
+                applyAuditUpdateLocally(sku, result.data);
+
                 showToast('Audit updated successfully', 'success');
                 $('#editAuditSuggestionModal').modal('hide');
+                // Still do a background refresh so any other server-side fields
+                // (e.g. updated_at) come back in sync.
                 table.setData('/a-plus-images-master-data-view');
 
                 $('#auditLinkData, #auditLinkData2, #auditLinkData3, #auditLinkData4').val('');
@@ -1572,6 +1623,29 @@
         $('#charCount').text(this.value.length);
     });
 
+    // Apply a controller-returned audit update to the local tableData cache and
+    // the on-screen Tabulator row so subsequent reads (e.g. clicking the red dot
+    // again) see the new data instantly, even before the background refresh
+    // completes. `payload` is { audit_suggestion, audit_link_data, audit_screenshot, audit_voice_note }.
+    function applyAuditUpdateLocally(sku, payload) {
+        if (!payload || !sku) return;
+
+        // Update the in-memory cache used by editAudit() lookups.
+        const idx = (tableData || []).findIndex(r => r && r.SKU === sku);
+        if (idx !== -1) {
+            tableData[idx] = Object.assign({}, tableData[idx], payload);
+        }
+
+        // Update the Tabulator row in-place so the audit dot's onclick captures
+        // the new value, and the tooltip reflects the latest text.
+        try {
+            const row = table && table.getRow ? table.getRow(sku) : null;
+            if (row && typeof row.update === 'function') {
+                row.update(payload);
+            }
+        } catch (e) { /* row may not exist if filtered out — ignore */ }
+    }
+
     // Fixed button functionality
     $('#fixedAuditBtn').on('click', async function() {
         const sku = $('#editAuditSku').val();
@@ -1592,6 +1666,7 @@
             });
 
             if (result.success) {
+                applyAuditUpdateLocally(sku, result.data);
                 showToast('Marked as Fixed successfully!', 'success');
                 $('#editAuditSuggestionModal').modal('hide');
                 table.setData('/a-plus-images-master-data-view');

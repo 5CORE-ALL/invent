@@ -4125,9 +4125,19 @@ PROMPT;
 
             \DB::table('audit_suggestion_history')->insert($historyData);
 
+            // Return the freshly-saved values so the front-end can update its
+            // tableData cache and Tabulator row in-place. This avoids the
+            // stale-data race where the user re-opens the modal before the
+            // background table.setData(url) AJAX refresh completes.
             return response()->json([
                 'success' => true,
                 'message' => 'Audit suggestion updated successfully',
+                'data' => [
+                    'audit_suggestion' => $values['audit_suggestion'] ?? null,
+                    'audit_link_data'  => isset($values['audit_link_data']) ? $values['audit_link_data'] : [],
+                    'audit_screenshot' => isset($values['audit_screenshot']) ? $values['audit_screenshot'] : [],
+                    'audit_voice_note' => $values['audit_voice_note'] ?? null,
+                ],
             ]);
 
         } catch (\Exception $e) {

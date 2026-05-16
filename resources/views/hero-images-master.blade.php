@@ -109,6 +109,12 @@
         .ai-score-badge.s-fail { background-color: #dc3545; }
         .ai-score-badge:hover { filter: brightness(1.08); }
 
+        /* Subtle ring accent so users can spot "Ads CTR" (paid, blue) and
+           "Org CTR" (organic, purple) at a glance even though the fill color
+           is shared with the AI badge. */
+        .ai-score-badge.real-ctr-ads { box-shadow: inset 0 0 0 2px #0d6efd; }
+        .ai-score-badge.real-ctr-org { box-shadow: inset 0 0 0 2px #6f42c1; }
+
         #heroAnalysisBody .check-card {
             border: 1px solid #e5e7eb;
             border-radius: 8px;
@@ -753,9 +759,9 @@
                     }
                 },
                 {
-                    title: "CTR",
+                    title: "AI CTR",
                     field: "hero_ctr",
-                    width: 70,
+                    width: 75,
                     hozAlign: "center",
                     sorter: function(a, b, aRow, bRow) {
                         const sa = extractCtrScore(aRow.getData());
@@ -782,7 +788,27 @@
                         if (score >= 8) cls = 's-pass';
                         else if (score < 6) cls = 's-fail';
 
-                        return `<button class="ai-score-badge ${cls}" onclick="viewHeroAnalysis('${escapedSku}')" title="CTR potential — click for full analysis">${score}/10</button>`;
+                        return `<button class="ai-score-badge ${cls}" onclick="viewHeroAnalysis('${escapedSku}')" title="AI-predicted CTR potential — click for full analysis">${score}/10</button>`;
+                    }
+                },
+                {
+                    title: "Ads CTR",
+                    field: "ads_ctr",
+                    width: 90,
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        return renderRealCtrBadge(cell.getRow().getData(), 'ads');
+                    }
+                },
+                {
+                    title: "Org CTR",
+                    field: "organic_ctr",
+                    width: 90,
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        return renderRealCtrBadge(cell.getRow().getData(), 'organic');
                     }
                 },
                 {
@@ -1448,6 +1474,38 @@
         if (raw === null || raw === undefined || raw === '') return null;
         const num = parseFloat(String(raw).split('/')[0]);
         return isNaN(num) ? null : num;
+    }
+
+    // Render a colored CTR percent badge for the "Ads CTR" / "Org CTR" columns.
+    // `source` is 'ads' or 'organic'. Color thresholds reflect typical e-commerce
+    // benchmarks (≥1% green, ≥0.4% yellow, <0.4% red) and can be tuned later.
+    function renderRealCtrBadge(data, source) {
+        const ctr = data ? data[source + '_ctr'] : null;
+        const impressions = data ? data[source + '_impressions'] : null;
+        const clicks = data ? data[source + '_clicks'] : null;
+        const periodEnd = data ? data[source + '_period_end'] : null;
+
+        if (ctr === null || ctr === undefined || ctr === '') {
+            const hint = source === 'ads'
+                ? 'No paid CTR available — ensure app:amazon-sp-campaign-reports has run and this SKU has an ENABLED Sponsored Products campaign with its SKU in the campaign name'
+                : 'No organic CTR yet — run: php artisan amazon:fetch-ctr-organic';
+            return `<span class="text-muted" title="${hint}" style="font-size: 11px;">—</span>`;
+        }
+
+        const n = parseFloat(ctr);
+        let cls = source === 'ads' ? 'real-ctr-ads' : 'real-ctr-org';
+        if (n >= 1) cls += ' s-pass';
+        else if (n >= 0.4) cls += ' s-warn';
+        else cls += ' s-fail';
+
+        const tooltipParts = [];
+        if (impressions !== null && impressions !== undefined) tooltipParts.push(Number(impressions).toLocaleString() + ' impressions');
+        if (clicks !== null && clicks !== undefined) tooltipParts.push(Number(clicks).toLocaleString() + ' clicks');
+        if (periodEnd) tooltipParts.push('as of ' + periodEnd);
+        const tooltip = (source === 'ads' ? 'Sponsored Products CTR' : 'Organic search CTR') +
+            (tooltipParts.length ? ' — ' + tooltipParts.join(' · ') : '');
+
+        return `<span class="ai-score-badge ${cls}" title="${tooltip}">${n.toFixed(2)}%</span>`;
     }
 
     function renderHeroAnalysis(analysis, meta) {

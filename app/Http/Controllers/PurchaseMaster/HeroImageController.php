@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class HeroImageController extends Controller
@@ -25,6 +26,15 @@ class HeroImageController extends Controller
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
+
+        // Build a per-SKU CTR map up-front so we don't N+1 the queries:
+        //   - "ads" CTR is aggregated from amazon_sp_campaign_reports (L30, ENABLED)
+        //     by matching campaignName LIKE '%<sku>%' — same pattern used elsewhere
+        //     in the app (e.g. UpdateAmazonFbaPtBudgetCronCommand).
+        //   - "organic" CTR is the latest row per SKU in amazon_ctr_metrics
+        //     (populated by `php artisan amazon:fetch-ctr-organic`).
+        $allSkus = $products->pluck('sku')->filter()->values()->all();
+        $latestCtrBySku = $this->loadLatestCtrBySku($allSkus);
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
         $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
@@ -133,6 +143,17 @@ class HeroImageController extends Controller
             $row['hero_pushed_to'] = $row['hero_pushed_to'] ?? null;
             $row['hero_push_status'] = $row['hero_push_status'] ?? null; // success|failed
             $row['hero_push_history'] = $row['hero_push_history'] ?? [];
+
+            // Real Amazon CTR data (populated by amazon:fetch-ctr-{ads,organic} commands).
+            $skuCtr = $latestCtrBySku[$normalizedSku] ?? ($latestCtrBySku[$product->sku] ?? []);
+            $row['ads_ctr'] = $skuCtr['ads']['ctr'] ?? null;
+            $row['ads_impressions'] = $skuCtr['ads']['impressions'] ?? null;
+            $row['ads_clicks'] = $skuCtr['ads']['clicks'] ?? null;
+            $row['ads_period_end'] = $skuCtr['ads']['period_end'] ?? null;
+            $row['organic_ctr'] = $skuCtr['organic']['ctr'] ?? null;
+            $row['organic_impressions'] = $skuCtr['organic']['impressions'] ?? null;
+            $row['organic_clicks'] = $skuCtr['organic']['clicks'] ?? null;
+            $row['organic_period_end'] = $skuCtr['organic']['period_end'] ?? null;
 
             $result[] = $row;
         }
@@ -944,6 +965,124 @@ Scoring rules:
 - Keep arrays concise (max 6 items each), each item one short sentence.
 - final_verdict: 1-2 sentence summary.
 PROMPT;
+    }
+
+    /**
+     * Build a [normalizedSku => ['ads' => [...], 'organic' => [...]]] map of
+     * per-SKU CTR data from sources the app already maintains:
+     *
+     *   - ads     ← amazon_sp_campaign_reports (Sponsored Products, L30, ENABLED)
+     *               aggregated by SKU via campaign-name substring match.
+     *   - organic ← amazon_ctr_metrics (source='organic'), latest period per SKU.
+     *
+     * Returns an empty map if neither table exists.
+     *
+     * @param  array<int, string>  $skus  Seller SKUs from the result set
+     * @return array<string, array{ads?: array<string, mixed>, organic?: array<string, mixed>}>
+     */
+    private function loadLatestCtrBySku(array $skus): array
+    {
+        $map = [];
+
+        // --- Paid (Ads) CTR — derived from existing amazon_sp_campaign_reports ---
+        // This table is refreshed daily by `app:amazon-sp-campaign-reports`.
+        // We aggregate impressions/clicks across all ENABLED Sponsored Products
+        // campaigns whose campaignName contains the SKU, matching the same
+        // convention used by UpdateAmazonFbaPtBudgetCronCommand.
+        if (! empty($skus) && Schema::hasTable('amazon_sp_campaign_reports')) {
+            // Normalize once: dedupe, drop empties, drop very-short SKUs that
+            // would generate too many false positives in LIKE matches.
+            $skuList = array_values(array_unique(array_filter(array_map(function ($s) {
+                $s = trim((string) $s);
+
+                return strlen($s) >= 3 ? $s : null;
+            }, $skus))));
+
+            if ($skuList !== []) {
+                $campaigns = DB::table('amazon_sp_campaign_reports')
+                    ->where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->where('report_date_range', 'L30')
+                    ->when(Schema::hasColumn('amazon_sp_campaign_reports', 'campaignStatus'), function ($q) {
+                        $q->where(function ($q) {
+                            $q->whereNull('campaignStatus')
+                                ->orWhere('campaignStatus', 'ENABLED');
+                        });
+                    })
+                    ->whereNotNull('campaignName')
+                    ->where(function ($q) use ($skuList) {
+                        foreach ($skuList as $sku) {
+                            $q->orWhere('campaignName', 'LIKE', '%'.$sku.'%');
+                        }
+                    })
+                    ->select('campaignName', 'impressions', 'clicks', 'startDate', 'endDate')
+                    ->get();
+
+                // Pre-uppercase SKUs once for fast loop matching.
+                $skuListUpper = array_combine($skuList, array_map('strtoupper', $skuList));
+
+                // Aggregate per SKU. A campaign that contains multiple SKUs in its
+                // name (rare but possible) will count toward all matched SKUs —
+                // mirrors the same trade-off the rest of the app accepts.
+                $agg = []; // sku => [impressions, clicks, latest_period_end]
+
+                foreach ($campaigns as $c) {
+                    $nameUpper = strtoupper((string) $c->campaignName);
+                    foreach ($skuListUpper as $sku => $needle) {
+                        if ($needle === '' || strpos($nameUpper, $needle) === false) {
+                            continue;
+                        }
+                        $a = $agg[$sku] ?? ['impressions' => 0, 'clicks' => 0, 'period_end' => null];
+                        $a['impressions'] += (int) ($c->impressions ?? 0);
+                        $a['clicks'] += (int) ($c->clicks ?? 0);
+                        $end = $c->endDate ?: $c->startDate;
+                        if ($end && (! $a['period_end'] || $end > $a['period_end'])) {
+                            $a['period_end'] = $end;
+                        }
+                        $agg[$sku] = $a;
+                    }
+                }
+
+                foreach ($agg as $sku => $a) {
+                    $impressions = (int) $a['impressions'];
+                    $clicks = (int) $a['clicks'];
+                    $ctr = $impressions > 0 ? round(($clicks / $impressions) * 100, 4) : null;
+                    $key = str_replace("\u{00a0}", ' ', (string) $sku);
+                    $map[$key]['ads'] = [
+                        'ctr' => $ctr,
+                        'impressions' => $impressions,
+                        'clicks' => $clicks,
+                        'period_end' => $a['period_end'],
+                    ];
+                }
+            }
+        }
+
+        // --- Organic CTR — from amazon_ctr_metrics (Brand Analytics fetcher) ---
+        if (Schema::hasTable('amazon_ctr_metrics')) {
+            $rows = DB::table('amazon_ctr_metrics as m')
+                ->join(
+                    DB::raw("(SELECT sku, MAX(period_end) AS max_end FROM amazon_ctr_metrics WHERE source = 'organic' GROUP BY sku) as latest"),
+                    function ($join) {
+                        $join->on('m.sku', '=', 'latest.sku')
+                            ->on('m.period_end', '=', 'latest.max_end');
+                    }
+                )
+                ->where('m.source', 'organic')
+                ->select('m.sku', 'm.ctr', 'm.impressions', 'm.clicks', 'm.period_end')
+                ->get();
+
+            foreach ($rows as $r) {
+                $key = str_replace("\u{00a0}", ' ', (string) $r->sku);
+                $map[$key]['organic'] = [
+                    'ctr' => $r->ctr !== null ? (float) $r->ctr : null,
+                    'impressions' => (int) $r->impressions,
+                    'clicks' => (int) $r->clicks,
+                    'period_end' => $r->period_end,
+                ];
+            }
+        }
+
+        return $map;
     }
 
     /**
