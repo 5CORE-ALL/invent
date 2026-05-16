@@ -1441,6 +1441,47 @@
         viewAuditHistory(String(sku));
     });
 
+    // Mark a saved screenshot thumb for deletion. The path is queued in
+    // window.deletedAuditScreenshots and the thumb is visually faded with an
+    // Undo link so the user can change their mind before clicking Save.
+    $(document).on('click', '.js-delete-saved-thumb', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const $thumb = $(this).closest('.saved-thumb');
+        const path = $thumb.data('path');
+        if (!path) return;
+        window.deletedAuditScreenshots = window.deletedAuditScreenshots || [];
+        if (window.deletedAuditScreenshots.indexOf(String(path)) === -1) {
+            window.deletedAuditScreenshots.push(String(path));
+        }
+        // Visually mark as pending-delete.
+        $thumb.addClass('pending-delete')
+              .css({ opacity: 0.4, filter: 'grayscale(100%)' })
+              .find('.thumb-link').css('pointer-events', 'none');
+        $(this).hide();
+        if (!$thumb.find('.js-undo-delete-thumb').length) {
+            $thumb.append(`
+                <button type="button" class="btn btn-sm btn-warning js-undo-delete-thumb position-absolute" style="top: 2px; right: 2px; padding: 0 5px; line-height: 1; font-size: 11px;" title="Undo delete">↺</button>
+            `);
+        }
+    });
+
+    // Restore a thumb marked for deletion.
+    $(document).on('click', '.js-undo-delete-thumb', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const $thumb = $(this).closest('.saved-thumb');
+        const path = $thumb.data('path');
+        if (path && window.deletedAuditScreenshots) {
+            window.deletedAuditScreenshots = window.deletedAuditScreenshots.filter(p => p !== String(path));
+        }
+        $thumb.removeClass('pending-delete')
+              .css({ opacity: 1, filter: 'none' })
+              .find('.thumb-link').css('pointer-events', 'auto');
+        $thumb.find('.js-delete-saved-thumb').show();
+        $(this).remove();
+    });
+
     // Normalize a value that may be a JSON-encoded string, a plain string, or an array.
     function toArray(value) {
         if (value == null || value === '') return [];
@@ -1482,6 +1523,8 @@
         $('#screenshotPreview').empty();
         $('#voiceNotePreview').empty();
         window.audioBlob = null;
+        // Reset per-modal deletion queue every time we open the form.
+        window.deletedAuditScreenshots = [];
 
         // 4 link inputs — preload up to 4 URLs.
         const links = toArray(rowData.audit_link_data);
@@ -1491,19 +1534,24 @@
         });
 
         // Existing screenshots — show as thumbnails with a "Saved" badge so the
-        // user can distinguish them from newly-added files.
+        // user can distinguish them from newly-added files. Each thumb gets an
+        // X button: clicking it marks the screenshot for deletion (queued in
+        // window.deletedAuditScreenshots). The thumb stays visible but greyed
+        // out with an "Undo" link until Save, so the user can change their mind.
         const screenshots = toArray(rowData.audit_screenshot);
         if (screenshots.length) {
             const $preview = $('#screenshotPreview');
             screenshots.forEach((path) => {
                 if (!path) return;
-                const url = path.startsWith('http') ? path : ('/storage/' + path.replace(/^\/+/, ''));
+                const url     = path.startsWith('http') ? path : ('/storage/' + path.replace(/^\/+/, ''));
+                const safePath = htmlEscape(path);
                 $preview.append(`
-                    <div class="position-relative saved-thumb" title="${path}">
-                        <a href="${url}" target="_blank">
+                    <div class="position-relative saved-thumb" data-path="${safePath}" title="${safePath}">
+                        <a href="${url}" target="_blank" class="thumb-link">
                             <img src="${url}" class="img-thumbnail" style="width: 110px; height: 110px; object-fit: cover;">
                         </a>
                         <span class="badge bg-info position-absolute top-0 start-0" style="font-size: 9px;">Saved</span>
+                        <button type="button" class="btn btn-sm btn-danger js-delete-saved-thumb position-absolute" style="top: 2px; right: 2px; padding: 0 5px; line-height: 1; font-size: 11px;" title="Remove this screenshot">&times;</button>
                     </div>
                 `);
             });
@@ -1551,11 +1599,20 @@
         }
     });
 
-    $('#saveEditAuditBtn').on('click', async function() {
+    // Delegated handler — survives DOM re-renders / failed initial binding.
+    $(document).on('click', '#saveEditAuditBtn', async function() {
+        console.debug('[saveEditAudit] click');
+
         const sku = $('#editAuditSku').val();
         const auditSuggestion = $('#editAuditSuggestion').val();
         const saveBtn = $(this);
         const originalHtml = saveBtn.html();
+
+        if (!sku) {
+            showToast('No SKU selected (modal was opened without a row)', 'error');
+            console.error('[saveEditAudit] aborting: no SKU in #editAuditSku');
+            return;
+        }
 
         try {
             saveBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving...');
@@ -1570,12 +1627,19 @@
                 formData.append('link_data[]', ($(sel).val() || '').trim());
             });
 
+            // Existing screenshots the user clicked the X icon on — server will
+            // remove these paths from audit_screenshot AND unlink the files.
+            (window.deletedAuditScreenshots || []).forEach(path => {
+                if (path) formData.append('deleted_screenshots[]', path);
+            });
+
             // Multi-file screenshots — pre-check 5MB / each before sending.
             const screenshotFiles = $('#auditScreenshot')[0].files || [];
             for (let i = 0; i < screenshotFiles.length; i++) {
                 const f = screenshotFiles[i];
                 if (f.size > 5 * 1024 * 1024) {
                     showToast(`"${f.name}" is ${(f.size / 1024 / 1024).toFixed(2)} MB — each screenshot must be 5MB or smaller`, 'error');
+                    saveBtn.prop('disabled', false).html(originalHtml);
                     return;
                 }
                 formData.append('screenshot[]', f);
@@ -1586,10 +1650,14 @@
                 formData.append('voice_note', voiceNoteFile);
             }
 
+            console.debug('[saveEditAudit] POST →', { sku, suggestionLen: (auditSuggestion || '').length, newFiles: screenshotFiles.length, deletedExisting: (window.deletedAuditScreenshots || []).length });
+
             const result = await safeJsonFetch('/a-plus-images-master/update-audit-suggestion', {
                 method: 'POST',
                 body: formData
             });
+
+            console.debug('[saveEditAudit] ← result', result);
 
             if (result.success) {
                 // Push the freshly-saved values straight into the local cache
@@ -1608,10 +1676,12 @@
                 $('#screenshotPreview').html('');
                 $('#voiceNotePreview').html('');
                 window.audioBlob = null;
+                window.deletedAuditScreenshots = [];
             } else {
                 showToast(result.message || 'Failed to update audit', 'error');
             }
         } catch (error) {
+            console.error('[saveEditAudit] error', error);
             showToast(error.message || 'Failed to update audit', 'error');
         } finally {
             saveBtn.prop('disabled', false).html(originalHtml);

@@ -2987,6 +2987,8 @@
 
                         <li><a href="{{ route('tiendamia.daily.sales') }}">Tiendamia Sales Data</a></li>
 
+                        <li><a href="{{ route('purchasing.power.sales') }}">Purchasing Power Sales Data</a></li>
+
                         <li><a href="{{ route('tiktok.daily.sales') }}">TikTok Sales Data</a></li>
 
                         <li><a href="{{ route('faire.tabulator.view') }}">Faire Sales Data</a></li>

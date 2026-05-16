@@ -4022,19 +4022,23 @@ PROMPT;
     {
         try {
             $validated = $request->validate([
-                'sku'                => 'required|string',
+                'sku'                  => 'required|string',
                 // audit_suggestion has no character limit (stored in a JSON / LONGTEXT
                 // column). MySQL's JSON column tops out at ~4 GB, so this is effectively
                 // unlimited for any realistic suggestion text.
-                'audit_suggestion'   => 'nullable|string',
-                'is_fixed'           => 'nullable|boolean',
+                'audit_suggestion'     => 'nullable|string',
+                'is_fixed'             => 'nullable|boolean',
                 // link_data is accepted as an array (up to 4 URLs). Each item is optional / nullable.
-                'link_data'          => 'nullable|array|max:4',
-                'link_data.*'        => 'nullable|string|max:2048',
+                'link_data'            => 'nullable|array|max:4',
+                'link_data.*'          => 'nullable|string|max:2048',
                 // screenshot is accepted as an array of images (multi-select). Each ≤ 5MB.
-                'screenshot'         => 'nullable|array',
-                'screenshot.*'       => 'nullable|image|max:5120',
-                'voice_note'         => 'nullable|file|mimes:webm,mp3,wav,ogg|max:10240',
+                'screenshot'           => 'nullable|array',
+                'screenshot.*'         => 'nullable|image|max:5120',
+                'voice_note'           => 'nullable|file|mimes:webm,mp3,wav,ogg|max:10240',
+                // Paths the user clicked the X icon on — server removes them from
+                // the saved audit_screenshot array AND unlinks the file from storage.
+                'deleted_screenshots'  => 'nullable|array',
+                'deleted_screenshots.*'=> 'nullable|string',
             ]);
 
             // Normalize SKU (replace non-breaking spaces with regular spaces) — same
@@ -4075,6 +4079,40 @@ PROMPT;
                     return $l !== '';
                 }));
                 $values['audit_link_data'] = $links;
+            }
+
+            // Handle screenshot deletions (X icon on saved thumbs). We remove the
+            // submitted paths from the saved audit_screenshot array AND unlink the
+            // physical file from storage. Done BEFORE the new-upload step so a Save
+            // that both deletes some and uploads new still produces the right array.
+            if (!empty($validated['deleted_screenshots']) && is_array($validated['deleted_screenshots'])) {
+                $existing = isset($values['audit_screenshot']) ? $values['audit_screenshot'] : [];
+                if (is_string($existing) && $existing !== '') {
+                    $existing = [$existing];
+                } elseif (!is_array($existing)) {
+                    $existing = [];
+                }
+
+                $toDelete = array_map(function ($p) { return ltrim((string) $p, '/'); }, $validated['deleted_screenshots']);
+
+                $existing = array_values(array_filter($existing, function ($path) use ($toDelete) {
+                    $needle = ltrim((string) $path, '/');
+                    return !in_array($needle, $toDelete, true);
+                }));
+
+                foreach ($toDelete as $delPath) {
+                    if ($delPath === '') continue;
+                    try {
+                        // Only delete inside the audit_screenshots folder to be safe.
+                        if (strpos($delPath, 'audit_screenshots/') === 0 && \Storage::disk('public')->exists($delPath)) {
+                            \Storage::disk('public')->delete($delPath);
+                        }
+                    } catch (\Throwable $t) {
+                        \Log::warning('Failed to unlink audit screenshot: '.$delPath.' — '.$t->getMessage());
+                    }
+                }
+
+                $values['audit_screenshot'] = $existing;
             }
 
             // Handle screenshots (multi-file upload). Append to existing array so old

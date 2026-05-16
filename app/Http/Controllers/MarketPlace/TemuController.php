@@ -2201,7 +2201,9 @@ class TemuController extends Controller
      */
     public function temu2TabulatorView()
     {
-        return view('market-places.temu2_tabulator_view');
+        $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
+        $temu2Pct = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
+        return view('market-places.temu2_tabulator_view', compact('temu2Pct'));
     }
 
     /**
@@ -2678,7 +2680,7 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
             $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
 
             $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
@@ -2865,7 +2867,9 @@ class TemuController extends Controller
 
     public function temu2DecreaseView()
     {
-        return view('market-places.temu2_decrease');
+        $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
+        $temu2Pct = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
+        return view('market-places.temu2_decrease', compact('temu2Pct'));
     }
 
     /**
@@ -3008,7 +3012,8 @@ class TemuController extends Controller
             $isL7Period = $selectedPeriod === 'L7';
 
             // Get Temu marketplace percentage from marketplace_percentages table
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $marketplaceName = $isTemu2Pricing ? 'TemuTwo' : 'Temu';
+            $marketplaceData = MarketplacePercentage::where('marketplace', $marketplaceName)->first();
             $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
             
             // 1. Start from ProductMaster (like eBay does)
@@ -3782,8 +3787,8 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            // Get Temu marketplace percentage (default margin 96)
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            // Get TemuTwo marketplace percentage from marketplace_percentages table
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
             $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
 
             // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)

@@ -105,13 +105,21 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
+                        <label for="salesPeriod" class="form-label fw-bold">Upload for</label>
+                        <select id="salesPeriod" class="form-select" style="max-width: 320px;">
+                            <option value="L30" selected>L30 Sales (purchasing_power_sales)</option>
+                            <option value="L60">L60 Sales (purchasing_power_sales_l60)</option>
+                        </select>
+                        <small class="text-muted">L30 = last 30 days. L60 = previous 30 days (days 31-60). Each goes into its own table.</small>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label fw-bold">Choose File</label>
                         <input type="file" class="form-control" id="salesFile" accept=".xlsx,.xls,.csv,.tsv,.txt">
                         <small class="text-muted">Supported: Excel (.xlsx/.xls), CSV, TSV, TXT (tab-separated from Purchasing Power portal)</small>
                     </div>
                     <div class="alert alert-warning mb-0">
                         <i class="fa fa-exclamation-triangle me-2"></i>
-                        <strong>Warning:</strong> This will replace all existing sales data.
+                        <strong>Warning:</strong> This will replace all existing data <strong>for the selected period</strong>.
                     </div>
                     <div id="upload-progress-wrap" style="display:none;" class="mt-3">
                         <div class="progress" style="height:25px;">
@@ -152,11 +160,13 @@
 
         // Upload button
         $('#upload-sales-btn').on('click', function () {
-            const file = $('#salesFile')[0].files[0];
+            const file   = $('#salesFile')[0].files[0];
+            const period = $('#salesPeriod').val() || 'L30';
             if (!file) { showToast('Please select a file first', 'error'); return; }
 
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('period', period);
             formData.append('_token', '{{ csrf_token() }}');
 
             $('#upload-progress-wrap').show();
@@ -179,7 +189,8 @@
                     showToast(res.message, 'success');
                     setTimeout(() => {
                         $('#uploadSalesModal').modal('hide');
-                        table.setData();
+                        // Only L30 powers the table on this page; L60 lives only for channel-master Growth.
+                        if (period === 'L30') { table.setData(); }
                     }, 1200);
                 },
                 error: function (xhr) {

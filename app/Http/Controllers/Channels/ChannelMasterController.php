@@ -4804,7 +4804,7 @@ class ChannelMasterController extends Controller
         $totalAdSpend = round($kwSpent + $ptSpent, 2);
 
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         $gprofitL60 = 0;
         $gRoiL60 = 0;
@@ -5023,7 +5023,7 @@ class ChannelMasterController extends Controller
         $totalAdSpend = $kwSpent + $pmtSpent;
         
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage (still needs calculation if needed)
         $gprofitL60 = 0;
@@ -5173,7 +5173,7 @@ class ChannelMasterController extends Controller
         $totalAdSpend = $kwSpent + $pmtSpent;
 
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
@@ -5754,13 +5754,20 @@ class ChannelMasterController extends Controller
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
 
-        // Get L60 data from MacyProduct for comparison
-        $query = MacyProduct::where('sku', 'not like', '%Parent%');
-        $l60Orders = $query->sum('m_l60');
-        $l60Sales  = (clone $query)->selectRaw('SUM(m_l60 * price) as total')->value('total') ?? 0;
+        // L60 Sales = previous 30-day period (days 31-60) from mirakl_daily_data
+        // (channel_name = "Macy's, Inc." in Mirakl feed).
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        $sixtyDaysAgo  = Carbon::now()->subDays(60);
+        $l60Agg = \App\Models\MiraklDailyData::where('channel_name', "Macy's, Inc.")
+            ->where('status', '!=', 'CLOSED')
+            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
+            ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(unit_price * quantity), 0) as total_sales')
+            ->first();
+        $l60Orders = (int) ($l60Agg->order_count ?? 0);
+        $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
 
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // L60 profit percentage (calculate from L60 data if needed)
         $gprofitL60 = 0;
@@ -5866,16 +5873,17 @@ class ChannelMasterController extends Controller
         // Use latest date (today) instead of yesterday to match sales badge
         $l30EndDate = $latestPacific->toDateString();  // Today (not yesterday)
         $l30StartDate = $latestPacific->copy()->subDays(29)->toDateString();  // 30 days including today
-        $l60StartDate = $latestPacific->copy()->subDays(59)->toDateString();
 
+        // L60 column = "prior 30 days" (days 31-60), matching Amazon/Temu/Walmart/etc.
+        // Growth = (L30 - L60) / L60 * 100 then makes sense across all channels.
         $prior30End = Carbon::parse($l30StartDate)->subDay()->toDateString();
         $prior30Start = Carbon::parse($prior30End)->subDays(29)->toDateString();
 
         return [
             'l30_start' => $l30StartDate,
             'l30_end' => $l30EndDate,
-            'l60_start' => $l60StartDate,
-            'l60_end' => $l30EndDate,
+            'l60_start' => $prior30Start,
+            'l60_end' => $prior30End,
             'prior30_start' => $prior30Start,
             'prior30_end' => $prior30End,
         ];
@@ -6062,22 +6070,11 @@ class ChannelMasterController extends Controller
             $totalProfitL60 = $l60['profit'];
             $totalCogsL60 = $l60['cogs'];
 
-            $priorRev = (float) DB::table('reverb_daily_data')
-                ->whereNotNull('order_date')
-                ->whereBetween('order_date', [$windows['prior30_start'], $windows['prior30_end']])
-                // Match frontend filters: exclude empty SKU/order_number and cancelled/refunded orders
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->whereNotNull('order_number')
-                ->where('order_number', '!=', '')
-                ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
-                ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-                ->selectRaw('COALESCE(SUM(quantity * COALESCE(NULLIF(product_subtotal, 0), amount, 0)), 0) as rev')
-                ->value('rev');
-
-            $growth = $priorRev > 0
-                ? (($l30['sales'] - $priorRev) / $priorRev) * 100
-                : ($l30['sales'] > 0 ? 100.0 : 0.0);
+            // Standard growth formula (consistent with Amazon/Temu/Walmart/etc.):
+            //   L60 column above is now days 31-60 (prior 30), so this is the proper month-over-month comparison.
+            $growth = $l60Sales > 0
+                ? (($l30Sales - $l60Sales) / $l60Sales) * 100
+                : ($l30Sales > 0 ? 100.0 : 0.0);
 
             $reverbPaceL30Sales = (int) round($l30['sales']);
         } else {
@@ -6124,7 +6121,7 @@ class ChannelMasterController extends Controller
                 $totalCogsL60 += ($unitsL60 * ($lp + $ship));
             }
 
-            $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+            $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
             
             // Initialize $l30 array for fallback path (for consistency with daily data path)
             $l30 = [
@@ -6269,7 +6266,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = $l60Metric ? $l60Metric->roi_percentage : 0;
 
         // Growth calculation
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Doba')->first();
@@ -6560,14 +6557,13 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // Fetch L60 Sales and Orders from temu_daily_data_l60 table for Temu 2
-        // Calculate using FB Price logic (same as temu-tabulator and getDailyDataL60)
+        // Fetch L60 Sales and Orders from temu2_daily_data_l60 (separate table for Temu 2)
+        // Calculate using FB Price logic (same as temu2-tabulator and getDailyDataL60)
         $l60Orders = 0;
         $l60Sales = 0;
-        
-        if (Schema::hasTable('temu_daily_data_l60')) {
-            $l60Data = DB::table('temu_daily_data_l60')
-                ->where('temu_account', 'Temu 2')
+
+        if (Schema::hasTable('temu2_daily_data_l60')) {
+            $l60Data = DB::table('temu2_daily_data_l60')
                 ->select('order_id', 'base_price_total', 'quantity_purchased')
                 ->get();
             
@@ -6599,7 +6595,14 @@ class ChannelMasterController extends Controller
         $nPft = $metrics->n_pft ?? $gProfitPct;
         $nRoi = $metrics->n_roi ?? $gRoi;
         $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
-        // Calculate growth: ((L30 - L60) / L60) * 100
+
+        // Growth = ((L30 - L60) / L60) * 100.
+        // If temu2_daily_data_l60 has no rows yet (user hasn't uploaded L60 separately),
+        // fall back to L60 = L30 so the column renders 0% instead of blank "—".
+        if ($l60Sales <= 0 && $l30Sales > 0) {
+            $l60Sales  = $l30Sales;
+            $l60Orders = $l30Orders;
+        }
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $gprofitL60 = 0;
         $gRoiL60 = 0;
@@ -6872,7 +6875,7 @@ class ChannelMasterController extends Controller
         $walmartSpent = $this->fetchTotalAdSpendFromTables('walmart');
         
         // Calculate percentages
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
@@ -6977,9 +6980,16 @@ class ChannelMasterController extends Controller
         $metrics = MarketplaceDailyMetric::where('channel', 'Tiendamia')->latest('date')->first();
 
         // Get L60 data from TiendamiaProduct for comparison
-        $query = TiendamiaProduct::where('sku', 'not like', '%Parent%');
-        $l60Orders = $query->sum('m_l60');
-        $l60Sales  = (clone $query)->selectRaw('SUM(m_l60 * price) as total')->value('total') ?? 0;
+        // L60 Sales = previous 30-day period (days 31-60) from mirakl_daily_data
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        $sixtyDaysAgo  = Carbon::now()->subDays(60);
+        $l60Agg = \App\Models\MiraklDailyData::where('channel_name', 'Tiendamia')
+            ->where('status', '!=', 'CLOSED')
+            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
+            ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(unit_price * quantity), 0) as total_sales')
+            ->first();
+        $l60Orders = (int) ($l60Agg->order_count ?? 0);
+        $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
 
         // Use MarketplaceDailyMetric data
         $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
@@ -6991,7 +7001,7 @@ class ChannelMasterController extends Controller
         $gRoi = $metrics->roi_percentage ?? 0;
 
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // L60 profit percentage (calculate from L60 data if needed)
         $gprofitL60 = 0;
@@ -7096,10 +7106,17 @@ class ChannelMasterController extends Controller
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
         $metrics = MarketplaceDailyMetric::where('channel', 'Best Buy USA')->latest('date')->first();
 
-        // Get L60 data from BestbuyUsaProduct for comparison
-        $query = BestbuyUsaProduct::where('sku', 'not like', '%Parent%');
-        $l60Orders = $query->sum('m_l60');
-        $l60Sales  = (clone $query)->selectRaw('SUM(m_l60 * price) as total')->value('total') ?? 0;
+        // L60 Sales = previous 30-day period (days 31-60) from mirakl_daily_data,
+        // matching Amazon/eBay/Walmart convention. Same filters as the L30 metrics calc.
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        $sixtyDaysAgo  = Carbon::now()->subDays(60);
+        $l60Agg = \App\Models\MiraklDailyData::where('channel_name', 'Best Buy USA')
+            ->where('status', '!=', 'CLOSED')
+            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
+            ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(unit_price * quantity), 0) as total_sales')
+            ->first();
+        $l60Orders = (int) ($l60Agg->order_count ?? 0);
+        $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
 
         // Use MarketplaceDailyMetric data
         $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
@@ -7111,7 +7128,7 @@ class ChannelMasterController extends Controller
         $gRoi = $metrics->roi_percentage ?? 0;
 
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // L60 profit percentage (calculate from L60 data if needed)
         $gprofitL60 = 0;
@@ -7405,11 +7422,18 @@ class ChannelMasterController extends Controller
             return $item->unit_price * $item->quantity;
         });
 
-        // For L60, we don't have data yet, so set to 0
-        $l60Orders = 0;
-        $l60Sales = 0;
+        // L60 Sales = previous 30-day period (days 31-60) from wayfair_daily_data,
+        // matching Amazon/eBay/Walmart convention. Filter by po_date so we only count days 31-60.
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        $sixtyDaysAgo  = Carbon::now()->subDays(60);
+        $l60Agg = WayfairDailyData::where('sku', 'not like', '%Parent%')
+            ->whereBetween('po_date', [$sixtyDaysAgo->toDateString(), $thirtyDaysAgo->toDateString()])
+            ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(unit_price * quantity), 0) as total_sales')
+            ->first();
+        $l60Orders = (int) ($l60Agg->order_count ?? 0);
+        $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
 
-        $growth = $l30Sales > 0 && $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // Get Wayfair marketplace percentage from marketplace_percentages table
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
@@ -7622,7 +7646,7 @@ class ChannelMasterController extends Controller
         $nPftPct = (float) ($metrics->n_pft ?? $gProfitPct);
         $nRoi = (float) ($metrics->n_roi ?? $gRoi);
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
@@ -7727,8 +7751,24 @@ class ChannelMasterController extends Controller
             ]);
         }
 
+        // L60 Sales = previous 30-day period (days 31-60).
+        // The user uploads cumulative ~60 days of sales into purchasing_power_sales_l60
+        // (this table holds BOTH last 30 + prior 30). Use Carbon to date-filter on
+        // date_created so we only count days 31-60 (matches Amazon/eBay/Walmart convention).
         $l60Orders = 0;
-        $l60Sales = 0;
+        $l60Sales  = 0.0;
+        if (Schema::hasTable('purchasing_power_sales_l60')) {
+            $thirtyDaysAgo = Carbon::now()->subDays(30);
+            $sixtyDaysAgo  = Carbon::now()->subDays(60);
+
+            $l60Agg = \App\Models\PurchasingPowerSaleL60::query()
+                ->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled'])
+                ->whereBetween('date_created', [$sixtyDaysAgo, $thirtyDaysAgo])
+                ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(amount), 0) as total_sales')
+                ->first();
+            $l60Orders = (int) ($l60Agg->order_count ?? 0);
+            $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
+        }
 
         $l30Sales = (float) ($metrics->total_sales ?? 0);
         $l30Orders = (int) ($metrics->total_orders ?? 0);
@@ -7742,7 +7782,7 @@ class ChannelMasterController extends Controller
         $ySales = (float) ($metrics->yesterday_sales ?? 0);
         $l7Sales = (float) ($metrics->l7_sales ?? 0);
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
@@ -8493,7 +8533,7 @@ class ChannelMasterController extends Controller
         }
         
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // L60 profit percentage (calculated if needed)
         $gprofitL60 = 0;
@@ -8650,7 +8690,7 @@ class ChannelMasterController extends Controller
             $nRoi = $gRoi;
         }
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $mapMissCounts = $this->getTiktok2LiveMapMissNMapFromPricingData($request);
         $channelData = ChannelMaster::whereIn('channel', ['TikTok 2', 'Tiktok Shop 2'])->first();
 
@@ -8805,7 +8845,7 @@ class ChannelMasterController extends Controller
             $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         }
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $mapMissCounts = $this->getMapAndMissCounts('depop');
         $channelData = ChannelMaster::where('channel', 'Depop')->first();
 
@@ -8901,7 +8941,7 @@ class ChannelMasterController extends Controller
         $l30Sales  = (clone $query)->selectRaw('SUM(i_l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(i_l60 * price) as total')->value('total') ?? 0;
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // Get eBay marketing percentage
         $percentage = ChannelMaster::where('channel', 'Instagram Shop')->value('channel_percentage') ?? 100;
@@ -9214,7 +9254,7 @@ class ChannelMasterController extends Controller
         }
         
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage
         $gprofitL60 = 0;
@@ -9338,7 +9378,7 @@ class ChannelMasterController extends Controller
         $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
         
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage
         $gprofitL60 = 0;
@@ -9455,7 +9495,7 @@ class ChannelMasterController extends Controller
         $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
         
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage
         $gprofitL60 = 0;
@@ -9559,7 +9599,7 @@ class ChannelMasterController extends Controller
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // Get eBay marketing percentage
         $percentage = ChannelMaster::where('channel', 'FB Marketplace')->value('channel_percentage') ?? 100;
@@ -9738,7 +9778,7 @@ class ChannelMasterController extends Controller
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // Get eBay marketing percentage
         $percentage = ChannelMaster::where('channel', 'FB Shop')->value('channel_percentage') ?? 100;
@@ -9877,7 +9917,7 @@ class ChannelMasterController extends Controller
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // Get eBay marketing percentage
         $percentage = ChannelMaster::where('channel', 'Business 5Core')->value('channel_percentage') ?? 100;
@@ -10031,7 +10071,7 @@ class ChannelMasterController extends Controller
             $nPft = $metrics->n_pft ?? $gProfitPct;
             $nRoi = $metrics->n_roi ?? $gRoi;
             $totalAdSpend = $this->fetchTotalAdSpendFromTables('topdawg');
-            $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+            $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
             $gprofitL60 = 0;
             $gRoiL60 = 0;
             $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
@@ -10092,7 +10132,7 @@ class ChannelMasterController extends Controller
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         $percentage = ChannelMaster::where('channel', 'TopDawg')->value('channel_percentage') ?? 100;
         $percentage = $percentage / 100;
@@ -10234,7 +10274,7 @@ class ChannelMasterController extends Controller
         $totalAdSpend = round($shoppingAdSpend + $serpAdSpend, 2);
         
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage
         $gprofitL60 = 0;
@@ -10362,7 +10402,7 @@ class ChannelMasterController extends Controller
         $nRoi = $metrics->n_roi ?? $gRoi;
         
         // Calculate growth
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         
         // L60 profit percentage
         $gprofitL60 = 0;

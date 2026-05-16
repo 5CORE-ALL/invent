@@ -438,6 +438,12 @@ class PurchasingPowerController extends Controller
         try {
             $request->validate(['file' => 'required|file']);
 
+            // L30 (default) -> purchasing_power_sales
+            // L60          -> purchasing_power_sales_l60
+            $period    = strtoupper(trim((string) $request->input('period', 'L30')));
+            $isL60     = $period === 'L60';
+            $tableName = $isL60 ? 'purchasing_power_sales_l60' : 'purchasing_power_sales';
+
             $file      = $request->file('file');
             $extension = strtolower($file->getClientOriginalExtension());
 
@@ -481,7 +487,7 @@ class PurchasingPowerController extends Controller
 
             // Truncate before fresh import
             DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-            PurchasingPowerSale::truncate();
+            DB::table($tableName)->truncate();
             DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
             $imported = 0;
@@ -538,22 +544,23 @@ class PurchasingPowerController extends Controller
                 $imported++;
 
                 if (count($batch) >= 100) {
-                    DB::table('purchasing_power_sales')->insert($batch);
+                    DB::table($tableName)->insert($batch);
                     $batch = [];
                 }
             }
 
             if (!empty($batch)) {
-                DB::table('purchasing_power_sales')->insert($batch);
+                DB::table($tableName)->insert($batch);
             }
 
-            Log::info("Purchasing Power sales uploaded: {$imported} rows, {$skipped} skipped");
+            Log::info("Purchasing Power {$period} sales uploaded: {$imported} rows, {$skipped} skipped (table: {$tableName})");
 
             return response()->json([
                 'success'  => true,
+                'period'   => $period,
                 'imported' => $imported,
                 'skipped'  => $skipped,
-                'message'  => "Successfully imported {$imported} orders ({$skipped} skipped)",
+                'message'  => "Successfully imported {$imported} {$period} orders ({$skipped} skipped)",
             ]);
 
         } catch (\Exception $e) {

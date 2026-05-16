@@ -806,6 +806,7 @@
 
 @section('script-bottom')
 <script>
+    const TEMU2_PCT = {{ $temu2Pct }};
     const COLUMN_VIS_KEY = "temu2_decrease_column_visibility";
     let table = null;
     let decreaseModeActive = false;
@@ -2285,17 +2286,13 @@
                 totalPriceWeighted += price * temuL30;
                 totalQty += temuL30;
 
-                // Only include rows with sales (Temu L30 > 0 and basePrice > 0) in PFT/revenue/COGS
-                // Match marketplace_daily_metrics calculation: fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
-                const hasSales = temuL30 > 0 && price > 0;
+                // Use Temu Price column directly (already has +$2.99 applied for base_price <= $26.99 by controller).
+                // This keeps badge GPFT/GROI consistent with per-row GPFT% column.
+                const hasSales = temuL30 > 0 && temuPrice > 0;
                 if (hasSales) {
-                    // Calculate fbPrice same as marketplace_daily_metrics: check if basePrice * quantity < 27
-                    const total = price * temuL30;
-                    const fbPrice = total < 27 ? price + 2.99 : price;
-                    // PFT % formula: (price * 0.96 - lp - temuship) / price — use fbPrice as price
-                    const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lpPerUnit - temuShip) / fbPrice : 0;
-                    const rowProfit = pftDecimal * fbPrice * temuL30;
-                    totalRevenue += fbPrice * temuL30; // Use fbPrice for revenue (matches marketplace_daily_metrics total_sales)
+                    const pftDecimal = (temuPrice * TEMU2_PCT - lpPerUnit - temuShip) / temuPrice;
+                    const rowProfit = pftDecimal * temuPrice * temuL30;
+                    totalRevenue += temuPrice * temuL30;
                     totalProfit += rowProfit;
                     totalLp += lpPerUnit * temuL30;
                 }
@@ -2857,7 +2854,7 @@
                             if (price <= 0) return 0;
                             const lp = parseFloat(row['lp']) || 0;
                             const temuShip = parseFloat(row['temu_ship']) || 0;
-                            return ((price * 0.96 - lp - temuShip) / price) * 100;
+                            return ((price * TEMU2_PCT - lp - temuShip) / price) * 100;
                         };
                         return calc(aRow.getData()) - calc(bRow.getData());
                     },
@@ -2868,7 +2865,7 @@
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
                         // PFT % = (price * 0.96 - lp - temuship) / price * 100
-                        const value = price > 0 ? ((price * 0.96 - lp - temuShip) / price) * 100 : 0;
+                        const value = price > 0 ? ((price * TEMU2_PCT - lp - temuShip) / price) * 100 : 0;
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="profit_percent" title="View GPRFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff1493;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -3002,7 +2999,7 @@
                         const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const percentage = 0.96; // Temu marketplace percentage (margin 96)
+                        const percentage = TEMU2_PCT; // TemuTwo marketplace percentage
                         
                         if (sprice === 0) return '';
                         
@@ -3031,7 +3028,7 @@
                         const adsPercentRow = parseFloat(rowData['ads_percent']) || 0;
                         const spend = parseFloat(rowData['spend']) || 0;
                         const temuL30 = parseFloat(rowData['temu_l30']) || 0;
-                        const percentage = 0.96;
+                        const percentage = TEMU2_PCT;
                         
                         if (sprice === 0) return '';
                         
@@ -3085,7 +3082,7 @@
                         const stemuPrice = isSameAsCurrentTemuPrice
                             ? sprice
                             : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        const sroi = ((stemuPrice * 0.96 - lp - temuShip) / lp) * 100;
+                        const sroi = ((stemuPrice * TEMU2_PCT - lp - temuShip) / lp) * 100;
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
                     }
@@ -3492,7 +3489,7 @@
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
                     const price = parseFloat(data.temu_price) || 0;
-                    const gpft = price > 0 ? ((price * 0.96 - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100 : 0;
+                    const gpft = price > 0 ? ((price * TEMU2_PCT - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100 : 0;
                     if (gpftFilter === 'negative') return gpft < 0;
                     if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;

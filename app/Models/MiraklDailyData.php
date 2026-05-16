@@ -81,6 +81,21 @@ class MiraklDailyData extends Model
     }
 
     /**
+     * Scope for Purchasing Power orders.
+     *
+     * NOTE: As of writing, Mirakl's order feed (`/api/v2/orders`) does NOT return
+     * any Purchasing Power orders for this operator — the live PP sales source is
+     * the `purchasing_power_sales` table (CSV upload via PurchasingPowerController).
+     * This scope is here so that the day PP orders start appearing in the Mirakl
+     * order feed, the standard Mirakl pipeline (and any consumer like a future
+     * Sales\PurchasingPowerSalesController) can adopt it without code churn.
+     */
+    public function scopePurchasingPower($query)
+    {
+        return $query->where('channel_name', 'Purchasing Power');
+    }
+
+    /**
      * Scope for L30 period
      */
     public function scopeL30($query)

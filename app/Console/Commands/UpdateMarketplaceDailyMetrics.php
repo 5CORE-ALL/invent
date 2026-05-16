@@ -888,6 +888,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             return $normalizeSku($pm->sku ?? '');
         });
 
+        // Read Temu margin from marketplace_percentages (fallback 0.96)
+        $mp = MarketplacePercentage::where('marketplace', 'Temu')->first();
+        $percentage = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
+
         $totalOrders = 0;
         $totalQuantity = 0;
         $totalRevenue = 0;
@@ -953,8 +957,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             // Only include rows with sales in PFT / L30 Sales / COGS (match temu_tabulator_view & temu_decrease)
             $hasSales = $quantity > 0 && $basePrice > 0;
             if ($hasSales) {
-                // PFT % = (price * 0.96 - lp - temuship) / price; dollar = pft * price * quantity (price = FB Prc)
-                $pftDecimal = $fbPrice > 0 ? ($fbPrice * 0.96 - $lp - $temuShip) / $fbPrice : 0;
+                // PFT % = (price * Temu margin - lp - temuship) / price; dollar = pft * price * quantity (price = FB Prc)
+                $pftDecimal = $fbPrice > 0 ? ($fbPrice * $percentage - $lp - $temuShip) / $fbPrice : 0;
                 $totalPft += $pftDecimal * $fbPrice * $quantity;
                 $totalL30Sales += $fbPrice * $quantity;
                 $totalCogs += $lp * $quantity;
@@ -962,7 +966,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        // PFT % = (Total PFT / L30 Sales) * 100 — same as temu tabulator (price * 0.96 - lp - temuship) / price
+        // PFT % = (Total PFT / L30 Sales) * 100 — same as temu tabulator (price * margin - lp - temuship) / price
         $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
@@ -1003,7 +1007,10 @@ class UpdateMarketplaceDailyMetrics extends Command
     }
 
     /**
-     * Temu 2: same logic as Temu but using temu2_daily_data. No separate ad table; ad spend = 0.
+     * Temu 2: mirrors temu2_tabulator_view badges and getTemu2DailyData filtering.
+     * Filters to ProductMaster SKUs, applies fbPrice (+$2.99 if order total < $27),
+     * and reads margin from marketplace_percentages.TemuTwo (fallback 0.96).
+     * No separate ad table for Temu 2; ad spend = 0.
      */
     private function calculateTemu2Metrics($date)
     {
@@ -1014,7 +1021,34 @@ class UpdateMarketplaceDailyMetrics extends Command
             return $sku;
         };
 
-        $data = Temu2DailyData::all();
+        // ProductMaster SKU universe (same as temu2_tabulator/getTemu2DailyData)
+        $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->pluck('sku')
+            ->filter(function ($sku) {
+                return stripos($sku, 'PARENT') === false;
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
+            return [$normalizeSku($s) => true];
+        })->all();
+
+        $allowedRawSkus = Temu2DailyData::select('contribution_sku')->distinct()
+            ->get()
+            ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+            })
+            ->pluck('contribution_sku')
+            ->unique()
+            ->values()
+            ->all();
+
+        $data = Temu2DailyData::whereIn('contribution_sku', $allowedRawSkus)->get();
+
         if ($data->isEmpty()) {
             return null;
         }
@@ -1023,6 +1057,10 @@ class UpdateMarketplaceDailyMetrics extends Command
         $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
             return $normalizeSku($pm->sku ?? '');
         });
+
+        // Read TemuTwo margin from marketplace_percentages (fallback 0.96)
+        $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
+        $percentage = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -1034,7 +1072,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalQuantityForPrice = 0;
 
         foreach ($data as $row) {
-            if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '') {
+            if (!$row->contribution_sku || trim((string) $row->contribution_sku) === ''
+                || !$row->order_id || trim((string) $row->order_id) === '') {
                 continue;
             }
             $pm = $productMastersBySku[$row->contribution_sku]
@@ -1049,9 +1088,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             $quantity = (int) ($row->quantity_purchased ?? 0);
             $basePrice = (float) ($row->base_price_total ?? 0);
             $totalQuantity += $quantity;
-            $totalRevenue += $basePrice * $quantity;
+
             $total = $basePrice * $quantity;
             $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+            $totalRevenue += $fbPrice * $quantity; // match tabulator: revenue uses fbPrice
 
             if ($quantity > 0 && $basePrice > 0) {
                 $totalWeightedPrice += $basePrice * $quantity;
@@ -1081,7 +1121,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
             $hasSales = $quantity > 0 && $basePrice > 0;
             if ($hasSales) {
-                $pftDecimal = $fbPrice > 0 ? ($fbPrice * 0.96 - $lp - $temuShip) / $fbPrice : 0;
+                $pftDecimal = $fbPrice > 0 ? ($fbPrice * $percentage - $lp - $temuShip) / $fbPrice : 0;
                 $totalPft += $pftDecimal * $fbPrice * $quantity;
                 $totalL30Sales += $fbPrice * $quantity;
                 $totalCogs += $lp * $quantity;
@@ -1096,7 +1136,6 @@ class UpdateMarketplaceDailyMetrics extends Command
         $temu2Spent = 0;
         $tacosPercentage = $totalL30Sales > 0 ? ($temu2Spent / $totalL30Sales) * 100 : 0;
         $nPftPercentage = $pftPercentage - $tacosPercentage;
-        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
         $netProfit = $totalPft - $temu2Spent;
         $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
@@ -1114,7 +1153,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'kw_spent' => round($temu2Spent, 2),
             'pmt_spent' => 0,
             'tacos_percentage' => round($tacosPercentage, 1),
-            'ads_percentage' => round($tacosPercentage, 1), // Add ads_percentage for Temu2 (same as TACOS)
+            'ads_percentage' => round($tacosPercentage, 1),
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
         ];

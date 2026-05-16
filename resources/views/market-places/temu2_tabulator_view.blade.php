@@ -209,6 +209,7 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
+    const TEMU2_PCT = {{ $temu2Pct }};
     const COLUMN_VIS_KEY = "temu2_tabulator_column_visibility";
     let table = null;
     
@@ -433,8 +434,31 @@
                         let calculatedFbPrice = total < 27 ? basePrice + 2.99 : basePrice;
                         const lp = parseFloat(data.lp) || 0;
                         const temuShip = parseFloat(data.temu_ship) || 0;
-                        const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * 0.96 - lp - temuShip) / calculatedFbPrice : 0;
+                        const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * TEMU2_PCT - lp - temuShip) / calculatedFbPrice : 0;
                         return (pftDecimal * calculatedFbPrice * quantity).toFixed(2);
+                    }
+                },
+                {
+                    title: "Margin %",
+                    field: "margin_pct",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 100,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (isNaN(value)) return '';
+                        const color = value >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">${value.toFixed(1)}%</span>`;
+                    },
+                    mutator: function(value, data) {
+                        const basePrice = parseFloat(data.base_price_total) || 0;
+                        const quantity  = parseInt(data.quantity_purchased) || 0;
+                        const lp        = parseFloat(data.lp) || 0;
+                        const temuShip  = parseFloat(data.temu_ship) || 0;
+                        const total     = basePrice * quantity;
+                        const fbPrice   = total < 27 ? basePrice + 2.99 : basePrice;
+                        if (fbPrice <= 0) return 0;
+                        return ((fbPrice * TEMU2_PCT - lp - temuShip) / fbPrice * 100).toFixed(2);
                     }
                 },
                 {
@@ -527,7 +551,7 @@
                 if (quantity > 0 && basePrice > 0) {
                     const total = basePrice * quantity;
                     const calculatedFbPrice = total < 27 ? basePrice + 2.99 : basePrice;
-                    const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * 0.96 - lp - temuShip) / calculatedFbPrice : 0;
+                    const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * TEMU2_PCT - lp - temuShip) / calculatedFbPrice : 0;
                     totalPft += pftDecimal * calculatedFbPrice * quantity;
                     totalL30Sales += quantity * calculatedFbPrice;
                     totalCogs += lp * quantity;
