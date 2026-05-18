@@ -4101,7 +4101,7 @@
         }
 
         function runPushBulk(items) {
-            const batchSize = 5;
+            const batchSize = 3;
             const total = items.length;
             let successCount = 0;
             let failedCount = 0;

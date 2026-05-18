@@ -3548,7 +3548,9 @@ PROMPT;
                 $failedCount++;
                 $perSkuResults[$sku] = ['error' => $e->getMessage()];
             }
-            usleep(200000);
+            // 500ms between SKUs (was 200ms) — keeps us inside Reverb's 429 window when distributing
+            // batches of 5 from runPushBulk; lower values produced sporadic 429s on Title 170 pushes.
+            usleep(500000);
         }
 
         Log::info('Multi-Marketplace Bulk Push - Completed', [

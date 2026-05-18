@@ -369,6 +369,8 @@ class ReverbApiService
                     if ($listingSku !== null && strcasecmp($listingSku, $normalizedSku) === 0) {
                         $id = $item['id'] ?? null;
                         if ($id !== null) {
+                            $this->persistReverbListingId($normalizedSku, (string) $id);
+
                             return (string) $id;
                         }
                     }
@@ -404,6 +406,8 @@ class ReverbApiService
                     if ($listingSku !== null && strcasecmp($listingSku, $normalizedSku) === 0) {
                         $id = $item['id'] ?? null;
                         if ($id !== null) {
+                            $this->persistReverbListingId($normalizedSku, (string) $id);
+
                             return (string) $id;
                         }
                     }
@@ -420,6 +424,34 @@ class ReverbApiService
             ]);
 
             return null;
+        }
+    }
+
+    /**
+     * Persist the freshly-resolved listing id so the next lookup short-circuits to the DB
+     * instead of paginating my/listings again (which is the source of intermittent failures).
+     */
+    private function persistReverbListingId(string $sku, string $listingId): void
+    {
+        $sku = trim($sku);
+        $listingId = trim($listingId);
+        if ($sku === '' || $listingId === '') {
+            return;
+        }
+        try {
+            if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'reverb_listing_id')) {
+                return;
+            }
+            ReverbProduct::updateOrCreate(
+                ['sku' => $sku],
+                ['reverb_listing_id' => $listingId]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Reverb persistReverbListingId failed', [
+                'sku' => $sku,
+                'listing_id' => $listingId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -455,7 +487,6 @@ class ReverbApiService
             ];
         }
 
-        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
         $payload = [
             'price' => [
                 'amount' => number_format($price, 2, '.', ''),
@@ -464,15 +495,8 @@ class ReverbApiService
         ];
 
         try {
-            $response = Http::withoutVerifying()
-                ->timeout(30)
-                ->withHeaders([
-                    'Authorization' => 'Bearer '.$token,
-                    'Accept' => 'application/hal+json',
-                    'Accept-Version' => '3.0',
-                    'Content-Type' => 'application/hal+json',
-                ])
-                ->put($updateUrl, $payload);
+            // Same retry/refresh path as updateTitle: 401 refreshes token, 429/503 honour Retry-After.
+            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
                 Log::info('Reverb price updated successfully', [
@@ -549,19 +573,13 @@ class ReverbApiService
             ];
         }
 
-        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
         $payload = ['title' => $title];
 
         try {
-            $response = Http::withoutVerifying()
-                ->timeout(30)
-                ->withHeaders([
-                    'Authorization' => 'Bearer '.$token,
-                    'Accept' => 'application/hal+json',
-                    'Accept-Version' => '3.0',
-                    'Content-Type' => 'application/hal+json',
-                ])
-                ->put($updateUrl, $payload);
+            // Route through retry helper so 401 refreshes the OAuth token and 429/503 honour Retry-After.
+            // Without this, an intermittent stale-cache token or rate-limit blip surfaces as a one-off
+            // "title push failed" — see updateBulletPoints/updateDescription which already use this path.
+            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
                 $titlePreview = strlen($title) > 80 ? substr($title, 0, 80).'...' : $title;

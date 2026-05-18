@@ -523,6 +523,8 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                     if ($outGoodsSn !== null && trim((string) $outGoodsSn) === $sku) {
                         $gid = $good['goodsId'] ?? null;
                         if ($gid !== null && $gid !== '') {
+                            $this->persistTemuMapping($sku, (string) $gid, null);
+
                             return (string) $gid;
                         }
                     }
@@ -531,6 +533,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                         if ($skuSn !== null && trim((string) $skuSn) === $sku) {
                             $gid = $good['goodsId'] ?? null;
                             if ($gid !== null && $gid !== '') {
+                                $innerSkuId = $skuInfo['skuId'] ?? null;
+                                $this->persistTemuMapping($sku, (string) $gid, $innerSkuId !== null && $innerSkuId !== '' ? (string) $innerSkuId : null);
+
                                 return (string) $gid;
                             }
                         }
@@ -542,6 +547,42 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             Log::warning('Temu getGoodsIdBySku list API fallback failed', ['sku' => $sku, 'error' => $e->getMessage()]);
         }
         return null;
+    }
+
+    /**
+     * Cache the goodsId/skuId mapping in temu_pricing so the next call short-circuits to the DB
+     * instead of paginating the goods/sku list API again. List-API pagination is the source of
+     * the intermittent "goodsId not found" failures on title-master pushes.
+     */
+    private function persistTemuMapping(string $sku, ?string $goodsId, ?string $skuId): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+        try {
+            if (! Schema::hasTable('temu_pricing') || ! Schema::hasColumn('temu_pricing', 'sku')) {
+                return;
+            }
+            $update = [];
+            if ($goodsId !== null && $goodsId !== '' && Schema::hasColumn('temu_pricing', 'goods_id')) {
+                $update['goods_id'] = $goodsId;
+            }
+            if ($skuId !== null && $skuId !== '' && Schema::hasColumn('temu_pricing', 'sku_id')) {
+                $update['sku_id'] = $skuId;
+            }
+            if ($update === []) {
+                return;
+            }
+            TemuPricing::updateOrCreate(['sku' => $sku], $update);
+        } catch (\Throwable $e) {
+            Log::warning('Temu persistTemuMapping failed', [
+                'sku' => $sku,
+                'goods_id' => $goodsId,
+                'sku_id' => $skuId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -592,6 +633,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                     if ($outSkuSn === $sku) {
                         $id = $item['skuId'] ?? null;
                         if ($id !== null && $id !== '') {
+                            $gid = $item['goodsId'] ?? null;
+                            $this->persistTemuMapping($sku, $gid !== null && $gid !== '' ? (string) $gid : null, (string) $id);
+
                             return (string) $id;
                         }
                     }
@@ -778,30 +822,34 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $dimensions = $this->getProductDimensions($sku);
         $images = $this->getProductImages($sku);
 
+        // Always send skuList — Temu's bg.local.goods.partial.update rejects requests without it
+        // ("Add at least one SKU"). When skuId resolution fails (transient list-API failure),
+        // we still send the minimal entry (outSkuSn + price/dim/images) so the request is valid.
+        $skuEntry = [
+            $skuCodeField => $sku,
+            'listPrice' => [
+                'amount' => (string) ($price ?? 1.00),
+                'currency' => 'USD',
+            ],
+            'listPriceType' => 0,
+            'weight' => $dimensions['weight'],
+            'length' => $dimensions['length'],
+            'width' => $dimensions['width'],
+            'height' => $dimensions['height'],
+            'weightUnit' => $dimensions['weightUnit'],
+            'volumeUnit' => $dimensions['volumeUnit'],
+            'images' => $images,
+        ];
         if ($skuInfo !== null && isset($skuInfo['skuId'])) {
-            $skuEntry = [
-                $skuIdField => (int) $skuInfo['skuId'],
-                $skuCodeField => $sku,
-                'listPrice' => [
-                    'amount' => (string) ($price ?? 1.00),
-                    'currency' => 'USD',
-                ],
-                'listPriceType' => 0,
-                'weight' => $dimensions['weight'],
-                'length' => $dimensions['length'],
-                'width' => $dimensions['width'],
-                'height' => $dimensions['height'],
-                'weightUnit' => $dimensions['weightUnit'],
-                'volumeUnit' => $dimensions['volumeUnit'],
-                'images' => $images,
-            ];
-            $requestBody[$skuListField] = [$skuEntry];
-
-            Log::info('Temu - Full SKU entry (field name: ' . $skuListField . ')', [
-                'sku' => $sku,
-                'skuEntry' => $skuEntry,
-            ]);
+            $skuEntry[$skuIdField] = (int) $skuInfo['skuId'];
         }
+        $requestBody[$skuListField] = [$skuEntry];
+
+        Log::info('Temu - Full SKU entry (field name: ' . $skuListField . ')', [
+            'sku' => $sku,
+            'skuEntry' => $skuEntry,
+            'skuId_resolved' => isset($skuEntry[$skuIdField]),
+        ]);
 
         Log::info('Temu updateTitle - exact request body (field name: ' . $skuListField . ')', [
             'sku' => $sku,
@@ -818,23 +866,46 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         try {
-            $response = $request->post($url, $signedRequest);
-            $status = $response->status();
-            $bodyRaw = $response->body();
-            $data = $response->json();
+            // 2-attempt loop (same shape as pushTemuGoodsBasicField) — covers transient 5xx / network
+            // blips that previously surfaced as one-off "title push failed" on title-master.
+            $status = 0;
+            $bodyRaw = '';
+            $data = [];
+            $errorCode = null;
+            $errorMsg = '';
+            $maxAttempts = 2;
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                $response = $request->post($url, $signedRequest);
+                $status = $response->status();
+                $bodyRaw = $response->body();
+                $data = $response->json() ?? [];
 
-            Log::info('Temu updateTitle response', [
-                'status' => $status,
-                'body' => $bodyRaw,
-            ]);
+                Log::info('Temu updateTitle response', [
+                    'sku' => $sku,
+                    'attempt' => $attempt,
+                    'status' => $status,
+                    'body' => $bodyRaw,
+                ]);
 
-            if ($response->successful() && ($data['success'] ?? false)) {
-                Log::info('Temu title updated successfully', ['sku' => $sku, 'goodsId' => $goodsId]);
-                return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
+                if ($response->successful() && ($data['success'] ?? false)) {
+                    Log::info('Temu title updated successfully', ['sku' => $sku, 'goodsId' => $goodsId, 'attempt' => $attempt]);
+                    return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
+                }
+
+                $errorCode = $data['errorCode'] ?? null;
+                $errorMsg = (string) ($data['errorMsg'] ?? $data['message'] ?? $bodyRaw);
+
+                // Don't retry on validation-style errors — they won't change on a retry.
+                $nonRetryableCodes = [150011003, 3000003];
+                $isAddSkuError = stripos($errorMsg, 'Add at least one SKU') !== false;
+                if (in_array((int) $errorCode, $nonRetryableCodes, true) || $isAddSkuError) {
+                    break;
+                }
+                if ($attempt < $maxAttempts) {
+                    usleep(500000);
+                }
             }
 
-            $errorCode = $data['errorCode'] ?? null;
-            $errorMsg = $data['errorMsg'] ?? $data['message'] ?? $bodyRaw;
             $isAddSkuError = stripos((string) $errorMsg, 'Add at least one SKU') !== false;
 
             if ((int) $errorCode === 150011003) {
