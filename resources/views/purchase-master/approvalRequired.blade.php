@@ -804,16 +804,23 @@
                 {
                     title: "Appr Req",
                     field: "appr_req_qty",
-                    accessor: row => (row ? row.appr_req_qty : null),
+                    accessor: row => (row ? getEffectiveApprReqValue(row) : null),
                     sorter: "number",
                     headerSort: true,
                     hozAlign: "center",
                     formatter: function(cell) {
-                        const v = parseFloat(cell.getValue());
-                        if (!v || isNaN(v)) {
+                        const rowData = cell.getRow().getData() || {};
+                        const v = getEffectiveApprReqValue(rowData);
+                        if (!v) {
                             return '<div style="text-align:center;" class="text-muted">—</div>';
                         }
-                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
+                        // MOQ fallback (when explicit appr_req_qty is 0) gets the yellow badge look,
+                        // matching the Forecast Analysis "Appr Req" column.
+                        const explicit = parseFloat(rowData.appr_req_qty);
+                        const isFallback = !(Number.isFinite(explicit) && explicit > 0);
+                        const bg = isFallback ? 'background:#fff3a0;border-radius:4px;padding:2px 6px;' : '';
+                        const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
+                        return `<div style="text-align:center;font-weight:bold;${bg}">${disp}</div>`;
                     }
                 },
                 {
@@ -1322,14 +1329,52 @@
             }, true);
         }
 
+        // Unified "Appr Req" rule — same definition used by Forecast Analysis (apprReqYellowRowVisible).
+        // Both pages now resolve "needs approval" identically from per-row table fields.
+        function approvalIsNullOrDashQty(value) {
+            if (value === null || value === undefined) return true;
+            const raw = String(value).trim();
+            if (raw === '' || raw === '-' || raw === '—') return true;
+            const n = parseFloat(raw);
+            return !Number.isFinite(n) || n === 0;
+        }
+        function apprReqYellowRowVisible(rowData) {
+            // Loose Appr Req rule: any non-parent row where to_order >= 0.
+            // Matches the Forecast Analysis "Appr Req" column display + /to-order-analysis backend filter.
+            // NR/LATER and pipeline qty are NOT excluded here; use the NRP and Stage dropdowns to narrow.
+            if (!rowData || rowData.is_parent || rowData.isParent) return false;
+            const raw = rowData.raw_data || {};
+            const twoOrd = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+            return Number.isFinite(twoOrd) && twoOrd >= 0;
+        }
+
+        // Same Appr Req column value used by /forecast.analysis — returns explicit appr_req_qty
+        // when stage='appr_req', otherwise falls back to MOQ for any non-parent row with to_order >= 0.
+        function getEffectiveApprReqValue(rowData) {
+            if (!rowData || rowData.is_parent || rowData.isParent) return 0;
+            const explicitApprReq = parseFloat(rowData.appr_req_qty);
+            if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
+                return explicitApprReq;
+            }
+            const raw = rowData.raw_data || {};
+            const twoOrd = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+            if (Number.isFinite(twoOrd) && twoOrd >= 0) {
+                const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);
+                if (Number.isFinite(moqVal) && moqVal > 0) {
+                    return moqVal;
+                }
+            }
+            return 0;
+        }
+
         let currentParentFilter = null;
-        let currentColorFilter = 'yellow'; // Default to yellow filter
-        let hideNRYes = true;
+        let currentColorFilter = ''; // Unified rule already encodes the yellow check
+        let hideNRYes = false; // Unified rule already excludes NR/LATER
         let currentRowTypeFilter = 'all';
         let currentRestockFilter = false;
         let currentZeroInvFilter = false;
         let currentStageFilter = 'appr_req'; // Default to Appr Req
-        let currentNRPFilter = 'REQ'; // Default to REQ to show only REQ items
+        let currentNRPFilter = ''; // Unified rule already excludes NR/LATER
 
         function setCombinedFilters() {
             const allData = table.getData();
@@ -1380,11 +1425,9 @@
                             const transit = parseFloat(transitValue) || 0;
                             stageMatch = transit > 0;
                         } else if (currentStageFilter === 'appr_req') {
-                            // Appr Req: items with empty stage (not 'to_order_analysis'), and yellow filter (to_order >= 0)
-                            // Exclude items already in 2Order - show only items that need approval
-                            const toOrderValue = child.raw_data ? child.raw_data["to_order"] : child["to_order"];
-                            const toOrder = parseFloat(toOrderValue) || 0;
-                            stageMatch = (childStage === '' || childStage === null || childStage === undefined) && toOrder >= 0;
+                            // Show only rows that actually display a value in the Appr Req column.
+                            // Same rule as the Forecast Analysis column / /to-order-analysis backend.
+                            stageMatch = getEffectiveApprReqValue(child) > 0;
                         } else if (currentStageFilter === 'to_order_analysis') {
                             // For 2 Order: include only items with stage 'to_order_analysis'
                             stageMatch = childStage === 'to_order_analysis';
@@ -1461,11 +1504,9 @@
                         const transit = parseFloat(transitValue) || 0;
                         stageMatch = transit > 0;
                     } else if (currentStageFilter === 'appr_req') {
-                        // Appr Req: items with empty stage (not 'to_order_analysis'), and yellow filter (to_order >= 0)
-                        // Exclude items already in 2Order - show only items that need approval
-                        const toOrderValue = data.raw_data ? data.raw_data["to_order"] : data["to_order"];
-                        const toOrder = parseFloat(toOrderValue) || 0;
-                        stageMatch = (dataStage === '' || dataStage === null || dataStage === undefined) && toOrder >= 0;
+                        // Show only rows that actually display a value in the Appr Req column.
+                        // Same rule as the Forecast Analysis column / /to-order-analysis backend.
+                        stageMatch = getEffectiveApprReqValue(data) > 0;
                     } else if (currentStageFilter === 'to_order_analysis') {
                         // For 2 Order: include only items with stage 'to_order_analysis'
                         stageMatch = dataStage === 'to_order_analysis';
@@ -1701,61 +1742,18 @@
                 // Transit Value total is from ALL transit_container_details records across ALL tabs, not just filtered table rows
             }, 50);
 
-            // Calculate yellow count (Appr Req count) based on filtered rows
-            // This should match the count that would be shown if stage filter is set to 'appr_req'
+            // Unified Appr Req count — matches the filter used by setCombinedFilters()
+            // and the Forecast Analysis "Appr Req" column. A row counts if EITHER stage='appr_req'
+            // in forecast_analysis OR the apprReqYellowRowVisible() rule passes.
             const visibleRows = table.getRows(true).map(r => r.getData());
-            
-            // Get all rows to calculate proper Appr Req count with current filters
             const allRows = table.getRows();
-            let yellowCount = 0;
-            
-            if (allRows.length > 0) {
-                const allDataForYellowCount = allRows.map(row => {
-                    const data = row.getData();
-                    const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
-                    const toOrder = data.to_order !== undefined ? data.to_order : (data.raw_data && data.raw_data.to_order !== undefined ? data.raw_data.to_order : (data.raw_data && data.raw_data["to_order"] !== undefined ? data.raw_data["to_order"] : 0));
-                    const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
-                    const nrValue = String(nr || '').trim().toUpperCase();
-                    const effectiveNr = nrValue === '' ? 'REQ' : nrValue;
-                    const isParent = data.is_parent !== undefined ? data.is_parent : (data.isParent !== undefined ? data.isParent : false);
-                    
-                    return {
-                        stage: String(stage || '').trim(),
-                        to_order: parseFloat(toOrder) || 0,
-                        nr: nr,
-                        effectiveNr: effectiveNr,
-                        is_parent: isParent
-                    };
-                });
-                
-                // Calculate Appr Req count with current filters (matching stage filter logic)
-                yellowCount = allDataForYellowCount.filter(r => {
-                    // Stage should be empty/null (Appr Req items)
-                    if (r.stage !== '' && r.stage !== null && r.stage !== undefined) return false;
-                    
-                    // Should not be parent
-                    if (r.is_parent) return false;
-                    
-                    // to_order >= 0 (yellow filter)
-                    if (r.to_order < 0) return false;
-                    
-                    // Apply NRP filter
-                    if (currentNRPFilter && r.effectiveNr !== currentNRPFilter) return false;
-                    
-                    // Apply NR toggle filter
-                    if (hideNRYes && r.nr === 'NR' && currentNRPFilter !== 'NR') return false;
-                    
-                    return true;
-                }).length;
-            } else {
-                // Fallback: use visible rows if all rows not available
-                yellowCount = visibleRows.filter(r =>
-                    r.to_order >= 0 &&
-                    !r.is_parent &&
-                    (hideNRYes ? r.nr !== 'NR' : true) &&
-                    (r.stage === '' || r.stage === null || r.stage === undefined)
-                ).length;
-            }
+
+            // Count = rows that actually display a value in the Appr Req column.
+            const matchesApprReqUnified = (data) => getEffectiveApprReqValue(data) > 0;
+
+            const yellowCount = (allRows.length > 0)
+                ? allRows.map(r => r.getData()).filter(matchesApprReqUnified).length
+                : visibleRows.filter(matchesApprReqUnified).length;
 
             // Reuse allRows for dropdown counts calculation
             // Get all rows (not filtered) to calculate counts for each stage option
@@ -1803,27 +1801,10 @@
                 return true;
             }).length;
             
-            // For Appr Req count: items with empty stage that match current filters
-            const apprReqCount = allDataForCount.filter(r => {
-                const stage = String(r.stage || '').trim();
-                if (stage !== '' && stage !== null && stage !== undefined) return false;
-                if (r.is_parent) return false;
-                
-                const toOrder = parseFloat(r.to_order) || 0;
-                if (toOrder < 0) return false;
-                
-                // Apply NRP filter
-                if (currentNRPFilter && r.effectiveNr !== currentNRPFilter) return false;
-                
-                // Apply NR toggle filter
-                if (hideNRYes && r.nr === 'NR' && currentNRPFilter !== 'NR') return false;
-                
-                // Apply color filter
-                if (currentColorFilter === 'yellow' && r.to_order < 0) return false;
-                if (currentColorFilter === 'red' && r.to_order >= 0) return false;
-                
-                return true;
-            }).length;
+            // Appr Req dropdown count — same unified rule as the actual filter and yellowCount above.
+            const apprReqCount = (allRows.length > 0)
+                ? allRows.map(r => r.getData()).filter(matchesApprReqUnified).length
+                : visibleRows.filter(matchesApprReqUnified).length;
 
             document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
             document.getElementById('toggle-nr-rows').textContent = hideNRYes ? "Show NR" : "Hide NR";
@@ -2508,20 +2489,23 @@
             const countContainer = document.getElementById('yellow-count-container');
             countContainer.classList.add('d-none');
 
-            // Set yellow filter as default
-            currentColorFilter = 'yellow';
-            document.getElementById('yellow-count-container').classList.remove('d-none');
+            // Color filter starts cleared — unified Appr Req rule already includes to_order >= 0.
+            currentColorFilter = '';
             document.getElementById('order-color-filter-dropdown').innerHTML =
-                '<i class="bi bi-funnel-fill text-dark"></i> <span class="text-dark fw-bold">🟡 Yellow</span>';
-            
-            // Set stage filter to 'appr_req' (Appr Req) as default
+                '<i class="bi bi-funnel-fill"></i> All';
+
+            // Stage filter defaults to Appr Req (the unified rule).
             document.getElementById('stage-filter').value = 'appr_req';
             currentStageFilter = 'appr_req';
-            
-            // Set NRP filter to 'REQ' as default to show only REQ items
-            document.getElementById('nrp-filter').value = 'REQ';
-            currentNRPFilter = 'REQ';
-            
+
+            // NRP filter defaults to "All" — unified Appr Req rule already excludes NR/LATER.
+            const nrpSelect = document.getElementById('nrp-filter');
+            if (nrpSelect) {
+                const allOpt = Array.from(nrpSelect.options).find(o => o.value === '' || /^all$/i.test(o.text));
+                nrpSelect.value = allOpt ? allOpt.value : '';
+            }
+            currentNRPFilter = '';
+
             setCombinedFilters();
 
             document.querySelectorAll('#order-color-filter-dropdown + .dropdown-menu [data-filter]').forEach(

@@ -69,9 +69,37 @@
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             text-align: center;
         }
-        /* Hide sort arrows in header */
-        .tabulator .tabulator-header .tabulator-col .tabulator-arrow {
-            display: none !important;
+        /* Sortable headers: pointer cursor + visible sort arrows on the teal background */
+        #forecast-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
+        }
+        #forecast-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover {
+            background: #6cb8b3 !important;
+            background-color: #6cb8b3 !important;
+        }
+        #forecast-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover .tabulator-col-content,
+        #forecast-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover .tabulator-col-title-holder,
+        #forecast-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover .tabulator-col-title,
+        #forecast-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover .tabulator-header-filter {
+            background: #6cb8b3 !important;
+            background-color: #6cb8b3 !important;
+        }
+        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+        }
+        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-arrow {
+            display: inline-block !important;
+            opacity: 0.55;
+            border-bottom-color: #1f3a3a !important;
+            border-top-color: #1f3a3a !important;
+        }
+        #forecast-table.tabulator .tabulator-header .tabulator-col[aria-sort="ascending"] .tabulator-arrow,
+        #forecast-table.tabulator .tabulator-header .tabulator-col[aria-sort="descending"] .tabulator-arrow {
+            opacity: 1;
+            border-bottom-color: #0b1f1f !important;
+            border-top-color: #0b1f1f !important;
         }
         .tabulator .tabulator-header .tabulator-header-filter {
             display: flex;
@@ -3162,7 +3190,9 @@
                     const r2sCount = allData.filter(row => notParent(row) && (parseFloat(row.readyToShipQty) || 0) > 0).length;
                     const transitCount = allData.filter(row => notParent(row) && (parseFloat(row.transit) || 0) > 0).length;
                     const moqCount = allData.filter(row => notParent(row) && (parseFloat(row.MOQ) || 0) > 0).length;
-                    const apprReqStageCount = allData.filter(row => notParent(row) && (parseFloat(row.appr_req_qty) || 0) > 0).length;
+                    // Count rows that actually show a value in the Appr Req column
+                    // (matches the unified rule used by /approval.required and /to-order-analysis).
+                    const apprReqStageCount = allData.filter(row => notParent(row) && getEffectiveApprReqValue(row) > 0).length;
                     table.updateColumnDefinition("msl", { title: "MSL (" + mslCount + ")" });
                     table.updateColumnDefinition("to_order", { title: "2 Ord (" + toOrderCount + ")" });
                     table.updateColumnDefinition("appr_req_qty", { title: "Appr Req (" + apprReqStageCount + ")" });
@@ -3993,8 +4023,12 @@
             if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
                 return explicitApprReq;
             }
-            if (shouldShowMoqFallbackInApprReq(rowData)) {
-                const raw = rowData.raw_data || {};
+            // Loose Appr Req rule (matches /approval.required and /to-order-analysis):
+            // any non-parent row where to_order >= 0 — pipeline qty and NR status are NOT excluded here
+            // so the column shows MOQ for every "running low" SKU. Use NRP / Stage dropdowns to narrow.
+            const raw = rowData.raw_data || {};
+            const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+            if (Number.isFinite(twoOrdVal) && twoOrdVal >= 0) {
                 const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);
                 if (Number.isFinite(moqVal) && moqVal > 0) {
                     return moqVal;
@@ -4437,14 +4471,13 @@
             }, 50);
 
             const visibleRows = table.getRows(true).map(r => r.getData());
-            const yellowCount = visibleRows.filter(r =>
-                !r.is_parent && apprReqYellowRowVisible(r)
-            ).length;
+            // Unified Appr Req count — same rule as the column header, /approval.required, and /to-order-analysis.
+            const yellowCount = visibleRows.filter(r => !r.is_parent && getEffectiveApprReqValue(r) > 0).length;
 
             const yc = document.getElementById('yellow-count-box');
             if (yc) {
                 yc.textContent = `Appr Req: ${yellowCount}`;
-                yc.title = 'Yellow queue: 2 Ord ≥ 0, no Order/MIP/R2S/Trn qty, NRP not NR/LATER. Not the same as the blue Stage summary.';
+                yc.title = 'Appr Req queue: stage=appr_req in forecast_analysis OR (2 Ord ≥ 0, no Order/MIP/R2S/Trn qty, NRP not NR/LATER). Same rule as /approval.required and /to-order-analysis.';
             }
             } finally {
                 isApplyingCombinedFilters = false;

@@ -297,10 +297,18 @@ class ToOrderAnalysisController extends Controller
             $showLATER = request()->get('showLATER', '0') === '1';
             
             // Same forecast row set as the Forecast Analysis page (read-only build — no derived-stage DB writes).
+            // Include a SKU when ANY of these is true:
+            //   - stage = 'appr_req'           → row tagged for approval
+            //   - stage = 'to_order_analysis'  → row already moved to the 2-Order stage (matches the
+            //                                    "Stage = 2Order" rows shown on /approval.required)
+            //   - the Appr Req rule passes     → to_order >= 0 AND MOQ > 0 (matches the Forecast
+            //                                    "Appr Req" column and /approval.required filter)
             $snapshotRows = app(ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
             $yellowForecastBySku = [];
             foreach ($snapshotRows as $faRow) {
-                if (!$this->forecastRowMatchesYellowApprReqQueue($faRow)) {
+                $stage = strtolower(trim((string) ($faRow->stage ?? '')));
+                $explicitStage = ($stage === 'appr_req' || $stage === 'to_order_analysis');
+                if (!$explicitStage && !$this->forecastRowMatchesYellowApprReqQueue($faRow)) {
                     continue;
                 }
                 $norm = strtoupper(trim((string) ($faRow->SKU ?? '')));
@@ -633,7 +641,14 @@ class ToOrderAnalysisController extends Controller
         return $row;
     }
 
-    /** Same rules as forecastAnalysis.blade.js apprReqYellowRowVisible + pipeline helpers. */
+    /**
+     * Appr Req rule — mirrors getEffectiveApprReqValue() in forecastAnalysis.blade.php and
+     * approvalRequired.blade.php. Includes a SKU when it would display a numeric value in
+     * the Forecast Analysis "Appr Req" column:
+     *   - non-parent
+     *   - AND (appr_req_qty > 0  OR  (to_order >= 0 AND MOQ > 0))
+     * Pipeline qty and NR status are not excluded here; use the page's dropdowns to narrow.
+     */
     private function forecastRowMatchesYellowApprReqQueue(object $item): bool
     {
         $row = $this->forecastBuildClientRowForYellowCheck($item);
@@ -641,21 +656,20 @@ class ToOrderAnalysisController extends Controller
             return false;
         }
 
+        // Explicit appr_req_qty (set when stage='appr_req')
+        $explicitApprReq = (float) ($item->appr_req_qty ?? 0);
+        if (is_finite($explicitApprReq) && $explicitApprReq > 0) {
+            return true;
+        }
+
+        // MOQ fallback: to_order >= 0 and a positive MOQ to display
         $twoOrdVal = (float) $row->to_order;
         if (!is_finite($twoOrdVal) || $twoOrdVal < 0) {
             return false;
         }
+        $moqVal = (float) ($item->MOQ ?? $item->{'Approved QTY'} ?? 0);
 
-        if (!$this->forecastNullOrDashQtyForYellow($row->transit)
-            || !$this->forecastNullOrDashQtyForYellow($row->readyToShipQty)
-            || !$this->forecastNullOrDashQtyForYellow($row->order_given)
-            || !$this->forecastNullOrDashQtyForYellow($row->two_order_qty)) {
-            return false;
-        }
-
-        $nr = strtoupper(trim($row->nr));
-
-        return $nr !== 'NR' && $nr !== 'LATER';
+        return is_finite($moqVal) && $moqVal > 0;
     }
 
     /**
