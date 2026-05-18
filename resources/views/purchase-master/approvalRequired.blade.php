@@ -1350,13 +1350,18 @@
 
         // Same Appr Req column value used by /forecast.analysis — returns explicit appr_req_qty
         // when stage='appr_req', otherwise falls back to MOQ for any non-parent row with to_order >= 0.
+        // Rows already moved into a downstream pipeline stage (mip/r2s/transit/all_good) are excluded.
         function getEffectiveApprReqValue(rowData) {
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
+            const raw = rowData.raw_data || {};
+            const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
+            if (stageNorm === 'mip' || stageNorm === 'r2s' || stageNorm === 'transit' || stageNorm === 'all_good') {
+                return 0;
+            }
             const explicitApprReq = parseFloat(rowData.appr_req_qty);
             if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
                 return explicitApprReq;
             }
-            const raw = rowData.raw_data || {};
             const twoOrd = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
             if (Number.isFinite(twoOrd) && twoOrd >= 0) {
                 const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);

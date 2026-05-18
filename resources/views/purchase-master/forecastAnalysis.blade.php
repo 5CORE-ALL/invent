@@ -4019,6 +4019,13 @@
 
         function getEffectiveApprReqValue(rowData) {
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
+            // Rows already moved into a downstream pipeline stage no longer need approval —
+            // hide the Appr Req value for them so they drop off /approval.required and /to-order-analysis.
+            const raw = rowData.raw_data || {};
+            const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
+            if (stageNorm === 'mip' || stageNorm === 'r2s' || stageNorm === 'transit' || stageNorm === 'all_good') {
+                return 0;
+            }
             const explicitApprReq = parseFloat(rowData.appr_req_qty);
             if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
                 return explicitApprReq;
@@ -4026,7 +4033,6 @@
             // Loose Appr Req rule (matches /approval.required and /to-order-analysis):
             // any non-parent row where to_order >= 0 — pipeline qty and NR status are NOT excluded here
             // so the column shows MOQ for every "running low" SKU. Use NRP / Stage dropdowns to narrow.
-            const raw = rowData.raw_data || {};
             const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
             if (Number.isFinite(twoOrdVal) && twoOrdVal >= 0) {
                 const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);

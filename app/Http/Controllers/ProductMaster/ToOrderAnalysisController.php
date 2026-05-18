@@ -646,6 +646,7 @@ class ToOrderAnalysisController extends Controller
      * approvalRequired.blade.php. Includes a SKU when it would display a numeric value in
      * the Forecast Analysis "Appr Req" column:
      *   - non-parent
+     *   - AND stage NOT IN ('mip','r2s','transit','all_good')  (already in pipeline → exclude)
      *   - AND (appr_req_qty > 0  OR  (to_order >= 0 AND MOQ > 0))
      * Pipeline qty and NR status are not excluded here; use the page's dropdowns to narrow.
      */
@@ -653,6 +654,13 @@ class ToOrderAnalysisController extends Controller
     {
         $row = $this->forecastBuildClientRowForYellowCheck($item);
         if ($row->is_parent) {
+            return false;
+        }
+
+        // Rows already moved into a downstream pipeline stage no longer need approval —
+        // exclude them so bulk-stage updates from this page don't have the row reappear after refresh.
+        $stage = strtolower(trim((string) ($item->stage ?? '')));
+        if (in_array($stage, ['mip', 'r2s', 'transit', 'all_good'], true)) {
             return false;
         }
 
@@ -885,30 +893,69 @@ class ToOrderAnalysisController extends Controller
     public function storeMFRG(Request $request)
     {
         try {
-            $record = MfrgProgress::where('parent', $request->parent)
-                ->where('sku', $request->sku)
+            $sku      = trim((string) $request->input('sku', ''));
+            $parent   = trim((string) $request->input('parent', ''));
+            $qty      = (int) ($request->input('order_qty') ?? 0);
+            $supplier = trim((string) ($request->input('supplier') ?? ''));
+            $advDate  = $request->input('adv_date') ?: null;
+
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'SKU is required'], 400);
+            }
+
+            // Match by normalized SKU only — mirrors the /update-forecast-data stage='mip' branch
+            // in ForecastAnalysisController so the two writes touch the SAME row (no duplicates).
+            // Use DB::table to bypass the SoftDeletes global scope and include soft-deleted rows;
+            // if found, we restore them by clearing deleted_at instead of creating a duplicate.
+            $skuLower = strtolower($sku);
+            $existing = DB::table('mfrg_progress')
+                ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
+                ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END')
+                ->orderByRaw("CASE WHEN ready_to_ship = 'No' THEN 0 ELSE 1 END")
+                ->orderByDesc('updated_at')
                 ->first();
 
-            if ($record) {
-                $record->qty = $request->order_qty;
-                $record->supplier = $request->supplier;
-                $record->adv_date = $request->adv_date;
-                $record->ready_to_ship = 'No';
-                $record->save();
-            } else {
-                // Create new record
-                MfrgProgress::create([
-                    'parent' => $request->parent,
-                    'sku' => $request->sku,
-                    'qty' => $request->order_qty,
-                    'supplier' => $request->supplier,
-                    'adv_date' => $request->adv_date,
+            $now = now();
+
+            if ($existing) {
+                $update = [
                     'ready_to_ship' => 'No',
+                    'deleted_at'    => null,
+                    'updated_at'    => $now,
+                ];
+                if ($qty > 0) {
+                    $update['qty'] = $qty;
+                }
+                if ($parent !== '') {
+                    $update['parent'] = $parent;
+                }
+                if ($supplier !== '') {
+                    $update['supplier'] = $supplier;
+                }
+                if ($advDate !== null && $advDate !== '') {
+                    $update['adv_date'] = $advDate;
+                }
+                DB::table('mfrg_progress')->where('id', $existing->id)->update($update);
+            } else {
+                DB::table('mfrg_progress')->insert([
+                    'sku'           => $sku,
+                    'parent'        => $parent !== '' ? $parent : null,
+                    'qty'           => $qty > 0 ? $qty : null,
+                    'supplier'      => $supplier !== '' ? $supplier : null,
+                    'adv_date'      => $advDate,
+                    'ready_to_ship' => 'No',
+                    'created_at'    => $now,
+                    'updated_at'    => $now,
                 ]);
             }
 
             return response()->json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Log::error('ToOrderAnalysis storeMFRG failed', [
+                'sku'    => $request->input('sku'),
+                'parent' => $request->input('parent'),
+                'error'  => $e->getMessage(),
+            ]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
