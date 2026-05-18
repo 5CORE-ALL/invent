@@ -238,6 +238,67 @@ class WhatsAppService
     }
 
     /**
+     * Send a template and return Gupshup's raw response for debugging.
+     * Mirrors sendTextWithDebug but for the wa/api/v1/template/msg endpoint.
+     * Does not throw — failures come back as ['ok' => false, ...].
+     *
+     * @param array<int, string|int> $params Ordered placeholder values
+     */
+    public function sendTemplateWithDebug(string $to, string $templateId, array $params): array
+    {
+        $clean = self::cleanPhone($to);
+        if (!$clean) {
+            return ['ok' => false, 'error' => 'invalid_phone', 'detail' => 'empty or invalid recipient'];
+        }
+        if (!$this->isEnabled()) {
+            return ['ok' => false, 'error' => 'disabled', 'detail' => 'WhatsApp not enabled or missing api_key/source'];
+        }
+        if (!$this->usesWaApi()) {
+            return ['ok' => false, 'error' => 'wa_api_only', 'detail' => 'template debug uses sm/wa API only. Configure GUPSHUP_API_KEY + GUPSHUP_SOURCE.'];
+        }
+
+        $url = $this->templateApiBase . '/template/msg';
+        $source = self::cleanPhone($this->source) ?: $this->source;
+        $paramsList = array_values(array_map(fn ($v) => (string) $v, $params));
+        $template = json_encode(['id' => $templateId, 'params' => $paramsList]);
+        $form = [
+            'channel' => 'whatsapp',
+            'source' => $source,
+            'destination' => $clean,
+            'template' => $template,
+        ];
+        if ($this->srcName !== null && $this->srcName !== '') {
+            $form['src.name'] = $this->srcName;
+        }
+
+        try {
+            $response = Http::withHeaders(['apikey' => $this->apiKey])
+                ->asForm()
+                ->timeout(15)
+                ->post($url, $form);
+
+            return [
+                'ok' => $response->successful(),
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'url' => $url,
+                'source' => $source,
+                'destination' => $clean,
+                'template_id' => $templateId,
+                'params_count' => count($paramsList),
+                'params_preview' => implode(' | ', array_map(fn ($v) => mb_strimwidth($v, 0, 40, '…'), $paramsList)),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'status' => 0,
+                'body' => '',
+            ];
+        }
+    }
+
+    /**
      * Send template message (use when outside 24h session window).
      * Template must be approved; placeholders replaced by provider format.
      *
@@ -294,8 +355,19 @@ class WhatsAppService
                 ->timeout(15)
                 ->post($url, $form);
 
+            // Log the Gupshup response body even on success — a 2xx only means
+            // "accepted into queue". The body carries the messageId / status
+            // ("submitted", "enqueued", or sometimes an error description).
+            // Without this it is impossible to tell why an accepted message
+            // never reaches the recipient (template not approved, opt-in
+            // missing, param count mismatch, etc.).
             if ($response->successful()) {
-                Log::info('WhatsAppService: template sent (template/msg)', ['to' => $to, 'template' => $templateId]);
+                Log::info('WhatsAppService: template sent (template/msg)', [
+                    'to' => $to,
+                    'template' => $templateId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
                 return true;
             }
             Log::warning('WhatsAppService: Gupshup template API error', [
