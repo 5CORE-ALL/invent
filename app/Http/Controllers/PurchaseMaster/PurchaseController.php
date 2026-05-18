@@ -54,35 +54,63 @@ class PurchaseController extends Controller
             return redirect()->back()->with('flash_message', 'Purchase updated successfully ✅');
         }
 
-        // Else → CREATE new
-        Purchase::create([
-            'vo_number'     => $request->vo_number,
-            'purchase_date' => now()->toDateString(),
-            'supplier_id'   => $request->supplier,
-            'warehouse_id'  => $request->warehouse,
-            'items'         => json_encode($items),
-            'description'   => $request->description,
-        ]);
+        // Else → CREATE new.
+        // If the form's vo_number already exists (incl. soft-deleted rows the DB unique
+        // index still sees), regenerate a fresh one. Retry once defensively in case two
+        // requests race past the exists() check at the same time.
+        $requested = trim((string) $request->vo_number);
+        $voNumber  = $requested;
+        if ($voNumber === '' || $this->voNumberExists($voNumber)) {
+            $voNumber = $this->generateVoucherNumber();
+        }
 
-        return redirect()->back()->with('flash_message', 'Purchase saved successfully ✅');
+        try {
+            Purchase::create([
+                'vo_number'     => $voNumber,
+                'purchase_date' => now()->toDateString(),
+                'supplier_id'   => $request->supplier,
+                'warehouse_id'  => $request->warehouse,
+                'items'         => json_encode($items),
+                'description'   => $request->description,
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            // Race: another request grabbed the same number between our check and INSERT.
+            $voNumber = $this->generateVoucherNumber();
+            Purchase::create([
+                'vo_number'     => $voNumber,
+                'purchase_date' => now()->toDateString(),
+                'supplier_id'   => $request->supplier,
+                'warehouse_id'  => $request->warehouse,
+                'items'         => json_encode($items),
+                'description'   => $request->description,
+            ]);
+        }
+
+        $flash = $voNumber === $requested
+            ? 'Purchase saved successfully ✅'
+            : "Purchase saved as {$voNumber} (the requested VO number was already taken) ✅";
+
+        return redirect()->back()->with('flash_message', $flash);
+    }
+
+    /** Includes soft-deleted rows — the DB unique index blocks those too. */
+    private function voNumberExists(string $voNumber): bool
+    {
+        return Purchase::withTrashed()->where('vo_number', $voNumber)->exists();
     }
 
     function generateVoucherNumber()
     {
         $prefix = 'PURCHASE';
 
-        $latestOrder = Purchase::select('vo_number')
+        // Numeric MAX on the suffix — alphabetical sort breaks once we cross 9→10, 99→100, etc.
+        // withTrashed() so soft-deleted rows still count (they collide with the unique index).
+        $maxSerial = (int) Purchase::withTrashed()
             ->where('vo_number', 'like', "$prefix-%")
-            ->orderBy('vo_number', 'desc')
-            ->first();
+            ->selectRaw("MAX(CAST(SUBSTRING_INDEX(vo_number, '-', -1) AS UNSIGNED)) AS max_serial")
+            ->value('max_serial');
 
-        if ($latestOrder) {
-            $parts = explode('-', $latestOrder->vo_number); 
-            $lastSerial = intval(end($parts));
-            $newSerial = str_pad($lastSerial + 1, 3, '0', STR_PAD_LEFT);
-        } else {
-            $newSerial = '001';
-        }
+        $newSerial = str_pad($maxSerial + 1, 3, '0', STR_PAD_LEFT);
 
         return "$prefix-$newSerial";
     }
