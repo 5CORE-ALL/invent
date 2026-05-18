@@ -264,10 +264,17 @@
                 </div>
 
                 <!-- Tabs Content -->
+                {{-- Drive panes from $tabs (same source as the buttons above) so button index === pane index.
+                     Previously this iterated $groupedData, whose key order is not guaranteed to match $tabs —
+                     that caused the Tabulator for tab N to be bound to the wrong container's rows, and any
+                     edit there got POSTed back with the wrong tab_name (e.g., Container 85 → Container 86). --}}
                 <div class="tab-content mt-3" id="tabContent">
-                    @foreach($groupedData as $tabName => $items)
-                        <div class="tab-pane fade {{ $loop->first ? 'show active' : '' }}" id="tab-{{ $loop->index }}" role="tabpanel">
-                            <div id="tabulator-{{ $loop->index }}" class="tabulator-table"></div>
+                    @foreach($tabs as $index => $tab)
+                        <div class="tab-pane fade {{ $index === 0 ? 'show active' : '' }}"
+                             id="tab-{{ $index }}"
+                             role="tabpanel"
+                             data-tab-name="{{ $tab }}">
+                            <div id="tabulator-{{ $index }}" class="tabulator-table" data-tab-name="{{ $tab }}"></div>
                         </div>
                     @endforeach
                 </div>
@@ -532,7 +539,13 @@ function escapeHtmlTransit(s) {
         .replace(/"/g, "&quot;");
 }
 
-Object.entries(groupedData).forEach(([tabName, data], index) => {
+// IMPORTANT: iterate the tab order used by the buttons + panes (server-rendered $tabs),
+// not Object.entries(groupedData) which can return keys in a different order. Mixing the two
+// caused container 85's tab pane to render container 86's rows (and vice versa) — and any
+// edit there saved with the wrong tab_name, effectively "transferring" rows between containers.
+const TAB_NAMES = @json(array_values($tabs));
+TAB_NAMES.forEach((tabName, index) => {
+    const data = (groupedData && groupedData[tabName]) ? groupedData[tabName] : [];
     let table = new Tabulator(`#tabulator-${index}`, {
         layout: "fitDataFill",
         data: data,
@@ -993,7 +1006,12 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
     table.on("cellEdited", function(cell) {
         const row = cell.getRow();
         const data = row.getData();
-        data.tab_name = tabName;
+        // Authoritative tab_name = the DOM attribute on this Tabulator container. Falls back to
+        // the closure variable. Prevents wrong-container saves if anything else in this loop
+        // ever changes the table-to-tab binding.
+        const tableEl = cell.getTable().element;
+        const domTabName = (tableEl && tableEl.getAttribute('data-tab-name')) || tabName;
+        data.tab_name = domTabName;
         const field = cell.getField();
 
         if (field === "Clink") {
