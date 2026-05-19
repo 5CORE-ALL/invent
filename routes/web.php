@@ -42,6 +42,7 @@ use App\Http\Controllers\Campaigns\EbayMissingAdsController;
 use App\Http\Controllers\Campaigns\EbayOverUtilizedBgtController;
 use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
+use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
 use App\Http\Controllers\Campaigns\GoogleAdsCampaignsRawController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
@@ -4593,6 +4594,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(EbayPinkDilAdController::class)->group(function () {
         Route::get('/ebay/pink-dil/ads', 'index')->name('ebay.pink.dil.ads');
         Route::get('/ebay/pink-dil/ads/data', 'getEbayPinkDilAdsData');
+    });
+
+    Route::controller(EbayCampaignAdsController::class)->group(function () {
+        Route::get('/ebay/campaign-ads', 'index')->name('ebay.campaign.ads');
+        Route::get('/ebay/campaign-ads/data', 'getData')->name('ebay.campaign.ads.data');
+        Route::get('/ebay/campaign-ads/rule', 'getRule')->name('ebay.campaign.ads.rule');
+        Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
+        Route::post('/ebay/campaign-ads/push-sbid', 'pushSbid')->name('ebay.campaign.ads.push.sbid');
+        Route::post('/ebay/campaign-ads/push-selected', 'pushSelected')->name('ebay.campaign.ads.push.selected');
+        Route::get('/ebay/campaign-ads/campaigns', 'getCampaignList')->name('ebay.campaign.ads.campaigns');
+        Route::post('/ebay/campaign-ads/enroll', 'enrollInCampaign')->name('ebay.campaign.ads.enroll');
     });
 
     Route::controller(EbayPMPAdsController::class)->group(function () {

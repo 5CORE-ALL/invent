@@ -150,6 +150,13 @@ class UpdateEbaySuggestedBid extends Command
                 ->get()
                 ->keyBy('listing_id');
             
+        // Load SCVR → Bid rule from ebay_sbid_rules table (fallback to hardcoded defaults)
+        $sbidRule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
+        $sbidBands = $sbidRule
+            ? (json_decode($sbidRule->rule, true)['bands'] ?? $this->defaultBands())
+            : $this->defaultBands();
+        $this->info('SBID Rule bands: ' . collect($sbidBands)->map(fn($b) => "SCVR≤{$b['scvr_max']}%→{$b['bid']}")->implode(', '));
+
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on SCVR (eBay L30 / Views) thresholds...');
         $updatedListings = 0;
@@ -161,7 +168,8 @@ class UpdateEbaySuggestedBid extends Command
             ->chunk($chunkSize, function ($productMasters) use (
                 $shopifyData, 
                 $ebayMetricsNormalized, 
-                $campaignListings, 
+                $campaignListings,
+                $sbidBands,
                 $ebayGeneralL30, 
                 &$updatedListings,
                 $normalizeSku
@@ -180,16 +188,8 @@ class UpdateEbaySuggestedBid extends Command
                         $esbid    = (float) ($listing->suggested_bid ?? 0);
                         $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0;
 
-                        // SCVR = 0% (no sales or no views) → RED → 9.1
-                        if ($scvr <= 4) {
-                            $newBid = 9.1;  // RED
-                        } elseif ($scvr <= 7) {
-                            $newBid = 7.1;  // YELLOW
-                        } elseif ($scvr <= 13) {
-                            $newBid = 4.1;  // GREEN
-                        } else {
-                            $newBid = 2.1;  // PINK
-                        }
+                        // SCVR → Bid using dynamic rule from ebay_sbid_rules table
+                        $newBid = $this->getBidFromRule($scvr, $sbidBands);
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
@@ -387,5 +387,30 @@ class UpdateEbaySuggestedBid extends Command
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    /**
+     * Get bid from dynamic SCVR bands rule.
+     * Bands sorted ascending by scvr_max — first band where scvr <= scvr_max wins.
+     */
+    private function getBidFromRule(float $scvr, array $bands): float
+    {
+        foreach ($bands as $band) {
+            if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
+                return (float)($band['bid'] ?? 9.1);
+            }
+        }
+        // Fallback: last band
+        return (float)(end($bands)['bid'] ?? 2.1);
+    }
+
+    private function defaultBands(): array
+    {
+        return [
+            ['scvr_max' => 4,    'bid' => 9.1],
+            ['scvr_max' => 7,    'bid' => 7.1],
+            ['scvr_max' => 13,   'bid' => 4.1],
+            ['scvr_max' => 9999, 'bid' => 2.1],
+        ];
     }
 }

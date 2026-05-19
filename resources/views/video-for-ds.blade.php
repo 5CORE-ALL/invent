@@ -490,7 +490,10 @@
                                     <th colspan="1" style="text-align:center;background:linear-gradient(135deg,#2c6ed5,#1a56b7) !important;font-size:9px;padding:3px;letter-spacing:0.5px;">
                                         Select
                                     </th>
-                                    <th colspan="10" class="fb-section-header" id="fb-header-label">
+                                    <th colspan="1" style="text-align:center;background:linear-gradient(135deg,#6c5ce7,#4834d4) !important;color:#fff !important;font-size:9px;padding:3px;letter-spacing:0.5px;">
+                                        TYPE
+                                    </th>
+                                    <th colspan="11" class="fb-section-header" id="fb-header-label">
                                         <i class="fab fa-facebook-f me-1"></i> FACEBOOK INSIGHTS — LAST 30 DAYS
                                     </th>
                                 </tr>
@@ -499,6 +502,7 @@
                                     <th style="width:1%;text-align:center;">
                                         <input type="checkbox" id="selectAll" title="Select all" style="cursor:pointer;width:13px;height:13px;">
                                     </th>
+                                    <th class="fb-th" style="white-space:nowrap;min-width:160px;">Ad Type</th>
                                     <th class="fb-th fb-col-campaign" title="Campaign name">Campaign</th>
                                     <th class="fb-th" style="white-space:nowrap;">Campaign ID</th>
                                     <th class="fb-th">Status</th>
@@ -884,6 +888,13 @@
                 _is_campaign:        true,
                 _campaign_id:        c.id,
                 _campaign_meta_id:   c.meta_id || null,
+                _status:             String(c.effective_status || c.status || '').toUpperCase(),
+                _ad_type:            c.ad_type || '',
+                _impressions:        parseInt(c.impressions) || 0,
+                _reach:              parseInt(c.reach) || 0,
+                _clicks:             parseInt(c.clicks) || 0,
+                _spend:              parseFloat(c.spend) || 0,
+                _results:            parseInt(c.results) || 0,
                 sku:                 c.name || '—',
                 account_name:        c.account_name || '',
                 parent_name:         c.account_name || '',
@@ -1461,6 +1472,69 @@
             if (current && accounts.includes(current)) sel.value = current;
         }
 
+        /* ── Ad Type dropdown (persists to meta_campaigns.ad_type) ────── */
+        const AD_TYPE_OPTIONS = ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL'];
+
+        function renderAdTypeSelect(row) {
+            const sel = document.createElement('select');
+            sel.className = 'form-select form-select-sm ad-type-select';
+            sel.style.cssText = 'min-width:150px;font-size:11px;padding:2px 22px 2px 6px;height:26px;';
+            sel.dataset.campaignId = row._campaign_id;
+            sel.innerHTML = '<option value="">— Select —</option>' +
+                AD_TYPE_OPTIONS.map(v => '<option value="' + v + '">' + v + '</option>').join('');
+            const current = String(row._ad_type || '').toUpperCase();
+            if (current) {
+                // Add any non-predefined custom value as an option so it stays selected
+                if (!AD_TYPE_OPTIONS.includes(current)) {
+                    const opt = document.createElement('option');
+                    opt.value = current; opt.textContent = current;
+                    sel.appendChild(opt);
+                }
+                sel.value = current;
+            }
+            sel.addEventListener('change', function () {
+                saveAdType(row, this);
+            });
+            return sel;
+        }
+
+        function saveAdType(row, sel) {
+            const prev = String(row._ad_type || '');
+            const next = sel.value;
+            sel.disabled = true;
+            fetch('/meta-ads-manager/campaigns/' + encodeURIComponent(row._campaign_id) + '/ad-type', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': csrf },
+                body: 'ad_type=' + encodeURIComponent(next),
+            })
+            .then(r => r.json().catch(() => ({ success: false })))
+            .then(resp => {
+                if (resp && resp.success) {
+                    row._ad_type = next;
+                    // Reflect on the cached campaign object as well
+                    const c = allCampaigns.find(x => x.id === row._campaign_id);
+                    if (c) c.ad_type = next;
+                } else {
+                    sel.value = prev;
+                    alert((resp && resp.message) || 'Failed to update ad type');
+                }
+            })
+            .catch(err => {
+                sel.value = prev;
+                alert('Failed to update ad type: ' + err.message);
+            })
+            .finally(() => { sel.disabled = false; });
+        }
+
+        /** A campaign row is "empty" if it has no name and no metrics anywhere. */
+        function isEmptyCampaignRow(row) {
+            const name = String(row.sku || '').trim();
+            if (!name || name === '—') return true;
+            const fbZero = !(row._impressions || row._reach || row._clicks || row._spend || row._results);
+            const spZero = !((+row._sp_activities) || (+row._sp_sales) || (+row._sp_orders));
+            return fbZero && spZero;
+        }
+
         function applyFilters() {
             const accountQ = (document.getElementById('accountFilter')?.value || 'all');
             const statusQ  = (document.getElementById('statusFilter')?.value  || 'all');
@@ -1469,12 +1543,20 @@
                     if ((row.account_name || '').trim() !== accountQ) return false;
                 }
                 if (statusQ !== 'all') {
-                    // For campaign rows check status; for video rows always pass
+                    // Campaign rows: filter strictly by their effective_status / status.
+                    // Video rows: match against the linked campaign's status (from fbInsightsMap).
                     if (row._is_campaign) {
-                        const rowStatus = (row.ads_audience || '').replace(/\s/g, '_').toUpperCase();
+                        const rowStatus = String(row._status || row.status || '').toUpperCase();
+                        if (rowStatus !== statusQ) return false;
+                    } else {
+                        const fb = fbInsightsMap[row.id];
+                        const rowStatus = String((fb && fb.status) || '').replace(/\s/g, '_').toUpperCase();
                         if (rowStatus !== statusQ) return false;
                     }
                 }
+                // Hide rows that have no meaningful data — i.e. no campaign name AND
+                // no traffic, no spend, no Shopify activity. Keeps the table clean.
+                if (row._is_campaign && isEmptyCampaignRow(row)) return false;
                 return true;
             });
 
@@ -1600,7 +1682,7 @@
             const icon = document.getElementById('total-count-icon');
 
             if (!data.length) {
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">No records found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">No records found</td></tr>';
                 document.getElementById('total-count').textContent = '0';
                 if (lbl)  lbl.textContent = 'Total:';
                 if (icon) icon.className  = 'fas fa-video';
@@ -1625,8 +1707,16 @@
                 cbTd.appendChild(cb);
                 tr.appendChild(cbTd);
 
-                // #
-
+                // Ad Type dropdown (campaign rows only)
+                const atTd = document.createElement('td');
+                atTd.style.textAlign = 'center';
+                atTd.style.background = 'rgba(108,92,231,0.06)';
+                if (row._is_campaign && row._campaign_id) {
+                    atTd.appendChild(renderAdTypeSelect(row));
+                } else {
+                    atTd.innerHTML = '<span class="text-muted" style="font-size:10px;">—</span>';
+                }
+                tr.appendChild(atTd);
 
                 // Facebook — same fields as “All Facebook Campaigns” (matched ads → campaigns + 30d ad metrics)
                 const fb = fbInsightsMap[row.id];
