@@ -8370,8 +8370,8 @@ class ChannelMasterController extends Controller
             $l60Orders = (int) ($l60Stats->order_count ?? 0);
             $l60Sales  = (float) ($l60Stats->total_sales ?? 0);
             
-            // Get L30 data from ShipHub (last 30 days, California time)
-            $l30StartDate = $latestDateCarbon->copy()->subDays(29); // 30 days total (29 previous days + today)
+            // Get L30 data from ShipHub (last 31 days, California time)
+            $l30StartDate = $latestDateCarbon->copy()->subDays(30); // 31 days total (30 previous days + today)
             $l30EndDate = $latestDateCarbon->endOfDay();
             
             $l30OrderItems = DB::connection('shiphub')
@@ -8619,7 +8619,8 @@ class ChannelMasterController extends Controller
             $latestCarbon = \Carbon\Carbon::parse($latestOrderDate);
             $l60StartDate = $latestCarbon->copy()->subDays(59)->startOfDay();
             $l60EndDate = $latestCarbon->copy()->subDays(30)->endOfDay();
-            $l30StartDate = $latestCarbon->copy()->subDays(29)->startOfDay();
+            // L30 widened to 31 days (30 previous days + today) per request.
+            $l30StartDate = $latestCarbon->copy()->subDays(30)->startOfDay();
             $l30EndDate = $latestCarbon->copy()->endOfDay();
 
             $l60Rows = TiktokSalesTwo::whereBetween('order_date', [$l60StartDate, $l60EndDate])->get();
