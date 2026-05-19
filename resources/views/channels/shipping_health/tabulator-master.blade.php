@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'CC Message Health'])
+@extends('layouts.vertical', ['title' => 'Shipping Health'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
@@ -317,7 +317,7 @@
         <div class="col-12">
             <div class="page-title-box">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <h4 class="page-title mb-0">CC Message Health</h4>
+                    <h4 class="page-title mb-0">Shipping Health</h4>
                 </div>
             </div>
         </div>
@@ -328,9 +328,9 @@
             <div class="card shadow-sm">
                 <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div class="d-flex align-items-center gap-3 flex-wrap">
-                        <span class="fw-semibold">CC Message Health</span>
+                        <span class="fw-semibold">Shipping Health</span>
                         <span id="cc-avg-badge" class="cc-avg-badge cc-threshold-gray"
-                            title="Today's average CC Message Health — click for chart">
+                            title="Today's average Shipping Health — click for chart">
                             <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
                             <span>Avg: <span id="cc-avg-badge-value">—</span></span>
                         </span>
@@ -351,7 +351,7 @@
 
     <div id="ccAvgTopPanel" aria-hidden="true">
         <div class="cc-avg-header">
-            <span><i class="fa-solid fa-chart-line me-1"></i>Daily average CC Message Health — last 30 days (<span id="cc-avg-panel-today">—</span> today)</span>
+            <span><i class="fa-solid fa-chart-line me-1"></i>Daily average Shipping Health — last 30 days (<span id="cc-avg-panel-today">—</span> today)</span>
             <button type="button" class="cc-avg-close" id="cc-avg-close" aria-label="Close">
                 <i class="fa-solid fa-xmark"></i>
             </button>
@@ -367,7 +367,7 @@
                 <div class="modal-header py-2">
                     <h6 class="modal-title fw-semibold mb-0" id="ccAuditModalLabel">
                         <i class="fa-solid fa-clipboard-check me-1"></i>
-                        CC Message Health audit — <span id="cc-audit-channel">—</span>
+                        Shipping Health audit — <span id="cc-audit-channel">—</span>
                     </h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -376,33 +376,49 @@
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="1" id="cc-audit-c1"
+                                <input class="form-check-input" type="checkbox" value="1" id="sh-audit-c1"
                                     data-key="all_messages_cleared">
-                                <label class="form-check-label small" for="cc-audit-c1">All messages cleared</label>
+                                <label class="form-check-label small" for="sh-audit-c1">All Shipping cleared</label>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="1" id="cc-audit-c2"
-                                    data-key="all_messages_replied_correctly">
-                                <label class="form-check-label small" for="cc-audit-c2">All messages replied
-                                    correctly</label>
+                                <input class="form-check-input" type="checkbox" value="1" id="sh-audit-c2"
+                                    data-key="cancelled_orders_not_shipped">
+                                <label class="form-check-label small" for="sh-audit-c2">Cancelled orders were not
+                                    shipped</label>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="1" id="cc-audit-c3"
-                                    data-key="all_messages_noted_in_all_issues">
-                                <label class="form-check-label small" for="cc-audit-c3">All messages noted in All
-                                    Issues</label>
+                                <input class="form-check-input" type="checkbox" value="1" id="sh-audit-c3"
+                                    data-key="required_weight_dimensions_declared">
+                                <label class="form-check-label small" for="sh-audit-c3">Required weight and dimensions
+                                    declared</label>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="1" id="cc-audit-c4"
-                                    data-key="all_followup_created_cleared_on_time">
-                                <label class="form-check-label small" for="cc-audit-c4">All follow-up created &amp;
-                                    cleared on time</label>
+                                <input class="form-check-input" type="checkbox" value="1" id="sh-audit-c4"
+                                    data-key="correct_lowest_label_cost_purchased">
+                                <label class="form-check-label small" for="sh-audit-c4">Correct and lowest possible
+                                    label cost purchased</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="1" id="sh-audit-c5"
+                                    data-key="combined_shipment_message_sent">
+                                <label class="form-check-label small" for="sh-audit-c5">Combined shipment message sent
+                                    to buyers</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="1" id="sh-audit-c6"
+                                    data-key="split_shipment_message_tracking_updated">
+                                <label class="form-check-label small" for="sh-audit-c6">Split shipment message and
+                                    tracking updated to buyers</label>
                             </div>
                         </div>
                     </div>
@@ -425,14 +441,18 @@
                                 <tr>
                                     <th style="width:130px;">When</th>
                                     <th style="width:130px;">User</th>
-                                    <th class="text-center" style="width:60px;" title="All messages cleared">Cleared
+                                    <th class="text-center" style="width:55px;" title="All Shipping cleared">Cleared
                                     </th>
-                                    <th class="text-center" style="width:60px;" title="All messages replied correctly">
-                                        Replied</th>
+                                    <th class="text-center" style="width:55px;"
+                                        title="Cancelled orders were not shipped">Cancelled</th>
+                                    <th class="text-center" style="width:55px;"
+                                        title="Required weight and dimensions declared">W&amp;D</th>
+                                    <th class="text-center" style="width:55px;"
+                                        title="Correct and lowest possible label cost purchased">Label</th>
                                     <th class="text-center" style="width:60px;"
-                                        title="All messages noted in All Issues">Noted</th>
-                                    <th class="text-center" style="width:60px;"
-                                        title="All follow-up created &amp; cleared on time">Follow-up</th>
+                                        title="Combined shipment message sent to buyers">Combined</th>
+                                    <th class="text-center" style="width:55px;"
+                                        title="Split shipment message and tracking updated to buyers">Split</th>
                                     <th>Remarks</th>
                                 </tr>
                             </thead>
@@ -451,7 +471,7 @@
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h6 class="modal-title fw-semibold mb-0" id="ccHealthAddModalLabel">Add CC Message Health value</h6>
+                    <h6 class="modal-title fw-semibold mb-0" id="ccHealthAddModalLabel">Add Shipping Health value</h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -505,7 +525,7 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;" id="ccHealthHistoryLabel">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="cc-history-title">CC Message Health — Rolling 32 Days</span>
+                        <span id="cc-history-title">Shipping Health — Rolling 32 Days</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="cc-history-range" class="form-select form-select-sm bg-white"
@@ -554,7 +574,7 @@
                     </div>
                     <div id="cc-history-nodata" class="text-center py-3" style="display:none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
-                        <p class="text-muted small mb-0">No CC Message Health data yet for this marketplace.</p>
+                        <p class="text-muted small mb-0">No Shipping Health data yet for this marketplace.</p>
                     </div>
                 </div>
             </div>
@@ -573,13 +593,13 @@
                 return;
             }
 
-            const urlData = @json(route('account.health.master.tabulator.data'));
-            const urlCcSave = @json(route('account.health.master.cc.health.save'));
-            const urlCcHistory = @json(route('account.health.master.cc.health.history'));
-            const urlCcDailyAvg = @json(route('account.health.master.cc.health.daily.average'));
-            const urlScopeLinkSave = @json(route('account.health.master.scope.link.save'));
-            const urlCcAuditSave = @json(route('account.health.master.cc.audit.save'));
-            const urlCcAuditHistory = @json(route('account.health.master.cc.audit.history'));
+            const urlData = @json(route('shipping.health.tabulator.data'));
+            const urlCcSave = @json(route('shipping.health.value.save'));
+            const urlCcHistory = @json(route('shipping.health.history'));
+            const urlCcDailyAvg = @json(route('shipping.health.daily.average'));
+            const urlScopeLinkSave = @json(route('shipping.health.scope.link.save'));
+            const urlCcAuditSave = @json(route('shipping.health.audit.save'));
+            const urlCcAuditHistory = @json(route('shipping.health.audit.history'));
 
             function csrf() {
                 return window.__LaravelCsrfToken ||
@@ -675,8 +695,8 @@
 
             function ccHealthFormatter(cell) {
                 const data = cell.getRow().getData();
-                const v = (data && (data.cc_health_today !== null && data.cc_health_today !== undefined)) ?
-                    data.cc_health_today : null;
+                const v = (data && (data.shipping_health_today !== null && data.shipping_health_today !== undefined)) ?
+                    data.shipping_health_today : null;
                 const missing = (v === null || v === undefined);
                 const txt = missing ? '—' : formatCcHealthValue(v);
                 const thresholdClass = ccHealthThresholdClass(v);
@@ -701,8 +721,8 @@
                 const data = cell.getRow().getData();
                 const addDot = document.createElement('span');
                 addDot.className = 'cc-add-dot';
-                addDot.title = 'Add current CC Message Health value';
-                addDot.setAttribute('aria-label', 'Add current CC Message Health value');
+                addDot.title = 'Add current Shipping Health value';
+                addDot.setAttribute('aria-label', 'Add current Shipping Health value');
                 addDot.innerHTML = '<i class="fa-solid fa-plus" aria-hidden="true"></i>';
                 addDot.addEventListener('click', function(ev) {
                     ev.stopPropagation();
@@ -718,8 +738,8 @@
                 const data = cell.getRow().getData();
                 const wrap = document.createElement('span');
                 wrap.className = 'cc-audit-icon';
-                wrap.title = 'Open CC Message Health audit';
-                wrap.setAttribute('aria-label', 'Open CC Message Health audit');
+                wrap.title = 'Open Shipping Health audit';
+                wrap.setAttribute('aria-label', 'Open Shipping Health audit');
                 wrap.innerHTML = '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>';
                 wrap.addEventListener('click', function(ev) {
                     ev.stopPropagation();
@@ -731,7 +751,7 @@
                 return wrap;
             }
 
-            // ---- CC Message Health audit modal ----
+            // ---- Shipping Health audit modal ----
             const ccAuditModal = document.getElementById('ccAuditModal');
             const ccAuditChannelEl = document.getElementById('cc-audit-channel');
             const ccAuditRemarksEl = document.getElementById('cc-audit-remarks');
@@ -774,12 +794,16 @@
                         '<td class="small">' + escHtml((r.user && r.user.name) ? r.user.name : '—') +
                         '</td>' +
                         '<td class="text-center">' + ccAuditYesNoCell(r.all_messages_cleared) + '</td>' +
-                        '<td class="text-center">' + ccAuditYesNoCell(r.all_messages_replied_correctly) +
+                        '<td class="text-center">' + ccAuditYesNoCell(r.cancelled_orders_not_shipped) +
                         '</td>' +
                         '<td class="text-center">' + ccAuditYesNoCell(r
-                            .all_messages_noted_in_all_issues) + '</td>' +
+                            .required_weight_dimensions_declared) + '</td>' +
                         '<td class="text-center">' + ccAuditYesNoCell(r
-                            .all_followup_created_cleared_on_time) + '</td>' +
+                            .correct_lowest_label_cost_purchased) + '</td>' +
+                        '<td class="text-center">' + ccAuditYesNoCell(r.combined_shipment_message_sent) +
+                        '</td>' +
+                        '<td class="text-center">' + ccAuditYesNoCell(r
+                            .split_shipment_message_tracking_updated) + '</td>' +
                         '<td class="small">' + (remarks ? escHtml(remarks) :
                             '<span class="text-muted">—</span>') + '</td>';
                     ccAuditHistoryTbody.appendChild(tr);
@@ -901,8 +925,8 @@
                     ccAddModalChannelEl.textContent = ccAddModalCtx.channelName || '';
                 }
                 if (ccAddModalValue) {
-                    const cur = (rowData.cc_health_today !== null && rowData.cc_health_today !==
-                        undefined) ? Number(rowData.cc_health_today).toFixed(2) : '';
+                    const cur = (rowData.shipping_health_today !== null && rowData.shipping_health_today !==
+                        undefined) ? Number(rowData.shipping_health_today).toFixed(2) : '';
                     ccAddModalValue.value = cur;
                 }
                 if (ccAddModalError) {
@@ -1096,7 +1120,7 @@
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: 'CC Message Health',
+                            label: 'Shipping Health',
                             data: values,
                             backgroundColor: 'rgba(108,117,125,0.08)',
                             borderColor: '#adb5bd',
@@ -1212,7 +1236,7 @@
                 ccHistoryCurrentDays = days;
                 const channelName = rowData.channel || '—';
                 if (ccHistoryTitleEl) {
-                    ccHistoryTitleEl.textContent = channelName + ' — CC Message Health (Rolling ' +
+                    ccHistoryTitleEl.textContent = channelName + ' — Shipping Health (Rolling ' +
                         rangeLabel(days) + ')';
                 }
                 bootstrap.Modal.getOrCreateInstance(ccHistoryModal).show();
@@ -1227,7 +1251,7 @@
                     const days = parseInt(ccHistoryRangeEl.value || '32', 10) || 32;
                     if (ccHistoryTitleEl) {
                         ccHistoryTitleEl.textContent = (ccHistoryCurrentChannel.channel || '—') +
-                            ' — CC Message Health (Rolling ' + rangeLabel(days) + ')';
+                            ' — Shipping Health (Rolling ' + rangeLabel(days) + ')';
                     }
                     loadCcHistoryFor(ccHistoryCurrentChannel.id, days);
                 });
@@ -1420,7 +1444,7 @@
                     width: 70,
                     hozAlign: 'center',
                     headerSort: false,
-                    headerTooltip: 'Open CC Message Health audit + history',
+                    headerTooltip: 'Open Shipping Health audit + history',
                     formatter: ccAuditIconFormatter
                 }, {
                     title: 'H link',
@@ -1431,8 +1455,8 @@
                     headerTooltip: 'H link from the marketplace\'s factors',
                     formatter: hLinkFormatter
                 }, {
-                    title: 'CC Message Health',
-                    field: 'cc_health_today',
+                    title: 'Shipping Health',
+                    field: 'shipping_health_today',
                     width: 130,
                     hozAlign: 'center',
                     sorter: 'number',
@@ -1440,7 +1464,7 @@
                         alignEmptyValues: 'bottom'
                     },
                     headerSortStartingDir: 'asc',
-                    headerTooltip: 'Today\'s CC Message Health value (lowest at the top). Click to view 30-day history.',
+                    headerTooltip: 'Today\'s Shipping Health value (lowest at the top). Click to view 30-day history.',
                     formatter: ccHealthFormatter
                 }, {
                     title: 'Add',
@@ -1448,7 +1472,7 @@
                     width: 60,
                     hozAlign: 'center',
                     headerSort: false,
-                    headerTooltip: 'Add current CC Message Health value',
+                    headerTooltip: 'Add current Shipping Health value',
                     formatter: ccHealthAddDotFormatter
                 }, {
                     field: 'type',
@@ -1475,7 +1499,7 @@
                         placeholder: 'No active marketplaces in Channel Master',
                         index: 'id',
                         initialSort: [{
-                            column: 'cc_health_today',
+                            column: 'shipping_health_today',
                             dir: 'asc'
                         }, {
                             column: 'channel',
@@ -1509,7 +1533,7 @@
                 let sum = 0;
                 let count = 0;
                 (rows || []).forEach(function(r) {
-                    const v = r && r.cc_health_today;
+                    const v = r && r.shipping_health_today;
                     if (v === null || v === undefined || v === '') {
                         return;
                     }

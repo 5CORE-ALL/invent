@@ -52,6 +52,7 @@ use App\Http\Controllers\Campaigns\WalmartRunningAdsController;
 use App\Http\Controllers\Campaigns\WalmartUtilisationController;
 use App\Http\Controllers\Catalouge\CatalougeManagerController;
 use App\Http\Controllers\Channels\AccountHealthMasterController;
+use App\Http\Controllers\Channels\ShippingHealthController;
 use App\Http\Controllers\Channels\AccountHealthMasterDashboardController;
 use App\Http\Controllers\Channels\AdsMasterController as ChannelAdsMasterController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
@@ -568,6 +569,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/account-health-master/channel-metric', 'saveAccountHealthChannelMetric')->name('account.health.master.channel.metric.save');
         Route::post('/account-health-master/channel-metrics-batch', 'saveAccountHealthChannelMetricsBatch')->name('account.health.master.channel.metrics.batch');
         Route::get('/account-health-master/metric-value-history', 'listAccountHealthMetricHistory')->name('account.health.master.metric.value.history');
+        Route::post('/account-health-master/cc-health/save', 'saveCcHealthValue')->name('account.health.master.cc.health.save');
+        Route::get('/account-health-master/cc-health/history', 'ccHealthHistory')->name('account.health.master.cc.health.history');
+        Route::get('/account-health-master/cc-health/daily-average', 'ccHealthDailyAverage')->name('account.health.master.cc.health.daily.average');
+        Route::post('/account-health-master/scope-link/save', 'saveScopeLinkInline')->name('account.health.master.scope.link.save');
+        Route::post('/account-health-master/cc-audit/save', 'saveCcAudit')->name('account.health.master.cc.audit.save');
+        Route::get('/account-health-master/cc-audit/history', 'ccAuditHistory')->name('account.health.master.cc.audit.history');
+    });
+
+    // Shipping Health (separate tables: shipping_health_values, shipping_audit_logs, shipping_scope_links)
+    Route::controller(ShippingHealthController::class)->group(function () {
+        Route::get('/shipping-health/tabulator', 'tabulator')->name('shipping.health.tabulator');
+        Route::get('/shipping-health/tabulator-data', 'tabulatorChannelData')->name('shipping.health.tabulator.data');
+        Route::post('/shipping-health/value/save', 'saveValue')->name('shipping.health.value.save');
+        Route::get('/shipping-health/history', 'history')->name('shipping.health.history');
+        Route::get('/shipping-health/daily-average', 'dailyAverage')->name('shipping.health.daily.average');
+        Route::post('/shipping-health/scope-link/save', 'saveScopeLink')->name('shipping.health.scope.link.save');
+        Route::post('/shipping-health/audit/save', 'saveAudit')->name('shipping.health.audit.save');
+        Route::get('/shipping-health/audit/history', 'auditHistory')->name('shipping.health.audit.history');
     });
 
     // Account Health Master Channel Dashboard

@@ -199,7 +199,10 @@
                                             target="_blank">Dashboard</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('account.health.master.tabulator') }}">Account Health</a>
+                                        <a href="{{ route('account.health.master.tabulator') }}">CC Message Health</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('shipping.health.tabulator') }}">Shipping Health</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('odr.rate') }}">ODR Rate</a>

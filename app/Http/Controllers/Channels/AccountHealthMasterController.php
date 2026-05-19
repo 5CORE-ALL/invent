@@ -9,6 +9,8 @@ use App\Models\AccountHealthMaster;
 use App\Models\AccountHealthMetricFieldDefinition;
 use App\Models\AccountHealthMetricValueHistory;
 use App\Models\AtoZClaimsRate;
+use App\Models\CcAuditLog;
+use App\Models\CcHealthValue;
 use App\Models\ChannelMaster;
 use App\Models\FullfillmentRate;
 use App\Models\LateShipmentRate;
@@ -1653,7 +1655,7 @@ class AccountHealthMasterController extends Controller
             ->where('definition_scope', $scope)
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get(['id', 'field_key', 'label', 'sort_order', 'definition_scope']);
+            ->get(['id', 'field_key', 'label', 'm_link', 'h_link', 'sort_order', 'definition_scope']);
 
         return response()->json([
             'scope' => $scope,
@@ -1668,6 +1670,8 @@ class AccountHealthMasterController extends Controller
             'channel_id' => 'required|integer|exists:channel_master,id',
             'label' => 'required|string|max:255',
             'field_key' => 'nullable|string|max:64|regex:/^[a-z0-9_]+$/',
+            'm_link' => 'nullable|string|max:2048',
+            'h_link' => 'nullable|string|max:2048',
         ]);
 
         $channel = ChannelMaster::query()->findOrFail((int) $request->input('channel_id'));
@@ -1696,10 +1700,24 @@ class AccountHealthMasterController extends Controller
             ->where('definition_scope', $scope)
             ->max('sort_order');
 
+        $mLinkRaw = $request->input('m_link');
+        $mLink = $mLinkRaw === null ? null : trim((string) $mLinkRaw);
+        if ($mLink === '') {
+            $mLink = null;
+        }
+
+        $hLinkRaw = $request->input('h_link');
+        $hLink = $hLinkRaw === null ? null : trim((string) $hLinkRaw);
+        if ($hLink === '') {
+            $hLink = null;
+        }
+
         $row = AccountHealthMetricFieldDefinition::query()->create([
             'definition_scope' => $scope,
             'field_key' => $baseKey,
             'label' => $label,
+            'm_link' => $mLink,
+            'h_link' => $hLink,
             'sort_order' => $maxOrder + 1,
         ]);
 
@@ -1710,9 +1728,27 @@ class AccountHealthMasterController extends Controller
     {
         $def = AccountHealthMetricFieldDefinition::query()->findOrFail($id);
         $request->validate([
-            'label' => 'required|string|max:255',
+            'label' => 'sometimes|required|string|max:255',
+            'm_link' => 'sometimes|nullable|string|max:2048',
+            'h_link' => 'sometimes|nullable|string|max:2048',
         ]);
-        $def->update(['label' => trim($request->input('label'))]);
+
+        $payload = [];
+        if ($request->has('label')) {
+            $payload['label'] = trim((string) $request->input('label'));
+        }
+        if ($request->has('m_link')) {
+            $link = trim((string) $request->input('m_link'));
+            $payload['m_link'] = $link === '' ? null : $link;
+        }
+        if ($request->has('h_link')) {
+            $link = trim((string) $request->input('h_link'));
+            $payload['h_link'] = $link === '' ? null : $link;
+        }
+
+        if ($payload !== []) {
+            $def->update($payload);
+        }
 
         return response()->json(['success' => true]);
     }
@@ -1932,21 +1968,362 @@ class AccountHealthMasterController extends Controller
      */
     public function tabulatorChannelData()
     {
-        $rows = ChannelMaster::query()
+        $channels = ChannelMaster::query()
             ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
             ->orderBy('type')
             ->orderBy('channel')
-            ->get(['id', 'channel', 'type', 'status'])
-            ->map(function ($c) {
-                return [
-                    'id' => $c->id,
-                    'channel' => $c->channel,
-                    'type' => $c->type,
-                    'status' => $c->status,
-                ];
-            });
+            ->get(['id', 'channel', 'type', 'status', 'logo']);
+
+        // For each channel, pick the M link / H link of the lowest-sort_order factor (with a
+        // non-empty value) defined under that channel's scope. eBay 1/2/3 share the same scope.
+        $scopeToLink = [];
+        $scopeToHLink = [];
+
+        $today = now()->toDateString();
+        $yesterday = now()->subDay()->toDateString();
+        $channelIds = $channels->pluck('id')->all();
+
+        // Latest value per channel for today and yesterday.
+        $latestPerDay = [];
+        if ($channelIds !== []) {
+            $cc = CcHealthValue::query()
+                ->whereIn('channel_id', $channelIds)
+                ->whereIn('recorded_on', [$today, $yesterday])
+                ->orderBy('id', 'desc')
+                ->get(['channel_id', 'value', 'recorded_on']);
+            foreach ($cc as $row) {
+                $d = $row->recorded_on instanceof \DateTimeInterface
+                    ? $row->recorded_on->format('Y-m-d')
+                    : (string) $row->recorded_on;
+                $cid = (int) $row->channel_id;
+                if (! isset($latestPerDay[$cid])) {
+                    $latestPerDay[$cid] = [];
+                }
+                if (! isset($latestPerDay[$cid][$d])) {
+                    $latestPerDay[$cid][$d] = (float) $row->value;
+                }
+            }
+        }
+
+        $rows = $channels->map(function (ChannelMaster $c) use (
+            &$scopeToLink,
+            &$scopeToHLink,
+            $latestPerDay,
+            $today,
+            $yesterday
+        ) {
+            $scope = $this->definitionScopeForChannel($c);
+            if (! array_key_exists($scope, $scopeToLink)) {
+                $scopeToLink[$scope] = AccountHealthMetricFieldDefinition::query()
+                    ->where('definition_scope', $scope)
+                    ->whereNotNull('m_link')
+                    ->where('m_link', '!=', '')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->value('m_link');
+            }
+            if (! array_key_exists($scope, $scopeToHLink)) {
+                $scopeToHLink[$scope] = AccountHealthMetricFieldDefinition::query()
+                    ->where('definition_scope', $scope)
+                    ->whereNotNull('h_link')
+                    ->where('h_link', '!=', '')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->value('h_link');
+            }
+
+            $todayVal = $latestPerDay[$c->id][$today] ?? null;
+            $yestVal = $latestPerDay[$c->id][$yesterday] ?? null;
+            $status = $this->ccHealthStatus($todayVal, $yestVal);
+
+            return [
+                'id' => $c->id,
+                'channel' => $c->channel,
+                'type' => $c->type,
+                'status' => $c->status,
+                'logo' => $c->logo,
+                'm_link' => $scopeToLink[$scope] ?: null,
+                'h_link' => $scopeToHLink[$scope] ?: null,
+                'cc_health_today' => $todayVal,
+                'cc_health_yesterday' => $yestVal,
+                'cc_health_status' => $status, // 'green' | 'red' | 'yellow' | 'gray'
+            ];
+        });
 
         return response()->json($rows);
+    }
+
+    /**
+     * Compare today's CC health value to yesterday's saved value:
+     *   - gray   = today missing
+     *   - green  = today > yesterday (or yesterday missing but today present)
+     *   - red    = today < yesterday
+     *   - yellow = today == yesterday
+     */
+    private function ccHealthStatus(?float $today, ?float $yesterday): string
+    {
+        if ($today === null) {
+            return 'gray';
+        }
+        if ($yesterday === null) {
+            return 'green';
+        }
+        if ($today > $yesterday) {
+            return 'green';
+        }
+        if ($today < $yesterday) {
+            return 'red';
+        }
+
+        return 'yellow';
+    }
+
+    /**
+     * Save a new CC Health value. Date / time / user are recorded automatically (today + now + auth user).
+     * Saving again for the same channel on the same day replaces that day's value.
+     */
+    public function saveCcHealthValue(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'value' => 'required|numeric|min:0',
+        ]);
+
+        $channelId = (int) $request->input('channel_id');
+        $value = round((float) $request->input('value'), 2);
+        $now = now();
+        $recordedOn = $now->toDateString();
+        $userId = Auth::id();
+
+        CcHealthValue::query()->updateOrCreate(
+            ['channel_id' => $channelId, 'recorded_on' => $recordedOn],
+            [
+                'value' => $value,
+                'recorded_at' => $now,
+                'user_id' => $userId,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'channel_id' => $channelId,
+            'value' => $value,
+            'recorded_on' => $recordedOn,
+            'recorded_at' => $now->toDateTimeString(),
+            'user_id' => $userId,
+        ]);
+    }
+
+    /**
+     * Save a new CC Message Health audit row for a channel.
+     * All four checks default to false; auditor_remarks is optional; audited_at + user_id are auto.
+     */
+    public function saveCcAudit(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'all_messages_cleared' => 'nullable|boolean',
+            'all_messages_replied_correctly' => 'nullable|boolean',
+            'all_messages_noted_in_all_issues' => 'nullable|boolean',
+            'all_followup_created_cleared_on_time' => 'nullable|boolean',
+            'auditor_remarks' => 'nullable|string|max:4000',
+        ]);
+
+        $row = CcAuditLog::query()->create([
+            'channel_id' => (int) $request->input('channel_id'),
+            'all_messages_cleared' => (bool) $request->boolean('all_messages_cleared'),
+            'all_messages_replied_correctly' => (bool) $request->boolean('all_messages_replied_correctly'),
+            'all_messages_noted_in_all_issues' => (bool) $request->boolean('all_messages_noted_in_all_issues'),
+            'all_followup_created_cleared_on_time' => (bool) $request->boolean('all_followup_created_cleared_on_time'),
+            'auditor_remarks' => trim((string) $request->input('auditor_remarks', '')) ?: null,
+            'audited_at' => now(),
+            'user_id' => Auth::id(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'audit' => $this->presentCcAudit($row),
+        ]);
+    }
+
+    /**
+     * List a channel's audit history (newest first). Use ?days=N to limit.
+     */
+    public function ccAuditHistory(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'days' => 'nullable|integer|min:1|max:3650',
+        ]);
+
+        $channelId = (int) $request->input('channel_id');
+        $q = CcAuditLog::query()
+            ->with('user:id,name,email')
+            ->where('channel_id', $channelId);
+
+        if ($request->filled('days')) {
+            $from = now()->subDays((int) $request->input('days'))->startOfDay();
+            $q->where('audited_at', '>=', $from);
+        }
+
+        $rows = $q->orderByDesc('audited_at')
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get()
+            ->map(fn (CcAuditLog $r) => $this->presentCcAudit($r))
+            ->values();
+
+        return response()->json([
+            'channel_id' => $channelId,
+            'history' => $rows,
+        ]);
+    }
+
+    private function presentCcAudit(CcAuditLog $row): array
+    {
+        return [
+            'id' => $row->id,
+            'channel_id' => $row->channel_id,
+            'all_messages_cleared' => (bool) $row->all_messages_cleared,
+            'all_messages_replied_correctly' => (bool) $row->all_messages_replied_correctly,
+            'all_messages_noted_in_all_issues' => (bool) $row->all_messages_noted_in_all_issues,
+            'all_followup_created_cleared_on_time' => (bool) $row->all_followup_created_cleared_on_time,
+            'auditor_remarks' => $row->auditor_remarks,
+            'audited_at' => $row->audited_at?->format('Y-m-d H:i'),
+            'user' => $row->user ? [
+                'id' => $row->user->id,
+                'name' => $row->user->name,
+            ] : null,
+        ];
+    }
+
+    /**
+     * Save the M link or H link inline from the grid for a channel's scope.
+     * Stored on the channel-scope's first factor in account_health_metric_field_definitions
+     * (a placeholder factor row is created if none exist yet for that scope).
+     */
+    public function saveScopeLinkInline(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'field' => 'required|in:m_link,h_link',
+            'value' => 'nullable|string|max:2048',
+        ]);
+
+        $channel = ChannelMaster::query()->findOrFail((int) $request->input('channel_id'));
+        $scope = $this->definitionScopeForChannel($channel);
+        $field = $request->input('field');
+        $raw = $request->input('value');
+        $link = $raw === null ? null : trim((string) $raw);
+        if ($link === '') {
+            $link = null;
+        }
+
+        // Prefer updating the lowest-sort_order factor in the scope; if none exist, create
+        // a hidden placeholder so we have somewhere to store the scope-wide link.
+        $row = AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->first();
+
+        if (! $row) {
+            $row = AccountHealthMetricFieldDefinition::query()->create([
+                'definition_scope' => $scope,
+                'field_key' => '_link_holder',
+                'label' => 'Link Holder',
+                'sort_order' => 0,
+            ]);
+        }
+
+        $row->update([$field => $link]);
+
+        return response()->json([
+            'success' => true,
+            'scope' => $scope,
+            'field' => $field,
+            'value' => $link,
+        ]);
+    }
+
+    /**
+     * Daily AVERAGE CC Health value across all active channels for the last N days (default 30).
+     * Used by the avg-badge chart overlay.
+     */
+    public function ccHealthDailyAverage(Request $request)
+    {
+        $request->validate([
+            'days' => 'nullable|integer|min:1|max:365',
+        ]);
+
+        $days = (int) ($request->input('days') ?: 30);
+        $from = now()->subDays($days - 1)->toDateString();
+
+        $activeIds = ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->pluck('id')
+            ->all();
+
+        if ($activeIds === []) {
+            return response()->json(['days' => $days, 'history' => []]);
+        }
+
+        $rows = CcHealthValue::query()
+            ->whereIn('channel_id', $activeIds)
+            ->whereDate('recorded_on', '>=', $from)
+            ->selectRaw('recorded_on, AVG(value) AS avg_value, COUNT(*) AS sample_count')
+            ->groupBy('recorded_on')
+            ->orderBy('recorded_on', 'asc')
+            ->get()
+            ->map(function ($r) {
+                return [
+                    'recorded_on' => $r->recorded_on instanceof \DateTimeInterface
+                        ? $r->recorded_on->format('Y-m-d')
+                        : (string) $r->recorded_on,
+                    'avg' => round((float) $r->avg_value, 2),
+                    'count' => (int) $r->sample_count,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'days' => $days,
+            'history' => $rows,
+        ]);
+    }
+
+    /**
+     * History for one channel: list of {date, value} sorted ascending (for line chart).
+     */
+    public function ccHealthHistory(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'days' => 'nullable|integer|min:1|max:365',
+        ]);
+
+        $channelId = (int) $request->input('channel_id');
+        $days = (int) ($request->input('days') ?: 30);
+        $from = now()->subDays($days - 1)->toDateString();
+
+        $rows = CcHealthValue::query()
+            ->where('channel_id', $channelId)
+            ->whereDate('recorded_on', '>=', $from)
+            ->orderBy('recorded_on', 'asc')
+            ->orderBy('id', 'asc')
+            ->get(['value', 'recorded_on'])
+            ->map(function (CcHealthValue $r) {
+                return [
+                    'recorded_on' => $r->recorded_on?->format('Y-m-d'),
+                    'value' => (float) $r->value,
+                ];
+            })->values();
+
+        return response()->json([
+            'channel_id' => $channelId,
+            'days' => $days,
+            'history' => $rows,
+        ]);
     }
 
     public function definitionScopeForChannel(ChannelMaster $channel): string
