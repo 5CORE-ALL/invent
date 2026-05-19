@@ -1526,13 +1526,22 @@
             .finally(() => { sel.disabled = false; });
         }
 
-        /** A campaign row is "empty" if it has no name and no metrics anywhere. */
-        function isEmptyCampaignRow(row) {
-            const name = String(row.sku || '').trim();
-            if (!name || name === '—') return true;
-            const fbZero = !(row._impressions || row._reach || row._clicks || row._spend || row._results);
-            const spZero = !((+row._sp_activities) || (+row._sp_sales) || (+row._sp_orders));
-            return fbZero && spZero;
+        /** A row is "empty" if it has no name and no metrics anywhere. */
+        function isEmptyRow(row) {
+            if (row._is_campaign) {
+                const name = String(row.sku || '').trim();
+                if (!name || name === '—') return true;
+                const fbZero = !(row._impressions || row._reach || row._clicks || row._spend || row._results);
+                const spZero = !((+row._sp_activities) || (+row._sp_sales) || (+row._sp_orders));
+                return fbZero && spZero;
+            }
+            // Video rows (from VideoForDs): hide if there is no linked FB campaign
+            // with any meaningful metric. fbInsightsMap[row.id] is null when the
+            // backend found no campaign name matching the row's ads_topic_story.
+            const fb = fbInsightsMap[row.id];
+            if (!fb) return true;
+            const fbZero = !((+fb.impressions) || (+fb.reach) || (+fb.clicks) || (+fb.spend) || (+fb.results));
+            return fbZero;
         }
 
         function applyFilters() {
@@ -1556,7 +1565,7 @@
                 }
                 // Hide rows that have no meaningful data — i.e. no campaign name AND
                 // no traffic, no spend, no Shopify activity. Keeps the table clean.
-                if (row._is_campaign && isEmptyCampaignRow(row)) return false;
+                if (isEmptyRow(row)) return false;
                 return true;
             });
 
