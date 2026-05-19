@@ -8348,8 +8348,12 @@ class ChannelMasterController extends Controller
         if ($latestDate) {
             // Use California timezone for consistent date calculations
             $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
-            $l60StartDate = $latestDateCarbon->copy()->subDays(59); // 60 days ago (60 days before today)
-            $l60EndDate = $latestDateCarbon->copy()->subDays(30); // 31 days ago (end of L60, start of L30)
+            // L60 widened to 62 calendar days, anchored to day boundaries.
+            // It is the prior period that sits directly before the 32-day L30 window:
+            //   L30 = [latestDate-31 .. latestDate]   (32 days)
+            //   L60 = [latestDate-93 .. latestDate-32] (62 days, contiguous and non-overlapping)
+            $l60StartDate = $latestDateCarbon->copy()->subDays(93)->startOfDay(); // 62 days total
+            $l60EndDate   = $latestDateCarbon->copy()->subDays(32)->endOfDay();
             
             // L60 sales & order count for TikTok come from `orders.order_total`. The previous
             // query summed `order_items.unit_price`, but ShipHub stores TikTok revenue only on
