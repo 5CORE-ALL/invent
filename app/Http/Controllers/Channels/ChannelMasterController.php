@@ -7633,8 +7633,19 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        $l60Orders = 0;
-        $l60Sales = 0;
+        // L60 derived from the historical marketplace_daily_metrics snapshot 30 days ago.
+        // `faire_daily_data` only retains the latest L30 window of orders (no deeper history),
+        // but MDM holds a daily snapshot of Faire's L30-as-of-that-date. The MDM row from
+        // 30 days ago therefore represents sales for days 31-60 in today's frame = L60.
+        // Previously this was hard-coded to 0.
+        $pst = 'America/Los_Angeles';
+        $l60AnchorDate = Carbon::now($pst)->subDays(30)->toDateString();
+        $l60Row = MarketplaceDailyMetric::where('channel', 'Faire')
+            ->whereDate('date', '<=', $l60AnchorDate)
+            ->orderBy('date', 'desc')
+            ->first();
+        $l60Sales  = $l60Row ? (float) ($l60Row->total_sales ?? 0) : 0;
+        $l60Orders = $l60Row ? (int) ($l60Row->total_orders ?? 0) : 0;
 
         $l30Sales = (float) ($metrics->total_sales ?? 0);
         $l30Orders = (int) ($metrics->total_orders ?? 0);
