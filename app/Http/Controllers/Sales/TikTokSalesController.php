@@ -36,9 +36,11 @@ class TikTokSalesController extends Controller
                 return response()->json([]);
             }
 
-            // Calculate date range: 30 days total (California time)
+            // Calculate date range: 32 calendar days total (California time).
+            // startOfDay() anchors the start so orders earlier in the day than the latest order's
+            // timestamp are not dropped at the boundary.
             $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
-            $startDate = $latestDateCarbon->copy()->subDays(29); // 30 days total (29 previous days + today)
+            $startDate = $latestDateCarbon->copy()->subDays(31)->startOfDay(); // 32 days total (31 previous days + today)
             $startDateStr = $startDate->format('Y-m-d');
             $endDateStr = $latestDateCarbon->format('Y-m-d');
 
