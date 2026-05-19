@@ -10242,10 +10242,22 @@ class ChannelMasterController extends Controller
 
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
         $metrics = MarketplaceDailyMetric::where('channel', 'Shopify B2C')->latest('date')->first();
-        
-        // L60 will be 0 until we have historical data with proper dates
-        $l60Orders = 0;
-        $l60Sales = 0;
+
+        // L60 = prior 30-day period (days 31-60) computed from shopify_b2c_daily_data.
+        // Previously this was hard-coded to 0; the table actually keeps an `l60` period bucket
+        // plus a real `order_date` column, so we filter by date and sum `total_amount` the same
+        // way calculateShopifyB2CMetrics() sums L30. Refunded orders are excluded to match L30.
+        $pst = 'America/Los_Angeles';
+        $todayPst = Carbon::now($pst)->startOfDay();
+        $l60Start = $todayPst->copy()->subDays(59);
+        $l60End   = $todayPst->copy()->subDays(30)->endOfDay();
+        $l60Rows = \App\Models\ShopifyB2CDailyData::whereBetween('order_date', [$l60Start, $l60End])
+            ->where('financial_status', '!=', 'refunded')
+            ->get(['order_id', 'total_amount']);
+        $l60Orders = $l60Rows->pluck('order_id')->filter()->unique()->count();
+        $l60Sales  = (float) $l60Rows->sum(function ($r) {
+            return (float) ($r->total_amount ?? 0);
+        });
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
