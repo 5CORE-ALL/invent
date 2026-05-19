@@ -3583,22 +3583,34 @@ class ChannelMasterController extends Controller
      */
     private function computeFaireYSalesLikeAmazon(): ?float
     {
-        $latestRaw = DB::table('faire_daily_data')->whereNotNull('order_date')->max('order_date');
+        // Sourced from shopify_order_items (apicentral) so Faire's Y Sales uses the same
+        // pipeline as the all-marketplace-master Faire row and /faire-tabulator page.
+        // Previously this queried `faire_daily_data` (manual Excel uploads) which had a
+        // different latest-order anchor and could disagree with the L30/L60 numbers.
+        $faireWhere = function ($q) {
+            $q->where('source_name', 'faire')
+              ->orWhere('source_name', 'LIKE', '%faire%')
+              ->orWhere('tags', 'LIKE', '%Faire%');
+        };
+
+        $latestRaw = DB::connection('apicentral')->table('shopify_order_items')
+            ->where($faireWhere)
+            ->whereNotNull('order_date')
+            ->max('order_date');
         if (!$latestRaw) {
             return null;
         }
 
         $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
         $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
 
-        $sum = (float) DB::table('faire_daily_data')
+        $sum = (float) DB::connection('apicentral')->table('shopify_order_items')
+            ->where($faireWhere)
             ->where('order_date', '>=', $yStartPacific)
             ->where('order_date', '<=', $yEndPacific)
             ->where('quantity', '>', 0)
-            ->selectRaw(
-                'COALESCE(SUM((CASE WHEN COALESCE(wholesale_price, 0) > 0 THEN wholesale_price ELSE COALESCE(retail_price, 0) END) * quantity), 0) as revenue'
-            )
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);

@@ -1432,14 +1432,16 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue() || 0);
                             if (!value || value === 0) {
-                                return '<span style="color:#adb5bd;">—</span>';
+                                // NYS = "No Yesterday Sales" — shown whenever a channel had
+                                // zero revenue on the prior PST day.
+                                return '<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>';
                             }
                             return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>`;
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
-                            if (!value || value === 0) return '<strong>—</strong>';
+                            if (!value || value === 0) return '<strong style="color:#adb5bd;" title="No Yesterday Sales">NYS</strong>';
                             return `<strong style="color:#0d6efd;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
                         }
                     },
@@ -3321,7 +3323,10 @@
                 // Update badges
                 $('#total-channels').text(totalChannels);
                 $('#total-l30-sales').text('$' + Math.round(totalL30Sales).toLocaleString('en-US'));
-                $('#total-y-sales').text('$' + Math.round(totalYSales).toLocaleString('en-US'));
+                // Show NYS when no channel had any sales yesterday — clearer than "$0".
+                $('#total-y-sales').text(totalYSales > 0
+                    ? '$' + Math.round(totalYSales).toLocaleString('en-US')
+                    : 'NYS');
                 $('#total-l30-orders').text(Math.round(totalL30Orders).toLocaleString('en-US'));
                 $('#total-qty').text(Math.round(totalQty).toLocaleString('en-US'));
                 $('#total-clicks').text(Math.round(totalClicks).toLocaleString('en-US'));
