@@ -525,68 +525,106 @@ class FaireController extends Controller
     public function getDailyData(Request $request)
     {
         try {
-            $data = FaireDailyData::orderBy('order_date', 'desc')
+            // Source changed from `faire_daily_data` (manual Excel uploads) to live Shopify
+            // order data on the `apicentral` connection. Faire orders are identified the same
+            // way the Shopify Orders page identifies them: source_name='faire' OR tags contain
+            // "Faire" (covers shopify_draft_order rows tagged Faire too).
+            // Window: last 30 days (Pacific time) to match the L30 view used elsewhere.
+            $thirtyDaysAgo = \Carbon\Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
+            $rows = DB::connection('apicentral')
+                ->table('shopify_order_items')
+                ->where('order_date', '>=', $thirtyDaysAgo)
+                ->where(function ($q) {
+                    $q->where('source_name', 'faire')
+                      ->orWhere('source_name', 'LIKE', '%faire%')
+                      ->orWhere('tags', 'LIKE', '%Faire%');
+                })
+                ->orderBy('order_date', 'desc')
                 ->orderBy('id', 'desc')
                 ->get();
 
-            $skus = $data->pluck('sku')->filter()->unique()->values()->toArray();
-            $productMasters = [];
-
+            $skus = $rows->pluck('sku')->filter()->unique()->values()->toArray();
+            $productMasters = collect();
             if (!empty($skus)) {
-                $productMasters = ProductMaster::whereIn('sku', $skus)
-                    ->get()
-                    ->keyBy('sku');
+                $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
             }
 
-            $data = $data->map(function ($item) use ($productMasters) {
+            $mapped = $rows->map(function ($item) use ($productMasters) {
                 $sku = $item->sku;
                 $lp = 0.0;
 
                 if (!empty($sku) && isset($productMasters[$sku])) {
-                    $productMaster = $productMasters[$sku];
-                    $values = is_array($productMaster->Values)
-                        ? $productMaster->Values
-                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                    $pm = $productMasters[$sku];
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            if (strtolower((string) $k) === 'lp') {
+                                $lp = (float) $v;
+                                break;
+                            }
                         }
                     }
-
-                    if ($lp === 0.0 && isset($productMaster->lp)) {
-                        $lp = floatval($productMaster->lp);
+                    if ($lp === 0.0 && isset($pm->lp)) {
+                        $lp = (float) $pm->lp;
                     }
                 }
 
-                $wholesale = floatval($item->wholesale_price) ?: 0.0;
-                $retail = floatval($item->retail_price) ?: 0.0;
-                $price = $wholesale > 0 ? $wholesale : $retail;
-                $quantity = floatval($item->quantity) ?: 0.0;
+                // Shopify stores the actual selling price on `price`; no separate wholesale/retail
+                // split exists for Faire-via-Shopify orders, so use it directly.
+                $price    = (float) ($item->price ?? 0);
+                $quantity = (float) ($item->quantity ?? 0);
 
-                // PFT each = (wholesale price × 0.75) − LP; falls back to retail if wholesale empty
+                // Same profit formula as before: PFT each = (price × 0.75) − LP. Faire keeps 25%.
                 $pftEachAmount = ($price * 0.75) - $lp;
-                $pftEachPct = $price > 0 ? ($pftEachAmount / $price) * 100 : 0;
-                $roi = $lp > 0 ? ($pftEachAmount / $lp) * 100 : 0;
-                $totalPft = $pftEachAmount * $quantity;
-                $cogs = $lp * $quantity;
+                $pftEachPct    = $price > 0 ? ($pftEachAmount / $price) * 100 : 0;
+                $roi           = $lp > 0 ? ($pftEachAmount / $lp) * 100 : 0;
+                $totalPft      = $pftEachAmount * $quantity;
+                $cogs          = $lp * $quantity;
 
-                $item->lp = round($lp, 2);
-                $item->price = round($price, 2);
-                $item->cogs = round($cogs, 2);
-                $item->pft_each = round($pftEachAmount, 2);
-                $item->pft_each_pct = round($pftEachPct, 2);
-                $item->pft = round($totalPft, 2);
-                $item->roi = round($roi, 2);
-
-                return $item;
+                return [
+                    // Core identifiers
+                    'order_date'    => $item->order_date,
+                    'order_number'  => $item->order_number,
+                    'sku'           => $sku,
+                    'product_name'  => $item->product_title,
+                    'status'        => $item->financial_status ?: $item->fulfillment_status,
+                    'quantity'      => (int) $quantity,
+                    // Pricing & profit
+                    'price'         => round($price, 2),
+                    'lp'            => round($lp, 2),
+                    'cogs'          => round($cogs, 2),
+                    'pft_each'      => round($pftEachAmount, 2),
+                    'pft_each_pct'  => round($pftEachPct, 2),
+                    'pft'           => round($totalPft, 2),
+                    'roi'           => round($roi, 2),
+                    // Shipping (no Faire-style ship_date; expose tracking instead)
+                    'ship_date'         => null,
+                    'tracking_company'  => $item->tracking_company,
+                    'tracking_number'   => $item->tracking_number,
+                    // Customer / shipping address (limited columns on shopify_order_items)
+                    'retailer_name' => $item->customer_name,
+                    'city'          => $item->shipping_city,
+                    'country'       => $item->shipping_country,
+                    // Legacy columns kept for back-compat with the tabulator (left empty)
+                    'purchase_order_number' => null,
+                    'address_1' => null,
+                    'address_2' => null,
+                    'state'     => null,
+                    'zip_code'  => null,
+                    'option_name' => null,
+                    'gtin'      => null,
+                    'scheduled_order_date' => null,
+                    'notes'     => null,
+                ];
             });
 
-            return response()->json($data)->header('Content-Type', 'application/json');
+            return response()->json($mapped->values())->header('Content-Type', 'application/json');
         } catch (\Exception $e) {
-            Log::error('Error fetching Faire daily data: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+            Log::error('Error fetching Faire data from shopify_order_items: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
             ]);
             return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
         }

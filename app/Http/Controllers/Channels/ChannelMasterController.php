@@ -7581,85 +7581,122 @@ class ChannelMasterController extends Controller
         return $missingListingCount;
     }
 
+    /**
+     * Aggregate Faire sales/profit for a date window straight from Shopify
+     * (apicentral.shopify_order_items). Same identification logic as the
+     * faire-tabulator page so the two stay in sync.
+     *
+     * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
+     */
+    private function computeFaireMetricsFromShopify(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
+    {
+        $rows = DB::connection('apicentral')
+            ->table('shopify_order_items')
+            ->whereBetween('order_date', [$startDate, $endDate])
+            ->where(function ($q) {
+                $q->where('source_name', 'faire')
+                  ->orWhere('source_name', 'LIKE', '%faire%')
+                  ->orWhere('tags', 'LIKE', '%Faire%');
+            })
+            ->get(['order_number', 'sku', 'quantity', 'price']);
+
+        if ($rows->isEmpty()) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $skus = $rows->pluck('sku')->filter()->unique()->values()->toArray();
+        $productMasters = !empty($skus)
+            ? ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku')
+            : collect();
+
+        $totalSales = 0.0;
+        $totalQty   = 0;
+        $totalPft   = 0.0;
+        $totalCogs  = 0.0;
+        $orderSet   = [];
+
+        foreach ($rows as $r) {
+            $sku      = $r->sku;
+            $price    = (float) ($r->price ?? 0);
+            $quantity = (int)   ($r->quantity ?? 0);
+            if ($quantity <= 0) continue;
+
+            $lp = 0.0;
+            if ($sku !== null && $sku !== '' && isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                if (is_array($values)) {
+                    foreach ($values as $k => $v) {
+                        if (strtolower((string) $k) === 'lp') {
+                            $lp = (float) $v;
+                            break;
+                        }
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+            }
+
+            $totalSales += $price * $quantity;
+            $totalQty   += $quantity;
+            $totalCogs  += $lp * $quantity;
+            // Same profit formula as the tabulator: Faire retains 25% commission.
+            $totalPft   += (($price * 0.75) - $lp) * $quantity;
+            if (!empty($r->order_number)) {
+                $orderSet[$r->order_number] = true;
+            }
+        }
+
+        return [
+            'sales'  => round($totalSales, 2),
+            'orders' => count($orderSet),
+            'qty'    => $totalQty,
+            'pft'    => round($totalPft, 2),
+            'cogs'   => round($totalCogs, 2),
+        ];
+    }
+
     public function getFaireChannelData(Request $request)
     {
         $result = [];
 
-        $metrics = MarketplaceDailyMetric::where('channel', 'Faire')->latest('date')->first();
+        // L30 and L60 are computed directly from shopify_order_items (Faire source) —
+        // same data source the /faire-tabulator page uses — so the two pages match.
+        // Previously this read from marketplace_daily_metrics which in turn was sourced
+        // from faire_daily_data (manual Excel uploads), drifting out of sync.
+        $pst       = 'America/Los_Angeles';
+        $todayPst  = Carbon::now($pst);
+        $l30Start  = $todayPst->copy()->subDays(29)->startOfDay();
+        $l30End    = $todayPst->copy()->endOfDay();
+        $l60Start  = $todayPst->copy()->subDays(59)->startOfDay();
+        $l60End    = $todayPst->copy()->subDays(30)->endOfDay();
 
-        if (! $metrics) {
-            $channelData = ChannelMaster::where('channel', 'Faire')->first();
-            $mapMissCounts = $this->getFaireLiveMapMissNMapFromPricingData($request);
-            $result[] = [
-                'Channel '   => 'Faire',
-                'L-60 Sales' => 0,
-                'L30 Sales'  => 0,
-                'Growth'     => '0%',
-                'L60 Orders' => 0,
-                'L30 Orders' => 0,
-                'Qty'        => 0,
-                'Gprofit%'   => '0%',
-                'gprofitL60' => '0%',
-                'G Roi'      => 0,
-                'G RoiL60'   => 0,
-                'Total PFT'  => 0,
-                'N PFT'      => '0%',
-                'N ROI'      => 0,
-                'KW Spent'   => 0,
-                'PT Spent'   => 0,
-                'HL Spent'   => 0,
-                'PMT Spent'  => 0,
-                'Shopping Spent' => 0,
-                'SERP Spent' => 0,
-                'Total Ad Spend' => 0,
-                'Ads%'       => '0%',
-                'TACOS %'    => '0%',
-                'type'       => $channelData->type ?? '',
-                'W/Ads'      => $channelData->w_ads ?? 0,
-                'NR'         => $channelData->nr ?? 0,
-                'Update'     => $channelData->update ?? 0,
-                'cogs'       => 0,
-                'Map'        => $mapMissCounts['map'],
-                'Miss'       => $mapMissCounts['miss'],
-                'NMap'       => $mapMissCounts['nmap'],
-                'Total Views' => $mapMissCounts['total_views'] ?? 0,
-                ...$this->getChannelHealthAndReviewsStub(),
-            ];
+        $l30 = $this->computeFaireMetricsFromShopify($l30Start, $l30End);
+        $l60 = $this->computeFaireMetricsFromShopify($l60Start, $l60End);
 
-            return response()->json([
-                'status' => 200,
-                'message' => 'Faire channel data (no metrics yet — run php artisan app:update-marketplace-daily-metrics after Faire sales upload)',
-                'data' => $result,
-            ]);
-        }
+        $l30Sales      = $l30['sales'];
+        $l30Orders     = $l30['orders'];
+        $totalQuantity = $l30['qty'];
+        $totalProfit   = $l30['pft'];
+        $totalCogs     = $l30['cogs'];
 
-        // L60 derived from the historical marketplace_daily_metrics snapshot 30 days ago.
-        // `faire_daily_data` only retains the latest L30 window of orders (no deeper history),
-        // but MDM holds a daily snapshot of Faire's L30-as-of-that-date. The MDM row from
-        // 30 days ago therefore represents sales for days 31-60 in today's frame = L60.
-        // Previously this was hard-coded to 0.
-        $pst = 'America/Los_Angeles';
-        $l60AnchorDate = Carbon::now($pst)->subDays(30)->toDateString();
-        $l60Row = MarketplaceDailyMetric::where('channel', 'Faire')
-            ->whereDate('date', '<=', $l60AnchorDate)
-            ->orderBy('date', 'desc')
-            ->first();
-        $l60Sales  = $l60Row ? (float) ($l60Row->total_sales ?? 0) : 0;
-        $l60Orders = $l60Row ? (int) ($l60Row->total_orders ?? 0) : 0;
+        $l60Sales  = $l60['sales'];
+        $l60Orders = $l60['orders'];
 
-        $l30Sales = (float) ($metrics->total_sales ?? 0);
-        $l30Orders = (int) ($metrics->total_orders ?? 0);
-        $totalQuantity = (int) ($metrics->total_quantity ?? 0);
-        $totalProfit = (float) ($metrics->total_pft ?? 0);
-        $totalCogs = (float) ($metrics->total_cogs ?? 0);
-        $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
-        $gRoi = (float) ($metrics->roi_percentage ?? 0);
-        $nPftPct = (float) ($metrics->n_pft ?? $gProfitPct);
-        $nRoi = (float) ($metrics->n_roi ?? $gRoi);
+        $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
+        $gRoi       = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
+        // Faire has no ad spend in this pipeline → N PFT% = G PFT%, N ROI = G ROI.
+        $nPftPct = $gProfitPct;
+        $nRoi    = $gRoi;
 
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
+
+        // L60 profit % derived the same way over the L60 totals for consistency.
+        $gprofitL60 = $l60Sales > 0 ? round(($l60['pft'] / $l60Sales) * 100, 2) : 0.0;
+        $gRoiL60    = $l60['cogs'] > 0 ? round(($l60['pft'] / $l60['cogs']) * 100, 2) : 0.0;
 
         $channelData = ChannelMaster::where('channel', 'Faire')->first();
         $mapMissCounts = $this->getFaireLiveMapMissNMapFromPricingData($request);
