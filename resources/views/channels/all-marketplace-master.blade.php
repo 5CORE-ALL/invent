@@ -393,7 +393,7 @@
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amazon Daily Sales). Other channels vary.">
                             Sales: <span id="total-l30-sales">$0</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels)">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
                             Y Sales: <span id="total-y-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
@@ -842,16 +842,6 @@
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
                                 <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
                             </div>
-                        </div>
-                    </div>
-                    <div id="salesOrdersItemsBarContainer" style="height: 20vh; margin-top: 8px; align-items: stretch; display: none;">
-                        <div style="flex: 1; min-width: 0; position: relative;">
-                            <canvas id="salesOrdersItemsBarChart"></canvas>
-                        </div>
-                        <div id="salesOrdersItemsBarRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
-                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #1e88e5;">Sales</div>
-                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #ff9800;">Orders</div>
-                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #00bcd4;">Qty</div>
                         </div>
                     </div>
                     <div id="adChartLoading" class="text-center py-3" style="display: none;">
@@ -4124,117 +4114,9 @@
                 showMetricChart('All', metricKey, badgeValue);
             });
 
-            // Load daily bar chart for the clicked metric only (metric mode) — same channel & days as line chart
-            function loadSalesOrdersItemsBarChart() {
-                const channel = currentChartChannel;
-                const days = currentChartDays;
-                const metricKey = currentMetricKey || 'l30_sales';
-                $.get('/channel-metric-chart-data', { channel: channel, days: days, metric: metricKey }).done(function(resp) {
-                    const data = (resp && resp.data) ? resp.data : [];
-                    if (data.length === 0) {
-                        $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
-                        if (salesOrdersItemsBarChartInstance) {
-                            salesOrdersItemsBarChartInstance.destroy();
-                            salesOrdersItemsBarChartInstance = null;
-                        }
-                        return;
-                    }
-                    const year = new Date().getFullYear();
-                    const sorted = [...data].sort(function(a, b) {
-                        const dA = new Date((a.date || a.label) + ' ' + year);
-                        const dB = new Date((b.date || b.label) + ' ' + year);
-                        if (isNaN(dA.getTime()) || isNaN(dB.getTime())) return String(a.date || a.label).localeCompare(String(b.date || b.label));
-                        return dA - dB;
-                    });
-                    const labels = sorted.map(d => d.date || d.label);
-                    const values = sorted.map(d => parseFloat(d.value) || 0);
-                    $('#salesOrdersItemsBarContainer').css('display', 'flex').show();
-                    renderSingleMetricBarChart({ labels, values, metricKey });
-                }).fail(function() {
-                    $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
-                    if (salesOrdersItemsBarChartInstance) {
-                        salesOrdersItemsBarChartInstance.destroy();
-                        salesOrdersItemsBarChartInstance = null;
-                    }
-                });
-            }
-
-            function barChartFmtVal(metricKey, v) {
-                if (metricKey === 'l30_sales' || metricKey === 'ad_spend' || metricKey === 'ad_sales' || metricKey === 'pft' || metricKey === 'inv_at_lp') {
-                    return '$' + Math.round(v).toLocaleString('en-US');
-                }
-                if (metricKey === 'acos' || metricKey === 'cvr' || metricKey === 'ads_cvr' || metricKey === 'gprofit' || metricKey === 'groi' || metricKey === 'ads_pct' || metricKey === 'npft' || metricKey === 'nroi') {
-                    return v.toFixed(1) + '%';
-                }
-                if (metricKey === 'tat') return v.toFixed(2);
-                return Math.round(v).toLocaleString('en-US');
-            }
-
-            function renderSingleMetricBarChart(barData) {
-                const ctx = document.getElementById('salesOrdersItemsBarChart');
-                if (!ctx) return;
-                const g = ctx.getContext('2d');
-                if (salesOrdersItemsBarChartInstance) {
-                    salesOrdersItemsBarChartInstance.destroy();
-                    salesOrdersItemsBarChartInstance = null;
-                }
-                const labels = barData.labels || [];
-                const values = barData.values || [];
-                const metricKey = barData.metricKey || 'l30_sales';
-                const seriesLabel = metricLabels[metricKey] || metricKey;
-                const isCurrency = ['l30_sales', 'ad_spend', 'ad_sales', 'pft', 'inv_at_lp'].includes(metricKey);
-                const isPercent = ['acos', 'cvr', 'ads_cvr', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi'].includes(metricKey);
-                const yTitle = isCurrency ? seriesLabel + ' ($)' : isPercent ? seriesLabel + ' (%)' : seriesLabel;
-                salesOrdersItemsBarChartInstance = new Chart(g, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            { label: seriesLabel, data: values, backgroundColor: 'rgba(30,136,229,0.8)', borderColor: '#1e88e5', borderWidth: 1 }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        layout: { padding: { top: 8, left: 4, right: 4, bottom: 20 } },
-                        plugins: {
-                            legend: { display: true, position: 'top', labels: { font: { size: 9 }, boxWidth: 12 } },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) {
-                                        const v = ctx.raw;
-                                        return seriesLabel + ': ' + barChartFmtVal(metricKey, v);
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                ticks: {
-                                    maxRotation: 45,
-                                    minRotation: 45,
-                                    font: { size: labels.length > 25 ? 7 : 8 },
-                                    autoSkip: false,
-                                    maxTicksLimit: Math.max(labels.length, 31)
-                                }
-                            },
-                            y: {
-                                type: 'linear',
-                                position: 'left',
-                                title: { display: true, text: yTitle, font: { size: 9 } },
-                                ticks: {
-                                    font: { size: 9 },
-                                    callback: function(v) {
-                                        if (isCurrency) return '$' + (v >= 1000 ? (v/1000)+'k' : v);
-                                        if (isPercent) return v + '%';
-                                        return Math.round(v).toLocaleString('en-US');
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
+            // Per-metric daily bar chart was removed from the badge popup by request.
+            // Stub kept so existing call sites in loadAdBreakdownChart() remain valid.
+            function loadSalesOrdersItemsBarChart() { /* removed */ }
 
             // Render chart
             function renderAdBreakdownChart(data) {

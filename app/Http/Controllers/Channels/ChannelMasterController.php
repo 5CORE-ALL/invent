@@ -8351,25 +8351,24 @@ class ChannelMasterController extends Controller
             $l60StartDate = $latestDateCarbon->copy()->subDays(59); // 60 days ago (60 days before today)
             $l60EndDate = $latestDateCarbon->copy()->subDays(30); // 31 days ago (end of L60, start of L30)
             
-            // Get L60 order items from ShipHub
-            $l60OrderItems = DB::connection('shiphub')
-                ->table('orders as o')
-                ->join('order_items as i', 'o.id', '=', 'i.order_id')
-                ->whereBetween('o.order_date', [$l60StartDate, $l60EndDate])
-                ->where('o.marketplace', '=', 'tiktok')
+            // L60 sales & order count for TikTok come from `orders.order_total`. The previous
+            // query summed `order_items.unit_price`, but ShipHub stores TikTok revenue only on
+            // `orders.order_total` — `order_items.unit_price` is 0 for every TikTok item, which
+            // made L60 sales always $0. We also need DISTINCT orders (not items) for the count.
+            $l60Stats = DB::connection('shiphub')
+                ->table('orders')
+                ->whereBetween('order_date', [$l60StartDate, $l60EndDate])
+                ->where('marketplace', '=', 'tiktok')
                 ->where(function($query) {
-                    $query->where('o.order_status', '!=', 'Canceled')
-                          ->where('o.order_status', '!=', 'Cancelled')
-                          ->orWhereNull('o.order_status');
+                    $query->where('order_status', '!=', 'Canceled')
+                          ->where('order_status', '!=', 'Cancelled')
+                          ->orWhereNull('order_status');
                 })
-                ->select(
-                    DB::raw('COUNT(i.id) as order_count'),
-                    DB::raw('SUM(i.unit_price) as total_sales')
-                )
+                ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(order_total), 0) as total_sales')
                 ->first();
-            
-            $l60Orders = $l60OrderItems->order_count ?? 0;
-            $l60Sales = $l60OrderItems->total_sales ?? 0;
+
+            $l60Orders = (int) ($l60Stats->order_count ?? 0);
+            $l60Sales  = (float) ($l60Stats->total_sales ?? 0);
             
             // Get L30 data from ShipHub (last 30 days, California time)
             $l30StartDate = $latestDateCarbon->copy()->subDays(29); // 30 days total (29 previous days + today)
@@ -11584,6 +11583,9 @@ class ChannelMasterController extends Controller
             // Map frontend metric names to summary_data keys
             $metricMap = [
                 'l30_sales' => 'l30_sales',
+                // Yesterday's sales (snapshot was added later; older days will lack this key
+                // and are skipped below so the chart only shows real Y Sales history).
+                'y_sales' => 'y_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -11594,6 +11596,9 @@ class ChannelMasterController extends Controller
                 'nroi' => null,      // computed: npft / tcos * 100
                 'missing_l' => 'miss_count',
                 'nmap' => 'nmap_count',
+                // Snapshot stores Map under 'map_count'; without this entry the chart
+                // would look up summary_data['map'] (does not exist) and graph zeros.
+                'map' => 'map_count',
                 'ad_spend' => 'total_ad_spend',
                 'clicks' => 'clicks',
                 'ad_sales' => null,  // uses ad_sales with l30_sales ratio fallback
@@ -11660,10 +11665,17 @@ class ChannelMasterController extends Controller
                     $totalOrdersCvr = 0;
                     $totalViewsCvr = 0;
                     $count = 0;
+                    // For metrics whose snapshot key was added later (e.g. y_sales), track whether
+                    // any of this day's per-channel snapshots actually carries the field. If none
+                    // do, skip the day so the chart doesn't render a flat-zero history.
+                    $hasMetricData = false;
 
                     foreach ($rows as $row) {
                         $sd = $row->summary_data ?? [];
                         $count++;
+                        if ($metricKey !== null && is_array($sd) && array_key_exists($metricKey, $sd)) {
+                            $hasMetricData = true;
+                        }
 
                         $channelL30Sales = floatval($sd['l30_sales'] ?? 0);
                         $channelAdSpend = floatval($sd['total_ad_spend'] ?? 0);
@@ -11732,12 +11744,18 @@ class ChannelMasterController extends Controller
                         // G ROI = total profit / total cogs * 100
                         $value = $totalCogs > 0 ? round(($totalPft / $totalCogs) * 100, 1) : 0;
                     } elseif ($metric === 'nroi') {
-                        // N ROI = GROI% - TCOS%
-                        $groi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
-                        $tcos = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
-                        $value = round($groi - $tcos, 1);
+                        // N ROI must match the page badge formula:
+                        //   (Σ gross profit $ − Σ ad spend $) / Σ COGS × 100
+                        // Previously this used GROI% − TCOS%, which divides ad spend by sales
+                        // instead of by cogs, so chart history did not match the badge value.
+                        $value = $totalCogs > 0 ? round((($totalPft - $totalSpend) / $totalCogs) * 100, 1) : 0;
                     } elseif ($metric === 'ads_pct') {
                         $value = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 1) : 0;
+                    } elseif ($metric === 'y_sales') {
+                        // Skip days that pre-date the y_sales snapshot field so we don't
+                        // draw a long flat-zero line before real history begins.
+                        if (!$hasMetricData) continue;
+                        $value = round($totalVal, 2);
                     } elseif ($shouldAvg && $count > 0) {
                         $value = round($totalVal / $count, 1);
                     } else {
@@ -11863,6 +11881,8 @@ class ChannelMasterController extends Controller
                 'npft' => 'npft_percent',
                 'missing_l' => 'miss_count',
                 'nmap' => 'nmap_count',
+                // Snapshot stores Map under 'map_count' (see metricMap in getChannelMetricChartData).
+                'map' => 'map_count',
                 'ad_spend' => 'total_ad_spend',
                 'clicks' => 'clicks',
                 'total_views' => 'total_views',
@@ -12009,6 +12029,32 @@ class ChannelMasterController extends Controller
                 ->groupBy('channel')
                 ->get();
 
+            // GROI and NROI use COGS as the denominator, so a single sales-weighted average can't
+            // represent them — different channels have different cogs/sales ratios. Compute these
+            // directly from the underlying totals to match the page badge formulas exactly:
+            //     GROI = (Σ total_pft) / (Σ total_cogs) × 100
+            //     NROI = (Σ total_pft − Σ ad spend) / (Σ total_cogs) × 100
+            // Per-channel ad spend is derived from tacos_percentage × total_sales / 100 because
+            // marketplace_daily_metrics has no total_ad_spend column.
+            if ($metric === 'groi' || $metric === 'nroi') {
+                $sumPft = 0.0;
+                $sumSpend = 0.0;
+                $sumCogs = 0.0;
+                foreach ($allMdm as $row) {
+                    $mdm = MarketplaceDailyMetric::where('channel', $row->channel)
+                        ->where('date', $row->max_date)->first();
+                    if (!$mdm) continue;
+                    $sumPft   += (float) ($mdm->total_pft ?? 0);
+                    $sumSpend += ((float) ($mdm->tacos_percentage ?? 0) / 100.0) * (float) ($mdm->total_sales ?? 0);
+                    $sumCogs  += (float) ($mdm->total_cogs ?? 0);
+                }
+                if ($sumCogs <= 0) return null;
+                if ($metric === 'groi') {
+                    return round(($sumPft / $sumCogs) * 100, 2);
+                }
+                return round((($sumPft - $sumSpend) / $sumCogs) * 100, 2);
+            }
+
             $totalSales = 0;
             $weightedSum = 0;
             $count = 0;
@@ -12020,10 +12066,15 @@ class ChannelMasterController extends Controller
                 $sales = (float) ($mdm->total_sales ?? 0);
                 $val = match($metric) {
                     'gprofit' => (float) ($mdm->pft_percentage ?? 0),
-                    'groi' => (float) ($mdm->roi_percentage ?? 0),
                     'ads_pct' => (float) ($mdm->tacos_percentage ?? 0),
-                    'npft' => (float) ($mdm->n_pft ?? 0),
-                    'nroi' => (float) ($mdm->n_roi ?? 0),
+                    // NPFT% must be derived from pft_percentage − tacos_percentage. The raw `n_pft`
+                    // column is unreliable for blending: some channels (Amazon, eBay, Temu, etc.)
+                    // store it as a percent, while others (TikTok, Mercari, several Shopify variants)
+                    // store it as a dollar amount. Sales-weighting that mixed-unit column produces
+                    // a huge nonsense reference (~460) that would then rescale the chart points to
+                    // match it — which is the “wrong history” the badge click was showing.
+                    'npft' => (float) ($mdm->pft_percentage ?? 0) - (float) ($mdm->tacos_percentage ?? 0),
+                    // groi/nroi handled above (they need cogs as denominator, not sales).
                     default => null,
                 };
                 if ($val === null) continue;
@@ -12177,7 +12228,10 @@ class ChannelMasterController extends Controller
             'gprofit' => (float) $mdm->pft_percentage,
             'groi' => (float) $mdm->roi_percentage,
             'ads_pct' => (float) $mdm->tacos_percentage,
-            'npft' => (float) $mdm->n_pft,
+            // `n_pft` column has inconsistent units across channels (% vs $). Derive NPFT%
+            // from the reliable pft_percentage / tacos_percentage columns instead so single-channel
+            // charts don’t get rescaled to a wrong reference.
+            'npft' => (float) ($mdm->pft_percentage ?? 0) - (float) ($mdm->tacos_percentage ?? 0),
             'nroi' => $mdm->n_roi !== null ? (float) $mdm->n_roi : null,
             'pft' => round(
                 (float) ($mdm->total_sales ?? 0)
@@ -12377,6 +12431,10 @@ class ChannelMasterController extends Controller
                     // Sales & Orders
                     'l60_sales' => floatval($row['L-60 Sales'] ?? 0),
                     'l30_sales' => $l30Sales,
+                    // Persist yesterday's sales so the Y Sales badge can render a per-day trend.
+                    // Older snapshots (before this field was added) won't have this key — the
+                    // chart endpoint filters those days out so the trend isn't a flat-zero line.
+                    'y_sales' => floatval($row['Y Sales'] ?? 0),
                     'l7_sales' => floatval($row['L7 Sales'] ?? 0),
                     'l7_vs_30_pace_pct' => $row['L7 vs 30 pace %'] !== null ? floatval($row['L7 vs 30 pace %']) : null,
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
