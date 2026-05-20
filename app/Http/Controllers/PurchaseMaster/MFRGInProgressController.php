@@ -311,12 +311,12 @@ class MFRGInProgressController extends Controller
             );
         }
 
-        // Filter to only show items with stage='mip' (exclude r2s, transit, etc.)
-        // This ensures MIP page only shows items that are actually in MIP stage according to forecast_analysis
+        // Filter to show items with stage='mip' or stage='r2s' (exclude transit, all good, etc.)
+        // The MIP In Progress page now lists both MIP and R2S stage rows from forecast_analysis.
         $mfrgData = $mfrgData->filter(function($row) {
             $rowStage = strtolower(trim($row->stage ?? ''));
-            // Only show if stage is 'mip' or empty (empty defaults to mip for items in mfrg_progress)
-            return $rowStage === 'mip' || $rowStage === '';
+            // Allow MIP, R2S, or empty (empty defaults to mip for items in mfrg_progress)
+            return $rowStage === 'mip' || $rowStage === 'r2s' || $rowStage === '';
         });
 
         return $mfrgData;

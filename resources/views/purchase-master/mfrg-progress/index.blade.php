@@ -1172,6 +1172,11 @@
 </div>
 
 <script>
+    /** Stages displayed on MIP In Progress page: MIP and R2S (forecast_analysis.stage). */
+    function isMipPageStage(rowStage) {
+        return rowStage === 'mip' || rowStage === 'r2s';
+    }
+
     /** Lazy-load Tabulator when opening Archived History (saves initial parse on main MIP page). */
     var mipTabulatorLoadPromise = null;
     function mipEnsureTabulator() {
@@ -1272,7 +1277,7 @@
             const stageSelect = row.querySelector('.editable-select-stage');
             const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
             const rowStage = rowStageSelect || rowStageAttr;
-            if (rowStage !== 'mip') return;
+            if (!isMipPageStage(rowStage)) return;
             if (row.style.display !== "none") {
                 const input = row.querySelector('input[data-column="total_cbm"]');
                 if (input) {
@@ -1322,7 +1327,7 @@
             const stageSelect = row.querySelector('.editable-select-stage');
             const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
             const rowStage = rowStageSelect || rowStageAttr;
-            if (rowStage !== 'mip') {
+            if (!isMipPageStage(rowStage)) {
                 return;
             }
             if (row.style.display === 'none') {
@@ -1454,7 +1459,7 @@
                     const stageAttr = (r.getAttribute('data-stage') || '').toLowerCase().trim();
                     const stageSelect = r.querySelector('.editable-select-stage');
                     const stage = (stageSelect ? stageSelect.value : '').toLowerCase().trim() || stageAttr;
-                    return (stage === 'mip' || stage === 'rts') && r.style.display !== 'none';
+                    return (stage === 'mip' || stage === 'r2s' || stage === 'rts') && r.style.display !== 'none';
                 });
                 if (visibleMipRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
                     sortRowsByOrderDate(visibleMipRows);
@@ -1827,7 +1832,7 @@
                     const stageSelect = row.querySelector('.editable-select-stage');
                     const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
                     const rowStage = rowStageSelect || rowStageAttr;
-                    if (rowStage !== 'mip') {
+                    if (!isMipPageStage(rowStage)) {
                         row.style.display = 'none';
                         return;
                     }
@@ -2332,7 +2337,7 @@
             });
         }
 
-        // Filter to show only MIP stage rows
+        // Filter to show MIP and R2S stage rows
         function filterByMIPStage() {
             const rows = document.querySelectorAll('.wide-table tbody tr');
 
@@ -2347,8 +2352,8 @@
                 // Use select value if available, otherwise use data attribute
                 const rowStage = rowStageSelect || rowStageAttr;
                 
-                // Only show MIP stage rows
-                if (rowStage === 'mip') {
+                // Show MIP and R2S stage rows
+                if (isMipPageStage(rowStage)) {
                     row.style.display = '';
                 } else {
                     row.style.display = 'none';
@@ -2891,7 +2896,7 @@
         let supplierIndex = 0;
         let intervalId = null;
 
-        // Collect unique suppliers (only from MIP stage rows)
+        // Collect unique suppliers (from MIP and R2S stage rows)
         rows.forEach(row => {
             // Check stage from data attribute first (more reliable)
             const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
@@ -2899,8 +2904,8 @@
             const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
             const rowStage = rowStageSelect || rowStageAttr;
             
-            // Only collect suppliers from MIP stage rows
-            if (rowStage !== 'mip') {
+            // Only collect suppliers from MIP/R2S stage rows
+            if (!isMipPageStage(rowStage)) {
                 return;
             }
             
@@ -2925,8 +2930,8 @@
                 const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
                 const rowStage = rowStageSelect || rowStageAttr;
                 
-                // Only show MIP stage rows
-                if (rowStage !== 'mip') {
+                // Only show MIP/R2S stage rows
+                if (!isMipPageStage(rowStage)) {
                     row.style.display = "none";
                     return;
                 }
@@ -2992,7 +2997,7 @@
             showSupplierRows(suppliers[supplierIndex]);
         }
 
-        // Function to refresh supplier list (only from MIP stage rows)
+        // Function to refresh supplier list (from MIP and R2S stage rows)
         function refreshSupplierList() {
             suppliers.length = 0; // Clear existing list
             rows.forEach(row => {
@@ -3002,8 +3007,8 @@
                 const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
                 const rowStage = rowStageSelect || rowStageAttr;
                 
-                // Only collect suppliers from MIP stage rows
-                if (rowStage !== 'mip') {
+                // Only collect suppliers from MIP/R2S stage rows
+                if (!isMipPageStage(rowStage)) {
                     return;
                 }
                 
@@ -3061,7 +3066,7 @@
                 supplierBadgeVr.style.display = "none";
             }
             
-            // Show only MIP stage rows when pausing
+            // Show MIP and R2S stage rows when pausing
             rows.forEach(row => {
                 // Check stage from data attribute first (more reliable)
                 const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
@@ -3069,8 +3074,8 @@
                 const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
                 const rowStage = rowStageSelect || rowStageAttr;
                 
-                // Only show MIP stage rows
-                if (rowStage === 'mip') {
+                // Show MIP/R2S stage rows
+                if (isMipPageStage(rowStage)) {
                     row.style.display = "";
                 } else {
                     row.style.display = "none";
@@ -3110,12 +3115,12 @@
             let green = 0, yellow = 0, red = 0;
 
             rows.forEach(row => {
-                // Check if row is MIP stage
+                // Check if row is MIP/R2S stage
                 const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
                 const stageSelect = row.querySelector('.editable-select-stage');
                 const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
                 const rowStage = rowStageSelect || rowStageAttr;
-                if (rowStage !== 'mip') return;
+                if (!isMipPageStage(rowStage)) return;
 
                 // Only count visible rows (filtered by play button or other filters)
                 if (row.style.display === "none") return;
@@ -3164,19 +3169,19 @@
 
         function filterDateRows(type) {
             rows.forEach(row => {
-                // Check if row is MIP stage first
+                // Check if row is MIP/R2S stage first
                 const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
                 const stageSelect = row.querySelector('.editable-select-stage');
                 const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
                 const rowStage = rowStageSelect || rowStageAttr;
                 
-                if (rowStage !== 'mip') {
+                if (!isMipPageStage(rowStage)) {
                     row.style.display = "none";
                     return;
                 }
 
                 if (!type) {
-                    // Show all MIP rows if no filter selected
+                    // Show all MIP/R2S rows if no filter selected
                     row.style.display = "";
                     return;
                 }
@@ -3433,8 +3438,8 @@
             const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
             const rowStage = rowStageSelect || rowStageAttr;
             
-            // Only count MIP stage rows
-            if (rowStage !== 'mip') {
+            // Only count MIP/R2S stage rows
+            if (!isMipPageStage(rowStage)) {
                 return;
             }
             
@@ -3461,8 +3466,8 @@
             const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
             const rowStage = rowStageSelect || rowStageAttr;
             
-            // Only count MIP stage rows
-            if (rowStage !== 'mip') {
+            // Only count MIP/R2S stage rows
+            if (!isMipPageStage(rowStage)) {
                 return;
             }
             
@@ -3493,12 +3498,12 @@
             const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
             const rowStage = rowStageSelect || rowStageAttr;
             
-            // Only count MIP stage rows
-            if (rowStage !== 'mip') {
+            // Only count MIP/R2S stage rows
+            if (!isMipPageStage(rowStage)) {
                 return;
             }
             
-            // Get Order Qty (check all MIP rows, not just visible ones)
+            // Get Order Qty (check all MIP/R2S rows, not just visible ones)
             const qtyCell = row.querySelector('td[data-column="4"]');
             let qty = 0;
             if (qtyCell) {
@@ -3529,7 +3534,7 @@
         followSupplierSpan.textContent = supplierSet.size;
     }
 
-    // Filter to show only MIP stage on page load
+    // Filter to show MIP and R2S stage on page load
     function filterByMIPStageOnLoad() {
         const rows = document.querySelectorAll('table.wide-table tbody tr.stage-row');
         rows.forEach(row => {
@@ -3538,13 +3543,13 @@
             const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
             const rowStage = rowStageSelect || rowStageAttr;
             
-            if (rowStage === 'mip') {
+            if (isMipPageStage(rowStage)) {
                 row.style.display = '';
             } else {
                 row.style.display = 'none';
             }
         });
-        // Sort visible MIP rows by order date (oldest first)
+        // Sort visible MIP/R2S rows by order date (oldest first)
         const visibleMipRows = Array.from(rows).filter(r => r.style.display !== 'none');
         if (visibleMipRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
             sortRowsByOrderDate(visibleMipRows);

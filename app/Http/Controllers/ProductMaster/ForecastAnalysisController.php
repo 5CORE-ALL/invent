@@ -115,17 +115,24 @@ class ForecastAnalysisController extends Controller
 
         $jungleReviewsBySku = [];
         $jungleRatingBySku  = [];
+        $jungleReviewsBySkuNoSp = [];
+        $jungleRatingBySkuNoSp  = [];
         foreach ($jungleScoutRaw as $jsRow) {
             $k = $normalizeSku($jsRow->sku ?? '');
             if ($k === '') continue;
+            $kNoSp = str_replace(' ', '', $k);
             $d   = is_array($jsRow->data) ? $jsRow->data : [];
             $rv  = $d['reviews'] ?? null;
             if ($rv !== null && $rv !== '') {
-                $jungleReviewsBySku[$k] = is_numeric($rv) ? (int) $rv : (string) $rv;
+                $v = is_numeric($rv) ? (int) $rv : (string) $rv;
+                $jungleReviewsBySku[$k] = $v;
+                $jungleReviewsBySkuNoSp[$kNoSp] = $v;
             }
             $rat = $d['rating'] ?? null;
             if ($rat !== null && $rat !== '') {
-                $jungleRatingBySku[$k] = is_numeric($rat) ? round((float) $rat, 2) : (string) $rat;
+                $v = is_numeric($rat) ? round((float) $rat, 2) : (string) $rat;
+                $jungleRatingBySku[$k] = $v;
+                $jungleRatingBySkuNoSp[$kNoSp] = $v;
             }
         }
         unset($jungleScoutRaw); // free memory
@@ -136,12 +143,18 @@ class ForecastAnalysisController extends Controller
 
         // Load all shopify data and normalize SKUs for matching
         $shopifyData = $this->cachedOrRun('fa_shopify_skus', 1800, function () {
-            return ShopifySku::all();
+            return ShopifySku::query()->get(['sku', 'image_src', 'inv', 'quantity', 'price']);
         })->keyBy(function($item) use ($normalizeSku) {
             return $normalizeSku($item->sku);
         });
+        // O(1) fallback companion: same data keyed by SKU with all spaces removed.
+        $shopifyDataNoSp = [];
+        foreach ($shopifyData as $k => $v) {
+            $shopifyDataNoSp[str_replace(' ', '', (string) $k)] = $v;
+        }
 
         $amazonPriceBySku = [];
+        $amazonPriceBySkuNoSp = [];
         foreach ($this->cachedOrRun('fa_amazon_prices', 1800, function () {
             return DB::table('amazon_datsheets')->whereNotNull('sku')->get(['sku', 'price']);
         }) as $ar) {
@@ -152,24 +165,23 @@ class ForecastAnalysisController extends Controller
             $p = is_numeric($ar->price) ? (float) $ar->price : 0.0;
             if ($p > 0) {
                 $amazonPriceBySku[$k] = $p;
+                $amazonPriceBySkuNoSp[str_replace(' ', '', $k)] = $p;
             }
         }
-        $resolveAmazonPrice = function ($sheetSku) use ($amazonPriceBySku, $normalizeSku) {
+        $resolveAmazonPrice = function ($sheetSku) use ($amazonPriceBySku, $amazonPriceBySkuNoSp, $normalizeSku) {
             $k = $normalizeSku($sheetSku);
             if (isset($amazonPriceBySku[$k]) && $amazonPriceBySku[$k] > 0) {
                 return $amazonPriceBySku[$k];
             }
             $skuNoSpaces = str_replace(' ', '', $k);
-            foreach ($amazonPriceBySku as $key => $p) {
-                if ($p > 0 && str_replace(' ', '', $key) === $skuNoSpaces) {
-                    return $p;
-                }
+            if (isset($amazonPriceBySkuNoSp[$skuNoSpaces]) && $amazonPriceBySkuNoSp[$skuNoSpaces] > 0) {
+                return $amazonPriceBySkuNoSp[$skuNoSpaces];
             }
-
             return 0.0;
         };
 
         $amazonAdvBySku = [];
+        $amazonAdvBySkuNoSp = [];
         foreach ($this->cachedOrRun('fa_amazon_adv', 1800, function () {
             return AmazonDataView::query()->get(['sku', 'value']);
         }) as $advRow) {
@@ -182,52 +194,35 @@ class ForecastAnalysisController extends Controller
                 $v = json_decode($advRow->value ?? '{}', true) ?: [];
             }
             $amazonAdvBySku[$k] = $v;
+            $amazonAdvBySkuNoSp[str_replace(' ', '', $k)] = $v;
         }
-        $getAmazonAdv = function ($sheetSku) use ($amazonAdvBySku, $normalizeSku) {
+        $getAmazonAdv = function ($sheetSku) use ($amazonAdvBySku, $amazonAdvBySkuNoSp, $normalizeSku) {
             $k = $normalizeSku($sheetSku);
             if (isset($amazonAdvBySku[$k])) {
                 return $amazonAdvBySku[$k];
             }
             $skuNoSpaces = str_replace(' ', '', $k);
-            foreach ($amazonAdvBySku as $key => $val) {
-                if (str_replace(' ', '', $key) === $skuNoSpaces) {
-                    return $val;
-                }
-            }
-
-            return null;
+            return $amazonAdvBySkuNoSp[$skuNoSpaces] ?? null;
         };
 
-        $getJungleReviews = function ($sheetSku) use ($jungleReviewsBySku, $normalizeSku) {
+        $getJungleReviews = function ($sheetSku) use ($jungleReviewsBySku, $jungleReviewsBySkuNoSp, $normalizeSku) {
             $k = $normalizeSku($sheetSku);
             if (isset($jungleReviewsBySku[$k])) {
                 return $jungleReviewsBySku[$k];
             }
             $skuNoSpaces = str_replace(' ', '', $k);
-            foreach ($jungleReviewsBySku as $key => $rv) {
-                if (str_replace(' ', '', $key) === $skuNoSpaces) {
-                    return $rv;
-                }
-            }
-
-            return null;
+            return $jungleReviewsBySkuNoSp[$skuNoSpaces] ?? null;
         };
-        $getJungleRating = function ($sheetSku) use ($jungleRatingBySku, $normalizeSku) {
+        $getJungleRating = function ($sheetSku) use ($jungleRatingBySku, $jungleRatingBySkuNoSp, $normalizeSku) {
             $k = $normalizeSku($sheetSku);
             if (isset($jungleRatingBySku[$k])) {
                 return $jungleRatingBySku[$k];
             }
             $skuNoSpaces = str_replace(' ', '', $k);
-            foreach ($jungleRatingBySku as $key => $rv) {
-                if (str_replace(' ', '', $key) === $skuNoSpaces) {
-                    return $rv;
-                }
-            }
-
-            return null;
+            return $jungleRatingBySkuNoSp[$skuNoSpaces] ?? null;
         };
 
-        $supplierRows = Supplier::where('type', 'Supplier')->get();
+        $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
         $supplierMapByParent = [];
         foreach ($supplierRows as $row) {
             $parents = array_map('trim', explode(',', strtoupper($row->parent ?? '')));
@@ -240,7 +235,12 @@ class ForecastAnalysisController extends Controller
 
         // Key forecastMap by SKU only for easier matching
         // If multiple records exist for same SKU, prefer the one with non-empty stage value, then non-empty nr value
-        $forecastMap = DB::table('forecast_analysis')->get()->groupBy(function($item) use ($normalizeSku) {
+        $forecastMap = DB::table('forecast_analysis')
+            ->get([
+                'sku', 'parent', 's_msl', 'approved_qty', 'nr', 'req', 'hide', 'notes',
+                'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl', 'stage',
+            ])
+            ->groupBy(function($item) use ($normalizeSku) {
             return $normalizeSku($item->sku);
         })->map(function($group) {
             // Prefer record with non-empty stage value
@@ -262,7 +262,10 @@ class ForecastAnalysisController extends Controller
         $readyToShipRows = DB::table('ready_to_ship')
             ->where('transit_inv_status', 0)
             ->whereNull('deleted_at')
-            ->get();
+            ->get([
+                'sku', 'qty', 'rec_qty', 'rate', 'payment', 'pay_term',
+                'packing_list', 'photo_mail_send', 'area',
+            ]);
         $mergeReadyToShipRows = function($rows) {
             $preferred = $rows->first(function($r) {
                 return trim((string)($r->pay_term ?? '')) !== '';
@@ -341,7 +344,13 @@ class ForecastAnalysisController extends Controller
                     'supplier_name'  => $supplierName,
                 ];
             });
-        $mfrg = DB::table('mfrg_progress')->whereNull('deleted_at')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $mfrg = DB::table('mfrg_progress')
+            ->whereNull('deleted_at')
+            ->get([
+                'sku', 'supplier', 'ready_to_ship', 'qty', 'rate',
+                'pkg_inst', 'u_manual', 'compliance', 'created_at',
+            ])
+            ->keyBy(fn($item) => $normalizeSku($item->sku));
         $purchases = DB::table('purchases')->whereNull('deleted_at')
             ->select('items')
             ->get()
@@ -596,16 +605,10 @@ class ForecastAnalysisController extends Controller
             $item->{'GW (KG)'} = is_numeric($values['wt_act'] ?? null) ? round($values['wt_act'] * 0.45, 2) : '';
 
             $shopify = $shopifyData[$sheetSku] ?? null;
-            
-            // If exact match fails, try to find by removing all spaces (fallback)
+
+            // If exact match fails, fall back to the spaces-stripped index (O(1)).
             if (!$shopify && !empty($sheetSku)) {
-                $skuNoSpaces = str_replace(' ', '', $sheetSku);
-                foreach ($shopifyData as $key => $value) {
-                    if (str_replace(' ', '', $key) === $skuNoSpaces) {
-                        $shopify = $value;
-                        break;
-                    }
-                }
+                $shopify = $shopifyDataNoSp[str_replace(' ', '', $sheetSku)] ?? null;
             }
             
             $imageFromShopify = $shopify ? ($shopify->image_src ?? null) : null;
@@ -1743,7 +1746,7 @@ class ForecastAnalysisController extends Controller
             };
 
             // Get product master data for supplier matching
-            $supplierRows = Supplier::where('type', 'Supplier')->get();
+            $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
             $supplierMapByParent = [];
             foreach ($supplierRows as $row) {
                 $parents = array_map('trim', explode(',', strtoupper($row->parent ?? '')));

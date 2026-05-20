@@ -154,9 +154,10 @@
                             </select>
 
                             <!-- Stage Filter -->
-                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
+                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 180px;">
                                 <option value="appr_req" selected>Appr Req (0)</option>
                                 <option value="to_order_analysis">2Order (0)</option>
+                                <option value="appr_req_or_2order">approval.required (0)</option>
                             </select>
 
                             <!-- NRP Filter (ALL Items = show all) -->
@@ -1226,12 +1227,31 @@
                     const transit = parseFloat(item["Transit"] ?? item["transit"]) || 0;
                     const orderGiven = parseFloat(item["order_given"] ?? item["Order Given"]) || 0;
                     const r2s = parseFloat(item["readyToShipQty"] ?? item["readyToShipQty"]) || 0;
-                    const msl = totalMonth > 0 ? (total / totalMonth) * 4 : 0;
 
-                    const toOrder = Math.round(msl - inv - transit - orderGiven - r2s);
+                    // Match /forecast.analysis MSL/to_order math so the Appr Req count is identical.
+                    // 1) Prefer the PHP-computed combined MSL (Shopify L30 + FBA history); fall back
+                    //    to the Shopify-only formula when item.msl is absent.
+                    const msl = parseFloat(item.msl) || (totalMonth > 0 ? (total / totalMonth) * 4 : 0);
+                    // 2) Floor by the user's manual s_msl (only matters when s_msl > msl).
+                    const s_msl_val = parseFloat(item["s_msl"] ?? item["s-msl"]) || 0;
+                    const effectiveMslForToOrder = Math.max(msl, s_msl_val);
 
                     const itemStage = item.stage || '';
                     const stageNorm = String(itemStage || '').trim().toLowerCase();
+
+                    // 3) Pipeline qty is only subtracted from to_order when the row's stage matches
+                    //    that pipeline. Transit is always subtracted (matches forecast.analysis).
+                    let effectiveOrderGiven = 0;
+                    let effectiveR2s = 0;
+                    const effectiveTransit = transit;
+                    if (stageNorm === 'mip') {
+                        effectiveOrderGiven = orderGiven;
+                    } else if (stageNorm === 'r2s') {
+                        effectiveR2s = r2s;
+                    }
+
+                    const toOrder = Math.round(effectiveMslForToOrder - inv - effectiveTransit - effectiveOrderGiven - effectiveR2s);
+
                     const moqNum = parseFloat(item.MOQ ?? item['Approved QTY']) || 0;
                     const twoOrderQty = stageNorm === 'to_order_analysis' ? moqNum : 0;
                     const apprReqQty = stageNorm === 'appr_req' ? moqNum : 0;
@@ -1243,7 +1263,6 @@
                     if (!groupedMSL[parentKey]) groupedMSL[parentKey] = 0;
                     groupedMSL[parentKey] += msl;
 
-                    const s_msl_val = parseFloat(item["s-msl"]) || 0;
                     if (!groupedS_MSL[parentKey]) groupedS_MSL[parentKey] = 0;
                     groupedS_MSL[parentKey] += s_msl_val;
 
@@ -1430,12 +1449,17 @@
                             const transit = parseFloat(transitValue) || 0;
                             stageMatch = transit > 0;
                         } else if (currentStageFilter === 'appr_req') {
-                            // Show only rows that actually display a value in the Appr Req column.
-                            // Same rule as the Forecast Analysis column / /to-order-analysis backend.
-                            stageMatch = getEffectiveApprReqValue(child) > 0;
+                            // APR-only: rows that need approval but are NOT already in the 2Order stage.
+                            // Excluding stage='to_order_analysis' keeps Appr Req / 2Order / approval.required
+                            // mutually exclusive in the dropdown.
+                            stageMatch = getEffectiveApprReqValue(child) > 0 && childStage !== 'to_order_analysis';
                         } else if (currentStageFilter === 'to_order_analysis') {
                             // For 2 Order: include only items with stage 'to_order_analysis'
                             stageMatch = childStage === 'to_order_analysis';
+                        } else if (currentStageFilter === 'appr_req_or_2order') {
+                            // Combined "approval.required" view: APR rows + 2Order rows together.
+                            stageMatch = (getEffectiveApprReqValue(child) > 0 && childStage !== 'to_order_analysis')
+                                || childStage === 'to_order_analysis';
                         } else {
                             stageMatch = childStage === currentStageFilter;
                         }
@@ -1509,12 +1533,17 @@
                         const transit = parseFloat(transitValue) || 0;
                         stageMatch = transit > 0;
                     } else if (currentStageFilter === 'appr_req') {
-                        // Show only rows that actually display a value in the Appr Req column.
-                        // Same rule as the Forecast Analysis column / /to-order-analysis backend.
-                        stageMatch = getEffectiveApprReqValue(data) > 0;
+                        // APR-only: rows that need approval but are NOT already in the 2Order stage.
+                        // Excluding stage='to_order_analysis' keeps Appr Req / 2Order / approval.required
+                        // mutually exclusive in the dropdown.
+                        stageMatch = getEffectiveApprReqValue(data) > 0 && dataStage !== 'to_order_analysis';
                     } else if (currentStageFilter === 'to_order_analysis') {
                         // For 2 Order: include only items with stage 'to_order_analysis'
                         stageMatch = dataStage === 'to_order_analysis';
+                    } else if (currentStageFilter === 'appr_req_or_2order') {
+                        // Combined "approval.required" view: APR rows + 2Order rows together.
+                        stageMatch = (getEffectiveApprReqValue(data) > 0 && dataStage !== 'to_order_analysis')
+                            || dataStage === 'to_order_analysis';
                     } else {
                         stageMatch = dataStage === currentStageFilter;
                     }
@@ -1753,8 +1782,18 @@
             const visibleRows = table.getRows(true).map(r => r.getData());
             const allRows = table.getRows();
 
-            // Count = rows that actually display a value in the Appr Req column.
+            // Loose rule — rows that display a value in the Appr Req column at all
+            // (matches /forecast.analysis and feeds the "App Pending" yellow-count badge).
             const matchesApprReqUnified = (data) => getEffectiveApprReqValue(data) > 0;
+
+            // Strict rule for the dropdown — same loose check but EXCLUDES rows already
+            // in the 2Order stage. Keeps the three Stage options (Appr Req, 2Order,
+            // approval.required) mutually exclusive and matches the filter branch above.
+            const matchesApprReqForDropdown = (data) => {
+                if (!matchesApprReqUnified(data)) return false;
+                const stg = String((data && (data.stage || (data.raw_data && data.raw_data.stage))) || '').trim().toLowerCase();
+                return stg !== 'to_order_analysis';
+            };
 
             const yellowCount = (allRows.length > 0)
                 ? allRows.map(r => r.getData()).filter(matchesApprReqUnified).length
@@ -1808,23 +1847,50 @@
             
             // Appr Req dropdown count — same unified rule as the actual filter and yellowCount above.
             const apprReqCount = (allRows.length > 0)
-                ? allRows.map(r => r.getData()).filter(matchesApprReqUnified).length
-                : visibleRows.filter(matchesApprReqUnified).length;
+                ? allRows.map(r => r.getData()).filter(matchesApprReqForDropdown).length
+                : visibleRows.filter(matchesApprReqForDropdown).length;
 
             document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
             document.getElementById('toggle-nr-rows').textContent = hideNRYes ? "Show NR" : "Hide NR";
             
+            // Combined "approval.required" count = APR rows ∪ 2Order rows (deduped by SKU).
+            // Each underlying rule excludes parents already (matchesApprReqUnified short-circuits on
+            // is_parent; the 2Order branch checks r.is_parent above).
+            const approvalRequiredCount = (allRows.length > 0)
+                ? (function() {
+                    const seen = new Set();
+                    let n = 0;
+                    allRows.forEach(function(row) {
+                        const d = row.getData();
+                        if (!d || d.is_parent || d.isParent) return;
+                        const stage = String(d.stage || (d.raw_data && d.raw_data.stage) || '').trim().toLowerCase();
+                        const isApr = matchesApprReqUnified(d);
+                        const is2Order = stage === 'to_order_analysis';
+                        if (!isApr && !is2Order) return;
+                        const key = String(d.SKU || d.sku || '') + '|' + String(d.Parent || '');
+                        if (seen.has(key)) return;
+                        seen.add(key);
+                        n++;
+                    });
+                    return n;
+                })()
+                : (apprReqCount + twoOrderCount);
+
             // Update dropdown options text with counts
             const stageFilterSelect = document.getElementById('stage-filter');
             if (stageFilterSelect) {
                 const apprReqOption = stageFilterSelect.querySelector('option[value="appr_req"]');
                 const twoOrderOption = stageFilterSelect.querySelector('option[value="to_order_analysis"]');
-                
+                const apprOrTwoOption = stageFilterSelect.querySelector('option[value="appr_req_or_2order"]');
+
                 if (apprReqOption) {
                     apprReqOption.textContent = `Appr Req (${apprReqCount})`;
                 }
                 if (twoOrderOption) {
                     twoOrderOption.textContent = `2Order (${twoOrderCount})`;
+                }
+                if (apprOrTwoOption) {
+                    apprOrTwoOption.textContent = `approval.required (${approvalRequiredCount})`;
                 }
             }
         }

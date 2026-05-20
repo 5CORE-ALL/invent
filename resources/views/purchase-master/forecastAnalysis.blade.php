@@ -501,23 +501,6 @@
                             </ul>
                             </div>
 
-                        <!-- Appr Req yellow filter (star count = apprReqYellowRowVisible rule, not stage badge) -->
-                        <div class="d-inline-flex flex-column align-items-start">
-                            <span class="text-muted fw-semibold" style="font-size:0.62rem;line-height:1.1;white-space:nowrap;"
-                                title="Count of lines where 2 Ord ≥ 0, Order/MIP/R2S/Trn have no pipeline qty, and NRP is not NR or LATER. This drives the star / yellow Appr Req filter, not the blue Stage summary.">Yellow queue</span>
-                            <div class="dropdown">
-                            <button class="btn btn-sm btn-warning dropdown-toggle fw-semibold text-dark px-2" type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Yellow Appr Req filter: 2 Ord ≥ 0, empty pipeline (Order/MIP/R2S/Trn), REQ only (not NR/LATER). Count is independent of the blue Stage summary badge.">
-                                <span class="d-none" aria-hidden="true"><i class="bi bi-funnel-fill"></i><span id="appr-req-badge-label">All</span></span>
-                                    <span class="vr align-self-stretch my-n1 opacity-50 d-none" aria-hidden="true"></span>
-                                <i class="bi bi-star-fill"></i> <span id="yellow-count-box">Appr Req: 0</span>
-                                </button>
-                                <ul class="dropdown-menu p-2 shadow-lg border rounded-3">
-                                    <li><button class="dropdown-item" type="button" data-filter="">All</button></li>
-                                    <li><button class="dropdown-item" type="button" data-filter="yellow">Appr Req.</button></li>
-                                </ul>
-                            </div>
-                        </div>
-
                         <!-- Column Management -->
                         <div class="dropdown">
                             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1" type="button" id="hide-column-dropdown" title="Manage Columns">
@@ -535,6 +518,15 @@
                             <i class="fas fa-file-csv"></i>
                             <span>Export</span>
                             </button>
+
+                        <!-- Clear All Filters -->
+                        <button id="clear-all-filters-btn"
+                                class="btn btn-sm btn-outline-danger fw-semibold d-flex align-items-center gap-1"
+                                type="button"
+                                title="Reset every search, filter, play mode, NRP selection, header filter and zero-stock toggle">
+                            <i class="fas fa-times-circle"></i>
+                            <span>Clear</span>
+                        </button>
                     </div>
 
                     <!-- ── Row 3: Value badges ── -->
@@ -2753,197 +2745,101 @@
             ajaxResponse: function(url, params, response) {
                 groupedSkuData = {}; // clear previous
 
-                // SKU count for column header (exclude rows where SKU contains "parent")
-                const skuCount = (response.data || []).filter(row => !String(row.SKU || '').toLowerCase().includes('parent')).length;
+                // ── Single-pass aggregation ──
+                // All badge totals + SKU count derived from one walk of response.data.
+                // Previously this block ran ~10 separate .filter/.reduce/.reduce sweeps,
+                // each one stalling the main thread before the table could render.
+                const dataArr = response.data || [];
+                let skuCount = 0;
+                let totalInvValue = 0;
+                let totalLpValue = 0;
+                let totalRestockMsl = 0;
+                let totalMinimalMsl = 0;
+                let sumRestockShopifyPrice = 0;
+                let totalRestockLpSum = 0;
+                let restockCount = 0;
+                let totalMipValue = 0;
+                let totalR2sValue = 0;
+                let totalTransitValueLocal = 0;
 
-                // Update total MSL_C from server response (connected to MSL data)
+                for (let i = 0, n = dataArr.length; i < n; i++) {
+                    const item = dataArr[i];
+                    const skuStr = String(item.SKU || '').toLowerCase();
+                    if (!skuStr.includes('parent')) skuCount++;
+                    if (item.is_parent) continue;
+
+                    const inv = parseFloat(item.INV) || 0;
+                    totalInvValue += parseFloat(item.inv_value) || 0;
+                    totalLpValue  += parseFloat(item.lp_value)  || 0;
+
+                    if (inv === 0) {
+                        restockCount++;
+                        const lp = parseFloat(item.LP) || 0;
+                        totalRestockMsl        += lp / 4;
+                        totalMinimalMsl        += parseFloat(item.MSL_SP) || 0;
+                        sumRestockShopifyPrice += parseFloat(item.shopifyb2c_price) || 0;
+                        totalRestockLpSum      += lp;
+                    }
+
+                    const stageNorm   = String(item.stage || '').trim().toLowerCase();
+                    const readyToShip = String(item.mfrg_ready_to_ship || 'No').trim();
+                    const nrNorm      = String(item.nr || '').trim().toUpperCase();
+
+                    if (stageNorm === 'mip' && readyToShip !== 'Yes' && nrNorm !== 'NR') {
+                        const qty  = parseFloat(item.order_given) || 0;
+                        const rate = parseFloat(item.mip_rate)    || 0;
+                        if (qty > 0 && rate > 0) totalMipValue += qty * rate;
+                    }
+                    if (stageNorm === 'r2s' && nrNorm !== 'NR') {
+                        const qty  = parseFloat(item.readyToShipQty) || 0;
+                        const rate = parseFloat(item.r2s_rate)       || 0;
+                        if (qty > 0 && rate > 0) totalR2sValue += qty * rate;
+                    }
+
+                    const t  = parseFloat(item.transit) || 0;
+                    const cp = parseFloat(item.CP)      || 0;
+                    totalTransitValueLocal += t * cp;
+                }
+
+                const averageRestockLp  = restockCount > 0 ? totalRestockLpSum / restockCount : 0;
+                const totalRestockMslLp = restockCount * (averageRestockLp / 4);
+
+                // Trn Val: prefer pre-summed server total when present, fall back to client sum
+                const serverTransitRaw = (response.total_transit_value !== undefined)
+                    ? parseFloat(response.total_transit_value)
+                    : NaN;
+                const totalTransitValue = Number.isFinite(serverTransitRaw) ? serverTransitRaw : totalTransitValueLocal;
+
+                // ── Single DOM-write phase for every badge ──
+                const setBadgeText = (id, value) => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = Math.round(value).toLocaleString('en-US');
+                };
                 const totalMslCElement = document.getElementById('total_msl_c_value');
                 if (totalMslCElement && response.total_msl_c !== undefined) {
-                    const wholeNumber = Math.round(parseFloat(response.total_msl_c));
-                    totalMslCElement.textContent = wholeNumber.toLocaleString('en-US');
+                    totalMslCElement.textContent = Math.round(parseFloat(response.total_msl_c)).toLocaleString('en-US');
                 }
                 const totalMslSpAmzEl = document.getElementById('total_msl_sp_amz_value');
                 if (totalMslSpAmzEl && response.total_msl_sp_amz !== undefined) {
                     totalMslSpAmzEl.textContent = Math.round(parseFloat(response.total_msl_sp_amz)).toLocaleString('en-US');
                 }
-
-                // Calculate and update total INV Value
-                const totalInvValue = response.data.reduce((sum, item) => {
-                    if (!item.is_parent) {
-                        return sum + (parseFloat(item.inv_value) || 0);
-                    }
-                    return sum;
-                }, 0);
-                const totalInvValueElement = document.getElementById('total_inv_value_display');
-                if (totalInvValueElement) {
-                    const roundedTotal = Math.round(totalInvValue);
-                    totalInvValueElement.textContent = roundedTotal.toLocaleString('en-US');
-                }
-
-                // Calculate and update total LP Value
-                const totalLpValue = response.data.reduce((sum, item) => {
-                    if (!item.is_parent) {
-                        return sum + (parseFloat(item.lp_value) || 0);
-                    }
-                    return sum;
-                }, 0);
-                const totalLpValueElement = document.getElementById('total_lp_value_display');
-                if (totalLpValueElement) {
-                    const roundedTotal = Math.round(totalLpValue);
-                    totalLpValueElement.textContent = roundedTotal.toLocaleString('en-US');
-                }
-
-                // Calculate and update total Restock MSL
-                const totalRestockMsl = response.data.reduce((sum, item) => {
-                    if (!item.is_parent && (parseFloat(item.INV) || 0) === 0) {
-                        const lp = parseFloat(item.LP) || 0;
-                        return sum + (lp / 4);
-                    }
-                        // lp* msl
-                    return sum;
-                }, 0);
-                const totalRestockMslElement = document.getElementById('total_restock_msl_value');
-                if (totalRestockMslElement) {
-                    const wholeNumber = Math.round(totalRestockMsl);
-                    totalRestockMslElement.textContent = wholeNumber.toLocaleString('en-US');
-                }
-
-                // Calculate restock count and average shopify price for restock SKUs
-                const restockItems = response.data.filter(item => !item.is_parent && (parseFloat(item.INV) || 0) === 0);
-                const restockCount = restockItems.length;
-                const totalShopifyPrice = restockItems.reduce((sum, item) => sum + (parseFloat(item.shopifyb2c_price) || 0), 0);
-                const averageShopifyPrice = restockCount > 0 ? totalShopifyPrice / restockCount : 0;
-                const totalMinimalMsl = restockItems.reduce((sum, item) => sum + (parseFloat(item.MSL_SP) || 0), 0);
-                const totalMinimalMslElement = document.getElementById('total_minimal_msl_value');
-                if (totalMinimalMslElement) {
-                    const wholeNumber = Math.round(totalMinimalMsl);
-                    totalMinimalMslElement.textContent = wholeNumber.toLocaleString('en-US');
-                }
-
-                // Calculate sum of restock shopify prices
-                const sumRestockShopifyPrice = restockItems.reduce((sum, item) => sum + (parseFloat(item.shopifyb2c_price) || 0), 0);
-                const sumRestockShopifyPriceElement = document.getElementById('sum_restock_shopify_price_value');
-                if (sumRestockShopifyPriceElement) {
-                    const wholeNumber = Math.round(sumRestockShopifyPrice);
-                    sumRestockShopifyPriceElement.textContent = wholeNumber.toLocaleString('en-US');
-                }
-
-                // Calculate and update total MIP Value - only for items with stage === 'mip' (like mfrg-in-progress page)
-                // Filter criteria: stage === 'mip', ready_to_ship !== 'Yes', nr !== 'NR' (same as mfrg-in-progress page)
-                // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
-                const totalMipValue = response.data.reduce((sum, item) => {
-                    if (!item.is_parent) {
-                        // Check stage field - only count if stage is 'mip'
-                        const stage = item.stage || '';
-                        const stageValue = String(stage || '').trim().toLowerCase();
-                        
-                        // Check ready_to_ship from mfrg_progress table (exclude if 'Yes', like mfrg-in-progress page)
-                        const mfrgReadyToShip = item.mfrg_ready_to_ship || 'No';
-                        const readyToShipValue = String(mfrgReadyToShip || '').trim();
-                        
-                        // Check nr field (exclude if 'NR', like mfrg-in-progress page)
-                        const nr = item.nr || '';
-                        const nrValue = String(nr || '').trim().toUpperCase();
-                        
-                        // Only count if stage is 'mip', ready_to_ship !== 'Yes', and nr !== 'NR' (matching mfrg-in-progress page logic)
-                        if (stageValue === 'mip' && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
-                            // Calculate directly as qty * rate (same as mfrg-in-progress page)
-                            // In mfrg-in-progress: $item->qty * $item->rate (directly from mfrg_progress table)
-                            // In forecastAnalysis: order_given (qty) and mip_rate (rate) from mfrg_progress table
-                            // But ONLY if ready_to_ship === 'No' (controller already sets order_given=0 if ready_to_ship='Yes')
-                            
-                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
-                            // mfrg-in-progress template: is_numeric($item->qty) && is_numeric($item->rate)
-                            const qty = parseFloat(item.order_given || 0) || 0;
-                            const rate = parseFloat(item.mip_rate || 0) || 0;
-                            
-                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
-                            if (qty > 0 && rate > 0) {
-                                return sum + (qty * rate);
-                            }
-                            // Note: We don't use fallback to MIP_Value here because mfrg-in-progress page doesn't show items without qty*rate
-                        }
-                    }
-                    return sum;
-                }, 0);
-                const totalMipValueElement = document.getElementById('total_mip_value_display');
-                if (totalMipValueElement) {
-                    const roundedTotal = Math.round(totalMipValue);
-                    totalMipValueElement.textContent = roundedTotal.toLocaleString('en-US');
-                }
-
-                // Calculate and update total R2S Value - only for items with stage === 'r2s' (like ready-to-ship page)
-                // Filter criteria: stage === 'r2s', transit_inv_status === 0 (already filtered in controller), nr !== 'NR' (same as ready-to-ship page)
-                // Calculate directly as qty * rate (like ready-to-ship page calculates from DOM)
-                const totalR2sValue = response.data.reduce((sum, item) => {
-                    if (!item.is_parent) {
-                        // Check stage field - only count if stage is 'r2s'
-                        const stage = item.stage || '';
-                        const stageValue = String(stage || '').trim().toLowerCase();
-                        
-                        // Check nr field (exclude if 'NR', like ready-to-ship page)
-                        const nr = item.nr || '';
-                        const nrValue = String(nr || '').trim().toUpperCase();
-                        
-                        // Only count if stage is 'r2s' and nr !== 'NR' (matching ready-to-ship page logic)
-                        // IMPORTANT: ready-to-ship page calculates from items that are already filtered in template (using continue directive in Blade)
-                        // Controller already filters: transit_inv_status = 0 and stage === 'r2s'
-                        if (stageValue === 'r2s' && nrValue !== 'NR') {
-                            // Calculate directly as qty * rate (same as ready-to-ship page)
-                            // In ready-to-ship: $item->qty * $item->rate (directly from ready_to_ship table)
-                            // In forecastAnalysis: readyToShipQty (qty) and r2s_rate (rate) from ready_to_ship table
-                            
-                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
-                            // ready-to-ship template: is_numeric($item->qty) && is_numeric($item->rate)
-                            const qty = parseFloat(item.readyToShipQty || 0) || 0;
-                            const rate = parseFloat(item.r2s_rate || 0) || 0;
-                            
-                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
-                            if (qty > 0 && rate > 0) {
-                                return sum + (qty * rate);
-                            }
-                            // Note: We don't use fallback to R2S_Value here because ready-to-ship page doesn't show items without qty*rate
-                        }
-                    }
-                    return sum;
-                }, 0);
-                const totalR2sValueElement = document.getElementById('total_r2s_value_display');
-                if (totalR2sValueElement) {
-                    const roundedTotal = Math.round(totalR2sValue);
-                    totalR2sValueElement.textContent = roundedTotal.toLocaleString('en-US');
-                }
-
-                // Trn Val: controller sends sum of (transit QTY × CP) per child SKU
-                let totalTransitValue = 0;
-                if (response.total_transit_value !== undefined) {
-                    totalTransitValue = parseFloat(response.total_transit_value || 0) || 0;
-                } else {
-                    totalTransitValue = (response.data || []).reduce(function(sum, item) {
-                        if (item.is_parent) return sum;
-                        const t = parseFloat(item.transit) || 0;
-                        const cp = parseFloat(item.CP) || 0;
-                        return sum + (t * cp);
-                    }, 0);
-                }
-                const totalTransitValueElement = document.getElementById('total_transit_value_display');
-                if (totalTransitValueElement) {
-                    const roundedTotal = Math.round(totalTransitValue);
-                    totalTransitValueElement.textContent = roundedTotal.toLocaleString('en-US');
-                }
-
-                   // Calculate total restock MSL LP
-                const totalLp = restockItems.reduce((sum, item) => sum + (parseFloat(item.LP) || 0), 0);
-                const averageLp = restockCount > 0 ? totalLp / restockCount : 0;
-                const totalRestockMslLp = restockCount * (averageLp / 4);
-                const totalRestockMslLpElement = document.getElementById('total_restock_msl_lp_value');
-                if (totalRestockMslLpElement) {
-                    const wholeNumber = Math.round(totalRestockMslLp);
-                    totalRestockMslLpElement.textContent = wholeNumber.toLocaleString('en-US');
-                }
+                setBadgeText('total_inv_value_display',          totalInvValue);
+                setBadgeText('total_lp_value_display',           totalLpValue);
+                setBadgeText('total_restock_msl_value',          totalRestockMsl);
+                setBadgeText('total_minimal_msl_value',          totalMinimalMsl);
+                setBadgeText('sum_restock_shopify_price_value',  sumRestockShopifyPrice);
+                setBadgeText('total_mip_value_display',          totalMipValue);
+                setBadgeText('total_r2s_value_display',          totalR2sValue);
+                setBadgeText('total_transit_value_display',      totalTransitValue);
+                setBadgeText('total_restock_msl_lp_value',       totalRestockMslLp);
 
 
                 const groupedMSL = {};
                 const groupedS_MSL = {};
+
+                // Children grouped by parentKey — built during the .map pass so the
+                // parent-aggregation forEach below doesn't have to .filter again per parent.
+                const childrenByParent = {};
 
                 const processed = response.data.map((item, index) => {
                     const sku = item["SKU"] || "";
@@ -3058,104 +2954,114 @@
                     if (!groupedSkuData[parentKey]) groupedSkuData[parentKey] = [];
                     groupedSkuData[parentKey].push(processedItem);
 
+                    // Mirror in children-only bucket so the parent-aggregation loop
+                    // below doesn't have to .filter(non-parent) again per parent.
+                    if (!isParent) {
+                        if (!childrenByParent[parentKey]) childrenByParent[parentKey] = [];
+                        childrenByParent[parentKey].push(processedItem);
+                    }
+
                     return processedItem;
                 });
 
-                // Update parent rows with sum of all child SKUs (INV, L30, etc.)
+                // Update parent rows with sum of all child SKUs (INV, L30, etc.).
+                // Previously ran 8 .reduce() + 7 .map().filter().reduce() chains per parent
+                // (~15 array sweeps × N children). Now a single typed for-loop per parent.
                 processed.forEach(row => {
-                    if (row.isParent) {
-                        const parentKey = row.parentKey;
-                        const children = (groupedSkuData[parentKey] || []).filter(c => !c.is_parent && !c.isParent);
-                        const sumInv = children.reduce((s, c) => s + (parseFloat(c.INV) || parseFloat(c.raw_data && c.raw_data["INV"]) || 0), 0);
-                        const sumL30 = children.reduce((s, c) => s + (parseFloat(c["L30"]) || parseFloat(c.raw_data && c.raw_data["L30"]) || 0), 0);
-                        const sumOrderGiven = children.reduce((s, c) => s + (parseFloat(c.order_given) || parseFloat(c.raw_data && c.raw_data["order_given"]) || 0), 0);
-                        const sumTransit = children.reduce((s, c) => s + (parseFloat(c.transit) || parseFloat(c.raw_data && c.raw_data["transit"]) || 0), 0);
-                        const sumToOrder = children.reduce((s, c) => s + (parseFloat(c.to_order) || 0), 0);
-                        const sumMOQ = children.reduce((s, c) => s + (parseFloat(c.MOQ) || parseFloat(c.raw_data && c.raw_data["MOQ"]) || 0), 0);
-                        const sumTwoOrderQty = children.reduce((s, c) => s + (parseFloat(c.two_order_qty) || 0), 0);
-                        const sumApprReqQty = children.reduce((s, c) => s + (parseFloat(c.appr_req_qty) || 0), 0);
-                        row.m_avg = 0;
-                        row.TAT = null;
-                        const gpftKids = children.map(c => c.avg_gpft_pct).filter(function(v) {
-                            return v != null && v !== '' && Number.isFinite(parseFloat(v));
-                        });
-                        row.avg_gpft_pct = gpftKids.length
-                            ? Math.round(gpftKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / gpftKids.length)
-                            : null;
-                        const adKids = children.map(c => c.avg_ad_pct).filter(function(v) {
-                            return v != null && v !== '' && Number.isFinite(parseFloat(v));
-                        });
-                        row.avg_ad_pct = adKids.length
-                            ? Math.round(adKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / adKids.length * 10) / 10
-                            : null;
-                        const npftKids = children.map(c => c.avg_npft_pct).filter(function(v) {
-                            return v != null && v !== '' && Number.isFinite(parseFloat(v));
-                        });
-                        row.avg_npft_pct = npftKids.length
-                            ? Math.round(npftKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / npftKids.length)
-                            : null;
-                        const nroiKids = children.map(c => c.avg_groi_pct).filter(function(v) {
-                            return v != null && v !== '' && Number.isFinite(parseFloat(v));
-                        });
-                        row.avg_groi_pct = nroiKids.length
-                            ? Math.round(nroiKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / nroiKids.length)
-                            : null;
-                        const effKids = children.map(function(c) {
-                            const mAvg = parseFloat(c.m_avg) || 0;
-                            const moq = parseFloat(c.MOQ) || 0;
-                            const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
-                            const nroi = parseFloat(c.avg_groi_pct);
-                            if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
-                                return null;
-                            }
+                    if (!row.isParent) return;
+                    const children = childrenByParent[row.parentKey] || [];
 
-                            return Math.round((nroi / tat) * 12);
-                        }).filter(function(x) { return x != null && !isNaN(x); });
-                        row.eff_roi_pct = effKids.length
-                            ? Math.round(effKids.reduce(function(s, x) { return s + x; }, 0) / effKids.length)
-                            : null;
-                        const revNums = children.map(function(c) {
-                            const r = c.reviews;
-                            if (r === null || r === undefined || r === '') {
-                                return null;
-                            }
-                            const n = parseInt(String(r).replace(/,/g, ''), 10);
+                    let sumInv = 0, sumL30 = 0, sumOrderGiven = 0, sumTransit = 0;
+                    let sumToOrder = 0, sumMOQ = 0, sumTwoOrderQty = 0, sumApprReqQty = 0;
+                    let gpftSum = 0, gpftCnt = 0;
+                    let adSum   = 0, adCnt   = 0;
+                    let npftSum = 0, npftCnt = 0;
+                    let groiSum = 0, groiCnt = 0;
+                    let effRoiSum = 0, effRoiCnt = 0;
+                    let revSum  = 0, revCnt  = 0;
+                    let ratSum  = 0, ratCnt  = 0;
 
-                            return Number.isFinite(n) ? n : null;
-                        }).filter(function(x) { return x != null; });
-                        row.reviews = revNums.length
-                            ? Math.round(revNums.reduce(function(s, x) { return s + x; }, 0) / revNums.length)
-                            : null;
-                        const ratNums = children.map(function(c) {
-                            const r = c.rating;
-                            if (r === null || r === undefined || r === '') {
-                                return null;
-                            }
-                            const n = parseFloat(r);
+                    for (let i = 0, n = children.length; i < n; i++) {
+                        const c = children[i];
+                        const raw = c.raw_data;
 
-                            return Number.isFinite(n) ? n : null;
-                        }).filter(function(x) { return x != null; });
-                        row.rating = ratNums.length
-                            ? Math.round(ratNums.reduce(function(s, x) { return s + x; }, 0) / ratNums.length * 10) / 10
-                            : null;
-                        row.INV = sumInv;
-                        row["L30"] = sumL30;
-                        row.order_given = sumOrderGiven;
-                        row.transit = sumTransit;
-                        row.to_order = sumToOrder;
-                        row.MOQ = sumMOQ;
-                        row.two_order_qty = sumTwoOrderQty;
-                        row.appr_req_qty = sumApprReqQty;
-                        if (row.raw_data) {
-                            row.raw_data["INV"] = sumInv;
-                            row.raw_data["L30"] = sumL30;
-                            row.raw_data["order_given"] = sumOrderGiven;
-                            row.raw_data["transit"] = sumTransit;
-                            row.raw_data["to_order"] = sumToOrder;
-                            row.raw_data["MOQ"] = sumMOQ;
-                            row.raw_data["two_order_qty"] = sumTwoOrderQty;
-                            row.raw_data["appr_req_qty"] = sumApprReqQty;
+                        sumInv         += (parseFloat(c.INV)            || (raw && parseFloat(raw.INV))            || 0);
+                        sumL30         += (parseFloat(c["L30"])         || (raw && parseFloat(raw["L30"]))         || 0);
+                        sumOrderGiven  += (parseFloat(c.order_given)    || (raw && parseFloat(raw.order_given))    || 0);
+                        sumTransit     += (parseFloat(c.transit)        || (raw && parseFloat(raw.transit))        || 0);
+                        sumToOrder     += (parseFloat(c.to_order)       || 0);
+                        sumMOQ         += (parseFloat(c.MOQ)            || (raw && parseFloat(raw.MOQ))            || 0);
+                        sumTwoOrderQty += (parseFloat(c.two_order_qty)  || 0);
+                        sumApprReqQty  += (parseFloat(c.appr_req_qty)   || 0);
+
+                        const gp = c.avg_gpft_pct;
+                        if (gp != null && gp !== '') {
+                            const v = parseFloat(gp);
+                            if (Number.isFinite(v)) { gpftSum += v; gpftCnt++; }
                         }
+                        const ad = c.avg_ad_pct;
+                        if (ad != null && ad !== '') {
+                            const v = parseFloat(ad);
+                            if (Number.isFinite(v)) { adSum += v; adCnt++; }
+                        }
+                        const np = c.avg_npft_pct;
+                        if (np != null && np !== '') {
+                            const v = parseFloat(np);
+                            if (Number.isFinite(v)) { npftSum += v; npftCnt++; }
+                        }
+                        let groiF = NaN;
+                        const gi = c.avg_groi_pct;
+                        if (gi != null && gi !== '') {
+                            const v = parseFloat(gi);
+                            if (Number.isFinite(v)) { groiF = v; groiSum += v; groiCnt++; }
+                        }
+
+                        const mAvg = parseFloat(c.m_avg) || 0;
+                        const moq  = parseFloat(c.MOQ)   || 0;
+                        const tat  = mAvg > 0 ? Math.round(moq / mAvg) : 0;
+                        if (tat > 0 && Number.isFinite(groiF)) {
+                            effRoiSum += Math.round((groiF / tat) * 12);
+                            effRoiCnt++;
+                        }
+
+                        const r = c.reviews;
+                        if (r !== null && r !== undefined && r !== '') {
+                            const v = parseInt(String(r).replace(/,/g, ''), 10);
+                            if (Number.isFinite(v)) { revSum += v; revCnt++; }
+                        }
+                        const rt = c.rating;
+                        if (rt !== null && rt !== undefined && rt !== '') {
+                            const v = parseFloat(rt);
+                            if (Number.isFinite(v)) { ratSum += v; ratCnt++; }
+                        }
+                    }
+
+                    row.m_avg = 0;
+                    row.TAT = null;
+                    row.avg_gpft_pct = gpftCnt ? Math.round(gpftSum / gpftCnt) : null;
+                    row.avg_ad_pct   = adCnt   ? Math.round(adSum   / adCnt   * 10) / 10 : null;
+                    row.avg_npft_pct = npftCnt ? Math.round(npftSum / npftCnt) : null;
+                    row.avg_groi_pct = groiCnt ? Math.round(groiSum / groiCnt) : null;
+                    row.eff_roi_pct  = effRoiCnt ? Math.round(effRoiSum / effRoiCnt) : null;
+                    row.reviews      = revCnt  ? Math.round(revSum  / revCnt) : null;
+                    row.rating       = ratCnt  ? Math.round(ratSum  / ratCnt  * 10) / 10 : null;
+                    row.INV          = sumInv;
+                    row["L30"]       = sumL30;
+                    row.order_given  = sumOrderGiven;
+                    row.transit      = sumTransit;
+                    row.to_order     = sumToOrder;
+                    row.MOQ          = sumMOQ;
+                    row.two_order_qty = sumTwoOrderQty;
+                    row.appr_req_qty = sumApprReqQty;
+                    if (row.raw_data) {
+                        row.raw_data["INV"]            = sumInv;
+                        row.raw_data["L30"]            = sumL30;
+                        row.raw_data["order_given"]    = sumOrderGiven;
+                        row.raw_data["transit"]        = sumTransit;
+                        row.raw_data["to_order"]       = sumToOrder;
+                        row.raw_data["MOQ"]            = sumMOQ;
+                        row.raw_data["two_order_qty"]  = sumTwoOrderQty;
+                        row.raw_data["appr_req_qty"]   = sumApprReqQty;
                     }
                 });
 
@@ -3174,33 +3080,45 @@
                     sorted.push.apply(sorted, g);
                 });
 
-                setTimeout(() => {
-                    setCombinedFilters();
-                    // Default sort by Order Date oldest first (ascending)
-                    table.setSort([{ column: "mfrg_order_date", dir: "asc" }]);
-                    // Update SKU column header with count (excluding rows with "parent" in SKU)
-                    table.updateColumnDefinition("SKU", { title: "SKU (" + skuCount + ")" });
-                    // Update column headers with count of rows (excluding parent) where value > 0
+                // Defer to the next animation frame so Tabulator paints the rows
+                // first; only after the first frame do we recompute column-header
+                // counts and apply the cross-row filter pass. This is what unblocks
+                // scroll right after the AJAX returns.
+                requestAnimationFrame(() => {
+                    // Count column-header positives in ONE pass instead of 8 .filter() sweeps.
                     const allData = table.getData();
-                    const notParent = row => !String(row.SKU || '').toLowerCase().includes('parent');
-                    const mslCount = allData.filter(row => notParent(row) && (parseFloat(row.msl) || 0) > 0).length;
-                    const toOrderCount = allData.filter(row => notParent(row) && (parseFloat(row.to_order) || 0) > 0).length;
-                    const orderCount = allData.filter(row => notParent(row) && (parseFloat(row.two_order_qty) || 0) > 0).length;
-                    const mipCount = allData.filter(row => notParent(row) && (parseFloat(row.order_given) || 0) > 0).length;
-                    const r2sCount = allData.filter(row => notParent(row) && (parseFloat(row.readyToShipQty) || 0) > 0).length;
-                    const transitCount = allData.filter(row => notParent(row) && (parseFloat(row.transit) || 0) > 0).length;
-                    const moqCount = allData.filter(row => notParent(row) && (parseFloat(row.MOQ) || 0) > 0).length;
-                    // Count rows that actually show a value in the Appr Req column
-                    // (matches the unified rule used by /approval.required and /to-order-analysis).
-                    const apprReqStageCount = allData.filter(row => notParent(row) && getEffectiveApprReqValue(row) > 0).length;
-                    table.updateColumnDefinition("msl", { title: "MSL (" + mslCount + ")" });
-                    table.updateColumnDefinition("to_order", { title: "2 Ord (" + toOrderCount + ")" });
-                    table.updateColumnDefinition("appr_req_qty", { title: "Appr Req (" + apprReqStageCount + ")" });
-                    table.updateColumnDefinition("two_order_qty", { title: "Order" });
-                    table.updateColumnDefinition("order_given", { title: "MIP" });
-                    table.updateColumnDefinition("readyToShipQty", { title: "R2S" });
-                    table.updateColumnDefinition("transit", { title: "Trn" });
-                    table.updateColumnDefinition("MOQ", { title: "MOQ" });
+                    let mslCount = 0, toOrderCount = 0, orderCount = 0, mipCount = 0,
+                        r2sCount = 0, transitCount = 0, moqCount = 0, apprReqStageCount = 0;
+                    for (let i = 0, n = allData.length; i < n; i++) {
+                        const row = allData[i];
+                        if (String(row.SKU || '').toLowerCase().includes('parent')) continue;
+                        if ((parseFloat(row.msl)            || 0) > 0) mslCount++;
+                        if ((parseFloat(row.to_order)       || 0) > 0) toOrderCount++;
+                        if ((parseFloat(row.two_order_qty)  || 0) > 0) orderCount++;
+                        if ((parseFloat(row.order_given)    || 0) > 0) mipCount++;
+                        if ((parseFloat(row.readyToShipQty) || 0) > 0) r2sCount++;
+                        if ((parseFloat(row.transit)        || 0) > 0) transitCount++;
+                        if ((parseFloat(row.MOQ)            || 0) > 0) moqCount++;
+                        if (getEffectiveApprReqValue(row)         > 0) apprReqStageCount++;
+                    }
+
+                    // Batch the 8 column-definition updates inside blockRedraw so Tabulator
+                    // re-lays-out the header exactly ONCE instead of once per call.
+                    if (typeof table.blockRedraw === 'function') table.blockRedraw();
+                    try {
+                        table.updateColumnDefinition("SKU",            { title: "SKU (" + skuCount + ")" });
+                        table.updateColumnDefinition("msl",             { title: "MSL (" + mslCount + ")" });
+                        table.updateColumnDefinition("to_order",        { title: "2 Ord (" + toOrderCount + ")" });
+                        table.updateColumnDefinition("appr_req_qty",    { title: "Appr Req (" + apprReqStageCount + ")" });
+                        table.updateColumnDefinition("two_order_qty",   { title: "Order" });
+                        table.updateColumnDefinition("order_given",     { title: "MIP" });
+                        table.updateColumnDefinition("readyToShipQty",  { title: "R2S" });
+                        table.updateColumnDefinition("transit",         { title: "Trn" });
+                        table.updateColumnDefinition("MOQ",             { title: "MOQ" });
+                    } finally {
+                        if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
+                    }
+
                     updateOrderColumnHeader(toOrderCount);
                     currentMoqPositiveCount = moqCount;
                     updateTopQtyFilterOptionCounts({
@@ -3212,7 +3130,15 @@
                     });
                     updateZeroStockBadgeCount();
                     syncZeroStockBadgeActiveState();
-                }, 0);
+
+                    // setCombinedFilters() runs setFilter() across every row plus a debounced
+                    // totals pass; push it to a second rAF so the user can already see/scroll
+                    // the rendered table while the cross-row filter pass finishes.
+                    requestAnimationFrame(() => {
+                        setCombinedFilters();
+                        table.setSort([{ column: "mfrg_order_date", dir: "asc" }]);
+                    });
+                });
                 return sorted;
             },
 
@@ -3541,11 +3467,7 @@
             const rt = document.getElementById('row-data-type');
             if (rt) rt.value = rowTypeVal;
 
-            currentColorFilter = prefs.apprReqFilter || '';
-            const apprLabelEl = document.getElementById('appr-req-badge-label');
-            if (apprLabelEl) {
-                apprLabelEl.textContent = currentColorFilter === 'yellow' ? 'Appr Req.' : (currentColorFilter === 'red' ? 'Filter' : 'All');
-            }
+            currentColorFilter = '';
 
             const twoOrdVal = normalizeTwoOrdFilterValue(prefs.twoOrdFilter || '');
             currentTwoOrdColorFilter = twoOrdVal;
@@ -3576,6 +3498,92 @@
             }
             syncZeroStockBadgeActiveState();
         }
+
+        /**
+         * Reset every filter/search/play mode on the page back to its default state,
+         * then re-apply filters (which, with everything empty, shows every row).
+         * Wired to the "Clear" button in Row 2 of the toolbar.
+         */
+        function clearAllForecastFilters() {
+            // Stop any active "play" modes by clicking their visible stop buttons.
+            // Each mode's `is*Playing` flag is closed over inside its own IIFE, so the
+            // only safe public way to stop it is to trigger the same UI click.
+            ['play-pause', 'supplier-play-pause', 'zone-play-pause', 'container-play-pause']
+                .forEach(function(id) {
+                    const btn = document.getElementById(id);
+                    if (btn && btn.offsetParent !== null) {
+                        try { btn.click(); } catch (e) {}
+                    }
+                });
+
+            // Reset filter state variables
+            currentParentFilter      = null;
+            currentColorFilter       = '';
+            currentSearchQuery       = '';
+            currentSearchSku         = '';
+            currentSearchParent      = '';
+            currentSearchSupplier    = '';
+            currentSupplierFilter    = null;
+            currentZoneFilter        = null;
+            currentContainerFilter   = null;
+            currentTwoOrdColorFilter = '';
+            currentRowTypeFilter     = 'sku';
+            currentStageFilter       = '';
+            currentInvFilter         = '';
+            if (currentTopQtySignFilters && typeof currentTopQtySignFilters === 'object') {
+                ['order', 'mip', 'r2s', 'trn', 'moq'].forEach(function(k) {
+                    currentTopQtySignFilters[k] = '';
+                });
+            }
+
+            // Reset DOM inputs
+            ['search-sku', 'search-parent', 'search-supplier'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const sf = document.getElementById('stage-filter');
+            if (sf) sf.value = '';
+            const sbadge = document.getElementById('stage-filter-badge');
+            if (sbadge) { sbadge.style.display = 'none'; sbadge.textContent = ''; }
+            const rt = document.getElementById('row-data-type');
+            if (rt) rt.value = 'sku';
+            const twoOrdSel = document.getElementById('two-ord-color-filter');
+            if (twoOrdSel) twoOrdSel.value = '';
+            ['order-color-filter-top', 'mip-color-filter-top', 'r2s-color-filter-top',
+             'trn-color-filter-top', 'moq-color-filter-top'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+
+            // Recheck all NRP options
+            document.querySelectorAll('.nrp-ms-opt').forEach(function(cb) { cb.checked = true; });
+            if (typeof updateNRPMultiselectLabel === 'function') updateNRPMultiselectLabel();
+
+            // Clear Tabulator's own header filters + any active setFilter predicate.
+            if (table) {
+                if (typeof table.clearHeaderFilter === 'function') {
+                    try { table.clearHeaderFilter(); } catch (e) {}
+                }
+                if (typeof table.clearFilter === 'function') {
+                    try { table.clearFilter(true); } catch (e) {}
+                }
+            }
+
+            // Re-apply combined filters with everything empty → shows every row,
+            // then refresh the zero-stock badge state and persist the cleared prefs.
+            if (typeof setCombinedFilters === 'function') setCombinedFilters();
+            if (typeof syncZeroStockBadgeActiveState === 'function') syncZeroStockBadgeActiveState();
+            if (typeof updateZeroStockBadgeCount === 'function') updateZeroStockBadgeCount();
+            if (typeof saveForecastFilterPrefs === 'function') saveForecastFilterPrefs();
+        }
+        window.clearAllForecastFilters = clearAllForecastFilters;
+        document.addEventListener('click', function(e) {
+            const btn = e.target && e.target.closest && e.target.closest('#clear-all-filters-btn');
+            if (!btn) return;
+            e.preventDefault();
+            clearAllForecastFilters();
+        });
+
         function updateTopRowCounter() {
             const el = document.getElementById('top-row-counter');
             if (!el || !table) return;
@@ -3666,8 +3674,6 @@
             currentParentFilter = null;
             if (currentTwoOrdColorFilter) {
                 currentColorFilter = null;
-                const apprLabel = document.getElementById('appr-req-badge-label');
-                if (apprLabel) apprLabel.textContent = 'All';
             }
             if (typeof setCombinedFilters === 'function' && table && table.rowManager && table.rowManager.element) {
                 setCombinedFilters();
@@ -4476,15 +4482,6 @@
                 // Trn Val badge: sum(transit QTY × CP) from controller; not recalculated on row filter
             }, 50);
 
-            const visibleRows = table.getRows(true).map(r => r.getData());
-            // Unified Appr Req count — same rule as the column header, /approval.required, and /to-order-analysis.
-            const yellowCount = visibleRows.filter(r => !r.is_parent && getEffectiveApprReqValue(r) > 0).length;
-
-            const yc = document.getElementById('yellow-count-box');
-            if (yc) {
-                yc.textContent = `Appr Req: ${yellowCount}`;
-                yc.title = 'Appr Req queue: stage=appr_req in forecast_analysis OR (2 Ord ≥ 0, no Order/MIP/R2S/Trn qty, NRP not NR/LATER). Same rule as /approval.required and /to-order-analysis.';
-            }
             } finally {
                 isApplyingCombinedFilters = false;
                 if (pendingCombinedFiltersRun) {
@@ -5892,34 +5889,9 @@
             });
             // ─────────────────────────────────────────────────────────────
 
-            if (currentColorFilter === null || currentColorFilter === undefined) currentColorFilter = '';
-            const apprLabelEl = document.getElementById('appr-req-badge-label');
-            if (apprLabelEl) {
-                apprLabelEl.textContent = currentColorFilter === 'yellow' ? 'Appr Req.' : (currentColorFilter === 'red' ? 'Filter' : 'All');
-            }
+            currentColorFilter = '';
             setCombinedFilters();
             updateTopRowCounter();
-
-            document.querySelectorAll('#order-color-filter-dropdown + .dropdown-menu [data-filter]').forEach(
-                btn => {
-                    btn.addEventListener('click', function() {
-                        const filter = this.getAttribute('data-filter');
-                        currentColorFilter = filter || null;
-                        setCombinedFilters();
-                        saveForecastFilterPrefs();
-
-                        const lbl = document.getElementById('appr-req-badge-label');
-                        if (lbl) {
-                            lbl.textContent = filter === 'yellow' ? 'Appr Req.' :
-                                (filter === 'red' ? 'Filter' : 'All');
-                        }
-                        const ddBtn = document.getElementById('order-color-filter-dropdown');
-                        if (ddBtn && typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
-                            const inst = bootstrap.Dropdown.getInstance(ddBtn);
-                            if (inst) inst.hide();
-                        }
-                    });
-                });
 
             document.getElementById('row-data-type').addEventListener('change', function(e) {
                 currentRowTypeFilter = e.target.value;
