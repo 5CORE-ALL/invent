@@ -190,39 +190,68 @@ class VideoForDsController extends Controller
                 ->keyBy('id');
         }
 
+        // The page renders one row per (video × matched campaign) — no row
+        // ever aggregates multiple campaigns. We therefore emit one insight
+        // entry per (video_id × campaign_id) keyed as "v_<vid>_c_<cid>" so
+        // the frontend can index it directly. Videos with no matching ads
+        // get a null entry under their bare id.
         $result = [];
         foreach ($videos as $video) {
-            $topic   = mb_strtolower(trim($video->ads_topic_story));
-            if (!$topic) { $result[$video->id] = null; continue; }
+            $topic = mb_strtolower(trim($video->ads_topic_story));
+            if (!$topic) {
+                $result['v_' . $video->id] = null;
+                continue;
+            }
 
             $matched = $insightRows->filter(fn($r) => str_contains(mb_strtolower($r->ad_name), $topic));
+            if ($matched->isEmpty()) {
+                $result['v_' . $video->id] = null;
+                continue;
+            }
 
-            if ($matched->isEmpty()) { $result[$video->id] = null; continue; }
+            // Group matched ads by their campaign — one insight entry per
+            // campaign, never merged. This guarantees no "Multiple" rows.
+            $byCampaign = $matched->groupBy('campaign_id');
 
-            $totalImpr      = (int) $matched->sum('impressions');
-            $totalClicks    = (int) $matched->sum('clicks');
-            $totalSpend     = (float) $matched->sum('spend');
-            $totalPurchases = (int) $matched->sum('purchases');
-            $totalReach     = (int) $matched->sum('reach');
+            foreach ($byCampaign as $campaignId => $rows) {
+                if (!$campaignId) {
+                    continue;
+                }
+                $campaign = $campaignById->get($campaignId);
+                if (!$campaign) {
+                    continue;
+                }
 
-            $campaignIds  = $matched->pluck('campaign_id')->filter()->unique()->values()->all();
-            $campaignRows = collect($campaignIds)
-                ->map(fn ($cid) => $campaignById->get($cid))
-                ->filter();
+                $impr      = (int) $rows->sum('impressions');
+                $clicks    = (int) $rows->sum('clicks');
+                $spend     = (float) $rows->sum('spend');
+                $purchases = (int) $rows->sum('purchases');
+                $reach     = (int) $rows->sum('reach');
+                $freq      = $rows->count() > 0 ? round((float) $rows->avg('frequency'), 2) : 0;
 
-            $campaignUi = $this->buildVideoRowCampaignUiFields($campaignRows);
-
-            $result[$video->id] = array_merge($campaignUi, [
-                'impressions' => $totalImpr,
-                'reach'       => $totalReach,
-                'clicks'      => $totalClicks,
-                'spend'       => round($totalSpend, 2),
-                'ctr'         => $totalImpr > 0 ? round($totalClicks / $totalImpr * 100, 2) : 0,
-                'cpm'         => $totalImpr > 0 ? round($totalSpend / $totalImpr * 1000, 2) : 0,
-                'frequency'   => $matched->count() > 0 ? round((float) $matched->avg('frequency'), 2) : 0,
-                'results'     => $totalPurchases,
-                'cost_result' => $totalPurchases > 0 ? round($totalSpend / $totalPurchases, 2) : 0,
-            ]);
+                $key = 'v_' . $video->id . '_c_' . $campaignId;
+                $result[$key] = [
+                    'campaign_name'    => $campaign->name,
+                    'campaign_meta_id' => $campaign->meta_id ?? $campaign->id,
+                    'account_name'     => $campaign->account_name,
+                    'status'           => $campaign->effective_status ?: $campaign->status,
+                    'objective'        => $campaign->objective ? str_replace('_', ' ', (string) $campaign->objective) : null,
+                    'daily_budget'     => $campaign->daily_budget,
+                    'lifetime_budget'  => $campaign->lifetime_budget,
+                    'budget_remaining' => $campaign->budget_remaining,
+                    'start_time'       => $campaign->start_time,
+                    'stop_time'        => $campaign->stop_time,
+                    'impressions'      => $impr,
+                    'reach'            => $reach,
+                    'clicks'           => $clicks,
+                    'spend'            => round($spend, 2),
+                    'ctr'              => $impr > 0 ? round($clicks / $impr * 100, 2) : 0,
+                    'cpm'              => $impr > 0 ? round($spend / $impr * 1000, 2) : 0,
+                    'frequency'        => $freq,
+                    'results'          => $purchases,
+                    'cost_result'      => $purchases > 0 ? round($spend / $purchases, 2) : 0,
+                ];
+            }
         }
 
         $lastSync = DB::table('meta_insights_daily')->max('synced_at');
@@ -233,97 +262,6 @@ class VideoForDsController extends Controller
             'period'    => $period,
             'synced_at' => $lastSync,
         ]);
-    }
-
-    /**
-     * Campaign identity fields for a video row (matched Meta ads → campaigns).
-     *
-     * @param  \Illuminate\Support\Collection<int, object>  $rows
-     * @return array<string, mixed>
-     */
-    protected function buildVideoRowCampaignUiFields($rows): array
-    {
-        $fmtMoney = static function ($v): string {
-            if ($v === null || $v === '') {
-                return '—';
-            }
-            $n = (float) $v;
-
-            return $n > 0 ? '$' . number_format($n, 2) : '—';
-        };
-        $fmtDate = static fn ($v): string => $v ? Carbon::parse($v)->format('M j, Y') : '—';
-
-        if ($rows->isEmpty()) {
-            return [
-                'campaign_name'     => null,
-                'account_name'      => null,
-                'status'            => null,
-                'objective'         => null,
-                'daily_budget'      => null,
-                'lifetime_budget'   => null,
-                'budget_remaining'  => null,
-                'start_time'        => null,
-                'stop_time'         => null,
-            ];
-        }
-
-        if ($rows->count() === 1) {
-            $c = $rows->first();
-
-            return [
-                'campaign_name'     => $c->name,
-                'account_name'      => $c->account_name,
-                'status'            => $c->effective_status ?: $c->status,
-                'objective'         => $c->objective ? str_replace('_', ' ', (string) $c->objective) : null,
-                'daily_budget'      => $fmtMoney($c->daily_budget ?? null),
-                'lifetime_budget'   => $fmtMoney($c->lifetime_budget ?? null),
-                'budget_remaining'  => $fmtMoney($c->budget_remaining ?? null),
-                'start_time'        => $fmtDate($c->start_time ?? null),
-                'stop_time'         => $fmtDate($c->stop_time ?? null),
-            ];
-        }
-
-        $uniqueNames = $rows->pluck('name')->filter()->unique();
-        $campaignName = $uniqueNames->take(2)->implode(' / ');
-        if ($uniqueNames->count() > 2) {
-            $campaignName .= '…';
-        }
-
-        $accounts = $rows->pluck('account_name')->filter()->unique();
-        $accountName = $accounts->take(2)->implode(' · ');
-        if ($accounts->count() > 2) {
-            $accountName .= '…';
-        }
-
-        $status = $rows->pluck('effective_status')->filter()->first()
-            ?: $rows->pluck('status')->filter()->first();
-
-        $objUnique = $rows->pluck('objective')->filter()->unique();
-        $objective = $objUnique->take(2)->map(fn ($o) => str_replace('_', ' ', (string) $o))->implode(' · ');
-        if ($objUnique->count() > 2) {
-            $objective .= '…';
-        }
-
-        $starts = $rows->pluck('start_time')->filter();
-        $stops  = $rows->pluck('stop_time')->filter();
-        $minStart = $starts->isNotEmpty()
-            ? Carbon::createFromTimestamp($starts->map(fn ($t) => Carbon::parse($t)->timestamp)->min())
-            : null;
-        $maxStop = $stops->isNotEmpty()
-            ? Carbon::createFromTimestamp($stops->map(fn ($t) => Carbon::parse($t)->timestamp)->max())
-            : null;
-
-        return [
-            'campaign_name'     => $campaignName ?: null,
-            'account_name'      => $accountName ?: null,
-            'status'            => $status,
-            'objective'         => $objective ?: null,
-            'daily_budget'      => 'Multiple',
-            'lifetime_budget'   => 'Multiple',
-            'budget_remaining'  => 'Multiple',
-            'start_time'        => $minStart ? $minStart->format('M j, Y') : '—',
-            'stop_time'         => $maxStop ? $maxStop->format('M j, Y') : '—',
-        ];
     }
 
     public function getCampaigns()

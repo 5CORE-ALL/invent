@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Purchasing Power Sales', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Purchasing Power Sales (Last 30 Days)', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -24,14 +24,14 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Purchasing Power Sales',
-        'sub_title'  => '',
+        'page_title' => 'Purchasing Power Sales (Last 30 Days)',
+        'sub_title'  => 'Live from Shopify orders — PST timezone',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Purchasing Power Sales</h4>
+                <h4>Purchasing Power Sales <small class="text-muted">(Last 30 Days)</small></h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
 
                     <!-- Status Filter -->
@@ -59,20 +59,17 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
-
-                    <!-- Upload -->
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadSalesModal">
-                        <i class="fa fa-upload"></i> Upload Sales File
-                    </button>
                 </div>
 
                 <!-- Summary Badges (margin from marketplace_percentages.marketplace = Purchase; default 65%) -->
                 <div class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary — matches All Marketplace Master rollups (full dataset; Purchase margin: {{ number_format($ppMargin ?? 65, 2) }}%)</h6>
+                    <h6 class="mb-3">Summary — last 30 days, sourced live from Shopify orders (Purchase margin: {{ number_format($ppMargin ?? 65, 2) }}%)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color:white;font-weight:bold;">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-qty-badge" style="color:white;font-weight:bold;">Total Qty: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color:black;font-weight:bold;">Revenue: $0</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color:black;font-weight:bold;" title="Sum of price × qty for last 30 days (matches All Marketplace Master Sales column)">L30 Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="l60-sales-badge" style="background-color:#0dcaf0;color:black;font-weight:bold;" title="Sum of price × qty for the previous 30 days (days 31-60). Matches All Marketplace Master L60 Sales column.">L60 Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="growth-badge" style="background-color:#198754;color:white;font-weight:bold;" title="(L30 − L60) ÷ L60 × 100">Growth: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-commission-badge" style="color:black;font-weight:bold;">Commission: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-transferred-badge" style="color:white;font-weight:bold;">Transferred: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-pft-badge" style="color:white;font-weight:bold;">PFT: $0</span>
@@ -95,48 +92,6 @@
         </div>
     </div>
 
-    <!-- Upload Modal -->
-    <div class="modal fade" id="uploadSalesModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title"><i class="fa fa-upload me-2"></i>Upload Purchasing Power Sales File</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="salesPeriod" class="form-label fw-bold">Upload for</label>
-                        <select id="salesPeriod" class="form-select" style="max-width: 320px;">
-                            <option value="L30" selected>L30 Sales (purchasing_power_sales)</option>
-                            <option value="L60">L60 Sales (purchasing_power_sales_l60)</option>
-                        </select>
-                        <small class="text-muted">L30 = last 30 days. L60 = previous 30 days (days 31-60). Each goes into its own table.</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Choose File</label>
-                        <input type="file" class="form-control" id="salesFile" accept=".xlsx,.xls,.csv,.tsv,.txt">
-                        <small class="text-muted">Supported: Excel (.xlsx/.xls), CSV, TSV, TXT (tab-separated from Purchasing Power portal)</small>
-                    </div>
-                    <div class="alert alert-warning mb-0">
-                        <i class="fa fa-exclamation-triangle me-2"></i>
-                        <strong>Warning:</strong> This will replace all existing data <strong>for the selected period</strong>.
-                    </div>
-                    <div id="upload-progress-wrap" style="display:none;" class="mt-3">
-                        <div class="progress" style="height:25px;">
-                            <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width:0%">Uploading...</div>
-                        </div>
-                    </div>
-                    <div id="upload-result" class="alert mt-3" style="display:none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" id="upload-sales-btn" class="btn btn-success">
-                        <i class="fa fa-upload me-1"></i> Upload
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script-bottom')
@@ -158,63 +113,30 @@
 
     $(document).ready(function () {
 
-        // Upload button
-        $('#upload-sales-btn').on('click', function () {
-            const file   = $('#salesFile')[0].files[0];
-            const period = $('#salesPeriod').val() || 'L30';
-            if (!file) { showToast('Please select a file first', 'error'); return; }
-
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('period', period);
-            formData.append('_token', '{{ csrf_token() }}');
-
-            $('#upload-progress-wrap').show();
-            $('#upload-progress-bar').css('width', '50%').text('Uploading...');
-            $('#upload-result').hide();
-            $(this).prop('disabled', true);
-
+        // L60 Sales / Growth — fetched from a server-side aggregate that uses the same
+        // window/identification as getPurchasingPowerChannelData() on /all-marketplace-master,
+        // so the L60 number matches the master row exactly.
+        function loadL60Stats() {
             $.ajax({
-                url: '/pp-sales-upload',
-                method: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
+                url: '/pp-sales-stats',
+                method: 'GET',
+                cache: false,
+                headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
                 success: function (res) {
-                    $('#upload-progress-bar').css('width', '100%').text('Done!');
-                    $('#upload-result')
-                        .removeClass('alert-danger').addClass('alert-success')
-                        .html(`<i class="fa fa-check-circle me-2"></i>${res.message}`)
-                        .show();
-                    showToast(res.message, 'success');
-                    setTimeout(() => {
-                        $('#uploadSalesModal').modal('hide');
-                        // Only L30 powers the table on this page; L60 lives only for channel-master Growth.
-                        if (period === 'L30') { table.setData(); }
-                    }, 1200);
+                    const l60 = Math.round((res && res.l60 && res.l60.revenue) || 0);
+                    const growth = (res && typeof res.growth_pct === 'number') ? res.growth_pct : 0;
+                    $('#l60-sales-badge').text(`L60 Sales: $${l60.toLocaleString()}`);
+                    $('#growth-badge')
+                        .text(`Growth: ${growth.toFixed(2)}%`)
+                        .css('background-color', growth >= 0 ? '#198754' : '#dc3545');
                 },
-                error: function (xhr) {
-                    const msg = xhr.responseJSON?.error || 'Upload failed';
-                    $('#upload-progress-bar').css('width', '100%').addClass('bg-danger').text('Error');
-                    $('#upload-result')
-                        .removeClass('alert-success').addClass('alert-danger')
-                        .html(`<i class="fa fa-times-circle me-2"></i>${msg}`)
-                        .show();
-                    showToast(msg, 'error');
-                },
-                complete: function () {
-                    $('#upload-sales-btn').prop('disabled', false);
+                error: function () {
+                    $('#l60-sales-badge').text('L60 Sales: —');
+                    $('#growth-badge').text('Growth: —');
                 }
             });
-        });
-
-        // Reset modal on close
-        $('#uploadSalesModal').on('hidden.bs.modal', function () {
-            $('#salesFile').val('');
-            $('#upload-progress-wrap').hide();
-            $('#upload-progress-bar').css('width', '0%').removeClass('bg-danger').text('Uploading...');
-            $('#upload-result').hide();
-        });
+        }
+        loadL60Stats();
 
         // Status filter
         $('#status-filter').on('change', function () { applyFilters(); });
@@ -254,6 +176,11 @@
         // Initialize Tabulator
         table = new Tabulator('#pp-sales-table', {
             ajaxURL: '/pp-sales-data-json',
+            ajaxParams: { _ts: Date.now() },
+            ajaxConfig: {
+                method: 'GET',
+                headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+            },
             ajaxSorting: false,
             layout: 'fitDataStretch',
             pagination: true,
@@ -401,16 +328,15 @@
 
         function isCanceledRow(row) {
             const s = (row.status || '').toLowerCase().replace(/\s+/g, ' ').trim();
-            return s === 'canceled' || s === 'cancelled';
+            return s === 'canceled' || s === 'cancelled' || s === 'voided' || s === 'refunded';
         }
 
         /**
-         * Same line revenue as UpdateMarketplaceDailyMetrics::calculatePurchasingPowerMetrics (non-canceled, qty > 0).
+         * Same line revenue used by computePurchasingPowerMetricsFromShopify on the
+         * all-marketplace-master page: every qty > 0 line counts (canceled NOT excluded),
+         * so the Revenue badge here equals the L30 Sales there.
          */
         function lineRevenueRollup(row) {
-            if (isCanceledRow(row)) {
-                return 0;
-            }
             const qty = parseInt(row.quantity, 10) || 0;
             if (qty <= 0) {
                 return 0;
@@ -423,7 +349,8 @@
             return unit * qty;
         }
 
-        // Summary update — use full table data (not filtered) so totals match All Marketplace Master / artisan metrics
+        // Summary update — uses the SAME aggregation as computePurchasingPowerMetricsFromShopify
+        // (qty > 0, no canceled filter) so the totals match the All Marketplace Master row exactly.
         function updateSummary() {
             const data = table.getData();
             let rollupOrders = 0;
@@ -439,7 +366,6 @@
 
             data.forEach(row => {
                 const qty = parseInt(row.quantity, 10) || 0;
-                const amount = parseFloat(row.amount) || 0;
                 const comm = parseFloat(row.commission) || 0;
                 const transferred = parseFloat(row.amount_transferred) || 0;
                 const pft = parseFloat(row.pft) || 0;
@@ -447,9 +373,8 @@
 
                 if (isCanceledRow(row)) {
                     canceledCount++;
-                } else {
-                    rollupOrders++;
                 }
+                rollupOrders++;
 
                 totalCommission += comm;
                 totalTransferred += transferred;
@@ -459,9 +384,8 @@
                     priceCount++;
                 }
 
-                if (!isCanceledRow(row) && qty > 0) {
-                    const lr = lineRevenueRollup(row);
-                    rollupRevenue += lr;
+                if (qty > 0) {
+                    rollupRevenue += lineRevenueRollup(row);
                     rollupQty += qty;
                     rollupPft += pft;
                     rollupCogs += parseFloat(row.cogs) || 0;
@@ -474,7 +398,7 @@
 
             $('#total-orders-badge').text(`Orders: ${rollupOrders.toLocaleString()}`);
             $('#total-qty-badge').text(`Total Qty: ${rollupQty.toLocaleString()}`);
-            $('#total-revenue-badge').text(`Revenue: $${Math.round(rollupRevenue).toLocaleString()}`);
+            $('#total-revenue-badge').text(`L30 Sales: $${Math.round(rollupRevenue).toLocaleString()}`);
             $('#total-commission-badge').text(`Commission: $${Math.round(totalCommission).toLocaleString()}`);
             $('#total-transferred-badge').text(`Transferred: $${Math.round(totalTransferred).toLocaleString()}`);
             $('#total-pft-badge').text(`PFT: $${Math.round(rollupPft).toLocaleString()}`);

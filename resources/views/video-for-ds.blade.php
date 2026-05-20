@@ -826,10 +826,11 @@
         @verbatim
         const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-        let allData        = [];
-        let allCampaigns   = [];   // full list from /video-for-ds/campaigns
-        let fbInsightsMap  = {};
-        let fbLoaded       = false;
+        let allData            = [];
+        let originalVideoRows  = [];   // pristine list from /videos-for-ads/data (pre-split)
+        let allCampaigns       = [];   // full list from /video-for-ds/campaigns
+        let fbInsightsMap      = {};
+        let fbLoaded           = false;
         let shopifyAttribMap = {};  // keyed by meta_id → {activities, sales, orders}
         let deleteId       = null;
         let syncPollTimer  = null;
@@ -918,103 +919,90 @@
             });
         }
 
-        /* ── Match loaded campaigns to video rows (client-side fallback) ── */
-        function enrichFbMapFromCampaigns() {
-            if (!allCampaigns.length) return;
-            let changed = false;
-            allData.forEach(row => {
-                // Campaign rows: re-populate their insight entry directly (may have been cleared by loadFbInsights)
-                if (row._is_campaign) {
-                    const c = allCampaigns.find(x => x.id === row._campaign_id);
-                    if (c && !fbInsightsMap[row.id]) {
-                        fbInsightsMap[row.id] = buildInsightEntryFromCampaigns([c]);
-                        changed = true;
-                    }
+        /* ── Build rows: ONE row per (video × matched campaign) — never merge ──
+         * Each row corresponds to exactly one Campaign ID. If a video's
+         * ads_topic_story matches N campaigns by substring, it produces N
+         * separate rows. Unmatched videos remain as a single row with no
+         * linked campaign (they get hidden by isEmptyRow if they have no FB
+         * data). The original video DB id is preserved on `_video_id` so
+         * delete/duplicate API calls still target the right record.
+         */
+        function expandVideoRowsByCampaigns(videoRows, campaigns) {
+            const out = [];
+            videoRows.forEach(v => {
+                const topic   = (v.ads_topic_story || '').toLowerCase().trim();
+                const matched = (topic && campaigns.length)
+                    ? campaigns.filter(c => c.name && c.name.toLowerCase().includes(topic))
+                    : [];
+
+                if (matched.length === 0) {
+                    out.push(Object.assign({}, v, {
+                        id:                  'v_' + v.id,
+                        _video_id:           v.id,
+                        _linked_campaign_id: null,
+                    }));
                     return;
                 }
-                // Video rows: match by ads_topic_story
-                if (fbInsightsMap[row.id]) return;
-                const topic = (row.ads_topic_story || '').toLowerCase().trim();
-                if (!topic) return;
-                const matched = allCampaigns.filter(c => c.name && c.name.toLowerCase().includes(topic));
-                if (!matched.length) return;
-                fbInsightsMap[row.id] = buildInsightEntryFromCampaigns(matched);
-                changed = true;
+
+                matched.forEach(c => {
+                    out.push(Object.assign({}, v, {
+                        id:                  'v_' + v.id + '_c_' + c.id,
+                        _video_id:           v.id,
+                        _linked_campaign_id: c.id,
+                    }));
+                });
             });
-            if (changed) {
-                fbLoaded = true;
-                applyFilters();
-            }
+            return out;
         }
 
+        /* ── Refresh fbInsightsMap entries for split video rows (single
+         * campaign each — never aggregated). ─────────────────────────── */
+        function populateSplitVideoInsights(rows) {
+            rows.forEach(row => {
+                if (!row._linked_campaign_id) return;
+                const c = allCampaigns.find(x => x.id === row._linked_campaign_id);
+                if (c) fbInsightsMap[row.id] = buildInsightEntryFromCampaigns([c]);
+            });
+        }
+
+        /* ── Rebuild allData from originalVideoRows + allCampaigns ──── */
+        function rebuildAllData() {
+            const campaignRows      = allCampaigns.map(campaignToVideoRow);
+            const expandedVideoRows = expandVideoRowsByCampaigns(originalVideoRows, allCampaigns);
+
+            allData = expandedVideoRows.concat(campaignRows);
+
+            populateCampaignInsights();
+            populateSplitVideoInsights(expandedVideoRows);
+            applyFilters();
+        }
+
+        /* ── Build single-campaign insight entry for a row.
+         *  We never aggregate multiple campaigns into one entry: each row
+         *  on this page is tied to exactly one Campaign ID. ───────────── */
         function buildInsightEntryFromCampaigns(campaigns) {
-            const sum  = (key) => campaigns.reduce((s, c) => s + (parseFloat(c[key]) || 0), 0);
-            const isum = (key) => Math.round(sum(key));
-            const unique = (key) => [...new Set(campaigns.map(c => c[key]).filter(Boolean))];
-
-            const totalImpr    = isum('impressions');
-            const totalClicks  = isum('clicks');
-            const totalSpend   = Math.round(sum('spend') * 100) / 100;
-            const totalResults = isum('results');
-            const avgFreq      = campaigns.length
-                ? Math.round(campaigns.reduce((s, c) => s + (parseFloat(c.frequency) || 0), 0) / campaigns.length * 100) / 100
-                : 0;
-
-            const names    = unique('name');
-            const accounts = unique('account_name');
-            const statuses = unique('effective_status').filter(Boolean).concat(unique('status').filter(Boolean));
-            const objs     = unique('objective').map(o => String(o).replace(/_/g, ' '));
-            const starts   = unique('start_time').filter(Boolean).sort();
-            const stops    = unique('stop_time').filter(Boolean).sort();
-
-            const multiStr = (arr, sep, max) =>
-                arr.slice(0, max).join(sep) + (arr.length > max ? '…' : '');
-
-            if (campaigns.length === 1) {
-                const c = campaigns[0];
-                return {
-                    campaign_name:    c.name,
-                    campaign_meta_id: c.meta_id || c.id || null,
-                    account_name:     c.account_name,
-                    status:           c.effective_status || c.status,
-                    objective:        c.objective ? String(c.objective).replace(/_/g, ' ') : null,
-                    daily_budget:     c.daily_budget,
-                    lifetime_budget:  c.lifetime_budget,
-                    budget_remaining: c.budget_remaining,
-                    start_time:       c.start_time,
-                    stop_time:        c.stop_time,
-                    impressions:      parseInt(c.impressions) || 0,
-                    reach:            parseInt(c.reach)       || 0,
-                    clicks:           parseInt(c.clicks)      || 0,
-                    spend:            parseFloat(c.spend)     || 0,
-                    ctr:              parseFloat(c.ctr)       || 0,
-                    cpm:              parseFloat(c.cpm)       || 0,
-                    frequency:        parseFloat(c.frequency) || 0,
-                    results:          parseInt(c.results)     || 0,
-                    cost_result:      parseFloat(c.cost_result) || 0,
-                };
-            }
-
+            if (!campaigns || !campaigns.length) return null;
+            const c = campaigns[0];
             return {
-                campaign_name:    multiStr(names,    ' / ', 2),
-                campaign_meta_id: campaigns.length === 1 ? (campaigns[0].meta_id || campaigns[0].id || null) : 'Multiple',
-                account_name:     multiStr(accounts, ' · ', 2),
-                status:           statuses[0] || null,
-                objective:        multiStr(objs, ' · ', 2),
-                daily_budget:     'Multiple',
-                lifetime_budget:  'Multiple',
-                budget_remaining: 'Multiple',
-                start_time:       starts[0] || null,
-                stop_time:        stops[stops.length - 1] || null,
-                impressions:      totalImpr,
-                reach:            isum('reach'),
-                clicks:           totalClicks,
-                spend:            totalSpend,
-                ctr:  totalImpr > 0 ? Math.round(totalClicks / totalImpr * 10000) / 100 : 0,
-                cpm:  totalImpr > 0 ? Math.round(totalSpend / totalImpr * 100000) / 100  : 0,
-                frequency:        avgFreq,
-                results:          totalResults,
-                cost_result:      totalResults > 0 ? Math.round(totalSpend / totalResults * 100) / 100 : 0,
+                campaign_name:    c.name,
+                campaign_meta_id: c.meta_id || c.id || null,
+                account_name:     c.account_name,
+                status:           c.effective_status || c.status,
+                objective:        c.objective ? String(c.objective).replace(/_/g, ' ') : null,
+                daily_budget:     c.daily_budget,
+                lifetime_budget:  c.lifetime_budget,
+                budget_remaining: c.budget_remaining,
+                start_time:       c.start_time,
+                stop_time:        c.stop_time,
+                impressions:      parseInt(c.impressions) || 0,
+                reach:            parseInt(c.reach)       || 0,
+                clicks:           parseInt(c.clicks)      || 0,
+                spend:            parseFloat(c.spend)     || 0,
+                ctr:              parseFloat(c.ctr)       || 0,
+                cpm:              parseFloat(c.cpm)       || 0,
+                frequency:        parseFloat(c.frequency) || 0,
+                results:          parseInt(c.results)     || 0,
+                cost_result:      parseFloat(c.cost_result) || 0,
             };
         }
 
@@ -1030,7 +1018,12 @@
                 .then(r => r.json())
                 .then(resp => {
                     if (resp.success) {
-                        fbInsightsMap = resp.insights || {};
+                        // We deliberately ignore resp.insights here: per-video
+                        // backend entries can aggregate multiple campaigns into
+                        // a single "Multiple" row, which this page must never
+                        // display. fbInsightsMap is rebuilt entirely from
+                        // /video-for-ds/campaigns (one entry per Campaign ID).
+                        fbInsightsMap = {};
                         fbLoaded = true;
                         const period   = resp.period || '—';
                         const syncedAt = resp.synced_at
@@ -1041,11 +1034,7 @@
                         if (hdr && period !== '—') {
                             hdr.innerHTML = '<i class="fab fa-facebook-f me-1"></i> FACEBOOK INSIGHTS — ' + String(period).toUpperCase();
                         }
-                        // Re-populate campaign-row entries (cleared by the map reset above)
-                        populateCampaignInsights();
-                        // Fill in any videos not matched by backend via client-side campaign matching
-                        enrichFbMapFromCampaigns();
-                        applyFilters();
+                        rebuildAllData();
                     }
                 })
                 .catch(err => {
@@ -1096,19 +1085,10 @@
                     const vBadge  = document.getElementById('videoToolbarCampaignsBadge');
                     if (vPeriod) vPeriod.textContent = periodText;
                     if (vBadge)  vBadge.textContent  = totalBadge;
-                    // Build campaign rows — these become the rows of the video table
-                    // (they coexist with real video rows; if no videos, they are all rows)
-                    const campaignRows = allCampaigns.map(campaignToVideoRow);
-                    populateCampaignInsights();
                     fbLoaded = true;
-                    if (allData.length === 0) {
-                        // No video data yet: show campaigns directly
-                        allData = campaignRows;
-                    } else {
-                        // Remove any stale campaign rows then re-append updated ones
-                        allData = allData.filter(r => !r._is_campaign).concat(campaignRows);
-                    }
-                    applyFilters();
+                    // Each campaign becomes its own row, plus split video rows
+                    // (one row per matched campaign — never aggregated).
+                    rebuildAllData();
                     // Load Shopify attribution in the background after campaigns are ready
                     loadShopifyAttribution();
                 })
@@ -1129,11 +1109,19 @@
                 .then(resp => {
                     if (!resp.success) return;
                     shopifyAttribMap = resp.data || {};
-                    // Patch Shopify columns into existing campaign rows and re-render
+                    // Patch Shopify columns onto every row that has a linked
+                    // campaign — both campaign rows AND split video rows
+                    // (each split video row is linked to one Campaign ID).
                     allData = allData.map(row => {
-                        if (!row._is_campaign) return row;
-                        const cid = row._campaign_meta_id;
-                        const att = cid ? (shopifyAttribMap[String(cid)] || null) : null;
+                        let cid = null;
+                        if (row._is_campaign) {
+                            cid = row._campaign_meta_id;
+                        } else if (row._linked_campaign_id) {
+                            const c = allCampaigns.find(x => x.id === row._linked_campaign_id);
+                            cid = c ? (c.meta_id || c.id) : null;
+                        }
+                        if (!cid) return row;
+                        const att = shopifyAttribMap[String(cid)] || null;
                         return Object.assign({}, row, {
                             _sp_activities: att ? att.activities : 0,
                             _sp_sales:      att ? att.sales      : 0,
@@ -1322,7 +1310,22 @@
             const ids = getSelectedIds();
             if (!ids.length) { alert('Please select at least one row to duplicate.'); return; }
 
-            const rows = allData.filter(r => ids.includes(String(r.id)));
+            // A single video may appear as multiple split-clone rows (one per
+            // matched campaign). Dedupe so we only duplicate the underlying
+            // VideoForDs record once, regardless of how many of its clones
+            // are checked.
+            const selected = allData.filter(r => ids.includes(String(r.id)) && !r._is_campaign);
+            const seen = new Set();
+            const rows = [];
+            selected.forEach(r => {
+                const key = String(r._video_id || r.id);
+                if (seen.has(key)) return;
+                seen.add(key);
+                rows.push(r);
+            });
+
+            if (!rows.length) { alert('No video rows selected to duplicate.'); return; }
+
             let done = 0;
             const total = rows.length;
 
@@ -1330,6 +1333,8 @@
                 const newSku = 'COPY-' + row.sku + '-' + Date.now().toString().slice(-4);
                 const payload = Object.assign({}, row, { sku: newSku, id: undefined, appr_s: 0, appr_i: 0, appr_n: 0 });
                 delete payload.id;
+                delete payload._video_id;
+                delete payload._linked_campaign_id;
                 delete payload.parent_name;
                 delete payload.image_path;
                 delete payload.created_at;
@@ -1361,12 +1366,8 @@
             fetch('/videos-for-ads/data')
                 .then(r => r.json())
                 .then(resp => {
-                    const videoRows = resp.data || [];
-                    const existingCampaignRows = allData.filter(r => r._is_campaign);
-                    // Keep campaign rows; videos go first
-                    allData = videoRows.concat(existingCampaignRows);
-                    enrichFbMapFromCampaigns();
-                    applyFilters();
+                    originalVideoRows = resp.data || [];
+                    rebuildAllData();
                     updateCounts();
                 })
                 .catch(e => alert('Failed to load data: ' + e.message))

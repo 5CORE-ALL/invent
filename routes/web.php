@@ -2535,10 +2535,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pp-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'getColumnVisibility'])->name('pp.pricing.column.get');
     Route::post('/pp-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'setColumnVisibility'])->name('pp.pricing.column.set');
 
-    // Purchasing Power Sales Routes
+    // Purchasing Power Sales Routes — data sourced from Shopify (apicentral.shopify_order_items)
     Route::get('/purchasing-power-sales', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'salesView'])->name('purchasing.power.sales');
     Route::get('/pp-sales-data-json', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'salesDataJson'])->name('pp.sales.data.json');
-    Route::post('/pp-sales-upload', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'uploadSales'])->name('pp.sales.upload');
+    Route::get('/pp-sales-stats', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'salesStats'])->name('pp.sales.stats');
 
     // Reverb Pricing Routes (Tabulator)
     Route::get('/reverb-pricing', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbTabulatorView'])->name('reverb.pricing');

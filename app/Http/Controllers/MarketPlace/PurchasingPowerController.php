@@ -14,7 +14,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class PurchasingPowerController extends Controller
 {
@@ -356,70 +355,118 @@ class PurchasingPowerController extends Controller
 
     public function salesDataJson(Request $request)
     {
-        $sales = PurchasingPowerSale::orderBy('date_created', 'desc')->get();
+        // Sourced from `apicentral.shopify_order_items` so this page stays in sync with the
+        // Shopify Orders dashboard and the all-marketplace-master Purchasing Power row.
+        // Identification mirrors the shopify-orders page: source_name / tags contain
+        // "purchasing power".
+        //
+        // Window: last 30 calendar days in Pacific time, INCLUSIVE — exactly matches the
+        // L30 window used by getPurchasingPowerChannelData() / computePurchasingPowerMetricsFromShopify()
+        // on the all-marketplace-master page so the totals on both pages match.
+        $todayPst   = \Carbon\Carbon::now('America/Los_Angeles');
+        $l30Start   = $todayPst->copy()->subDays(29)->startOfDay();
+        $l30End     = $todayPst->copy()->endOfDay();
+
+        $rows = DB::connection('apicentral')
+            ->table('shopify_order_items')
+            ->whereBetween('order_date', [$l30Start, $l30End])
+            ->where(function ($q) {
+                $q->where('source_name', 'LIKE', '%purchasing power%')
+                  ->orWhere('source_name', 'LIKE', '%purchasingpower%')
+                  ->orWhere('tags', 'LIKE', '%Purchasing Power%')
+                  ->orWhere('tags', 'LIKE', '%PurchasingPower%');
+            })
+            ->orderBy('order_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
 
         $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');
         $percentage = ($rawPct !== null && (float) $rawPct > 0) ? (float) $rawPct : 65.0;
         $pct = $percentage / 100;
 
-        $skus = $sales->pluck('offer_sku')->filter()->map(fn ($sku) => trim((string) $sku))->unique()->values()->all();
+        $skus = $rows->pluck('sku')->filter()->map(fn ($sku) => trim((string) $sku))->unique()->values()->all();
         $productMasters = collect();
         if (!empty($skus)) {
-            $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)));
+            $productMasters = ProductMaster::whereIn('sku', $skus)
+                ->get()
+                ->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)));
         }
 
-        $data = $sales->map(function ($s) use ($pct, $percentage, $productMasters) {
-            $skuKey = strtoupper(trim((string) ($s->offer_sku ?? '')));
+        $data = $rows->map(function ($r) use ($pct, $percentage, $productMasters) {
+            $skuKey = strtoupper(trim((string) ($r->sku ?? '')));
             $pm = $skuKey !== '' ? ($productMasters[$skuKey] ?? null) : null;
 
-            $lp = 0;
-            $ship = 0;
+            $lp = 0.0;
+            $ship = 0.0;
             if ($pm) {
-                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                foreach ($values as $k => $v) {
-                    if (strtolower((string) $k) === 'lp') {
-                        $lp = (float) $v;
-                        break;
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                if (is_array($values)) {
+                    foreach ($values as $k => $v) {
+                        if (strtolower((string) $k) === 'lp') {
+                            $lp = (float) $v;
+                            break;
+                        }
+                    }
+                    if (isset($values['ship'])) {
+                        $ship = (float) $values['ship'];
                     }
                 }
                 if ($lp === 0.0 && isset($pm->lp)) {
                     $lp = (float) $pm->lp;
                 }
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0);
+                if ($ship === 0.0 && isset($pm->ship)) {
+                    $ship = (float) $pm->ship;
+                }
             }
 
-            $unitPrice = floatval($s->unit_price ?? 0);
-            $qty       = max(0, (int) ($s->quantity ?? 0));
+            $unitPrice = (float) ($r->price ?? 0);
+            $qty       = max(0, (int) ($r->quantity ?? 0));
+            $amount    = $unitPrice * $qty;
             $pftEach   = ($unitPrice * $pct) - $lp - $ship;
             $pft       = round($pftEach * $qty, 2);
             $gpft      = $unitPrice > 0 ? round(($pftEach / $unitPrice) * 100, 2) : 0;
             $cogs      = round($lp * $qty, 2);
             $groi      = $lp > 0 ? round(($pftEach / $lp) * 100, 2) : 0;
 
+            $orderDate = null;
+            if (!empty($r->order_date)) {
+                try {
+                    $orderDate = \Carbon\Carbon::parse($r->order_date)
+                        ->timezone('America/Los_Angeles')
+                        ->format('m/d/Y');
+                } catch (\Throwable $e) {
+                    $orderDate = '';
+                }
+            }
+
+            $status = $r->financial_status ?: ($r->fulfillment_status ?: '');
+
             return [
-                'id'                   => $s->id,
-                'date_created'         => $s->date_created ? $s->date_created->format('m/d/Y') : '',
-                'order_number'         => $s->order_number,
-                'order_id'             => $s->order_id,
-                'status'               => $s->status,
-                'product_sku'          => $s->offer_sku,   // offer_sku matches product_masters.sku
-                'mirakl_product_sku'   => $s->product_sku, // Mirakl internal numeric ID
-                'offer_sku'            => $s->offer_sku,
-                'product_name'         => $s->product_name,
-                'quantity'             => $s->quantity,
-                'unit_price'           => $unitPrice,
-                'amount'               => floatval($s->amount ?? 0),
-                'commission_rule'      => $s->commission_rule_name,
-                'commission'           => floatval($s->commission_incl_tax ?? 0),
-                'amount_transferred'   => floatval($s->amount_transferred ?? 0),
-                'shipping_company'     => $s->shipping_company,
-                'tracking_number'      => $s->tracking_number,
-                'tracking_url'         => $s->tracking_url,
-                'customer'             => trim(($s->customer_first_name ?? '') . ' ' . ($s->customer_last_name ?? '')),
-                'city'                 => $s->customer_city,
-                'state'                => $s->customer_state,
-                'country'              => $s->customer_country,
-                'category_label'       => $s->category_label,
+                'id'                   => $r->id ?? null,
+                'date_created'         => $orderDate ?: '',
+                'order_number'         => $r->order_number,
+                'order_id'             => $r->order_id ?? ($r->order_number ?? null),
+                'status'               => $status,
+                'product_sku'          => $r->sku,
+                'mirakl_product_sku'   => null,
+                'offer_sku'            => $r->sku,
+                'product_name'         => $r->product_title ?? null,
+                'quantity'             => $qty,
+                'unit_price'           => round($unitPrice, 2),
+                'amount'               => round($amount, 2),
+                'commission_rule'      => null,
+                'commission'           => 0.0,
+                'amount_transferred'   => 0.0,
+                'shipping_company'     => $r->tracking_company ?? null,
+                'tracking_number'      => $r->tracking_number ?? null,
+                'tracking_url'         => null,
+                'customer'             => $r->customer_name ?? '',
+                'city'                 => $r->shipping_city ?? null,
+                'state'                => $r->shipping_province ?? null,
+                'country'              => $r->shipping_country ?? null,
+                'category_label'       => null,
                 'lp'                   => round($lp, 2),
                 'ship'                 => round($ship, 2),
                 'cogs'                 => $cogs,
@@ -430,216 +477,62 @@ class PurchasingPowerController extends Controller
             ];
         });
 
-        return response()->json($data);
+        return response()->json($data)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 
-    public function uploadSales(Request $request)
+    /**
+     * Returns L30 and L60 sales rollups for the Purchasing Power page badges. Same
+     * windows / identification as `getPurchasingPowerChannelData()` on
+     * /all-marketplace-master, so the two pages always agree.
+     */
+    public function salesStats(Request $request)
     {
-        try {
-            $request->validate(['file' => 'required|file']);
+        $ppWhere = function ($q) {
+            $q->where('source_name', 'LIKE', '%purchasing power%')
+              ->orWhere('source_name', 'LIKE', '%purchasingpower%')
+              ->orWhere('tags', 'LIKE', '%Purchasing Power%')
+              ->orWhere('tags', 'LIKE', '%PurchasingPower%');
+        };
 
-            // L30 (default) -> purchasing_power_sales
-            // L60          -> purchasing_power_sales_l60
-            $period    = strtoupper(trim((string) $request->input('period', 'L30')));
-            $isL60     = $period === 'L60';
-            $tableName = $isL60 ? 'purchasing_power_sales_l60' : 'purchasing_power_sales';
+        $todayPst  = \Carbon\Carbon::now('America/Los_Angeles');
+        $l30Start  = $todayPst->copy()->subDays(29)->startOfDay();
+        $l30End    = $todayPst->copy()->endOfDay();
+        $l60Start  = $todayPst->copy()->subDays(59)->startOfDay();
+        $l60End    = $todayPst->copy()->subDays(30)->endOfDay();
 
-            $file      = $request->file('file');
-            $extension = strtolower($file->getClientOriginalExtension());
-
-            // Parse TSV / TXT / CSV / Excel
-            if (in_array($extension, ['txt', 'tsv'])) {
-                $rows = [];
-                if (($handle = fopen($file->getRealPath(), 'r')) !== false) {
-                    while (($line = fgetcsv($handle, 0, "\t")) !== false) {
-                        $rows[] = $line;
-                    }
-                    fclose($handle);
-                }
-            } elseif ($extension === 'csv') {
-                $rows = [];
-                if (($handle = fopen($file->getRealPath(), 'r')) !== false) {
-                    while (($line = fgetcsv($handle, 0, ',')) !== false) {
-                        $rows[] = $line;
-                    }
-                    fclose($handle);
-                }
-            } else {
-                $spreadsheet = IOFactory::load($file->getRealPath());
-                $rows = $spreadsheet->getActiveSheet()->toArray();
-            }
-
-            if (empty($rows)) {
-                return response()->json(['error' => 'File is empty'], 400);
-            }
-
-            // Build header index (strip BOM + lowercase + trim).
-            $rawHeaders = array_shift($rows);
-            $headerIndex = [];
-            foreach ($rawHeaders as $i => $h) {
-                $clean = preg_replace('/^\xEF\xBB\xBF/', '', (string) ($h ?? ''));
-                $headerIndex[strtolower(trim($clean))] = $i;
-            }
-
-            // Pick the actual date header from common variants (and a fuzzy "*date*" fallback).
-            $dateHeaderIdx = null;
-            $dateAliases = [
-                'date created', 'date_created', 'order date', 'order_date',
-                'created at', 'created_at', 'created date', 'date',
-                'purchase date', 'purchased on',
+        $aggregate = function (\Carbon\Carbon $start, \Carbon\Carbon $end) use ($ppWhere) {
+            $row = DB::connection('apicentral')
+                ->table('shopify_order_items')
+                ->whereBetween('order_date', [$start, $end])
+                ->where($ppWhere)
+                ->where('quantity', '>', 0)
+                ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue, COALESCE(SUM(quantity), 0) as qty, COUNT(DISTINCT order_number) as orders')
+                ->first();
+            return [
+                'revenue' => round((float) ($row->revenue ?? 0), 2),
+                'qty'     => (int) ($row->qty ?? 0),
+                'orders'  => (int) ($row->orders ?? 0),
             ];
-            foreach ($dateAliases as $alias) {
-                if (isset($headerIndex[$alias])) {
-                    $dateHeaderIdx = $headerIndex[$alias];
-                    break;
-                }
-            }
-            if ($dateHeaderIdx === null) {
-                // Fuzzy: pick the first header containing "date".
-                foreach ($headerIndex as $hdrName => $idx) {
-                    if (strpos($hdrName, 'date') !== false) {
-                        $dateHeaderIdx = $idx;
-                        break;
-                    }
-                }
-            }
-            Log::info('Purchasing Power upload: detected headers', [
-                'headers'         => array_keys($headerIndex),
-                'date_header_idx' => $dateHeaderIdx,
-                'period'          => $period,
-            ]);
+        };
 
-            $col = function (string $name) use ($headerIndex, &$rowArr): ?string {
-                $key = strtolower(trim($name));
-                return isset($headerIndex[$key]) ? ($rowArr[$headerIndex[$key]] ?? null) : null;
-            };
+        $l30 = $aggregate($l30Start, $l30End);
+        $l60 = $aggregate($l60Start, $l60End);
+        $growthPct = $l60['revenue'] > 0
+            ? round((($l30['revenue'] - $l60['revenue']) / $l60['revenue']) * 100, 2)
+            : 0.0;
 
-            // Truncate before fresh import
-            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-            DB::table($tableName)->truncate();
-            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-            $imported = 0;
-            $skipped  = 0;
-            $batch    = [];
-
-            foreach ($rows as $rowArr) {
-                if (count(array_filter($rowArr, fn($v) => $v !== null && $v !== '')) === 0) {
-                    $skipped++;
-                    continue;
-                }
-
-                $orderNumber = $col('Order number');
-                if (empty($orderNumber)) { $skipped++; continue; }
-
-                // Order-date — read by index from auto-detected date column (handles header variants / BOM).
-                $rawDate = $dateHeaderIdx !== null ? ($rowArr[$dateHeaderIdx] ?? null) : null;
-                $dateCreated = null;
-                if ($rawDate !== null && $rawDate !== '') {
-                    $dateStr = trim((string) $rawDate);
-                    // Strip the hyphen separator that PP sheets use: "21/03/2026 - 12:41:06" → "21/03/2026 12:41:06".
-                    $dateStr = preg_replace('/\s+-\s+/', ' ', $dateStr);
-
-                    // 1) Excel serial number (e.g. 45770.5).
-                    if (is_numeric($rawDate)) {
-                        try {
-                            $dateCreated = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $rawDate)
-                                ->format('Y-m-d H:i:s');
-                        } catch (\Throwable $e) {
-                            $dateCreated = null;
-                        }
-                    }
-
-                    // 2) Try explicit formats (PP exports use DD/MM/YYYY).
-                    if ($dateCreated === null) {
-                        foreach ([
-                            'd/m/Y H:i:s', 'd/m/Y H:i', 'd/m/Y',
-                            'd-m-Y H:i:s', 'd-m-Y H:i', 'd-m-Y',
-                            'Y-m-d H:i:s', 'Y-m-d',
-                            'm/d/Y H:i:s', 'm/d/Y',
-                        ] as $fmt) {
-                            $dt = \DateTime::createFromFormat($fmt, $dateStr);
-                            if ($dt !== false) {
-                                $dateCreated = $dt->format('Y-m-d H:i:s');
-                                break;
-                            }
-                        }
-                    }
-
-                    // 3) Last-resort: let Carbon try (handles ISO-ish strings).
-                    if ($dateCreated === null) {
-                        try {
-                            $dateCreated = \Carbon\Carbon::parse($dateStr)->toDateTimeString();
-                        } catch (\Exception $e) {
-                            $dateCreated = null;
-                        }
-                    }
-                }
-
-                $batch[] = [
-                    'order_number'         => $orderNumber,
-                    'date_created'         => $dateCreated,
-                    'quantity'             => intval($col('Quantity') ?? 0),
-                    'product_name'         => $col('Details'),
-                    'status'               => $col('Status'),
-                    'amount'               => is_numeric($col('Amount')) ? floatval($col('Amount')) : null,
-                    'currency'             => $col('Currency'),
-                    'product_sku'          => $col('Product SKU'),
-                    'offer_sku'            => $col('Offer SKU') ?? $col('Supplier SKU'),
-                    'brand'                => $col('Brand'),
-                    'category_code'        => $col('Category code'),
-                    'category_label'       => $col('Category label'),
-                    'unit_price'           => is_numeric($col('Unit price')) ? floatval($col('Unit price')) : null,
-                    'shipping_price'       => is_numeric($col('Shipping price')) ? floatval($col('Shipping price')) : null,
-                    'commission_rule_name' => $col('Commission rule name'),
-                    'commission_excl_tax'  => is_numeric($col('Commission (excluding taxes)')) ? floatval($col('Commission (excluding taxes)')) : null,
-                    'commission_incl_tax'  => is_numeric($col('Commission value (including taxes)')) ? floatval($col('Commission value (including taxes)')) : null,
-                    'amount_transferred'   => is_numeric($col('Amount transferred to supplier (including taxes)')) ? floatval($col('Amount transferred to supplier (including taxes)')) : null,
-                    'shipping_company'     => $col('Shipping company'),
-                    'tracking_number'      => $col('Tracking number'),
-                    'tracking_url'         => $col('Tracking URL'),
-                    'customer_first_name'  => $col('Shipping address first name'),
-                    'customer_last_name'   => $col('Shipping address last name'),
-                    'customer_city'        => $col('Shipping address city'),
-                    'customer_state'       => $col('Shipping address state'),
-                    'customer_country'     => $col('Shipping address country'),
-                    'order_id'             => $col('OrderID'),
-                    'created_at'           => now(),
-                    'updated_at'           => now(),
-                ];
-                $imported++;
-
-                if (count($batch) >= 100) {
-                    DB::table($tableName)->insert($batch);
-                    $batch = [];
-                }
-            }
-
-            if (!empty($batch)) {
-                DB::table($tableName)->insert($batch);
-            }
-
-            Log::info("Purchasing Power {$period} sales uploaded: {$imported} rows, {$skipped} skipped (table: {$tableName})");
-
-            // Auto-refresh marketplace_daily_metrics for Purchasing Power so the all-marketplace-master
-            // page reflects this upload immediately (no need to wait for cron).
-            try {
-                \Illuminate\Support\Facades\Artisan::call('app:update-marketplace-daily-metrics');
-            } catch (\Throwable $e) {
-                Log::warning('PP upload: marketplace metrics refresh failed: ' . $e->getMessage());
-            }
-
-            return response()->json([
-                'success'  => true,
-                'period'   => $period,
-                'imported' => $imported,
-                'skipped'  => $skipped,
-                'message'  => "Successfully imported {$imported} {$period} orders ({$skipped} skipped). Metrics refreshed.",
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('PP sales upload error: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
+        return response()->json([
+            'l30' => $l30,
+            'l60' => $l60,
+            'growth_pct' => $growthPct,
+            'l30_window' => [$l30Start->toDateString(), $l30End->toDateString()],
+            'l60_window' => [$l60Start->toDateString(), $l60End->toDateString()],
+        ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 }

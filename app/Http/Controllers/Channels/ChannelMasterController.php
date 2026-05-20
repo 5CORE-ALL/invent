@@ -3030,6 +3030,15 @@ class ChannelMasterController extends Controller
             Log::warning('AliExpress L7 Sales failed: ' . $e->getMessage());
         }
 
+        try {
+            $purchasingPowerL7 = $this->computePurchasingPowerL7SalesLikeAmazon();
+            if ($purchasingPowerL7 !== null) {
+                $l7Summaries['purchasingpower'] = $purchasingPowerL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power L7 Sales failed: ' . $e->getMessage());
+        }
+
         // Map lowercase channel key => controller method
         $controllerMap = [
             'amazon'    => 'getAmazonChannelData',
@@ -3883,48 +3892,76 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Purchasing Power Y Sales: day before latest date_created in purchasing_power_sales.
-     * Revenue = unit_price × quantity, excluding canceled/cancelled orders.
+     * Purchasing Power Y Sales — sourced from shopify_order_items (apicentral) so PP's Y Sales
+     * uses the same pipeline as the all-marketplace-master Purchasing Power row and stays in
+     * sync with the Shopify orders dashboard. Identification mirrors the shopify-orders page:
+     * source_name / tags containing "purchasing power".
+     *
+     * Revenue = price × quantity for the Pacific calendar day before the latest order_date.
      */
     private function computePurchasingPowerYSalesLikeAmazon(): ?float
     {
-        $cancelled = ['Canceled', 'Cancelled', 'canceled', 'cancelled', 'CANCELED', 'CANCELLED'];
+        $ppWhere = function ($q) {
+            $q->where('source_name', 'LIKE', '%purchasing power%')
+              ->orWhere('source_name', 'LIKE', '%purchasingpower%')
+              ->orWhere('tags', 'LIKE', '%Purchasing Power%')
+              ->orWhere('tags', 'LIKE', '%PurchasingPower%');
+        };
 
-        $latestRaw = DB::table('purchasing_power_sales')
-            ->whereNotNull('date_created')
-            ->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled'])
-            ->max('date_created');
-
+        $latestRaw = DB::connection('apicentral')->table('shopify_order_items')
+            ->where($ppWhere)
+            ->whereNotNull('order_date')
+            ->max('order_date');
         if (!$latestRaw) {
             return null;
         }
 
         $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
         $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
 
-        $sum = 0.0;
-        foreach (
-            DB::table('purchasing_power_sales')
-                ->where('date_created', '>=', $yStartPacific)
-                ->where('date_created', '<=', $yEndPacific)
-                ->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled'])
-                ->cursor() as $row
-        ) {
-            $qty = (int) ($row->quantity ?? 0);
-            if ($qty <= 0) {
-                continue;
-            }
+        $sum = (float) DB::connection('apicentral')->table('shopify_order_items')
+            ->where($ppWhere)
+            ->where('order_date', '>=', $yStartPacific)
+            ->where('order_date', '<=', $yEndPacific)
+            ->where('quantity', '>', 0)
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->value('revenue');
 
-            $unitPrice = (float) ($row->unit_price ?? 0);
-            if ($unitPrice <= 0) {
-                $amount = (float) ($row->amount ?? 0);
-                $unitPrice = $qty > 0 ? $amount / $qty : 0.0;
-            }
+        return round($sum, 2);
+    }
 
-            $lineRevenue = $unitPrice * $qty;
-            $sum += $lineRevenue;
+    /**
+     * Purchasing Power L7 Sales — same Shopify-based identification as Y Sales, summed across
+     * the seven Pacific calendar days ending on Y-Sales "yesterday" (day before latest anchor).
+     */
+    private function computePurchasingPowerL7SalesLikeAmazon(): ?float
+    {
+        $ppWhere = function ($q) {
+            $q->where('source_name', 'LIKE', '%purchasing power%')
+              ->orWhere('source_name', 'LIKE', '%purchasingpower%')
+              ->orWhere('tags', 'LIKE', '%Purchasing Power%')
+              ->orWhere('tags', 'LIKE', '%PurchasingPower%');
+        };
+
+        $latestRaw = DB::connection('apicentral')->table('shopify_order_items')
+            ->where($ppWhere)
+            ->whereNotNull('order_date')
+            ->max('order_date');
+        if (!$latestRaw) {
+            return null;
         }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+        $sum = (float) DB::connection('apicentral')->table('shopify_order_items')
+            ->where($ppWhere)
+            ->where('order_date', '>=', $l7StartPacific)
+            ->where('order_date', '<=', $l7EndPacific)
+            ->where('quantity', '>', 0)
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->value('revenue');
 
         return round($sum, 2);
     }
@@ -7756,98 +7793,136 @@ class ChannelMasterController extends Controller
         ]);
     }
 
+    /**
+     * Aggregate Purchasing Power sales/profit for a date window straight from Shopify
+     * (apicentral.shopify_order_items). Identification mirrors the shopify-orders page
+     * so the all-marketplace-master row stays in sync with the Shopify dashboard.
+     *
+     * Profit per line = (price × pct) − LP − ship, where pct comes from
+     * marketplace_percentages.marketplace = 'Purchase' (default 65%) — same formula as
+     * UpdateMarketplaceDailyMetrics::calculatePurchasingPowerMetrics().
+     *
+     * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
+     */
+    private function computePurchasingPowerMetricsFromShopify(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
+    {
+        $rows = DB::connection('apicentral')
+            ->table('shopify_order_items')
+            ->whereBetween('order_date', [$startDate, $endDate])
+            ->where(function ($q) {
+                $q->where('source_name', 'LIKE', '%purchasing power%')
+                  ->orWhere('source_name', 'LIKE', '%purchasingpower%')
+                  ->orWhere('tags', 'LIKE', '%Purchasing Power%')
+                  ->orWhere('tags', 'LIKE', '%PurchasingPower%');
+            })
+            ->get(['order_number', 'sku', 'quantity', 'price']);
+
+        if ($rows->isEmpty()) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
+        $pct = (($marketplaceData ? (float) ($marketplaceData->percentage ?? 65) : 65) / 100);
+
+        $skus = $rows->pluck('sku')->filter()->unique()->values()->toArray();
+        $productMasters = !empty($skus)
+            ? ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku')
+            : collect();
+
+        $totalSales = 0.0;
+        $totalQty   = 0;
+        $totalPft   = 0.0;
+        $totalCogs  = 0.0;
+        $orderSet   = [];
+
+        foreach ($rows as $r) {
+            $sku      = $r->sku;
+            $price    = (float) ($r->price ?? 0);
+            $quantity = (int)   ($r->quantity ?? 0);
+            if ($quantity <= 0) continue;
+
+            $lp   = 0.0;
+            $ship = 0.0;
+            if ($sku !== null && $sku !== '' && isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                if (is_array($values)) {
+                    foreach ($values as $k => $v) {
+                        if (strtolower((string) $k) === 'lp') {
+                            $lp = (float) $v;
+                            break;
+                        }
+                    }
+                    if (isset($values['ship'])) {
+                        $ship = (float) $values['ship'];
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+                if ($ship === 0.0 && isset($pm->ship)) {
+                    $ship = (float) $pm->ship;
+                }
+            }
+
+            $totalSales += $price * $quantity;
+            $totalQty   += $quantity;
+            $totalCogs  += $lp * $quantity;
+            // Same per-line profit as calculatePurchasingPowerMetrics()
+            $totalPft   += (($price * $pct) - $lp - $ship) * $quantity;
+            if (!empty($r->order_number)) {
+                $orderSet[$r->order_number] = true;
+            }
+        }
+
+        return [
+            'sales'  => round($totalSales, 2),
+            'orders' => count($orderSet),
+            'qty'    => $totalQty,
+            'pft'    => round($totalPft, 2),
+            'cogs'   => round($totalCogs, 2),
+        ];
+    }
+
     public function getPurchasingPowerChannelData(Request $request)
     {
         $result = [];
 
-        $metrics = MarketplaceDailyMetric::where('channel', 'Purchasing Power')->latest('date')->first();
+        // L30 and L60 are computed directly from shopify_order_items (Purchasing Power source) —
+        // same data source the shopify-orders page uses — so the two pages match. Previously this
+        // read from marketplace_daily_metrics which was sourced from purchasing_power_sales
+        // (manual Excel uploads), drifting out of sync with live Shopify orders.
+        $pst       = 'America/Los_Angeles';
+        $todayPst  = Carbon::now($pst);
+        $l30Start  = $todayPst->copy()->subDays(29)->startOfDay();
+        $l30End    = $todayPst->copy()->endOfDay();
+        $l60Start  = $todayPst->copy()->subDays(59)->startOfDay();
+        $l60End    = $todayPst->copy()->subDays(30)->endOfDay();
 
-        if (! $metrics) {
-            $channelData = ChannelMaster::where('channel', 'Purchasing Power')->first();
-            $mapMissCounts = $this->getPurchasingPowerLiveMapMissNMapFromPricingData($request);
-            $result[] = [
-                'Channel '   => 'Purchasing Power',
-                'L-60 Sales' => 0,
-                'L30 Sales'  => 0,
-                'Y Sales'    => 0,
-                'L7 Sales'   => 0,
-                'L7 vs 30 pace %' => null,
-                'Growth'     => '0%',
-                'L60 Orders' => 0,
-                'L30 Orders' => 0,
-                'Qty'        => 0,
-                'Gprofit%'   => '0%',
-                'gprofitL60' => '0%',
-                'G Roi'      => 0,
-                'G RoiL60'   => 0,
-                'Total PFT'  => 0,
-                'N PFT'      => '0%',
-                'N ROI'      => 0,
-                'KW Spent'   => 0,
-                'PT Spent'   => 0,
-                'HL Spent'   => 0,
-                'PMT Spent'  => 0,
-                'Shopping Spent' => 0,
-                'SERP Spent' => 0,
-                'Total Ad Spend' => 0,
-                'Ads%'       => '0%',
-                'TACOS %'    => '0%',
-                'type'       => $channelData->type ?? '',
-                'W/Ads'      => $channelData->w_ads ?? 0,
-                'NR'         => $channelData->nr ?? 0,
-                'Update'     => $channelData->update ?? 0,
-                'cogs'       => 0,
-                'Map'        => $mapMissCounts['map'],
-                'Miss'       => $mapMissCounts['miss'],
-                'NMap'       => $mapMissCounts['nmap'],
-                'Total Views' => $mapMissCounts['total_views'] ?? 0,
-                ...$this->getChannelHealthAndReviewsStub(),
-            ];
+        $l30 = $this->computePurchasingPowerMetricsFromShopify($l30Start, $l30End);
+        $l60 = $this->computePurchasingPowerMetricsFromShopify($l60Start, $l60End);
 
-            return response()->json([
-                'status' => 200,
-                'message' => 'Purchasing Power channel data (no metrics yet — run php artisan app:update-marketplace-daily-metrics after sales upload)',
-                'data' => $result,
-            ]);
-        }
+        $l30Sales      = $l30['sales'];
+        $l30Orders     = $l30['orders'];
+        $totalQuantity = $l30['qty'];
+        $totalProfit   = $l30['pft'];
+        $totalCogs     = $l30['cogs'];
 
-        // L60 Sales = orders whose ORDER date (date_created from the uploaded file) falls in
-        // the previous 30-day window (days 31-60). Source = purchasing_power_sales_l60.
-        // L30 stays unchanged (uses purchasing_power_sales / marketplace_daily_metrics).
-        $l60Orders = 0;
-        $l60Sales  = 0.0;
-        if (Schema::hasTable('purchasing_power_sales_l60')) {
-            $thirtyDaysAgo = Carbon::now()->subDays(30);
-            $sixtyDaysAgo  = Carbon::now()->subDays(60);
+        $l60Sales  = $l60['sales'];
+        $l60Orders = $l60['orders'];
 
-            $l60Agg = \App\Models\PurchasingPowerSaleL60::query()
-                ->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled'])
-                ->whereNotNull('date_created')
-                ->whereBetween('date_created', [$sixtyDaysAgo, $thirtyDaysAgo])
-                ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(amount), 0) as total_sales')
-                ->first();
-            $l60Orders = (int) ($l60Agg->order_count ?? 0);
-            $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
-        }
-
-        $l30Sales = (float) ($metrics->total_sales ?? 0);
-        $l30Orders = (int) ($metrics->total_orders ?? 0);
-        $totalQuantity = (int) ($metrics->total_quantity ?? 0);
-        $totalProfit = (float) ($metrics->total_pft ?? 0);
-        $totalCogs = (float) ($metrics->total_cogs ?? 0);
-        $gProfitPct = (float) ($metrics->pft_percentage ?? 0);
-        $gRoi = (float) ($metrics->roi_percentage ?? 0);
-        $nPftPct = (float) ($metrics->n_pft ?? $gProfitPct);
-        $nRoi = (float) ($metrics->n_roi ?? $gRoi);
-        $ySales = (float) ($metrics->yesterday_sales ?? 0);
-        $l7Sales = (float) ($metrics->l7_sales ?? 0);
+        $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
+        $gRoi       = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
+        // Purchasing Power has no ad spend in this pipeline → N PFT% = G PFT%, N ROI = G ROI.
+        $nPftPct = $gProfitPct;
+        $nRoi    = $gRoi;
 
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
 
-        $expectedL7 = ($l30Sales / 30) * 7;
-        $l7Vs30Pace = $expectedL7 > 0 ? (($l7Sales - $expectedL7) / $expectedL7) * 100 : null;
+        $gprofitL60 = $l60Sales > 0 ? round(($l60['pft'] / $l60Sales) * 100, 2) : 0.0;
+        $gRoiL60    = $l60['cogs'] > 0 ? round(($l60['pft'] / $l60['cogs']) * 100, 2) : 0.0;
 
         $channelData = ChannelMaster::where('channel', 'Purchasing Power')->first();
         $mapMissCounts = $this->getPurchasingPowerLiveMapMissNMapFromPricingData($request);
@@ -7856,9 +7931,6 @@ class ChannelMasterController extends Controller
             'Channel '   => 'Purchasing Power',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
-            'Y Sales'    => intval($ySales),
-            'L7 Sales'   => intval($l7Sales),
-            'L7 vs 30 pace %' => $l7Vs30Pace !== null ? round($l7Vs30Pace, 2) : null,
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
