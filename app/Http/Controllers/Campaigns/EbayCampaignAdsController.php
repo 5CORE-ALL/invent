@@ -282,6 +282,17 @@ class EbayCampaignAdsController extends Controller
         if ($request->filled('campaign_status')) {
             $query->where('ca.campaign_status', $request->campaign_status);
         }
+        if ($request->filled('promote_with_ad')) {
+            $promote = $request->promote_with_ad;
+            if ($promote === '__NONE__') {
+                $query->where(function ($q) {
+                    $q->whereNull('ca.promote_with_ad')
+                      ->orWhere('ca.promote_with_ad', '');
+                });
+            } else {
+                $query->where('ca.promote_with_ad', $promote);
+            }
+        }
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {

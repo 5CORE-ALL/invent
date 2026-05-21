@@ -2785,6 +2785,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/facebook-all-ads-sheet/upload',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'upload'])->name('facebook.all.ads.sheet.upload');
     Route::post('/facebook-all-ads-sheet/{id}/ad-type',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateAdType'])->whereNumber('id')->name('facebook.all.ads.sheet.ad.type');
 
+    // ACOS → Sbgt rule (editable bands). Same shape as the eBay
+    // SBID rule on /ebay/campaign-ads — see EbayCampaignAdsController.
+    Route::get('/facebook-all-ads-sheet/rule',             [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'getRule'])->name('facebook.all.ads.sheet.rule.get');
+    Route::post('/facebook-all-ads-sheet/rule',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'saveRule'])->name('facebook.all.ads.sheet.rule.save');
+    // Pushes per-campaign Sbgt as the new daily_budget on Meta.
+    Route::post('/facebook-all-ads-sheet/push-sbgt',       [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'pushSbgt'])->name('facebook.all.ads.sheet.push.sbgt');
+
     // Type-filtered variants (Video / Carousal). Reuse the same controller
     // and view; only `pageType` and the ad_type filter differ.
     Route::get('/facebook-video-ads-sheet',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'videoIndex'])->name('facebook.video.ads.sheet');

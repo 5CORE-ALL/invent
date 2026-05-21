@@ -282,9 +282,10 @@ class FacebookAllAdsSheetController extends Controller
         }
         $unmatched = $unmatchedFromOtherSheets;
 
-        // Project each merged row to the curated MERGED_COLUMNS set —
-        // friendly uppercase headers, only the fields the user asked for,
-        // and nothing else from the raw uploads.
+        // Project each merged row to the curated MERGED_COLUMNS set in two
+        // passes: pass 1 resolves columns with `sources`, pass 2 computes
+        // columns with `formula = [num, den, decimals]` using the values
+        // resolved in pass 1.
         $projected = [];
         foreach ($merged as $cid => $row) {
             $clean = [
@@ -294,7 +295,9 @@ class FacebookAllAdsSheetController extends Controller
                 '_campaign_id' => $row['_campaign_id'],
                 'ad_type'      => $row['ad_type'],
             ];
+            // Pass 1 — sources
             foreach (self::MERGED_COLUMNS as $col) {
+                if (! isset($col['sources'])) continue;
                 $value = null;
                 foreach ($col['sources'] as $src) {
                     if (array_key_exists($src, $row) && $row[$src] !== null && $row[$src] !== '') {
@@ -303,6 +306,37 @@ class FacebookAllAdsSheetController extends Controller
                     }
                 }
                 $clean[$col['title']] = $value;
+            }
+            // Pass 2 — formula columns (need pass-1 values)
+            foreach (self::MERGED_COLUMNS as $col) {
+                if (! isset($col['formula'])) continue;
+                $numCol   = $col['formula'][0];
+                $denCol   = $col['formula'][1];
+                $decimals = $col['formula'][2] ?? 2;
+                $clean[$col['title']] = $this->divPct(
+                    $clean[$numCol] ?? null,
+                    $clean[$denCol] ?? null,
+                    $decimals
+                );
+            }
+            // Pass 2b — `rule` columns. Run before formatters so the rule
+            // sees raw numeric SPEND / SALES rather than "$1,234" strings.
+            foreach (self::MERGED_COLUMNS as $col) {
+                if (! isset($col['rule'])) continue;
+                if ($col['rule'] === 'acos_budget') {
+                    $clean[$col['title']] = $this->acosBudgetRule(
+                        $clean['SPEND'] ?? null,
+                        $clean['SALES'] ?? null
+                    );
+                }
+            }
+            // Pass 3 — apply `formatter` to source-based columns.
+            foreach (self::MERGED_COLUMNS as $col) {
+                if (empty($col['formatter'])) continue;
+                $clean[$col['title']] = $this->applyFormatter(
+                    $clean[$col['title']] ?? null,
+                    $col['formatter']
+                );
             }
             $projected[] = $clean;
         }
@@ -369,6 +403,331 @@ class FacebookAllAdsSheetController extends Controller
             }
         }
         return $map;
+    }
+
+    /**
+     * (numerator / denominator) * 100, formatted as "X.YY%" with `$decimals`
+     * fractional digits. Returns null when either side is null/empty/non-
+     * numeric, or when the denominator parses to zero.
+     */
+    private function divPct($num, $den, int $decimals = 2): ?string
+    {
+        $n = $this->parseNumeric($num);
+        $d = $this->parseNumeric($den);
+        if ($n === null || $d === null || $d == 0.0) return null;
+        return number_format(($n / $d) * 100, $decimals) . '%';
+    }
+
+    /**
+     * Suggested-budget rule keyed off the ACOS bracket. Bands are loaded
+     * from the `facebook_sbgt_rules` table (key = "facebook_all") so
+     * users can edit them at runtime via the "Sbgt Rule" modal — same
+     * pattern as /ebay/campaign-ads → ebay_sbid_rules.
+     *
+     * Bands are evaluated in ascending `acos_max` order, first match
+     * wins. Set `acos_max = 9999` for the catch-all final band.
+     *
+     * Edge cases:
+     *   • Both spend and sales blank/zero → null (no row data, leave empty).
+     *   • Spend > 0 but sales == 0       → ACOS effectively infinite, so
+     *                                       fall through to the catch-all
+     *                                       band (the user's "> 50 %" row).
+     */
+    private function acosBudgetRule($spend, $sales): ?int
+    {
+        $s = $this->parseNumeric($spend);
+        $r = $this->parseNumeric($sales);
+        if (($s === null || $s == 0.0) && ($r === null || $r == 0.0)) {
+            return null;
+        }
+        // Effective infinity — keep arithmetic finite so the catch-all
+        // band still wins via the normal "<=" comparison.
+        $acos = ($r === null || $r == 0.0)
+            ? 99999.0
+            : ($s / $r) * 100;
+
+        $bands = $this->loadSbgtBands();
+        foreach ($bands as $band) {
+            $max = (float) ($band['acos_max'] ?? 9999);
+            if ($acos <= $max) {
+                return (int) ($band['sbgt'] ?? 0);
+            }
+        }
+        // Defensive: should never hit (catch-all band guarantees a match).
+        return (int) (end($bands)['sbgt'] ?? 1);
+    }
+
+    /**
+     * Load the stored Sbgt bands, sorted ascending by `acos_max`.
+     * Falls back to {@see defaultSbgtRule()} when the table row is
+     * missing — keeps the page usable even if the migration hasn't run.
+     *
+     * @return array<int, array{acos_max:float, sbgt:int, label?:string, color?:string}>
+     */
+    private function loadSbgtBands(): array
+    {
+        $row = DB::table('facebook_sbgt_rules')->where('key', 'facebook_all')->first();
+        $rule = $row
+            ? (json_decode($row->rule, true) ?: [])
+            : $this->defaultSbgtRule();
+        $bands = $rule['bands'] ?? $this->defaultSbgtRule()['bands'];
+        usort($bands, fn($a, $b) => ((float) ($a['acos_max'] ?? 0)) <=> ((float) ($b['acos_max'] ?? 0)));
+        return $bands;
+    }
+
+    /**
+     * Hard-coded fallback rule = the brackets the user originally
+     * requested. Also used by the migration to seed the default row.
+     */
+    private function defaultSbgtRule(): array
+    {
+        return [
+            'bands' => [
+                ['acos_max' => 10,   'sbgt' => 20, 'label' => 'Excellent', 'color' => '#16a34a'],
+                ['acos_max' => 20,   'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'],
+                ['acos_max' => 30,   'sbgt' => 10, 'label' => 'Fair',      'color' => '#facc15'],
+                ['acos_max' => 40,   'sbgt' => 5,  'label' => 'Poor',      'color' => '#f97316'],
+                ['acos_max' => 50,   'sbgt' => 2,  'label' => 'Bad',       'color' => '#ef4444'],
+                ['acos_max' => 9999, 'sbgt' => 1,  'label' => 'Critical',  'color' => '#7f1d1d'],
+            ],
+        ];
+    }
+
+    /** GET endpoint — returns the current rule (with defaults if absent). */
+    public function getRule()
+    {
+        $row = DB::table('facebook_sbgt_rules')->where('key', 'facebook_all')->first();
+        return response()->json($row
+            ? (json_decode($row->rule, true) ?: $this->defaultSbgtRule())
+            : $this->defaultSbgtRule());
+    }
+
+    /**
+     * POST endpoint — replaces the rule with the supplied bands.
+     * Bands are normalised (numeric coercion + sort) before persisting
+     * so the projection pass never has to defensively re-sort.
+     */
+    public function saveRule(Request $request)
+    {
+        $bands = $request->input('bands', []);
+        if (! is_array($bands) || count($bands) === 0) {
+            return response()->json(['success' => false, 'error' => 'At least one band is required.'], 422);
+        }
+
+        $clean = [];
+        foreach ($bands as $b) {
+            $clean[] = [
+                'acos_max' => (float) ($b['acos_max'] ?? 9999),
+                'sbgt'     => (int)   ($b['sbgt']     ?? 0),
+                'label'    => (string)($b['label']    ?? ''),
+                'color'    => (string)($b['color']    ?? '#6c757d'),
+            ];
+        }
+        usort($clean, fn($a, $b) => $a['acos_max'] <=> $b['acos_max']);
+
+        DB::table('facebook_sbgt_rules')->updateOrInsert(
+            ['key' => 'facebook_all'],
+            ['rule' => json_encode(['bands' => $clean]), 'updated_at' => now(), 'created_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => ['bands' => $clean]]);
+    }
+
+    /**
+     * Push per-campaign Sbgt values as the new `daily_budget` on Meta.
+     *
+     * Frontend sends `{ campaigns: [{ campaign_id, sbgt }, ...] }`.
+     * For each entry we POST to:
+     *
+     *     https://graph.facebook.com/{v}/{campaign_id}
+     *     ?access_token=…
+     *     &daily_budget=<sbgt-in-account-currency-minor-units>
+     *
+     * Meta expects the budget in the account currency's minor unit
+     * (cents for USD), so we multiply by 100. Each call is logged to
+     * `meta_action_logs` for an audit trail. Campaigns whose budget
+     * lives at the ad-set level will be reported as "failed" with the
+     * Meta error message — the user can then either move CBO to the
+     * campaign level or push to ad sets directly.
+     *
+     * Same intent as EbayCampaignAdsController::pushSbid() but inline
+     * (no artisan command), because the source-of-truth Sbgt comes
+     * from the user's uploaded sheets, not a stored value.
+     */
+    public function pushSbgt(Request $request)
+    {
+        $campaigns = $request->input('campaigns', []);
+        if (! is_array($campaigns) || count($campaigns) === 0) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Nothing to push — supply campaigns: [{campaign_id, sbgt}].',
+            ], 422);
+        }
+
+        $accessToken = config('services.meta.access_token');
+        $apiVersion  = config('services.meta.api_version', 'v21.0');
+        if (! $accessToken) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'META_ACCESS_TOKEN not configured.',
+            ], 500);
+        }
+
+        $userId  = optional($request->user())->id;
+        $base    = "https://graph.facebook.com/{$apiVersion}";
+        $pushed  = 0;
+        $failed  = 0;
+        $skipped = 0;
+        $results = [];
+
+        foreach ($campaigns as $row) {
+            $cid  = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
+            $sbgt = isset($row['sbgt']) ? $row['sbgt'] : null;
+            $sbgtNum = $this->parseNumeric($sbgt);
+
+            // Skip rows with no campaign id or no recommendation — these
+            // are the "blank Sbgt" rows the user could see in the table.
+            if ($cid === '' || ! preg_match('/^\d{6,}$/', $cid)) {
+                $skipped++;
+                $results[] = [
+                    'campaign_id' => $cid,
+                    'status'      => 'skipped',
+                    'reason'      => 'Missing or invalid campaign id',
+                ];
+                continue;
+            }
+            if ($sbgtNum === null || $sbgtNum <= 0) {
+                $skipped++;
+                $results[] = [
+                    'campaign_id' => $cid,
+                    'status'      => 'skipped',
+                    'reason'      => 'No Sbgt value to push',
+                ];
+                continue;
+            }
+
+            // Meta expects minor-unit integers (cents for USD).
+            $minorUnits = (int) round($sbgtNum * 100);
+
+            try {
+                $resp = \Illuminate\Support\Facades\Http::asForm()
+                    ->timeout(20)
+                    ->post("{$base}/{$cid}", [
+                        'access_token' => $accessToken,
+                        'daily_budget' => $minorUnits,
+                    ]);
+
+                $body = $resp->json() ?? [];
+                $ok   = $resp->successful() && (($body['success'] ?? false) === true || isset($body['id']));
+
+                DB::table('meta_action_logs')->insert([
+                    'user_id'            => $userId ?? 0,
+                    'action_type'        => 'update_budget',
+                    'entity_type'        => 'campaign',
+                    'entity_meta_id'     => $cid,
+                    'status'             => $ok ? 'success' : 'failed',
+                    'request_payload'    => json_encode(['daily_budget' => $minorUnits, 'sbgt' => $sbgtNum]),
+                    'response_payload'   => json_encode($body),
+                    'error_message'      => $ok ? null : ($body['error']['message'] ?? null),
+                    'meta_error_code'    => $ok ? null : (string) ($body['error']['code'] ?? ''),
+                    'meta_error_message' => $ok ? null : ($body['error']['error_user_msg'] ?? $body['error']['message'] ?? null),
+                    'created_at'         => now(),
+                    'updated_at'         => now(),
+                ]);
+
+                if ($ok) {
+                    $pushed++;
+                    $results[] = [
+                        'campaign_id' => $cid,
+                        'status'      => 'pushed',
+                        'sbgt'        => $sbgtNum,
+                    ];
+                    // Mirror the new budget locally so subsequent reads
+                    // of meta_campaigns reflect what we just wrote.
+                    DB::table('meta_campaigns')
+                        ->where('meta_id', $cid)
+                        ->update(['daily_budget' => $sbgtNum, 'updated_at' => now()]);
+                } else {
+                    $failed++;
+                    $results[] = [
+                        'campaign_id' => $cid,
+                        'status'      => 'failed',
+                        'reason'      => $body['error']['message'] ?? ('HTTP ' . $resp->status()),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $failed++;
+                $results[] = [
+                    'campaign_id' => $cid,
+                    'status'      => 'failed',
+                    'reason'      => $e->getMessage(),
+                ];
+                DB::table('meta_action_logs')->insert([
+                    'user_id'        => $userId ?? 0,
+                    'action_type'    => 'update_budget',
+                    'entity_type'    => 'campaign',
+                    'entity_meta_id' => $cid,
+                    'status'         => 'failed',
+                    'request_payload' => json_encode(['daily_budget' => $minorUnits, 'sbgt' => $sbgtNum]),
+                    'error_message'  => $e->getMessage(),
+                    'created_at'     => now(),
+                    'updated_at'     => now(),
+                ]);
+            }
+
+            // Small breather between calls so a long batch doesn't trip
+            // Meta's rate limiter.
+            usleep(150000); // 0.15 s
+        }
+
+        return response()->json([
+            'success' => true,
+            'pushed'  => $pushed,
+            'failed'  => $failed,
+            'skipped' => $skipped,
+            'results' => $results,
+        ]);
+    }
+
+    /**
+     * Render a resolved-source value using the column's formatter:
+     *   • 'int' — round to integer, preserving "$" prefix and "%" suffix
+     *             when the original value carried them. Non-numeric inputs
+     *             pass through unchanged.
+     */
+    private function applyFormatter($value, string $formatter): ?string
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+        $n = $this->parseNumeric($value);
+        if ($n === null) return (string) $value;
+
+        switch ($formatter) {
+            case 'int':
+                $orig   = is_string($value) ? $value : (string) $value;
+                $prefix = (strpos($orig, '$') !== false) ? '$' : '';
+                $suffix = (strpos($orig, '%') !== false) ? '%' : '';
+                return $prefix . number_format(round($n)) . $suffix;
+            default:
+                return (string) $value;
+        }
+    }
+
+    /**
+     * Parse a metric value into a float, tolerating Shopify-style decoration
+     * ("$232.19", "1,000.92", "4.49%", em-dashes "—" / "-"). Returns null
+     * when the input has no usable digits.
+     */
+    private function parseNumeric($v): ?float
+    {
+        if ($v === null) return null;
+        if (is_int($v) || is_float($v)) return (float) $v;
+        $s = trim((string) $v);
+        if ($s === '' || $s === '—' || $s === '-' || $s === 'N/A') return null;
+        $s = preg_replace('/[^\d.\-]/', '', $s) ?? '';
+        if ($s === '' || $s === '-' || $s === '.') return null;
+        return (float) $s;
     }
 
     /**
@@ -611,14 +970,32 @@ class FacebookAllAdsSheetController extends Controller
      * findCampaignId during the merge) is checked first for the ID column
      * so Shopify's "Campaign activities" column works automatically.
      */
+    /**
+     * Curated columns for the Merged view. Each column has either:
+     *   • `sources`  — list of row_data keys to read (first non-empty wins).
+     *   • `formula`  — [numerator_col, denominator_col, decimals=2] computed
+     *                  as (num / den) * 100 and formatted "X.YY%".
+     *   • `formatter`— how to render the resolved value:
+     *                  'int' → round to whole number, preserving "$" prefix.
+     */
     private const MERGED_COLUMNS = [
         ['title' => 'Campaign name', 'sources' => ['Campaign name']],
         ['title' => 'CAMPAIGN ID',   'sources' => ['_campaign_id', 'Campaign ID', 'CAMPAIGN ID', 'Campaign activities']],
+        // ACOS = SPEND / SALES * 100, rounded to integer
+        ['title' => 'Acos',          'formula' => ['SPEND', 'SALES', 0]],
         ['title' => 'IMPRESSIONS',   'sources' => ['Impressions']],
         ['title' => 'CLICKS',        'sources' => ['Clicks (all)']],
+        // CTR = CLICKS / IMPRESSIONS * 100, rounded to integer
+        ['title' => 'CTR',           'formula' => ['CLICKS', 'IMPRESSIONS', 0]],
         ['title' => 'SPEND',         'sources' => ['Amount spent (USD)']],
-        ['title' => 'SALES',         'sources' => ['Sales']],
+        ['title' => 'SALES',         'sources' => ['Sales'], 'formatter' => 'int'],
         ['title' => 'SOLD',          'sources' => ['Orders']],
+        // CVR = SOLD / CLICKS * 100
+        ['title' => 'CVR',           'formula' => ['SOLD', 'CLICKS']],
+        // Sbgt = suggested budget driven by the ACOS bracket — see
+        // acosBudgetRule(). Placed at the end so the row reads as
+        // "metrics → recommendation".
+        ['title' => 'Sbgt',          'rule'    => 'acos_budget'],
     ];
 
     /**

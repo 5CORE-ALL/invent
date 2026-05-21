@@ -53,6 +53,17 @@
                     </select>
                 </div>
                 <div class="col-auto">
+                    <select id="promote-filter" class="form-select form-select-sm">
+                        <option value="">All Promote</option>
+                        <option value="RECOMMENDED">⭐ Eligible (RECOMMENDED)</option>
+                        <option value="OPTIONAL">⚡ Optional</option>
+                        <option value="AD_ALREADY_CREATED">📢 In Campaign</option>
+                        <option value="NOT_RECOMMENDED">— Not Recommended</option>
+                        <option value="UNDETERMINED">? Undetermined</option>
+                        <option value="__NONE__">— No Value</option>
+                    </select>
+                </div>
+                <div class="col-auto">
                     <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">
                         Clear
                     </button>
@@ -173,8 +184,9 @@ function loadData() {
     const search  = $('#search-input').val();
     const funding = $('#funding-filter').val();
     const status  = $('#status-filter').val();
+    const promote = $('#promote-filter').val();
 
-    $.get('/ebay/campaign-ads/data', { search, funding_strategy: funding, campaign_status: status })
+    $.get('/ebay/campaign-ads/data', { search, funding_strategy: funding, campaign_status: status, promote_with_ad: promote })
         .done(function(resp) {
             if (resp && resp.data) {
                 $('#total-count').text(resp.total.toLocaleString() + ' rows');
@@ -196,6 +208,7 @@ function clearFilters() {
     $('#search-input').val('');
     $('#funding-filter').val('');
     $('#status-filter').val('');
+    $('#promote-filter').val('');
     loadData();
 }
 
@@ -398,7 +411,7 @@ $(document).ready(function () {
     });
 
     // Dropdowns — auto load on change
-    $('#funding-filter, #status-filter').on('change', loadData);
+    $('#funding-filter, #status-filter, #promote-filter').on('change', loadData);
 
     loadData();
 });
