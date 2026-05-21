@@ -230,12 +230,12 @@ $(document).ready(function () {
                 field: '_select', width: 40, hozAlign: 'center',
                 headerSort: false, frozen: true,
                 formatter: function(cell) {
-                    const lid = cell.getRow().getData().listing_id;
+                    const lid = String(cell.getRow().getData().listing_id);
                     const checked = selectedIds.has(lid) ? 'checked' : '';
                     return `<input type="checkbox" class="row-cb" data-lid="${lid}" ${checked} style="cursor:pointer;">`;
                 },
                 cellClick: function(e, cell) {
-                    const lid = cell.getRow().getData().listing_id;
+                    const lid = String(cell.getRow().getData().listing_id);
                     const cb  = cell.getElement().querySelector('.row-cb');
                     if (cb) {
                         if (selectedIds.has(lid)) { selectedIds.delete(lid); cb.checked = false; }
@@ -508,16 +508,30 @@ document.getElementById('enroll-confirm-btn').addEventListener('click', function
     });
 });
 
-// Select All checkbox
+// Select All checkbox — selects ALL filtered rows across every page, not just visible DOM rows
 document.addEventListener('change', function(e) {
     if (e.target && e.target.id === 'select-all-cb') {
         const checked = e.target.checked;
-        document.querySelectorAll('.row-cb').forEach(cb => {
-            cb.checked = checked;
-            const lid = cb.dataset.lid;
-            if (checked) selectedIds.add(lid);
-            else         selectedIds.delete(lid);
-        });
+
+        // Use Tabulator's full row list (post-filter, all pages) instead of querySelectorAll,
+        // which only sees the currently rendered page.
+        const rows = table ? table.getRows('active') : [];
+
+        if (checked) {
+            rows.forEach(r => {
+                const lid = r.getData().listing_id;
+                if (lid != null) selectedIds.add(String(lid));
+            });
+        } else {
+            rows.forEach(r => {
+                const lid = r.getData().listing_id;
+                if (lid != null) selectedIds.delete(String(lid));
+            });
+        }
+
+        // Sync visible checkboxes on the current page
+        document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = checked; });
+
         updateSelectedCount();
     }
 });
