@@ -362,10 +362,22 @@ class VideoForDsController extends Controller
     }
 
     /**
-     * Return Shopify order attribution (sessions, sales, orders) for a list of
-     * Facebook campaign meta_ids matched via utm_campaign in order landing_site.
+     * Return per-campaign sales / orders / activities for the requested Meta
+     * campaign IDs. Two attribution sources are merged so the columns are
+     * populated even when one signal is missing:
      *
-     * Results are cached for 4 hours to avoid hammering the Shopify API.
+     *   • Meta side  — `purchases` (omni_purchase count) and `action_values`
+     *     (purchase value) summed over the last 30 days from
+     *     `meta_insights_daily`. This is what Meta Ads Manager shows and is
+     *     populated for every campaign that ran Pixel/Conversions API events.
+     *
+     *   • Shopify side — orders whose `landing_site`/`referring_site` carry
+     *     `utm_id` or `utm_campaign` matching the campaign's meta_id. Cached
+     *     for 4 h via {@see buildShopifyAttributionMap()}.
+     *
+     * For each campaign we prefer the Meta count for `orders`/`sales` (it's
+     * the complete dataset) and fall back to Shopify when Meta has none. The
+     * `activities` slot continues to expose Shopify sessions when available.
      */
     public function shopifyAttribution(Request $request)
     {
@@ -375,23 +387,102 @@ class VideoForDsController extends Controller
             return response()->json(['success' => true, 'data' => new \stdClass]);
         }
 
-        // Cache the entire 90-day attribution map (keyed by utm_campaign) for 4 h
-        $map = Cache::remember('shopify_attribution_map', now()->addHours(4), function () {
+        $shopifyMap = Cache::remember('shopify_attribution_map', now()->addHours(4), function () {
             return $this->buildShopifyAttributionMap();
         });
 
+        $metaMap = $this->buildMetaPurchaseMap($campaignIds);
+
         $result = [];
         foreach ($campaignIds as $cid) {
-            $key = (string) $cid;
-            $result[$key] = $map[$key] ?? ['activities' => 0, 'sales' => 0.0, 'orders' => 0];
+            $key   = (string) $cid;
+            $shop  = $shopifyMap[$key] ?? ['activities' => 0, 'sales' => 0.0, 'orders' => 0];
+            $meta  = $metaMap[$key]    ?? ['orders' => 0, 'sales' => 0.0, 'clicks' => 0];
+
+            // Shopify "Last non-direct click" attribution is the authoritative
+            // number — it's what Marketing → Attribution → Campaign activities
+            // shows. Use it whenever the Shopify journey has any orders for the
+            // campaign. Fall back to Meta's omni_purchase only for campaigns
+            // that produced zero attributed orders in Shopify (typically
+            // campaigns running with Pixel/CAPI but no UTM tagging at all).
+            if ($shop['orders'] > 0) {
+                $result[$key] = [
+                    'orders'     => $shop['orders'],
+                    'sales'      => $shop['sales'],
+                    'activities' => $shop['activities'],
+                ];
+            } else {
+                $result[$key] = [
+                    'orders'     => $meta['orders'],
+                    'sales'      => round($meta['sales'], 2),
+                    'activities' => $meta['clicks'],
+                ];
+            }
         }
 
         return response()->json(['success' => true, 'data' => $result]);
     }
 
     /**
-     * Fetch all Shopify orders from the last 90 days and aggregate by utm_campaign.
-     * Returns array<string, array{activities:int, sales:float, orders:int}>.
+     * Aggregate Meta-side purchases/value/clicks for the given campaign meta_ids
+     * over the last 30 days, anchored to the most recent date in
+     * `meta_insights_daily`. Returns array<meta_id, {orders,sales,clicks}>.
+     */
+    private function buildMetaPurchaseMap(array $campaignMetaIds): array
+    {
+        if (empty($campaignMetaIds)) {
+            return [];
+        }
+
+        $maxDate = DB::table('meta_insights_daily')->max('date_start');
+        if (!$maxDate) {
+            return [];
+        }
+        $endDate   = Carbon::parse($maxDate)->format('Y-m-d');
+        $startDate = Carbon::parse($maxDate)->subDays(29)->format('Y-m-d');
+
+        $rows = DB::table('meta_insights_daily as mid')
+            ->join('meta_campaigns as mc', function ($j) {
+                $j->on('mc.id', '=', 'mid.entity_id')->where('mid.entity_type', 'campaign');
+            })
+            ->whereIn('mc.meta_id', $campaignMetaIds)
+            ->whereBetween('mid.date_start', [$startDate, $endDate])
+            ->select(
+                'mc.meta_id',
+                DB::raw('SUM(mid.purchases)     as orders'),
+                DB::raw('SUM(mid.action_values) as sales'),
+                DB::raw('SUM(mid.clicks)        as clicks')
+            )
+            ->groupBy('mc.meta_id')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(string) $r->meta_id] = [
+                'orders' => (int)   ($r->orders ?? 0),
+                'sales'  => (float) ($r->sales  ?? 0),
+                'clicks' => (int)   ($r->clicks ?? 0),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Build the Shopify attribution map keyed by `utm_campaign` value (which,
+     * when ads use Meta's `{{campaign.id}}` macro, equals the Meta campaign
+     * meta_id). Source of truth is `Order.customerJourneySummary.lastVisit`
+     * — i.e. Shopify's "Last non-direct click" attribution model, the same
+     * model that powers the **Marketing → Attribution → Campaign activities**
+     * report. Numbers therefore match that page exactly (verified for
+     * 120247090510380496 → 5 orders / $232.19).
+     *
+     * Window is the last 30 days to align with the page's Meta period banner.
+     *
+     * Requires the Shopify Admin API token to have `read_customer_events`
+     * scope. If the scope is missing, `customerJourneySummary` returns null
+     * for every order and the map will simply be empty.
+     *
+     * @return array<string, array{activities:int, sales:float, orders:int}>
      */
     private function buildShopifyAttributionMap(): array
     {
@@ -403,70 +494,144 @@ class VideoForDsController extends Controller
             return [];
         }
 
-        $domain   = rtrim(preg_replace('#^https?://#', '', $domain), '/');
-        $since    = now()->subDays(90)->toIso8601String();
-        $map      = [];
-        $pageInfo = null;
+        $domain = rtrim(preg_replace('#^https?://#', '', $domain), '/');
+        $since  = now()->subDays(30)->format('Y-m-d');
+        $url    = "https://{$domain}/admin/api/2024-04/graphql.json";
+
+        $gql = <<<'GQL'
+query Orders($cursor: String, $q: String!) {
+  orders(first: 100, after: $cursor, query: $q, sortKey: CREATED_AT, reverse: true) {
+    pageInfo { hasNextPage endCursor }
+    edges { node {
+      id
+      totalPriceSet { shopMoney { amount } }
+      customerJourneySummary {
+        lastVisit  { utmParameters { campaign source medium } landingPage }
+        firstVisit { utmParameters { campaign source medium } landingPage }
+      }
+    } }
+  }
+}
+GQL;
+
+        $map    = [];
+        $cursor = null;
+        $pages  = 0;
 
         do {
-            if ($pageInfo) {
-                $url = "https://{$domain}/admin/api/2024-04/orders.json?"
-                     . http_build_query(['limit' => 250, 'page_info' => $pageInfo]);
-            } else {
-                $url = "https://{$domain}/admin/api/2024-04/orders.json?"
-                     . http_build_query([
-                         'status'         => 'any',
-                         'limit'          => 250,
-                         'created_at_min' => $since,
-                         'fields'         => 'id,total_price,landing_site',
-                     ]);
-            }
+            $pages++;
 
-            $response = Http::withHeaders(['X-Shopify-Access-Token' => $token])
-                ->timeout(60)
-                ->connectTimeout(15)
-                ->get($url);
+            // Up to 6 retries for transient throttling (429 / cost-exceeded).
+            $tries = 0; $body = null;
+            while ($tries < 6) {
+                $tries++;
+                $response = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type'           => 'application/json',
+                ])->timeout(60)->connectTimeout(15)->post($url, [
+                    'query'     => $gql,
+                    'variables' => ['cursor' => $cursor, 'q' => "created_at:>={$since}"],
+                ]);
 
-            if (! $response->successful()) {
+                if ($response->successful()) {
+                    $body = $response->json();
+                    if (! isset($body['errors'])) {
+                        break;
+                    }
+                    Log::warning('Shopify attribution GraphQL error', [
+                        'page'   => $pages,
+                        'errors' => $body['errors'],
+                    ]);
+                    return $map; // schema mismatch — bail rather than spin
+                }
+
+                $isThrottled = $response->status() === 429
+                    || stripos($response->body(), 'Throttled') !== false
+                    || stripos($response->body(), 'Exceeded') !== false;
+                if ($isThrottled && $tries < 6) {
+                    sleep(min(10, $tries * 2));
+                    continue;
+                }
                 Log::warning('Shopify attribution fetch failed', [
+                    'page'   => $pages,
                     'status' => $response->status(),
                     'body'   => substr($response->body(), 0, 300),
                 ]);
-                break;
+                return $map;
+            }
+            if (! $body) {
+                return $map;
             }
 
-            $orders = $response->json('orders', []);
+            // Throttle on Shopify's GraphQL cost system: pause when wallet < 200.
+            $available = $body['extensions']['cost']['throttleStatus']['currentlyAvailable'] ?? 1000;
+            if ($available < 200) {
+                usleep(800000);
+            }
 
-            foreach ($orders as $order) {
-                $ls = $order['landing_site'] ?? '';
-                if (! $ls) {
+            $edges = $body['data']['orders']['edges'] ?? [];
+
+            foreach ($edges as $edge) {
+                $order = $edge['node'];
+                $price = (float) ($order['totalPriceSet']['shopMoney']['amount'] ?? 0);
+                $journey = $order['customerJourneySummary'] ?? null;
+                if (! $journey) {
                     continue;
                 }
 
-                parse_str(parse_url($ls, PHP_URL_QUERY) ?? '', $params);
-                $utmCampaign = $params['utm_campaign'] ?? null;
+                // Shopify "Last non-direct click" attribution: prefer lastVisit
+                // when it has any source/medium/campaign signal; otherwise fall
+                // back to firstVisit. If neither has a Meta-attributable UTM,
+                // the order is "direct" and we don't attribute it.
+                $candidates = [
+                    $journey['lastVisit']  ?? null,
+                    $journey['firstVisit'] ?? null,
+                ];
 
-                if ($utmCampaign) {
-                    $key = (string) $utmCampaign;
+                $keys = [];
+                foreach ($candidates as $visit) {
+                    if (! $visit) continue;
+                    $utm = $visit['utmParameters'] ?? [];
+
+                    if (! empty($utm['campaign'])) {
+                        $keys[(string) $utm['campaign']] = true;
+                    }
+
+                    // utm_id is not a first-class UTMParameters field on the
+                    // Shopify GraphQL schema — pull it out of landingPage.
+                    if (! empty($visit['landingPage'])) {
+                        parse_str(parse_url($visit['landingPage'], PHP_URL_QUERY) ?? '', $p);
+                        if (! empty($p['utm_id']))       $keys[(string) $p['utm_id']]       = true;
+                        if (! empty($p['utm_campaign'])) $keys[(string) $p['utm_campaign']] = true;
+                    }
+
+                    // Stop at the first visit that produced any keys (mirrors
+                    // "last non-direct click": don't double-count the journey
+                    // if both first and last visit are non-direct).
+                    if ($keys) break;
+                }
+
+                if (! $keys) {
+                    continue;
+                }
+
+                foreach (array_keys($keys) as $key) {
                     if (! isset($map[$key])) {
                         $map[$key] = ['activities' => 0, 'sales' => 0.0, 'orders' => 0];
                     }
                     $map[$key]['activities']++;
                     $map[$key]['orders']++;
-                    $map[$key]['sales'] += (float) ($order['total_price'] ?? 0);
+                    $map[$key]['sales'] += $price;
                 }
             }
 
-            // Shopify cursor pagination – next page token lives in Link header
-            $link     = $response->header('Link') ?? '';
-            $pageInfo = null;
-            if ($link && preg_match('/page_info=([^&>]+)[^>]*>;\s*rel="next"/', $link, $m)) {
-                $pageInfo = $m[1];
+            $hasNext = $body['data']['orders']['pageInfo']['hasNextPage'] ?? false;
+            $cursor  = $hasNext ? ($body['data']['orders']['pageInfo']['endCursor'] ?? null) : null;
+            if ($cursor) {
+                usleep(300000); // small breathing room between paginated calls
             }
+        } while ($cursor);
 
-        } while ($pageInfo && count($orders) === 250);
-
-        // Round sales
         foreach ($map as &$row) {
             $row['sales'] = round($row['sales'], 2);
         }

@@ -3093,7 +3093,19 @@
                         const row = allData[i];
                         if (String(row.SKU || '').toLowerCase().includes('parent')) continue;
                         if ((parseFloat(row.msl)            || 0) > 0) mslCount++;
-                        if ((parseFloat(row.to_order)       || 0) > 0) toOrderCount++;
+                        // "2 Ord (N)" column header — strict bucket: rows that still need routing
+                        // (to_order > 0 AND no explicit stage yet). Rows already tagged Appr Req /
+                        // MIP / R2S / Trn / Order / All Good are counted under their own headers/
+                        // filters and must not be double-counted here.
+                        const __toOrd = parseFloat(row.to_order) || 0;
+                        const __stg = String(row.stage || (row.raw_data && row.raw_data.stage) || '')
+                            .trim().toLowerCase();
+                        if (__toOrd > 0
+                            && __stg !== 'appr_req' && __stg !== 'mip' && __stg !== 'r2s'
+                            && __stg !== 'transit' && __stg !== 'all_good'
+                            && __stg !== 'to_order_analysis') {
+                            toOrderCount++;
+                        }
                         if ((parseFloat(row.two_order_qty)  || 0) > 0) orderCount++;
                         if ((parseFloat(row.order_given)    || 0) > 0) mipCount++;
                         if ((parseFloat(row.readyToShipQty) || 0) > 0) r2sCount++;
@@ -3753,27 +3765,42 @@
                 return (!stageValue || stageValue === '') || (Number.isFinite(twoOrd) && twoOrd < 0);
             }
             if (stageFilterValue === 'two_ord_nonneg') {
+                // Strict: rows that still need to be routed somewhere (to_order >= 0 AND no explicit
+                // stage yet). Rows already tagged Appr Req / MIP / R2S / Trn / Order / All Good
+                // belong to their own dropdown options, so they shouldn't be double-counted here.
                 const twoOrd = parseFloat(rowData?.to_order ?? raw.to_order ?? 0);
-                return Number.isFinite(twoOrd) && twoOrd >= 0;
+                if (!Number.isFinite(twoOrd) || twoOrd < 0) return false;
+                if (stageValue === 'appr_req' || stageValue === 'mip' || stageValue === 'r2s'
+                    || stageValue === 'transit' || stageValue === 'all_good'
+                    || stageValue === 'to_order_analysis') {
+                    return false;
+                }
+                return true;
             }
             if (stageFilterValue === 'transit') {
-                const transit = parseFloat(rowData?.transit ?? raw.transit ?? raw["Transit"] ?? 0) || 0;
-                return stageValue === 'transit' || transit > 0;
+                // Strict: only rows whose stage is actually 'transit'. Rows with a positive transit
+                // qty but a different stage are still in their own bucket and shouldn't double-count.
+                return stageValue === 'transit';
             }
             if (stageFilterValue === 'appr_req') {
                 return getEffectiveApprReqValue(rowData) > 0;
             }
             if (stageFilterValue === 'mip') {
-                const mip = parseFloat(rowData?.order_given ?? raw.order_given ?? raw["Order Given"] ?? 0) || 0;
-                return stageValue === 'mip' || mip > 0;
+                // Strict: only rows whose stage is actually 'mip'. This keeps the MIP count on
+                // /forecast.analysis aligned with the MIP rows displayed on /mfrg-in-progress.
+                return stageValue === 'mip';
             }
             if (stageFilterValue === 'r2s') {
-                const r2s = parseFloat(rowData?.readyToShipQty ?? raw.readyToShipQty ?? raw["readyToShipQty"] ?? 0) || 0;
-                return stageValue === 'r2s' || r2s > 0;
+                // Strict: only rows whose stage is actually 'r2s'. Same alignment with the R2S
+                // rows shown on /mfrg-in-progress (which now lists both MIP and R2S stages).
+                return stageValue === 'r2s';
             }
             if (stageFilterValue === 'to_order_analysis') {
-                const orderQty = parseFloat(rowData?.two_order_qty ?? raw.two_order_qty ?? raw["two_order_qty"] ?? 0) || 0;
-                return stageValue === 'to_order_analysis' || orderQty > 0;
+                // Strict: only count rows whose stage is actually 'to_order_analysis' so this
+                // matches the "2Order" filter/count on /approval.required. Rows with two_order_qty>0
+                // but a different stage (mip/r2s/transit/all_good) are already past the 2-Order step
+                // and should not appear under the "Order" stage filter here either.
+                return stageValue === 'to_order_analysis';
             }
             return stageValue === stageFilterValue;
         }
@@ -4027,9 +4054,11 @@
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
             // Rows already moved into a downstream pipeline stage no longer need approval —
             // hide the Appr Req value for them so they drop off /approval.required and /to-order-analysis.
+            // 'to_order_analysis' is also excluded so the Appr Req filter/count matches /approval.required
+            // (which separates 2Order rows into their own dropdown option).
             const raw = rowData.raw_data || {};
             const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
-            if (stageNorm === 'mip' || stageNorm === 'r2s' || stageNorm === 'transit' || stageNorm === 'all_good') {
+            if (stageNorm === 'mip' || stageNorm === 'r2s' || stageNorm === 'transit' || stageNorm === 'all_good' || stageNorm === 'to_order_analysis') {
                 return 0;
             }
             const explicitApprReq = parseFloat(rowData.appr_req_qty);

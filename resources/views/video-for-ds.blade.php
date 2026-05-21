@@ -511,9 +511,9 @@
                                     <th class="fb-th">Clicks</th>
                                     <th class="fb-th">Spend ($)</th>
                                     <th class="fb-th">CTR %</th>
-                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify sessions attributed to this campaign">Activities</th>
-                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify revenue attributed to this campaign">Sales ($)</th>
-                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify orders attributed to this campaign">Orders</th>
+                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify activities (last-non-direct-click attribution, last 30d); falls back to Meta link clicks if Shopify has none">Activities</th>
+                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify revenue per campaign (last-non-direct-click, last 30d) — same as Marketing → Attribution → Campaign activities">Sales ($)</th>
+                                    <th class="fb-th" style="white-space:nowrap;background:#2d6a4f !important;color:#fff !important;" title="Shopify orders per campaign (last-non-direct-click, last 30d) — same as Marketing → Attribution → Campaign activities">Orders</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>

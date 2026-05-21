@@ -1374,7 +1374,10 @@
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
             const raw = rowData.raw_data || {};
             const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
-            if (stageNorm === 'mip' || stageNorm === 'r2s' || stageNorm === 'transit' || stageNorm === 'all_good') {
+            // Exclude downstream pipeline stages AND 2Order — 2Order rows are tracked in their own
+            // dropdown option, so the loose Appr Req rule must not count them (keeps the yellow
+            // "Appr Req: N" badge in sync with the dropdown count and the displayed table).
+            if (stageNorm === 'mip' || stageNorm === 'r2s' || stageNorm === 'transit' || stageNorm === 'all_good' || stageNorm === 'to_order_analysis') {
                 return 0;
             }
             const explicitApprReq = parseFloat(rowData.appr_req_qty);

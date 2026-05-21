@@ -598,6 +598,29 @@
                 </div>
             </li>
 
+            {{-- ── Facebook ─────────────────────────────────────── --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarFacebookSheets" aria-expanded="false"
+                    aria-controls="sidebarFacebookSheets" class="side-nav-link">
+                    <i class="ri-facebook-circle-line"></i>
+                    <span>Facebook</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarFacebookSheets">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('facebook.all.ads.sheet') }}">Facebook All Ads Sheet</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('facebook.video.ads.sheet') }}">Facebook Video Ads Sheet</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('facebook.carousal.ads.sheet') }}">Facebook Carousal Ads Sheet</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages2" aria-expanded="false"
                     aria-controls="sidebarPages2" class="side-nav-link">

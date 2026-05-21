@@ -2777,6 +2777,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/video-for-ds/trigger-fb-sync', [VideoForDsController::class, 'triggerFbSync'])->name('video.for.ds.trigger.fb.sync');
     Route::get('/video-for-ds/sync-status', [VideoForDsController::class, 'getSyncStatus'])->name('video.for.ds.sync.status');
     Route::get('/video-for-ds/shopify-attribution', [VideoForDsController::class, 'shopifyAttribution'])->name('video.for.ds.shopify.attribution');
+
+    // Facebook All Ads Sheet — generic CSV/Excel/TSV importer
+    Route::get('/facebook-all-ads-sheet',                  [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'index'])->name('facebook.all.ads.sheet');
+    Route::get('/facebook-all-ads-sheet/data',             [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'getData'])->name('facebook.all.ads.sheet.data');
+    Route::get('/facebook-all-ads-sheet/batches',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'batches'])->name('facebook.all.ads.sheet.batches');
+    Route::post('/facebook-all-ads-sheet/upload',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'upload'])->name('facebook.all.ads.sheet.upload');
+    Route::post('/facebook-all-ads-sheet/{id}/ad-type',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateAdType'])->whereNumber('id')->name('facebook.all.ads.sheet.ad.type');
+
+    // Type-filtered variants (Video / Carousal). Reuse the same controller
+    // and view; only `pageType` and the ad_type filter differ.
+    Route::get('/facebook-video-ads-sheet',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'videoIndex'])->name('facebook.video.ads.sheet');
+    Route::get('/facebook-carousal-ads-sheet',             [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'carousalIndex'])->name('facebook.carousal.ads.sheet');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
     Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');

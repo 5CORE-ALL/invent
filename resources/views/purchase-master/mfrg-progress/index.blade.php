@@ -421,7 +421,97 @@
         text-orientation: mixed !important;
         overflow: hidden !important;
     }
-    
+
+    /* MIP pagination — modeled after the Tabulator footer used on /forecast.analysis.
+       Placed INSIDE .mip-table-scroll and pinned with position:sticky;bottom:0 so it always
+       sits at the visible bottom of the scrollable table area and never gets pushed under
+       the page footer regardless of how the outer flex layout sizes things.
+       .mip-paginated-out rows are filter-visible but outside the current page window, so
+       calculate*() totals still count them. */
+    tr.mip-paginated-out { display: none !important; }
+    .mip-table-scroll { position: relative; }
+    .mip-pagination-bar {
+        position: sticky;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        padding: 5px 12px;
+        background: #f4f7fa;
+        border-top: 1px solid #262626;
+        color: #4b5563;
+        font-size: 1rem;
+        min-height: 56px;
+        /* Make the bar span the full width of the scroll container's content so the bar's
+           background fills horizontally even when the wide table forces horizontal scroll.
+           Combined with sticky+left:0 + bottom:0 the controls stay anchored to the bottom-
+           left of the visible viewport. */
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .mip-pagination-bar .mip-pag-info {
+        color: #4b5563;
+        white-space: nowrap;
+        font-size: 0.95rem;
+    }
+    .mip-pagination-bar .mip-pag-info strong {
+        color: #1f2937;
+        font-weight: 600;
+    }
+    .mip-pagination-bar .mip-pag-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+    .mip-pagination-bar select.mip-pag-size {
+        width: 84px;
+        height: 34px;
+        font-size: 0.9rem;
+        border-radius: 6px;
+    }
+    .mip-pagination-bar .mip-pag-pages {
+        display: inline-flex;
+        align-items: center;
+        gap: 0;
+        margin: 0 6px;
+        flex-wrap: wrap;
+    }
+    .mip-pagination-bar .mip-pag-btn {
+        background: transparent;
+        border: 1px solid transparent;
+        color: #4b5563;
+        padding: 8px 16px;
+        margin: 0 4px;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        line-height: 1;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .mip-pagination-bar .mip-pag-btn:hover:not(:disabled) {
+        background: #e0eaff;
+        color: #2563eb;
+    }
+    .mip-pagination-bar .mip-pag-btn.active {
+        background: #2563eb;
+        color: #fff;
+    }
+    .mip-pagination-bar .mip-pag-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+    }
+    .mip-pagination-bar .mip-pag-btn.mip-pag-ellipsis {
+        cursor: default;
+        padding: 8px 6px;
+    }
+    .mip-pagination-bar .mip-pag-btn.mip-pag-ellipsis:hover { background: transparent; color: #4b5563; }
 </style>
 @endsection
 @section('content')
@@ -464,6 +554,14 @@
                                 <i class="fas fa-text-height" aria-hidden="true"></i>
                                 <span class="mip-density-label text-nowrap">Dense view</span>
                             </button>
+                            <div class="d-flex align-items-center flex-wrap gap-2 mip-toolbar-stage-filter border-start ps-3 ms-1" title="Show MIP rows, R2S rows, or both">
+                                <label for="mip-stage-filter" class="mb-0 small fw-semibold text-nowrap text-secondary">Stage</label>
+                                <select id="mip-stage-filter" class="form-select form-select-sm" style="width: 132px; min-width: 110px;">
+                                    <option value="both">MIP + R2S</option>
+                                    <option value="mip">MIP only</option>
+                                    <option value="r2s">R2S only</option>
+                                </select>
+                            </div>
                             <div class="d-flex align-items-center flex-wrap gap-2 mip-toolbar-bulk-stage border-start ps-3 ms-1" title="Apply stage to rows checked in the first column">
                                 <label for="mip-bulk-stage-select" class="mb-0 small fw-semibold text-nowrap text-secondary">Bulk Stage</label>
                                 <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 128px; min-width: 110px;">
@@ -1164,6 +1262,29 @@
                             @endforeach
                         </tbody>
                     </table>
+                    <div class="mip-pagination-bar" id="mip-pagination">
+                        <div class="mip-pag-info">
+                            Showing <strong><span id="mip-pag-from">0</span> to <span id="mip-pag-to">0</span></strong>
+                            of <strong><span id="mip-pag-total">0</span></strong> rows
+                        </div>
+                        <div class="mip-pag-controls">
+                            <label class="d-inline-flex align-items-center gap-2 mb-0">
+                                <span class="text-muted">Page Size</span>
+                                <select class="form-select form-select-sm mip-pag-size" id="mip-pag-size">
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                    <option value="200">200</option>
+                                    <option value="500">500</option>
+                                    <option value="0">All</option>
+                                </select>
+                            </label>
+                            <button type="button" class="mip-pag-btn" id="mip-pag-first" title="First page">First</button>
+                            <button type="button" class="mip-pag-btn" id="mip-pag-prev" title="Previous page">Prev</button>
+                            <span class="mip-pag-pages" id="mip-pag-pages"></span>
+                            <button type="button" class="mip-pag-btn" id="mip-pag-next" title="Next page">Next</button>
+                            <button type="button" class="mip-pag-btn" id="mip-pag-last" title="Last page">Last</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1172,10 +1293,200 @@
 </div>
 
 <script>
-    /** Stages displayed on MIP In Progress page: MIP and R2S (forecast_analysis.stage). */
+    /**
+     * Stages displayed on MIP In Progress page. The Stage filter dropdown lets the user
+     * narrow to MIP only / R2S only / or both. The selection is persisted in localStorage
+     * so it survives page reloads.
+     */
+    let mipStageFilter = (function () {
+        const v = localStorage.getItem('mipStageFilter');
+        return (v === 'mip' || v === 'r2s') ? v : 'both';
+    })();
     function isMipPageStage(rowStage) {
+        if (mipStageFilter === 'mip') return rowStage === 'mip';
+        if (mipStageFilter === 'r2s') return rowStage === 'r2s';
         return rowStage === 'mip' || rowStage === 'r2s';
     }
+    /**
+     * Re-run the row visibility / totals / pagination pipeline. Defined here as a fallback
+     * for the case where window.filterByMIPStage isn't wired yet (its DOMContentLoaded
+     * handler runs later). Once `filterByMIPStage` is exposed we use that directly so the
+     * supplier list + follow-up counts are also refreshed.
+     */
+    function mipReapplyStageFilter() {
+        if (typeof window.filterByMIPStage === 'function') {
+            window.filterByMIPStage();
+            return;
+        }
+        document.querySelectorAll('table.wide-table tbody tr').forEach(function (row) {
+            const rowStageAttr = row.getAttribute('data-stage')
+                ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            row.style.display = isMipPageStage(rowStage) ? '' : 'none';
+        });
+        if (typeof calculateTotalCBM === 'function') calculateTotalCBM();
+        if (typeof calculateTotalAmount === 'function') calculateTotalAmount();
+        if (typeof calculateTotalOrderItems === 'function') calculateTotalOrderItems();
+        if (typeof updateFollowSupplierCount === 'function') updateFollowSupplierCount();
+        if (typeof mipApplyPagination === 'function') {
+            mipPagCurrentPage = 1;
+            mipApplyPagination();
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const sel = document.getElementById('mip-stage-filter');
+        if (!sel) return;
+        sel.value = mipStageFilter;
+        sel.addEventListener('change', function () {
+            const v = this.value;
+            mipStageFilter = (v === 'mip' || v === 'r2s') ? v : 'both';
+            try { localStorage.setItem('mipStageFilter', mipStageFilter); } catch (e) {}
+            mipReapplyStageFilter();
+        });
+    });
+
+    /**
+     * Client-side pagination — runs on top of the existing filter layer.
+     * Filter-hidden rows already have inline style.display='none'; pagination further hides
+     * rows outside the current page window using a CSS class (.mip-paginated-out) so the
+     * existing calculate*() / supplier-rotation code that checks `row.style.display !== 'none'`
+     * still counts every filter-visible row.
+     */
+    let mipPagPageSize = (function () {
+        const raw = parseInt(localStorage.getItem('mipPagPageSize') || '100', 10);
+        if ([0, 50, 100, 200, 500].indexOf(raw) === -1) return 100;
+        return raw;
+    })();
+    let mipPagCurrentPage = 1;
+    let mipApplyPaginationScheduled = false;
+
+    function mipPagFilterVisibleRows() {
+        const rows = document.querySelectorAll('table.wide-table tbody tr');
+        const out = [];
+        for (let i = 0; i < rows.length; i++) {
+            if (rows[i].style.display !== 'none') out.push(rows[i]);
+        }
+        return out;
+    }
+
+    /** Build the numbered-page button list (1 … 4 5 6 … N) similar to Tabulator's paginator. */
+    function mipBuildPageButtons(totalPages) {
+        const pagesEl = document.getElementById('mip-pag-pages');
+        if (!pagesEl) return;
+        const cur = mipPagCurrentPage;
+        const around = 2; // pages on each side of the current page
+        const set = new Set();
+        set.add(1);
+        set.add(totalPages);
+        for (let p = cur - around; p <= cur + around; p++) {
+            if (p >= 1 && p <= totalPages) set.add(p);
+        }
+        const sorted = Array.from(set).sort(function (a, b) { return a - b; });
+        let html = '';
+        let prev = 0;
+        sorted.forEach(function (p) {
+            if (prev && p - prev > 1) {
+                html += '<button type="button" class="mip-pag-btn mip-pag-ellipsis" disabled>…</button>';
+            }
+            const active = p === cur ? ' active' : '';
+            html += '<button type="button" class="mip-pag-btn' + active + '" data-mip-pag-page="' + p + '">' + p + '</button>';
+            prev = p;
+        });
+        pagesEl.innerHTML = html;
+        pagesEl.querySelectorAll('button[data-mip-pag-page]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const p = parseInt(this.getAttribute('data-mip-pag-page'), 10);
+                if (isFinite(p) && p >= 1) {
+                    mipPagCurrentPage = p;
+                    mipApplyPagination();
+                }
+            });
+        });
+    }
+
+    function mipApplyPagination() {
+        const wrapper = document.getElementById('mip-pagination');
+        if (!wrapper) return;
+        const visibleRows = mipPagFilterVisibleRows();
+        const total = visibleRows.length;
+        const size = mipPagPageSize > 0 ? mipPagPageSize : Math.max(total, 1);
+        const totalPages = Math.max(1, Math.ceil(total / size));
+        if (mipPagCurrentPage > totalPages) mipPagCurrentPage = totalPages;
+        if (mipPagCurrentPage < 1) mipPagCurrentPage = 1;
+        const startIdx = (mipPagCurrentPage - 1) * size;
+        const endIdx = mipPagPageSize > 0 ? Math.min(startIdx + size, total) : total;
+
+        document.querySelectorAll('table.wide-table tbody tr.mip-paginated-out')
+            .forEach(function (r) { r.classList.remove('mip-paginated-out'); });
+
+        for (let i = 0; i < visibleRows.length; i++) {
+            if (i < startIdx || i >= endIdx) {
+                visibleRows[i].classList.add('mip-paginated-out');
+            }
+        }
+
+        const fromEl = document.getElementById('mip-pag-from');
+        const toEl = document.getElementById('mip-pag-to');
+        const totalEl = document.getElementById('mip-pag-total');
+        if (fromEl) fromEl.textContent = total === 0 ? '0' : String(startIdx + 1);
+        if (toEl) toEl.textContent = String(endIdx);
+        if (totalEl) totalEl.textContent = String(total);
+
+        const first = document.getElementById('mip-pag-first');
+        const prev = document.getElementById('mip-pag-prev');
+        const next = document.getElementById('mip-pag-next');
+        const last = document.getElementById('mip-pag-last');
+        if (first) first.disabled = mipPagCurrentPage <= 1;
+        if (prev) prev.disabled = mipPagCurrentPage <= 1;
+        if (next) next.disabled = mipPagCurrentPage >= totalPages;
+        if (last) last.disabled = mipPagCurrentPage >= totalPages;
+
+        mipBuildPageButtons(totalPages);
+    }
+
+    /** Debounced re-pagination so rapid filter calls don't thrash the DOM. */
+    function mipSchedulePagination() {
+        if (mipApplyPaginationScheduled) return;
+        mipApplyPaginationScheduled = true;
+        requestAnimationFrame(function () {
+            mipApplyPaginationScheduled = false;
+            mipApplyPagination();
+        });
+    }
+
+    function mipPagSetupControls() {
+        const sizeSel = document.getElementById('mip-pag-size');
+        if (sizeSel) {
+            sizeSel.value = String(mipPagPageSize);
+            sizeSel.addEventListener('change', function () {
+                const v = parseInt(this.value, 10);
+                mipPagPageSize = isFinite(v) ? v : 100;
+                try { localStorage.setItem('mipPagPageSize', String(mipPagPageSize)); } catch (e) {}
+                mipPagCurrentPage = 1;
+                mipApplyPagination();
+            });
+        }
+        const first = document.getElementById('mip-pag-first');
+        if (first) first.addEventListener('click', function () {
+            mipPagCurrentPage = 1; mipApplyPagination();
+        });
+        const prev = document.getElementById('mip-pag-prev');
+        if (prev) prev.addEventListener('click', function () {
+            if (mipPagCurrentPage > 1) { mipPagCurrentPage--; mipApplyPagination(); }
+        });
+        const next = document.getElementById('mip-pag-next');
+        if (next) next.addEventListener('click', function () {
+            mipPagCurrentPage++; mipApplyPagination();
+        });
+        const last = document.getElementById('mip-pag-last');
+        if (last) last.addEventListener('click', function () {
+            mipPagCurrentPage = 1e9; mipApplyPagination();
+        });
+    }
+    document.addEventListener('DOMContentLoaded', mipPagSetupControls);
 
     /** Lazy-load Tabulator when opening Archived History (saves initial parse on main MIP page). */
     var mipTabulatorLoadPromise = null;
@@ -1885,6 +2196,8 @@
                 if (typeof calculateTotalAmount === 'function') calculateTotalAmount();
                 if (typeof calculateTotalOrderItems === 'function') calculateTotalOrderItems();
                 if (typeof updateFollowSupplierCount === 'function') updateFollowSupplierCount();
+                mipPagCurrentPage = 1;
+                mipSchedulePagination();
             }
 
             function scheduleApply() {
@@ -2365,7 +2678,12 @@
             calculateTotalAmount();
             calculateTotalOrderItems();
             updateFollowSupplierCount();
+            mipPagCurrentPage = 1;
+            mipSchedulePagination();
         }
+        // Expose to global scope so the Stage filter dropdown (registered in a separate
+        // DOMContentLoaded handler higher up) can re-run the filter on change.
+        window.filterByMIPStage = filterByMIPStage;
 
         function setupAutoUpload() {
             document.querySelectorAll('.auto-upload').forEach(function(input) {
@@ -2989,6 +3307,8 @@
                 calculateTotalOrderItems();
                 updateFollowSupplierCount();
                 updateCounts(); // Update pending status counts based on visible rows
+                mipPagCurrentPage = 1;
+                mipApplyPagination();
             }, 50);
         }
 
@@ -3089,6 +3409,8 @@
             calculateTotalOrderItems();
             updateFollowSupplierCount();
             updateCounts(); // Update pending status counts when pausing
+            mipPagCurrentPage = 1;
+            mipApplyPagination();
         });
 
 
@@ -3230,6 +3552,8 @@
             calculateTotalOrderItems();
             updateFollowSupplierCount();
             updateCounts(); // Update pending status counts when filtering by date
+            mipPagCurrentPage = 1;
+            mipSchedulePagination();
         }
 
         updateCounts();
@@ -3558,6 +3882,8 @@
         calculateTotalAmount();
         calculateTotalOrderItems();
         updateFollowSupplierCount();
+        mipPagCurrentPage = 1;
+        mipApplyPagination();
     }
 
     function mipCsvEscapeField(val) {
