@@ -340,7 +340,7 @@ $(document).ready(function () {
             },
             {
                 title: 'S Bid', field: 'ebay_l30', width: 110, hozAlign: 'center',
-                headerTooltip: 'Suggested bid based on SCVR + current rule',
+                headerTooltip: 'Suggested bid based on SCVR + current rule. No SBID when CVR = 0 (no L30 sales).',
                 sorter: function(a, b, aRow, bRow) {
                     const aViews = parseFloat(aRow.getData().views) || 0;
                     const bViews = parseFloat(bRow.getData().views) || 0;
@@ -354,6 +354,9 @@ $(document).ready(function () {
                     const views = parseFloat(row.views)    || 0;
                     const scvr  = views > 0 ? (sold / views) * 100 : 0;
                     const match = getBidFromRule(scvr);
+                    if (match.skip) {
+                        return `<span class="text-muted" title="No SBID — 0 CVR (no L30 sales)" style="font-size:11px;">— no sbid</span>`;
+                    }
                     return `<span style="color:${match.color}; font-weight:700;">${match.bid.toFixed(1)}%</span>`;
                 }
             },
@@ -488,9 +491,9 @@ document.getElementById('enroll-confirm-btn').addEventListener('click', function
             btn.innerHTML = '<i class="fas fa-plus-circle me-1"></i>Enroll Now';
             bootstrap.Modal.getInstance(document.getElementById('enrollModal')).hide();
 
-            let msg = `✅ Enrolled: ${resp.success} | ❌ Failed: ${resp.failed}\n\n`;
+            let msg = `✅ Enrolled: ${resp.success} | ❌ Failed: ${resp.failed} | ⏭ Skipped: ${resp.skipped || 0}\n\n`;
             (resp.results || []).forEach(r => {
-                const icon = r.status === 'enrolled' ? '✅' : '❌';
+                const icon = r.status === 'enrolled' ? '✅' : r.status === 'skipped' ? '⏭' : '❌';
                 msg += `${icon} ${r.sku || r.listing_id} → ${r.status}${r.bid ? ' @ ' + r.bid : ''}${r.reason ? ' (' + r.reason + ')' : ''}\n`;
             });
             alert(msg);
@@ -556,16 +559,21 @@ document.getElementById('push-selected-btn').addEventListener('click', function(
 });
 
 // ── SBID Rule helper — used by S Bid column ────────
+// Skip SBID entirely when CVR = 0 (no signal: zero sales in L30 means we don't know what to bid)
 function getBidFromRule(scvr) {
+    const s = parseFloat(scvr);
+    if (!isFinite(s) || s <= 0) {
+        return { bid: 0, color: '#6c757d', skip: true };
+    }
     const bands = currentRule.bands || [];
     for (let i = 0; i < bands.length; i++) {
-        if (scvr <= parseFloat(bands[i].scvr_max)) {
-            return { bid: parseFloat(bands[i].bid), color: bands[i].color || '#333' };
+        if (s <= parseFloat(bands[i].scvr_max)) {
+            return { bid: parseFloat(bands[i].bid), color: bands[i].color || '#333', skip: false };
         }
     }
     // fallback: last band
     const last = bands[bands.length - 1] || { bid: 2.1, color: '#e83e8c' };
-    return { bid: parseFloat(last.bid), color: last.color };
+    return { bid: parseFloat(last.bid), color: last.color, skip: false };
 }
 
 // ── SBID Rule ──────────────────────────────────────

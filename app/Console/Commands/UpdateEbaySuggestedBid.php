@@ -193,8 +193,14 @@ class UpdateEbaySuggestedBid extends Command
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
-                        $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% | SBID: {$newBid}");
-                        $updatedListings++;
+
+                        if ($newBid <= 0) {
+                            // 0 CVR → no SBID. Logged but excluded from API push by the > 0 check below.
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: 0% (sold={$soldL30}, views={$views}) → No SBID (skipped)");
+                        } else {
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% | SBID: {$newBid}");
+                            $updatedListings++;
+                        }
                     }
                 }
             });
@@ -392,9 +398,15 @@ class UpdateEbaySuggestedBid extends Command
     /**
      * Get bid from dynamic SCVR bands rule.
      * Bands sorted ascending by scvr_max — first band where scvr <= scvr_max wins.
+     *
+     * Returns 0.0 when SCVR (CVR) is 0 — no L30 sales means we have no signal,
+     * so no SBID is pushed for that listing. Callers must treat 0 as "skip".
      */
     private function getBidFromRule(float $scvr, array $bands): float
     {
+        if ($scvr <= 0) {
+            return 0.0;
+        }
         foreach ($bands as $band) {
             if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
                 return (float)($band['bid'] ?? 9.1);

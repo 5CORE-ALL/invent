@@ -96,6 +96,11 @@ class EbayCampaignAdsController extends Controller
             $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
 
             $newBid = $this->getBidFromBands($scvr, $bands);
+            if ($newBid <= 0) {
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No SBID — 0 CVR (no L30 sales)'];
+                $skipped++;
+                continue;
+            }
             $byCampaign[$ad->campaign_id][] = ['listingId' => $lid, 'bidPercentage' => (string)$newBid];
         }
 
@@ -134,8 +139,16 @@ class EbayCampaignAdsController extends Controller
         ]);
     }
 
+    /**
+     * Dynamic SBID — bid from SCVR bands.
+     * Returns 0.0 when SCVR (CVR) is 0 — no L30 sales means no signal to bid on.
+     * Callers MUST treat 0 as "skip / no SBID".
+     */
     private function getBidFromBands(float $scvr, array $bands): float
     {
+        if ($scvr <= 0) {
+            return 0.0;
+        }
         foreach ($bands as $band) {
             if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
                 return (float)($band['bid'] ?? 9.1);
@@ -186,6 +199,7 @@ class EbayCampaignAdsController extends Controller
         $success = 0;
         $failed  = 0;
 
+        $skipped = 0;
         foreach ($listingIds as $lid) {
             $lid    = (string)$lid;
             $metric = $metrics->get($lid);
@@ -193,6 +207,12 @@ class EbayCampaignAdsController extends Controller
             $l30    = (float)($metric?->ebay_l30 ?? 0);
             $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
             $bid    = $this->getBidFromBands($scvr, $bands);
+
+            if ($bid <= 0) {
+                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No SBID — 0 CVR (no L30 sales)'];
+                $skipped++;
+                continue;
+            }
 
             try {
                 // Create ad in campaign with listing_id + bid
@@ -235,6 +255,7 @@ class EbayCampaignAdsController extends Controller
         return response()->json([
             'success' => $success,
             'failed'  => $failed,
+            'skipped' => $skipped,
             'results' => $results,
         ]);
     }
