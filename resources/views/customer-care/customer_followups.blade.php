@@ -369,7 +369,7 @@
                     <div class="followup-toolbar-item flex-shrink-0" style="min-width: 9rem;">
                         <label class="followup-toolbar-label mb-0 d-block" for="filterStatus">Status</label>
                         <select class="form-select" id="filterStatus">
-                            <option value="all" selected>All (excl. resolved)</option>
+                            <option value="all" selected>All</option>
                             <option value="Pending">Pending</option>
                             <option value="Resolved">Resolved</option>
                             <option value="Escalated">Escalated</option>
@@ -394,9 +394,9 @@
                         <table class="table table-hover mb-0 align-middle">
                             <colgroup>
                                 <col style="width:5%"><col style="width:7.2%"><col
-                                    style="width:33.6%"><col style="width:7.7%"><col style="width:9.2%"><col
+                                    style="width:26.6%"><col style="width:7.7%"><col style="width:9.2%"><col
                                     style="width:4.5%"><col
-                                    style="width:7.5%"><col style="width:7.5%"><col style="width:7%"><col
+                                    style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col
                                     style="width:3.5%"><col
                                     style="width:11rem">
                             </colgroup>
@@ -410,6 +410,7 @@
                                     <th scope="col">Status</th>
                                     <th scope="col">Date</th>
                                     <th scope="col">Next</th>
+                                    <th scope="col">Resolved Date</th>
                                     <th scope="col">Executive</th>
                                     <th scope="col" class="followup-link-col">Link</th>
                                     <th scope="col" class="followup-actions-col">Actions</th>
@@ -417,7 +418,7 @@
                             </thead>
                             <tbody id="followupTableBody">
                                 <tr>
-                                    <td colspan="11" class="text-center py-4 text-muted">Loading…</td>
+                                    <td colspan="12" class="text-center py-4 text-muted">Loading…</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -516,6 +517,16 @@
                 const raw = row.followup_display;
                 const t = raw != null && String(raw).trim() !== '' ? String(raw) : '—';
                 return '<td class="followup-readonly-date">' + escapeHtml(t) + '</td>';
+            }
+
+            /** Resolved/closing date column. Shows the timestamp the row was marked Resolved, or — when not closed. */
+            function resolvedDateCellHtml(row) {
+                const raw = row.resolved_display;
+                if (row.status !== 'Resolved' || raw == null || String(raw).trim() === '') {
+                    return '<td class="followup-readonly-date text-muted">—</td>';
+                }
+                return '<td class="followup-readonly-date text-success" title="Closed on ' +
+                    escapeAttr(raw) + '"><i class="bi bi-check2-circle"></i> ' + escapeHtml(raw) + '</td>';
             }
 
             function nextFollowupAtCellHtml(row) {
@@ -639,7 +650,7 @@
 
                     if (!json.data.length) {
                         tbody.innerHTML =
-                            '<tr><td colspan="11" class="text-center py-4 text-muted">No records match filters.</td></tr>';
+                            '<tr><td colspan="12" class="text-center py-4 text-muted">No records match filters.</td></tr>';
                         return;
                     }
 
@@ -654,6 +665,7 @@
                             statusCellHtml(row) +
                             followupDateDisplayCellHtml(row) +
                             nextFollowupAtCellHtml(row) +
+                            resolvedDateCellHtml(row) +
                             '<td>' + escapeHtml(row.executive) + '</td>' +
                             referenceLinkCellHtml(row) +
                             '<td class="text-nowrap text-center followup-actions-col">' +

@@ -198,17 +198,11 @@ class CustomerFollowupController extends Controller
         if ($request->filled('channel_id')) {
             $q->where('channel_master_id', $request->channel_id);
         }
-        if ($request->filled('status')) {
-            if ($request->status === 'all') {
-                // Match default list: hide Resolved (green status dot) until user picks "Resolved".
-                $q->where('status', '!=', 'Resolved');
-            } else {
-                $q->where('status', $request->status);
-            }
-        } else {
-            // Default list: hide Resolved (green) unless a status filter is chosen.
-            $q->where('status', '!=', 'Resolved');
+        if ($request->filled('status') && $request->status !== 'all') {
+            $q->where('status', $request->status);
         }
+        // Default list ("all" or no filter): show every status, including Resolved,
+        // so the closing date is visible immediately after a ticket is closed.
         if ($request->filled('executive')) {
             $q->where('assigned_executive', 'like', '%' . addcslashes(trim($request->executive), '%_\\') . '%');
         }
@@ -244,6 +238,10 @@ class CustomerFollowupController extends Controller
             $followupDate = $f->followup_date ? $f->followup_date->format('d M') : '';
             $followupDt = $followupDate !== '' ? $followupDate . ($time ? ' ' . $time : '') : '—';
 
+            $resolvedDisplay = $f->resolved_at
+                ? Carbon::parse($f->resolved_at)->timezone($tz)->format('d M Y H:i')
+                : null;
+
             $notes = $f->comments;
             $notesStr = $notes !== null && $notes !== '' ? (string) $notes : '';
 
@@ -257,6 +255,7 @@ class CustomerFollowupController extends Controller
                 'customer_name' => $f->customer_name,
                 'status' => $f->status,
                 'followup_display' => $followupDt,
+                'resolved_display' => $resolvedDisplay,
                 'next_followup' => $next,
                 'next_followup_at' => self::toDatetimeLocalString($f->next_followup_at, $tz),
                 'executive' => $f->assigned_executive ?? '—',

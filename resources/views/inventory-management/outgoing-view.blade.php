@@ -723,7 +723,12 @@
                     if (hasError) return;
 
 
-                    // Create overlay loader dynamically
+                    const $submitBtn = $('#outgoingForm').find('button[type="submit"], #saveOutgoingBtn');
+                    if ($submitBtn.prop('disabled')) {
+                        return;
+                    }
+                    $submitBtn.prop('disabled', true);
+
                     const overlay = document.createElement("div");
                     overlay.id = "processing-overlay";
                     overlay.innerHTML = `
@@ -740,9 +745,9 @@
                             z-index:9999;
                             font-size:20px;
                         ">
-                            <div style="font-size:28px;">🚀 Processing incoming stock...</div>
+                            <div style="font-size:28px;">🚀 Processing outgoing stock...</div>
                             <small style="margin-top:10px;font-size:16px;">
-                                Please wait while we update Shopify inventory.
+                                Please wait while we update Shopify inventory. This can take a moment for large catalogs.
                             </small>
                         </div>`;
                     document.body.appendChild(overlay);
@@ -751,6 +756,11 @@
                         url: '{{ route("outgoing.store") }}',
                         method: 'POST',
                         data: formData,
+                        timeout: 180000, // 3 min – Shopify product search can paginate
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                            'Accept': 'application/json'
+                        },
                         success: function (response) {
                             document.getElementById("processing-overlay")?.remove();
                             alert(response.message || 'Outgoing inventory stored and updated in Shopify successfully!');
@@ -759,10 +769,32 @@
                             $('#outgoing-rows-container .outgoing-row').not(':first').remove();
                             location.reload();
                         },
-                        error: function (xhr) {
+                        error: function (xhr, textStatus) {
                             document.getElementById("processing-overlay")?.remove();
-                            console.log(xhr.responseJSON);
-                            alert('Error storing Outgoing.');
+                            $submitBtn.prop('disabled', false);
+                            console.log('Outgoing store error:', xhr.status, xhr.responseJSON || xhr.responseText);
+
+                            let msg = 'Error storing Outgoing.';
+                            const res = xhr.responseJSON;
+
+                            if (textStatus === 'timeout') {
+                                msg = 'Request timed out while contacting Shopify. The item may or may not have been deducted — please refresh and verify before retrying.';
+                            } else if (xhr.status === 419) {
+                                msg = 'Your session has expired. Please reload the page and try again.';
+                            } else if (xhr.status === 422 && res && res.errors) {
+                                const firstField = Object.keys(res.errors)[0];
+                                msg = 'Validation error: ' + res.errors[firstField][0];
+                            } else if (res && res.error) {
+                                msg = res.error;
+                            } else if (res && res.message) {
+                                msg = res.message;
+                            } else if (xhr.status === 0) {
+                                msg = 'Network error — could not reach the server. Check your connection and try again.';
+                            } else if (xhr.status >= 500) {
+                                msg = 'Server error (' + xhr.status + '). Please check logs or contact support.';
+                            }
+
+                            alert(msg);
                         }
                     });
                 });
