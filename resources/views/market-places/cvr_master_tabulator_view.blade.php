@@ -909,8 +909,13 @@
         // Submit remark
         $(document).on('click', '.submit-remark-btn', function(e) {
             e.stopPropagation();
-            const sku = $(this).data('sku');
-            const remarkInput = $(`.remark-input[data-sku="${sku}"]`);
+            const $btn = $(this);
+            const sku = $btn.data('sku');
+            // Scope textarea lookup to the same row to avoid jQuery selector issues with SKUs containing special chars
+            const $row = $btn.closest('.tabulator-row');
+            const remarkInput = $row.length
+                ? $row.find('.remark-input').first()
+                : $(`.remark-input[data-sku="${sku}"]`);
             const remark = remarkInput.val().trim();
             
             if (!remark) {
@@ -929,11 +934,29 @@
                 success: function(response) {
                     showToast('Remark saved successfully', 'success');
                     remarkInput.val(''); // Clear input
-                    
-                    // Update the cell directly
-                    const row = table.getRow(function(row){ return row.getData().sku === sku; });
-                    if (row) {
-                        row.update({latest_remark: remark, remark_solved: false});
+
+                    // Update the visible row. Tabulator's getRow() doesn't accept a predicate
+                    // function — pass the DOM element from the clicked button's row instead.
+                    let rowComponent = null;
+                    if ($row.length) {
+                        rowComponent = table.getRow($row[0]);
+                    }
+                    if (!rowComponent) {
+                        // Fallback: scan all rows for the matching SKU
+                        rowComponent = table.getRows().find(r => r.getData().sku === sku) || null;
+                    }
+                    if (rowComponent) {
+                        rowComponent.update({ latest_remark: remark, remark_solved: false });
+                    }
+
+                    // Keep fullDataset in sync so filters / play-navigation don't lose the new remark
+                    if (Array.isArray(fullDataset) && fullDataset.length) {
+                        fullDataset.forEach(r => {
+                            if (r && r.sku === sku && r.is_parent_summary !== true) {
+                                r.latest_remark = remark;
+                                r.remark_solved = false;
+                            }
+                        });
                     }
                 },
                 error: function() {
@@ -1024,12 +1047,21 @@
                 success: function(response) {
                     showToast('Status updated', 'success');
                     loadRemarkHistory(sku); // Reload history
-                    
-                    // Update the row in table if it's the latest remark
-                    const row = table.getRow(function(row){ return row.getData().sku === sku; });
-                    if (row) {
-                        const currentData = row.getData();
-                        row.update({remark_solved: response.is_solved});
+
+                    // Update the row in table if it's the latest remark.
+                    // Tabulator's getRow() doesn't accept a predicate — scan all rows by SKU.
+                    const rowComponent = table.getRows().find(r => r.getData().sku === sku);
+                    if (rowComponent) {
+                        rowComponent.update({ remark_solved: response.is_solved });
+                    }
+
+                    // Keep fullDataset in sync so filters / play-navigation reflect the change
+                    if (Array.isArray(fullDataset) && fullDataset.length) {
+                        fullDataset.forEach(r => {
+                            if (r && r.sku === sku && r.is_parent_summary !== true) {
+                                r.remark_solved = response.is_solved;
+                            }
+                        });
                     }
                 },
                 error: function() {
