@@ -112,6 +112,32 @@
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.red-bg {
             color: #ff2727 !important;
         }
+        /* ACOS L30 text color bands: <10 pink, <20 green, <30 blue, <40 yellow, <=50 orange, >50 red */
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.acos-pink {
+            color: #ff01d0 !important;
+            font-weight: 600;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.acos-green {
+            color: #05bd30 !important;
+            font-weight: 600;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.acos-blue {
+            color: #2563eb !important;
+            font-weight: 600;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.acos-yellow {
+            color: #ca8a04 !important;
+            font-weight: 600;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.acos-orange {
+            background-color: #fde047 !important;
+            color: #000 !important;
+            font-weight: 700;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.acos-red {
+            color: #ff2727 !important;
+            font-weight: 600;
+        }
         #gac-raw-filter-bar {
             background: #f1f5f9;
             border: 1px solid #e2e8f0;
@@ -232,6 +258,18 @@
                                 </select>
                             </div>
                             <div class="gac-raw-filter-field">
+                                <label class="gac-raw-filter-label mb-0" for="gac-filter-acos">ACOS</label>
+                                <select id="gac-filter-acos" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by ACOS L30 band">
+                                    <option value="all" selected>All</option>
+                                    <option value="pink">0 – 10%</option>
+                                    <option value="green">10 – 20%</option>
+                                    <option value="blue">20 – 30%</option>
+                                    <option value="yellow">30 – 40%</option>
+                                    <option value="orange">40 – 50%</option>
+                                    <option value="red">&gt; 50%</option>
+                                </select>
+                            </div>
+                            <div class="gac-raw-filter-field">
                                 <label class="gac-raw-filter-label mb-0" for="gac-filter-stat">Sts</label>
                                 <select id="gac-filter-stat" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by campaign status">
                                     <option value="all" selected>All</option>
@@ -330,7 +368,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-2">Bands are evaluated <strong>top to bottom</strong>: first match wins (same logic as the grid). Require <code>ge_low &lt; ge_20 &lt; ge_30 &lt; ge_40 &lt; ge_50 &lt; gt</code>.</p>
+                    <p class="small text-muted mb-2">Bands are evaluated <strong>top to bottom</strong>: first match wins (same logic as the grid). Require <code>le_zero &lt; ge_low &lt; ge_20 &lt; ge_30 &lt; ge_40 &lt; ge_50 &lt; gt</code>.</p>
                     <div class="row g-2 small">
                         <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtGt">ACOS &gt; (%, exclusive)</label><input type="number" step="0.01" class="form-control form-control-sm" id="gacSbgtGt"></div>
                         <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtValGt">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtValGt"></div>
@@ -350,6 +388,9 @@
                         <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtGeLow">ACOS ≥ (%)</label><input type="number" step="0.001" class="form-control form-control-sm" id="gacSbgtGeLow"></div>
                         <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtValLow">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtValLow"></div>
                         <div class="col-md-4"></div>
+                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtLeZero">ACOS ≤ (%)</label><input type="number" step="0.001" min="0" class="form-control form-control-sm" id="gacSbgtLeZero"></div>
+                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtValEqZero">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtValEqZero"></div>
+                        <div class="col-md-4"><label class="form-label mb-0 text-muted">Band</label><p class="mb-0 form-control-plaintext small">No spend / no sales</p></div>
                         <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtValElse">SBGT if below min ACOS</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtValElse"></div>
                     </div>
                     <p class="small text-danger mb-0 mt-2 d-none" id="gacRawSbgtRuleErr" role="alert"></p>
@@ -496,6 +537,7 @@
                     filter_ub7: gacRawFilterParamVal('gac-filter-ub7'),
                     filter_ub2: gacRawFilterParamVal('gac-filter-ub2'),
                     filter_ub1: gacRawFilterParamVal('gac-filter-ub1'),
+                    filter_acos: gacRawFilterParamVal('gac-filter-acos'),
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
                 };
             }
@@ -514,6 +556,7 @@
                 return {
                     filter_ub2: p.filter_ub2,
                     filter_ub1: p.filter_ub1,
+                    filter_acos: p.filter_acos,
                     filter_stat: p.filter_stat
                 };
             }
@@ -566,6 +609,7 @@
                         bucket: bucketKey,
                         filter_ub2: p.filter_ub2,
                         filter_ub1: p.filter_ub1,
+                        filter_acos: p.filter_acos,
                         filter_stat: p.filter_stat
                     },
                     success: function(res) {
@@ -640,6 +684,7 @@
                         _token: tok,
                         filter_ub2: p.filter_ub2,
                         filter_ub1: p.filter_ub1,
+                        filter_acos: p.filter_acos,
                         filter_stat: p.filter_stat
                     },
                     success: function(res) {
@@ -795,6 +840,7 @@
                 paginationCounter: 'rows',
                 paginationButtonCount: 12,
                 paginationInitialPage: 1,
+                sortMode: 'remote',
                 placeholder: 'No rows in google_ads_campaigns.',
                 selectable: true,
                 autoColumns: true,
@@ -837,6 +883,12 @@
                         if (!isFinite(v)) return '';
                         return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     };
+                    /** Same as moneyFormatter but rounded to whole units with thousands separator. */
+                    var moneyRoundedFormatter = function(c) {
+                        var v = parseFloat(c.getValue());
+                        if (!isFinite(v)) return '';
+                        return Math.round(v).toLocaleString();
+                    };
                     var intLocaleFormatter = function(c) {
                         var v = c.getValue();
                         if (v === null || v === undefined || v === '') return '';
@@ -866,9 +918,29 @@
                         }
                         return Math.round(v) + '%';
                     };
+                    /** ACOS L30 text color: <10 pink, <20 green, <30 blue, <40 yellow, 40–50 orange, >50 red. */
                     var acosFormatter = function(c) {
                         var v = parseFloat(c.getValue());
+                        var td = c.getElement();
+                        if (td) {
+                            td.classList.remove('acos-pink', 'acos-green', 'acos-blue', 'acos-yellow', 'acos-orange', 'acos-red');
+                        }
                         if (!isFinite(v)) return '';
+                        if (td) {
+                            if (v > 50) {
+                                td.classList.add('acos-red');
+                            } else if (v >= 40) {
+                                td.classList.add('acos-orange');
+                            } else if (v >= 30) {
+                                td.classList.add('acos-yellow');
+                            } else if (v >= 20) {
+                                td.classList.add('acos-blue');
+                            } else if (v >= 10) {
+                                td.classList.add('acos-green');
+                            } else {
+                                td.classList.add('acos-pink');
+                            }
+                        }
                         return Math.round(v) + '%';
                     };
                     var sbidFormatter = function(c) {
@@ -901,6 +973,21 @@
                         var dot = '<span aria-hidden="true" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
                         return '<span class="gac-raw-status-cell" title="' + tipAttr + '" aria-label="' + tipAttr + '" style="display:inline-flex;align-items:center;justify-content:center;">' + dot + '</span>';
                     };
+                    /** Server-side sort whitelist — keep in sync with applyRawGridSort() in the controller. */
+                    var sortableFields = {
+                        campaign_name: true,
+                        spend: true,
+                        l7_spend: true,
+                        l2_spend: true,
+                        l1_spend: true,
+                        metrics_clicks: true,
+                        ad_sales_L30: true,
+                        acos_l30: true,
+                        ub7: true,
+                        ub2: true,
+                        ub1: true,
+                        bgt: true,
+                    };
                     defs.forEach(function(col) {
                         if (col.field === '__gac_select') {
                             col.headerSort = false;
@@ -911,7 +998,7 @@
                             return;
                         }
                         // Avoid a uniform minWidth on every column — Tabulator fits width to data unless width/minWidth is set
-                        col.headerSort = false;
+                        col.headerSort = Object.prototype.hasOwnProperty.call(sortableFields, col.field);
                         col.hozAlign = 'center';
                         col.headerHozAlign = 'center';
                         if (col.field === 'campaign_name') {
@@ -929,13 +1016,13 @@
                         }
                         if (Object.prototype.hasOwnProperty.call(moneySpendTitles, col.field)) {
                             col.title = moneySpendTitles[col.field];
-                            col.formatter = moneyFormatter;
+                            col.formatter = moneyRoundedFormatter;
                             col.minWidth = Math.max(col.minWidth || 0, 70);
                         }
                         if (Object.prototype.hasOwnProperty.call(utilizedStyleTitles, col.field)) {
                             col.title = utilizedStyleTitles[col.field];
                             if (col.field === 'ad_sales_L30') {
-                                col.formatter = moneyFormatter;
+                                col.formatter = moneyRoundedFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 77);
                             } else if (col.field === 'acos_l30') {
                                 col.formatter = acosFormatter;
@@ -949,6 +1036,9 @@
                             } else if (col.field === 'sbid') {
                                 col.formatter = sbidFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 70);
+                            } else if (col.field === 'bgt') {
+                                col.formatter = moneyRoundedFormatter;
+                                col.minWidth = Math.max(col.minWidth || 0, 57);
                             } else {
                                 col.formatter = moneyFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 70);
@@ -989,7 +1079,7 @@
                 },
             });
 
-            ['gac-filter-ub7', 'gac-filter-ub2', 'gac-filter-ub1', 'gac-filter-stat'].forEach(function(fid) {
+            ['gac-filter-ub7', 'gac-filter-ub2', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat'].forEach(function(fid) {
                 var fel = document.getElementById(fid);
                 if (fel) {
                     fel.addEventListener('change', gacRawReloadGridForFilters);
@@ -1196,6 +1286,8 @@
                 gacSetVal('gacSbgtVal2030', sbgt.val_20_30);
                 gacSetVal('gacSbgtGeLow', sbgt.ge_low);
                 gacSetVal('gacSbgtValLow', sbgt.val_low);
+                gacSetVal('gacSbgtLeZero', sbgt.le_zero);
+                gacSetVal('gacSbgtValEqZero', sbgt.val_eq_zero);
                 gacSetVal('gacSbgtValElse', sbgt.val_else);
             }
             function gacCollectSbgt() {
@@ -1212,6 +1304,8 @@
                     val_20_30: gacInt('gacSbgtVal2030'),
                     ge_low: gacNum('gacSbgtGeLow'),
                     val_low: gacInt('gacSbgtValLow'),
+                    le_zero: gacNum('gacSbgtLeZero'),
+                    val_eq_zero: gacInt('gacSbgtValEqZero'),
                     val_else: gacInt('gacSbgtValElse'),
                 };
             }

@@ -313,21 +313,31 @@ class FacebookAllAdsSheetController extends Controller
                 $numCol   = $col['formula'][0];
                 $denCol   = $col['formula'][1];
                 $decimals = $col['formula'][2] ?? 2;
-                $clean[$col['title']] = $this->divPct(
-                    $clean[$numCol] ?? null,
-                    $clean[$denCol] ?? null,
-                    $decimals
-                );
+                $mode     = $col['formula'][3] ?? null;
+                $num      = $clean[$numCol] ?? null;
+                $den      = $clean[$denCol] ?? null;
+                if ($mode === 'acos') {
+                    $clean[$col['title']] = $this->acosPct($num, $den, $decimals);
+                } elseif ($mode === 'cps') {
+                    $clean[$col['title']] = $this->cpsValue($num, $den, $decimals);
+                } else {
+                    $clean[$col['title']] = $this->divPct($num, $den, $decimals);
+                }
             }
             // Pass 2b — `rule` columns. Run before formatters so the rule
             // sees raw numeric SPEND / SALES rather than "$1,234" strings.
             foreach (self::MERGED_COLUMNS as $col) {
                 if (! isset($col['rule'])) continue;
                 if ($col['rule'] === 'acos_budget') {
-                    $clean[$col['title']] = $this->acosBudgetRule(
+                    $match = $this->acosBudgetMatch(
                         $clean['SPEND'] ?? null,
                         $clean['SALES'] ?? null
                     );
+                    $clean[$col['title']] = $match['sbgt'];
+                    // Hidden field — the JS Sbgt/Acos formatter paints
+                    // the cell background with this colour so users
+                    // can scan the recommendation strength at a glance.
+                    $clean['_sbgt_color'] = $match['color'];
                 }
             }
             // Pass 3 — apply `formatter` to source-based columns.
@@ -339,6 +349,41 @@ class FacebookAllAdsSheetController extends Controller
                 );
             }
             $projected[] = $clean;
+        }
+
+        // Pass 4 — attach the latest audit for each campaign id so the
+        // Audit / History columns can render from $row._audit_*. One
+        // grouped query keeps this O(1) regardless of row count.
+        $cids = collect($projected)
+            ->pluck('CAMPAIGN ID')
+            ->filter(fn($v) => is_string($v) && $v !== '')
+            ->unique()
+            ->values()
+            ->all();
+        $latestAudits = $this->latestAuditsFor($cids);
+        foreach ($projected as &$row) {
+            $cid = $row['CAMPAIGN ID'] ?? '';
+            $a   = $latestAudits[$cid] ?? null;
+            $row['_audit_score']    = $a['score_pct']      ?? null;
+            $row['_audit_at']       = $a['audited_at']     ?? null;
+            $row['_audit_by']       = $a['audited_by_name'] ?? null;
+            $row['_audit_comments'] = $a['comments']       ?? null;
+        }
+        unset($row);
+
+        // Pass 5 — write today's per-campaign metric snapshot so the
+        // badge trend chart has a real history to query later. Same
+        // pass runs every time the merged view is computed (every
+        // page load, every upload), with `updateOrInsert` keyed on
+        // (campaign_id, snapshot_date) so we always store the most
+        // recent value of the day. Cheap because $projected is a
+        // small in-memory array and the unique key catches dupes.
+        try {
+            $this->snapshotMergedView($projected);
+        } catch (\Throwable $e) {
+            // Snapshot writes must never break the page render —
+            // log and continue.
+            \Log::warning('FAAS snapshot failed: ' . $e->getMessage());
         }
 
         $columnList = array_map(
@@ -419,6 +464,60 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * ACOS-specific percentage with the user-defined edge-cases that
+     * `divPct()` deliberately doesn't apply (CTR / CVR want plain
+     * "blank when denominator is zero" semantics):
+     *
+     *   • Both blank/null     → null  (no source data — leave blank)
+     *   • spend == 0          → "0%"  (campaign hasn't spent — best-case)
+     *   • spend > 0, sales==0 → "100%"(spent without selling — worst-case)
+     *   • otherwise           → (spend / sales) * 100, formatted
+     */
+    private function acosPct($spend, $sales, int $decimals = 0): ?string
+    {
+        $s = $this->parseNumeric($spend);
+        $r = $this->parseNumeric($sales);
+        // No source data on either side → leave the cell blank.
+        if ($s === null && $r === null) return null;
+        // Spend = 0 (or missing & sales present) → 0 %.
+        if ($s === null || $s == 0.0) {
+            return number_format(0, $decimals) . '%';
+        }
+        // Spend > 0 and sales is 0/blank → 100 %.
+        if ($r === null || $r == 0.0) {
+            return number_format(100, $decimals) . '%';
+        }
+        return number_format(($s / $r) * 100, $decimals) . '%';
+    }
+
+    /**
+     * Cost per sold = spend / units sold, rendered with a "$" prefix.
+     * Unlike `divPct()` this does NOT multiply by 100 and does NOT
+     * append "%" — the result is a dollar amount.
+     *
+     * Edge cases:
+     *   • Both blank/null            → null  (no source data)
+     *   • Spend = 0                  → "$0.0" (free clicks/impressions)
+     *   • Spend > 0 but sold = 0     → null  (cannot compute "per sale")
+     *   • Otherwise                  → "$X.Y" with `$decimals` fraction digits
+     */
+    private function cpsValue($spend, $sold, int $decimals = 1): ?string
+    {
+        $s = $this->parseNumeric($spend);
+        $u = $this->parseNumeric($sold);
+        if ($s === null && $u === null) return null;
+        if ($s === null || $s == 0.0) {
+            return '$' . number_format(0, $decimals);
+        }
+        if ($u === null || $u == 0.0) {
+            // Spend with no sales — leave blank rather than rendering
+            // a misleading huge / infinite figure.
+            return null;
+        }
+        return '$' . number_format($s / $u, $decimals);
+    }
+
+    /**
      * Suggested-budget rule keyed off the ACOS bracket. Bands are loaded
      * from the `facebook_sbgt_rules` table (key = "facebook_all") so
      * users can edit them at runtime via the "Sbgt Rule" modal — same
@@ -435,10 +534,22 @@ class FacebookAllAdsSheetController extends Controller
      */
     private function acosBudgetRule($spend, $sales): ?int
     {
+        return $this->acosBudgetMatch($spend, $sales)['sbgt'];
+    }
+
+    /**
+     * Resolve an ACOS bracket → both the suggested budget AND the
+     * band's colour, so callers can paint cells / chips with the
+     * matched band's colour.
+     *
+     * @return array{sbgt: ?int, color: ?string}
+     */
+    private function acosBudgetMatch($spend, $sales): array
+    {
         $s = $this->parseNumeric($spend);
         $r = $this->parseNumeric($sales);
         if (($s === null || $s == 0.0) && ($r === null || $r == 0.0)) {
-            return null;
+            return ['sbgt' => null, 'color' => null];
         }
         // Effective infinity — keep arithmetic finite so the catch-all
         // band still wins via the normal "<=" comparison.
@@ -450,11 +561,17 @@ class FacebookAllAdsSheetController extends Controller
         foreach ($bands as $band) {
             $max = (float) ($band['acos_max'] ?? 9999);
             if ($acos <= $max) {
-                return (int) ($band['sbgt'] ?? 0);
+                return [
+                    'sbgt'  => (int) ($band['sbgt'] ?? 0),
+                    'color' => $band['color'] ?? null,
+                ];
             }
         }
-        // Defensive: should never hit (catch-all band guarantees a match).
-        return (int) (end($bands)['sbgt'] ?? 1);
+        $last = end($bands) ?: [];
+        return [
+            'sbgt'  => (int) ($last['sbgt'] ?? 1),
+            'color' => $last['color'] ?? null,
+        ];
     }
 
     /**
@@ -483,14 +600,191 @@ class FacebookAllAdsSheetController extends Controller
     {
         return [
             'bands' => [
-                ['acos_max' => 10,   'sbgt' => 20, 'label' => 'Excellent', 'color' => '#16a34a'],
-                ['acos_max' => 20,   'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'],
-                ['acos_max' => 30,   'sbgt' => 10, 'label' => 'Fair',      'color' => '#facc15'],
-                ['acos_max' => 40,   'sbgt' => 5,  'label' => 'Poor',      'color' => '#f97316'],
-                ['acos_max' => 50,   'sbgt' => 2,  'label' => 'Bad',       'color' => '#ef4444'],
-                ['acos_max' => 9999, 'sbgt' => 1,  'label' => 'Critical',  'color' => '#7f1d1d'],
+                ['acos_max' => 10,   'sbgt' => 20, 'label' => 'Excellent', 'color' => '#ec4899'], // Magenta
+                ['acos_max' => 20,   'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'], // Green
+                ['acos_max' => 30,   'sbgt' => 10, 'label' => 'Fair',      'color' => '#3b82f6'], // Blue
+                ['acos_max' => 40,   'sbgt' => 5,  'label' => 'Poor',      'color' => '#ca8a04'], // Mustard
+                ['acos_max' => 50,   'sbgt' => 2,  'label' => 'Bad',       'color' => '#f97316'], // Orange
+                ['acos_max' => 9999, 'sbgt' => 1,  'label' => 'Critical',  'color' => '#dc2626'], // Red
             ],
         ];
+    }
+
+    /**
+     * Upsert today's per-campaign metric snapshot for every row in
+     * the projected merged view. One row per (campaign_id, today)
+     * — re-running the same day overwrites the previous snapshot,
+     * so the value reflects the latest uploads / Audit / Sbgt rule.
+     *
+     * @param array<int, array<string, mixed>> $rows  projected merged-view rows
+     */
+    private function snapshotMergedView(array $rows): void
+    {
+        if (empty($rows)) return;
+
+        $today = now()->toDateString();
+        $payloads = [];
+        foreach ($rows as $r) {
+            $cid = (string) ($r['CAMPAIGN ID'] ?? '');
+            // Sanity: Meta campaign ids are long numeric strings; skip
+            // anything else so we don't pollute the snapshot table.
+            if ($cid === '' || ! preg_match('/^\d{6,}$/', $cid)) continue;
+            $payloads[] = [
+                'campaign_id'   => $cid,
+                'snapshot_date' => $today,
+                'impr'  => $this->parseNumeric($r['IMPR']  ?? null) ?? 0,
+                'clk'   => $this->parseNumeric($r['CLK']   ?? null) ?? 0,
+                'spend' => $this->parseNumeric($r['SPEND'] ?? null) ?? 0,
+                'sales' => $this->parseNumeric($r['SALES'] ?? null) ?? 0,
+                'sold'  => $this->parseNumeric($r['SOLD']  ?? null) ?? 0,
+                'sbgt'  => $this->parseNumeric($r['Sbgt']  ?? null) ?? 0,
+            ];
+        }
+        if (empty($payloads)) return;
+
+        $now = now();
+        foreach ($payloads as $p) {
+            DB::table('facebook_campaign_metric_snapshots')->updateOrInsert(
+                ['campaign_id' => $p['campaign_id'], 'snapshot_date' => $p['snapshot_date']],
+                array_merge($p, ['updated_at' => $now, 'created_at' => $now])
+            );
+        }
+    }
+
+    /**
+     * Bulk-fetch the latest audit for a list of Meta campaign ids.
+     * One window-function query keeps the projection cost flat even
+     * with thousands of campaigns.
+     *
+     * @param array<int, string> $cids
+     * @return array<string, array{score_pct:int, audited_at:string, audited_by_name:?string, comments:?string}>
+     */
+    private function latestAuditsFor(array $cids): array
+    {
+        if (empty($cids)) return [];
+        // Subquery picks the row with the largest id per campaign_id.
+        // Using id (auto-increment) is monotonic with audited_at and
+        // dodges any tie-breaker ambiguity if two audits land in the
+        // same second.
+        $sub = DB::table('facebook_campaign_audits')
+            ->select('campaign_id', DB::raw('MAX(id) AS max_id'))
+            ->whereIn('campaign_id', $cids)
+            ->groupBy('campaign_id');
+
+        $rows = DB::table('facebook_campaign_audits AS a')
+            ->joinSub($sub, 'l', function ($j) {
+                $j->on('a.id', '=', 'l.max_id');
+            })
+            ->select('a.campaign_id', 'a.score_pct', 'a.audited_at', 'a.audited_by_name', 'a.comments')
+            ->get();
+
+        $map = [];
+        foreach ($rows as $r) {
+            $map[$r->campaign_id] = [
+                'score_pct'        => (int) $r->score_pct,
+                'audited_at'       => (string) $r->audited_at,
+                'audited_by_name'  => $r->audited_by_name,
+                'comments'         => $r->comments,
+            ];
+        }
+        return $map;
+    }
+
+    /**
+     * GET endpoint — returns the audit checklist + the latest audit
+     * + history for one campaign. The blade calls this when the user
+     * clicks the Audit cell.
+     *
+     *   GET /facebook-all-ads-sheet/audit?campaign_id=120247…
+     */
+    public function getAudit(Request $request)
+    {
+        $cid = trim((string) $request->input('campaign_id', ''));
+        if ($cid === '' || !preg_match('/^\d{6,}$/', $cid)) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Invalid or missing campaign_id.',
+            ], 422);
+        }
+
+        $latest = DB::table('facebook_campaign_audits')
+            ->where('campaign_id', $cid)
+            ->orderByDesc('id')
+            ->first();
+
+        $history = DB::table('facebook_campaign_audits')
+            ->where('campaign_id', $cid)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get(['id', 'score_pct', 'audited_at', 'audited_by_name', 'comments']);
+
+        return response()->json([
+            'success'   => true,
+            'checklist' => self::AUDIT_CHECKLIST,
+            'latest'    => $latest ? [
+                'score_pct'       => (int) $latest->score_pct,
+                'checks'          => json_decode($latest->checks, true) ?: new \stdClass(),
+                'comments'        => $latest->comments,
+                'audited_at'      => $latest->audited_at,
+                'audited_by_name' => $latest->audited_by_name,
+            ] : null,
+            'history'   => $history,
+        ]);
+    }
+
+    /**
+     * POST endpoint — saves a new audit for a campaign. Each save
+     * appends a row (full history is preserved); the merged-view
+     * projection just shows the most recent.
+     */
+    public function saveAudit(Request $request)
+    {
+        $cid          = trim((string) $request->input('campaign_id', ''));
+        $campaignName = (string) $request->input('campaign_name', '');
+        $checks       = $request->input('checks', []);
+        $comments     = (string) $request->input('comments', '');
+
+        if ($cid === '' || !preg_match('/^\d{6,}$/', $cid)) {
+            return response()->json(['success' => false, 'error' => 'Invalid campaign_id.'], 422);
+        }
+        if (!is_array($checks)) {
+            return response()->json(['success' => false, 'error' => 'checks must be an object.'], 422);
+        }
+
+        // Score = sum(weights of items with key set to true) / sum(all weights) × 100.
+        $totalWeight = 0;
+        $earned      = 0;
+        foreach (self::AUDIT_CHECKLIST as $item) {
+            $totalWeight += (int) $item['weight'];
+            if (! empty($checks[$item['key']])) {
+                $earned += (int) $item['weight'];
+            }
+        }
+        $score = ($totalWeight > 0)
+            ? (int) round(($earned / $totalWeight) * 100)
+            : 0;
+
+        $user = $request->user();
+        $id   = DB::table('facebook_campaign_audits')->insertGetId([
+            'campaign_id'      => $cid,
+            'campaign_name'    => $campaignName !== '' ? $campaignName : null,
+            'checks'           => json_encode($checks),
+            'score_pct'        => $score,
+            'comments'         => $comments !== '' ? $comments : null,
+            'audited_by'       => $user->id ?? null,
+            'audited_by_name'  => $user->name ?? null,
+            'audited_at'       => now(),
+            'created_at'       => now(),
+            'updated_at'       => now(),
+        ]);
+
+        return response()->json([
+            'success'   => true,
+            'id'        => $id,
+            'score_pct' => $score,
+            'audited_at' => now()->toDateTimeString(),
+            'audited_by_name' => $user->name ?? null,
+        ]);
     }
 
     /** GET endpoint — returns the current rule (with defaults if absent). */
@@ -690,6 +984,98 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * Returns a daily history series for one of the toolbar badges,
+     * sourced from `meta_insights_daily` (which already accumulates a
+     * row-per-campaign-per-day from Meta's API).
+     *
+     * Query params:
+     *   • metric        — one of impr|clk|spend|sales|sold|acos|ctr|cvr
+     *   • days          — rolling window length, default 32
+     *   • campaign_ids  — optional comma-separated Meta IDs; when
+     *                     supplied, only those campaigns contribute to
+     *                     each day's sum (lets the chart match the
+     *                     subset of rows the user is currently looking
+     *                     at on the page).
+     *
+     * Response shape (matches the chart code on /all-marketplace-master):
+     *   { metric, days, data: [{ date: 'May 19', value: 12345 }, ...] }
+     */
+    public function badgeHistory(Request $request)
+    {
+        $metric = strtolower((string) $request->input('metric', ''));
+        $days   = max(1, min(180, (int) $request->input('days', 32)));
+        $cidsCsv = (string) $request->input('campaign_ids', '');
+        $cids = array_values(array_filter(array_map('trim', explode(',', $cidsCsv)), fn($v) => $v !== ''));
+
+        $allowed = ['impr', 'clk', 'spend', 'sales', 'sold', 'sbgt', 'acos', 'ctr', 'cvr'];
+        if (! in_array($metric, $allowed, true)) {
+            return response()->json([
+                'success' => false,
+                'error'   => "Unknown metric '$metric'. Valid: " . implode(',', $allowed),
+            ], 422);
+        }
+
+        // Aggregate the per-campaign daily snapshot table by date so
+        // the chart's daily values exactly match the rollup the user
+        // sees on the badges.
+        $base = DB::table('facebook_campaign_metric_snapshots')
+            ->where('snapshot_date', '>=', now()->subDays($days)->toDateString());
+        if (! empty($cids)) {
+            $base->whereIn('campaign_id', $cids);
+        }
+        $rows = $base->groupBy('snapshot_date')
+            ->orderBy('snapshot_date')
+            ->selectRaw('snapshot_date,
+                SUM(impr)  AS impr,
+                SUM(clk)   AS clk,
+                SUM(spend) AS spend,
+                SUM(sales) AS sales,
+                SUM(sold)  AS sold,
+                SUM(sbgt)  AS sbgt')
+            ->get();
+
+        $data = [];
+        foreach ($rows as $r) {
+            $impr  = (float) $r->impr;
+            $clk   = (float) $r->clk;
+            $spend = (float) $r->spend;
+            $sales = (float) $r->sales;
+            $sold  = (float) $r->sold;
+            $sbgt  = (float) $r->sbgt;
+
+            switch ($metric) {
+                case 'impr':  $value = $impr;             break;
+                case 'clk':   $value = $clk;              break;
+                case 'spend': $value = round($spend, 2);  break;
+                case 'sales': $value = round($sales, 2);  break;
+                case 'sold':  $value = $sold;             break;
+                case 'sbgt':  $value = round($sbgt, 2);   break;
+                case 'acos':
+                    // Apply the same edge-case rules as the column.
+                    if ($spend == 0.0)    { $value = 0; }
+                    elseif ($sales == 0.0) { $value = 100; }
+                    else                   { $value = round(($spend / $sales) * 100, 1); }
+                    break;
+                case 'ctr':   $value = $impr  > 0 ? round(($clk  / $impr)  * 100, 1) : 0; break;
+                case 'cvr':   $value = $clk   > 0 ? round(($sold / $clk)   * 100, 1) : 0; break;
+                default:      $value = 0;
+            }
+
+            $data[] = [
+                'date'  => date('M d', strtotime($r->snapshot_date)),
+                'value' => $value,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'metric'  => $metric,
+            'days'    => $days,
+            'data'    => $data,
+        ]);
+    }
+
+    /**
      * Render a resolved-source value using the column's formatter:
      *   • 'int' — round to integer, preserving "$" prefix and "%" suffix
      *             when the original value carried them. Non-numeric inputs
@@ -709,6 +1095,11 @@ class FacebookAllAdsSheetController extends Controller
                 $prefix = (strpos($orig, '$') !== false) ? '$' : '';
                 $suffix = (strpos($orig, '%') !== false) ? '%' : '';
                 return $prefix . number_format(round($n)) . $suffix;
+            case 'usd_int':
+                // Always prefixes "$" regardless of whether the source
+                // value already contained one — used for Meta exports
+                // that ship "Amount spent (USD)" as a bare number.
+                return '$' . number_format(round($n));
             default:
                 return (string) $value;
         }
@@ -981,21 +1372,68 @@ class FacebookAllAdsSheetController extends Controller
     private const MERGED_COLUMNS = [
         ['title' => 'Campaign name', 'sources' => ['Campaign name']],
         ['title' => 'CAMPAIGN ID',   'sources' => ['_campaign_id', 'Campaign ID', 'CAMPAIGN ID', 'Campaign activities']],
-        // ACOS = SPEND / SALES * 100, rounded to integer
-        ['title' => 'Acos',          'formula' => ['SPEND', 'SALES', 0]],
-        ['title' => 'IMPRESSIONS',   'sources' => ['Impressions']],
-        ['title' => 'CLICKS',        'sources' => ['Clicks (all)']],
-        // CTR = CLICKS / IMPRESSIONS * 100, rounded to integer
-        ['title' => 'CTR',           'formula' => ['CLICKS', 'IMPRESSIONS', 0]],
-        ['title' => 'SPEND',         'sources' => ['Amount spent (USD)']],
-        ['title' => 'SALES',         'sources' => ['Sales'], 'formatter' => 'int'],
+        // External link to the campaign (from the Campaign sheet's
+        // "Link" column). Rendered as a clickable URL by the JS
+        // formatter when the value looks like an http(s) URL.
+        ['title' => 'Link',          'sources' => ['Link', 'link', 'URL', 'Url', 'url']],
+        // ACOS = SPEND / SALES * 100, rounded to integer.
+        // Mode "acos" applies the user-defined edge-case rules:
+        //   • spend == 0           → 0 %
+        //   • spend > 0, sales == 0 → 100 %
+        ['title' => 'Acos',          'formula' => ['SPEND', 'SALES', 0, 'acos']],
+        ['title' => 'IMPR',          'sources' => ['Impressions']],
+        ['title' => 'CLK',           'sources' => ['Clicks (all)']],
+        // CTR = CLK / IMPR * 100, rounded to 1 decimal
+        ['title' => 'CTR',           'formula' => ['CLK', 'IMPR', 1]],
+        ['title' => 'SPEND',         'sources' => ['Amount spent (USD)'], 'formatter' => 'usd_int'],
+        ['title' => 'SALES',         'sources' => ['Sales'],               'formatter' => 'int'],
         ['title' => 'SOLD',          'sources' => ['Orders']],
-        // CVR = SOLD / CLICKS * 100
-        ['title' => 'CVR',           'formula' => ['SOLD', 'CLICKS']],
+        // CVR = SOLD / CLK * 100, rounded to 1 decimal
+        ['title' => 'CVR',           'formula' => ['SOLD', 'CLK', 1]],
+        // CPS = SPEND / SOLD (cost per sold), rounded to whole dollars,
+        // rendered with a "$" prefix. Mode "cps" skips the *100 and
+        // the trailing "%" that `divPct()` adds.
+        ['title' => 'CPS',           'formula' => ['SPEND', 'SOLD', 0, 'cps']],
         // Sbgt = suggested budget driven by the ACOS bracket — see
         // acosBudgetRule(). Placed at the end so the row reads as
         // "metrics → recommendation".
         ['title' => 'Sbgt',          'rule'    => 'acos_budget'],
+        // Audit + History — placeholder columns. The cell value comes
+        // from facebook_campaign_audits (latest row per campaign id);
+        // the projection writes `_audit_score`, `_audit_at`,
+        // `_audit_by`, `_audit_comments` onto each row and the JS
+        // formatters render the Audit button + History summary from
+        // those hidden fields.
+        ['title' => 'Audit',         'sources' => []],
+        ['title' => 'History',       'sources' => []],
+        // Campaign delivery state, sourced verbatim from Meta's Spend
+        // export (column header: "Campaign delivery"). Values include
+        // "Active", "In draft", "Paused", "Inactive", etc.
+        ['title' => 'Status',        'sources' => ['Campaign delivery']],
+    ];
+
+    /**
+     * Audit checklist — the items the user ticks in the Audit modal.
+     * Each item carries a key (saved verbatim into facebook_campaign_audits.checks),
+     * a human label, and a point weight. Score = sum(weights of ticked) /
+     * sum(all weights) × 100.
+     *
+     * Tweak this list freely; old rows store whichever keys they had at
+     * audit time, so dropping a key won't break the history.
+     */
+    private const AUDIT_CHECKLIST = [
+        ['key' => 'objective',       'label' => 'Campaign objective is set correctly',                'weight' => 10],
+        ['key' => 'audience',        'label' => 'Audience targeting is defined (age / geo / interests)', 'weight' => 10],
+        ['key' => 'budget',          'label' => 'Daily budget set within the Sbgt recommendation',     'weight' => 10],
+        ['key' => 'creative_count',  'label' => 'Ad set has at least 3 active creatives',              'weight' => 10],
+        ['key' => 'creative_quality','label' => 'Creatives meet image / video quality guidelines',     'weight' => 10],
+        ['key' => 'utm',             'label' => 'UTM parameters present on the destination URL',       'weight' => 10],
+        ['key' => 'pixel',           'label' => 'Meta Pixel / Conversion API tracking is firing',      'weight' => 10],
+        ['key' => 'bid_strategy',    'label' => 'Bid strategy matches campaign goal',                  'weight' => 5],
+        ['key' => 'schedule',        'label' => 'Schedule / start-stop dates set correctly',           'weight' => 5],
+        ['key' => 'name_convention', 'label' => 'Naming convention followed (PARENT / GROUP …)',       'weight' => 5],
+        ['key' => 'duplicates',      'label' => 'No duplicate / overlapping ad sets',                  'weight' => 5],
+        ['key' => 'performance',     'label' => 'Performance KPIs (ACOS / ROAS) are within target',    'weight' => 10],
     ];
 
     /**
@@ -1010,7 +1448,7 @@ class FacebookAllAdsSheetController extends Controller
             // be present, and none of the metric columns may appear.
             'required_any' => ['campaign id', 'campaign_id'],
             'forbidden'    => ['sessions', 'spend', 'amount spent', 'impressions', 'reporting starts'],
-            'description'  => 'a Campaign list (columns: "Campaign name" + "Campaign ID")',
+            'description'  => 'a Campaign list (columns: "Campaign name" + "Campaign ID" + optional "Link")',
         ],
         'spend' => [
             // Any Meta Ads Manager export with spend metrics — covers both

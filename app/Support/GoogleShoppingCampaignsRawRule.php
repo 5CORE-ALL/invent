@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class GoogleShoppingCampaignsRawRule
 {
-    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v1';
+    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v2';
 
     /**
      * @return array{sbgt: array<string, float|int>, sbid: array<string, float>}
@@ -33,6 +33,8 @@ final class GoogleShoppingCampaignsRawRule
                 'ge_low' => 0.01,
                 'val_low' => 20,
                 'val_else' => 20,
+                'le_zero' => 0.0,
+                'val_eq_zero' => 3,
             ],
             'sbid' => [
                 'util_low' => 66.0,
@@ -92,6 +94,7 @@ final class GoogleShoppingCampaignsRawRule
             }
         }
 
+        $leZero = (float) $sbgt['le_zero'];
         $geLow = (float) $sbgt['ge_low'];
         $ge20 = (float) $sbgt['ge_20'];
         $ge30 = (float) $sbgt['ge_30'];
@@ -101,11 +104,14 @@ final class GoogleShoppingCampaignsRawRule
         if (! ($geLow < $ge20 && $ge20 < $ge30 && $ge30 < $ge40 && $ge40 < $ge50 && $ge50 < $gt)) {
             throw new \InvalidArgumentException('SBGT thresholds must satisfy ge_low < ge_20 < ge_30 < ge_40 < ge_50 < gt.');
         }
+        if ($leZero < 0 || $leZero >= $geLow) {
+            throw new \InvalidArgumentException('SBGT le_zero threshold must satisfy 0 <= le_zero < ge_low.');
+        }
         if ($geLow < 0 || $gt > 500) {
             throw new \InvalidArgumentException('SBGT band limits out of range.');
         }
 
-        foreach (['val_gt', 'val_50_99', 'val_40_50', 'val_30_40', 'val_20_30', 'val_low', 'val_else'] as $vk) {
+        foreach (['val_gt', 'val_50_99', 'val_40_50', 'val_30_40', 'val_20_30', 'val_low', 'val_else', 'val_eq_zero'] as $vk) {
             $iv = (int) $sbgt[$vk];
             if ($iv < 1 || $iv > 100_000) {
                 throw new \InvalidArgumentException('Each SBGT tier value must be between 1 and 100000.');
@@ -187,6 +193,9 @@ final class GoogleShoppingCampaignsRawRule
         }
         if ($acos >= (float) $b['ge_low']) {
             return (int) $b['val_low'];
+        }
+        if ($acos <= (float) $b['le_zero']) {
+            return (int) $b['val_eq_zero'];
         }
 
         return (int) $b['val_else'];

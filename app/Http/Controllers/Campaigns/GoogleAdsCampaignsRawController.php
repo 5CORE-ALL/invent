@@ -221,7 +221,8 @@ class GoogleAdsCampaignsRawController extends Controller
         $this->applyRawGridDataFilters($query, $request);
 
         $summaryQuery = clone $query;
-        $paginator = $query->orderByDesc('g.id')->paginate($perPage, ['*'], 'page', $page);
+        $this->applyRawGridSort($query, $request);
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
         $summary = $this->computeRawGridSummary($summaryQuery);
 
         $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
@@ -487,6 +488,7 @@ class GoogleAdsCampaignsRawController extends Controller
         $ub7 = $this->normalizeUbColorFilter($request->input('filter_ub7'));
         $ub2 = $this->normalizeUbColorFilter($request->input('filter_ub2'));
         $ub1 = $this->normalizeUbColorFilter($request->input('filter_ub1'));
+        $acos = $this->normalizeAcosColorFilter($request->input('filter_acos'));
         $stat = $this->normalizeStatFilter($request->input('filter_stat'));
 
         $ub7Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
@@ -498,6 +500,7 @@ class GoogleAdsCampaignsRawController extends Controller
         }
         $this->whereUbColorBand($query, $ub2Expr, $ub2);
         $this->whereUbColorBand($query, $ub1Expr, $ub1);
+        $this->whereAcosColorBand($query, $acos);
 
         if ($stat === 'ENABLED') {
             $query->whereRaw('UPPER(TRIM(COALESCE(g.campaign_status, ""))) = ?', ['ENABLED']);
@@ -514,6 +517,76 @@ class GoogleAdsCampaignsRawController extends Controller
         $v = is_string($value) ? strtolower(trim($value)) : 'all';
 
         return in_array($v, ['green', 'pink', 'red'], true) ? $v : 'all';
+    }
+
+    /**
+     * Apply server-side ORDER BY based on Tabulator's `sort` request param
+     * (e.g. `sort[0][field]=spend&sort[0][dir]=desc`). Whitelist of fields ⇄
+     * SQL expressions is kept in sync with the `sortableFields` map in the
+     * raw grid view. Computed expressions mirror {@see whereAcosColorBand}
+     * and {@see whereUbColorBand} so sort and filter agree to the percent.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    private function applyRawGridSort($query, Request $request): void
+    {
+        $spend = '(cSpend.sum_micros / 1000000.0)';
+        $sales = '(CASE WHEN COALESCE(cGa30.sum_ga4_actual, 0) > 0 THEN COALESCE(cGa30.sum_ga4_actual, 0) ELSE COALESCE(cGa30.sum_ga4_ads, 0) END)';
+        $acosExpr = "(CASE "
+            ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
+            ."WHEN ROUND({$spend}) > 0 THEN 100.0 "
+            ."ELSE 0 END)";
+
+        $sortMap = [
+            'campaign_name' => 'g.campaign_name',
+            'spend' => 'cSpend.sum_micros',
+            'l7_spend' => 'COALESCE(cSpendL7.sum_micros_l7, 0)',
+            'l2_spend' => 'COALESCE(cSpendL2.sum_micros_l2, 0)',
+            'l1_spend' => 'COALESCE(cSpendL1.sum_micros_l1, 0)',
+            'metrics_clicks' => 'g.metrics_clicks',
+            'ad_sales_L30' => $sales,
+            'acos_l30' => $acosExpr,
+            'bgt' => 'COALESCE(g.budget_amount_micros, 0)',
+            'ub7' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)',
+            'ub2' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)',
+            'ub1' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000.0) / (g.budget_amount_micros / 1000000.0) * 100.0 ELSE 0 END)',
+        ];
+
+        $applied = false;
+        $rawSort = $request->input('sort');
+        if (is_array($rawSort)) {
+            foreach ($rawSort as $entry) {
+                if (! is_array($entry)) {
+                    continue;
+                }
+                $field = is_string($entry['field'] ?? null) ? $entry['field'] : '';
+                $dirRaw = is_string($entry['dir'] ?? null) ? strtolower($entry['dir']) : 'asc';
+                $dir = $dirRaw === 'desc' ? 'desc' : 'asc';
+                if (! isset($sortMap[$field])) {
+                    continue;
+                }
+                $query->orderByRaw($sortMap[$field].' '.$dir);
+                $applied = true;
+            }
+        }
+
+        // Deterministic tiebreaker (and default ordering when no sort is sent)
+        if (! $applied) {
+            $query->orderByDesc('g.id');
+        } else {
+            $query->orderBy('g.id', 'desc');
+        }
+    }
+
+    /**
+     * ACOS L30 color bands match {@see acosFormatter} in the raw grid view:
+     * pink <10, green 10–20, blue 20–30, yellow 30–40, orange 40–50, red >50.
+     */
+    private function normalizeAcosColorFilter(mixed $value): string
+    {
+        $v = is_string($value) ? strtolower(trim($value)) : 'all';
+
+        return in_array($v, ['pink', 'green', 'blue', 'yellow', 'orange', 'red'], true) ? $v : 'all';
     }
 
     private function normalizeStatFilter(mixed $value): string
@@ -555,6 +628,55 @@ class GoogleAdsCampaignsRawController extends Controller
         }
         if ($band === 'red') {
             $query->whereRaw("({$ubSqlExpr}) < 66");
+        }
+    }
+
+    /**
+     * Filter rows by computed ACOS L30 band. SQL mirrors {@see enrichRawRowGoogleShoppingStyle}:
+     * ROUND(spend)/ROUND(sales)*100 when ROUND(sales) >= 1, else 100 if ROUND(spend) > 0, else 0.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    private function whereAcosColorBand($query, string $band): void
+    {
+        if ($band === 'all') {
+            return;
+        }
+
+        $spend = '(cSpend.sum_micros / 1000000.0)';
+        $sales = '(CASE WHEN COALESCE(cGa30.sum_ga4_actual, 0) > 0 THEN COALESCE(cGa30.sum_ga4_actual, 0) ELSE COALESCE(cGa30.sum_ga4_ads, 0) END)';
+        $acosExpr = "(CASE "
+            ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
+            ."WHEN ROUND({$spend}) > 0 THEN 100.0 "
+            ."ELSE 0 END)";
+
+        if ($band === 'pink') {
+            $query->whereRaw("({$acosExpr}) >= 0 AND ({$acosExpr}) < 10");
+
+            return;
+        }
+        if ($band === 'green') {
+            $query->whereRaw("({$acosExpr}) >= 10 AND ({$acosExpr}) < 20");
+
+            return;
+        }
+        if ($band === 'blue') {
+            $query->whereRaw("({$acosExpr}) >= 20 AND ({$acosExpr}) < 30");
+
+            return;
+        }
+        if ($band === 'yellow') {
+            $query->whereRaw("({$acosExpr}) >= 30 AND ({$acosExpr}) < 40");
+
+            return;
+        }
+        if ($band === 'orange') {
+            $query->whereRaw("({$acosExpr}) >= 40 AND ({$acosExpr}) <= 50");
+
+            return;
+        }
+        if ($band === 'red') {
+            $query->whereRaw("({$acosExpr}) > 50");
         }
     }
 

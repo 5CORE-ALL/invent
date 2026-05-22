@@ -43,6 +43,7 @@ use App\Http\Controllers\Campaigns\EbayOverUtilizedBgtController;
 use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
+use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
 use App\Http\Controllers\Campaigns\GoogleAdsCampaignsRawController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
@@ -2791,6 +2792,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/facebook-all-ads-sheet/rule',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'saveRule'])->name('facebook.all.ads.sheet.rule.save');
     // Pushes per-campaign Sbgt as the new daily_budget on Meta.
     Route::post('/facebook-all-ads-sheet/push-sbgt',       [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'pushSbgt'])->name('facebook.all.ads.sheet.push.sbgt');
+    // Daily history series for the toolbar badges (impr/clk/spend/…).
+    Route::get('/facebook-all-ads-sheet/badge-history',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'badgeHistory'])->name('facebook.all.ads.sheet.badge.history');
+    // Campaign audit (checklist + history).
+    Route::get('/facebook-all-ads-sheet/audit',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'getAudit'])->name('facebook.all.ads.sheet.audit.get');
+    Route::post('/facebook-all-ads-sheet/audit',           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'saveAudit'])->name('facebook.all.ads.sheet.audit.save');
 
     // Type-filtered variants (Video / Carousal). Reuse the same controller
     // and view; only `pageType` and the ad_type filter differ.
@@ -4643,6 +4649,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay/campaign-ads/push-selected', 'pushSelected')->name('ebay.campaign.ads.push.selected');
         Route::get('/ebay/campaign-ads/campaigns', 'getCampaignList')->name('ebay.campaign.ads.campaigns');
         Route::post('/ebay/campaign-ads/enroll', 'enrollInCampaign')->name('ebay.campaign.ads.enroll');
+    });
+
+    Route::controller(Ebay2CampaignAdsController::class)->group(function () {
+        Route::get('/ebay2/campaign-ads', 'index')->name('ebay2.campaign.ads');
+        Route::get('/ebay2/campaign-ads/data', 'getData')->name('ebay2.campaign.ads.data');
+        Route::get('/ebay2/campaign-ads/rule', 'getRule')->name('ebay2.campaign.ads.rule');
+        Route::post('/ebay2/campaign-ads/rule', 'saveRule')->name('ebay2.campaign.ads.rule.save');
+        Route::post('/ebay2/campaign-ads/push-sbid', 'pushSbid')->name('ebay2.campaign.ads.push.sbid');
+        Route::post('/ebay2/campaign-ads/push-selected', 'pushSelected')->name('ebay2.campaign.ads.push.selected');
+        Route::get('/ebay2/campaign-ads/campaigns', 'getCampaignList')->name('ebay2.campaign.ads.campaigns');
+        Route::post('/ebay2/campaign-ads/enroll', 'enrollInCampaign')->name('ebay2.campaign.ads.enroll');
     });
 
     Route::controller(EbayPMPAdsController::class)->group(function () {

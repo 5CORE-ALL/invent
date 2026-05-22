@@ -35,11 +35,35 @@
         #facebook-all-ads-table .tabulator-col-title { font-weight: 600; color: #1f2937; }
         .tabulator-paginator label { margin-right: 5px; }
 
+        /* Hide the sort triangle in column headers — clicking the header
+           still sorts, the indicator just isn't drawn. Targets all
+           Tabulator versions: 6.x uses .tabulator-col-sorter, older
+           builds emit .tabulator-arrow. */
+        #facebook-all-ads-table .tabulator-col-sorter,
+        #facebook-all-ads-table .tabulator-arrow { display: none !important; }
+        /* Reclaim the space the indicator used so titles don't look
+           awkwardly off-centre. */
+        #facebook-all-ads-table .tabulator-col-content { padding-right: 8px; }
+
         /* ── Sum badges (Impressions / Clicks / …) ────────────────────
            Solid-pill style. Each metric gets its own colour so users
            can scan the strip at a glance. flex-shrink:0 keeps each
            badge intact when the strip overflows horizontally — it just
            scrolls inside its container instead of squashing. */
+        /* Tabulator pins the column header high in its own stacking
+           context (z-index ~10), and the badge strip uses overflow-x:
+           auto which creates a clipping box. Both fight Bootstrap's
+           dropdown popups — bump every toolbar dropdown above them. */
+        .card-body .dropdown-menu.show { z-index: 1080 !important; }
+        /* The Sbgt filter is the one inside the overflow:auto strip.
+           data-bs-strategy="fixed" already detaches it, but we still
+           need an explicit z-index that beats Tabulator's column
+           headers and frozen-row layers. */
+        .faas-sbgt-dropdown .dropdown-menu.show {
+            position: fixed !important;
+            z-index: 1080 !important;
+        }
+
         .faas-stat-badge {
             display: inline-block;
             flex-shrink: 0;
@@ -50,9 +74,13 @@
             border-radius: 6px;
             white-space: nowrap;
             line-height: 1.2;
+            cursor: pointer;            /* clicks open the trend chart */
+            transition: transform 0.1s ease;
         }
+        .faas-stat-badge:hover { transform: translateY(-1px); filter: brightness(1.1); }
         /* Compact title so the badge strip has more horizontal room. */
         .faas-toolbar-title { font-size: 1rem; flex-shrink: 0; }
+        .faas-stat-badge--count { background: #475569; }   /* slate   */
         .faas-stat-badge--impr  { background: #4c7ed8; }   /* blue    */
         .faas-stat-badge--clk   { background: #f59e0b; }   /* amber   */
         .faas-stat-badge--spend { background: #ef4444; }   /* red     */
@@ -61,6 +89,7 @@
         .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
+        .faas-stat-badge--sbgt  { background: #0f766e; }   /* teal    */
     </style>
 @endsection
 
@@ -82,30 +111,42 @@
                          second line. --}}
                     <div class="d-flex align-items-center flex-nowrap gap-2 flex-grow-1 overflow-x-auto py-1"
                          style="min-width:0;">
-                        <h5 class="mb-0 faas-toolbar-title">
-                            <i class="fab fa-facebook-f me-1 text-primary"></i>
-                            Imported Rows
-                        </h5>
-                        {{-- Live sums of the IMPRESSIONS / CLICKS columns
+                        {{-- Live sums of the IMPR / CLK columns
                              across whatever rows are currently visible
                              (after search / header filters). Updated by
                              updateMetricBadges() in the script below. --}}
-                        <span id="faasImpressionsBadge" class="faas-stat-badge faas-stat-badge--impr"
-                              title="Sum of IMPRESSIONS column for the currently-visible rows">Impressions:<span id="faasImpressionsValue">0</span></span>
-                        <span id="faasClicksBadge" class="faas-stat-badge faas-stat-badge--clk"
-                              title="Sum of CLICKS column for the currently-visible rows">Clicks:<span id="faasClicksValue">0</span></span>
-                        <span id="faasSpendBadge" class="faas-stat-badge faas-stat-badge--spend"
-                              title="Sum of SPEND column for the currently-visible rows">Spend:<span id="faasSpendValue">$0</span></span>
-                        <span id="faasSalesBadge" class="faas-stat-badge faas-stat-badge--sales"
-                              title="Sum of SALES column for the currently-visible rows">Sales:<span id="faasSalesValue">$0</span></span>
-                        <span id="faasSoldBadge" class="faas-stat-badge faas-stat-badge--sold"
-                              title="Sum of SOLD column for the currently-visible rows">Sold:<span id="faasSoldValue">0</span></span>
-                        <span id="faasAcosBadge" class="faas-stat-badge faas-stat-badge--acos"
-                              title="ACOS = (Σ Spend / Σ Sales) × 100">Acos:<span id="faasAcosValue">0%</span></span>
-                        <span id="faasCtrBadge" class="faas-stat-badge faas-stat-badge--ctr"
-                              title="CTR = (Σ Clicks / Σ Impressions) × 100">CTR:<span id="faasCtrValue">0%</span></span>
-                        <span id="faasCvrBadge" class="faas-stat-badge faas-stat-badge--cvr"
-                              title="CVR = (Σ Sold / Σ Clicks) × 100">CVR:<span id="faasCvrValue">0%</span></span>
+                        {{-- Count badge — number of rows currently
+                             visible (after search + Sbgt filter). Not
+                             a chart link; clicking does nothing. --}}
+                        <span id="faasCountBadge" class="faas-stat-badge faas-stat-badge--count"
+                              title="Visible row count">Count:<span id="faasCountValue">0</span></span>
+                        <span id="faasImpressionsBadge" data-metric="impr" data-label="Impr"
+                              class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
+                              title="Click for 32-day trend">Impr:<span id="faasImpressionsValue">0</span></span>
+                        <span id="faasClicksBadge" data-metric="clk" data-label="Clicks"
+                              class="faas-stat-badge faas-stat-badge--clk badge-chart-link"
+                              title="Click for 32-day trend">Clk:<span id="faasClicksValue">0</span></span>
+                        <span id="faasSpendBadge" data-metric="spend" data-label="Spend"
+                              class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
+                              title="Click for 32-day trend">Spend:<span id="faasSpendValue">$0</span></span>
+                        <span id="faasSalesBadge" data-metric="sales" data-label="Sales"
+                              class="faas-stat-badge faas-stat-badge--sales badge-chart-link"
+                              title="Click for 32-day trend">Sales:<span id="faasSalesValue">$0</span></span>
+                        <span id="faasSoldBadge" data-metric="sold" data-label="Sold"
+                              class="faas-stat-badge faas-stat-badge--sold badge-chart-link"
+                              title="Click for 32-day trend">Sold:<span id="faasSoldValue">0</span></span>
+                        <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
+                              class="faas-stat-badge faas-stat-badge--acos badge-chart-link"
+                              title="Click for 32-day trend">Acos:<span id="faasAcosValue">0%</span></span>
+                        <span id="faasCtrBadge" data-metric="ctr" data-label="CTR"
+                              class="faas-stat-badge faas-stat-badge--ctr badge-chart-link"
+                              title="Click for 32-day trend">CTR:<span id="faasCtrValue">0%</span></span>
+                        <span id="faasCvrBadge" data-metric="cvr" data-label="CVR"
+                              class="faas-stat-badge faas-stat-badge--cvr badge-chart-link"
+                              title="Click for 32-day trend">CVR:<span id="faasCvrValue">0%</span></span>
+                        <span id="faasSbgtBadge" data-metric="sbgt" data-label="Sbgt"
+                              class="faas-stat-badge faas-stat-badge--sbgt badge-chart-link"
+                              title="Click for daily Sbgt history">Sbgt:<span id="faasSbgtValue">$0</span></span>
                     </div>
 
                     {{-- Right group: stays on the same row as the badges
@@ -122,7 +163,7 @@
                                     data-bs-toggle="dropdown"
                                     data-bs-auto-close="outside"
                                     aria-expanded="false">
-                                <i class="fas fa-eye me-1"></i> Columns
+                                <i class="fas fa-eye"></i>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end px-2 py-1"
                                 id="faasColumnDropdownMenu"
@@ -146,7 +187,7 @@
                                 data-bs-toggle="modal"
                                 data-bs-target="#sbgtRuleModal"
                                 title="Edit ACOS → Sbgt brackets">
-                            <i class="fas fa-sliders-h me-1"></i>Sbgt Rule
+                            <i class="fas fa-sliders-h me-1"></i>Rule
                         </button>
 
                         {{-- Pushes each visible row's Sbgt as the new
@@ -155,29 +196,111 @@
                         <button type="button"
                                 id="faasPushSbgtBtn"
                                 class="btn btn-sm btn-warning text-dark"
-                                title="Update each campaign's daily budget on Meta to its Sbgt value">
-                            <i class="fas fa-cloud-upload-alt me-1"></i>Push SBGT
+                                title="Update each selected campaign's daily budget on Meta to its Sbgt value (or all visible if none selected)">
+                            <i class="fas fa-cloud-upload-alt me-1"></i>
+                            <span id="faasPushSbgtLabel">Push</span>
                         </button>
 
                         <button type="button"
                                 class="btn btn-sm btn-success"
                                 data-bs-toggle="modal"
                                 data-bs-target="#faasUploadModal">
-                            <i class="fas fa-cloud-upload-alt me-1"></i>
-                            Upload Sheet
+                            <i class="fas fa-cloud-upload-alt"></i>
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div class="card-body" style="padding: 0;">
-                <div id="faas-table-wrapper" style="height: calc(100vh - 220px); display: flex; flex-direction: column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text"
-                               id="faas-search"
-                               class="form-control form-control-sm"
-                               placeholder="Search across all columns…">
+            {{-- Second toolbar row — sits between the badge strip and
+                 the table headers. Same card so the borders flow as
+                 one continuous chrome. --}}
+            <div class="card-body py-2 border-top">
+                {{-- Order: Type · Search · Sbgt (2nd-last) · Stat (last) --}}
+                <div class="d-flex align-items-center flex-nowrap gap-2">
+                    {{-- Type multi-select. Uses the AD_TYPE_COLORS
+                         palette for the leading dot and shortAdType()
+                         for compact labels. --}}
+                    <div class="dropdown faas-sbgt-dropdown" style="flex-shrink:0;">
+                        <button class="btn btn-sm btn-outline-primary dropdown-toggle"
+                                type="button"
+                                id="faasTypeFilterBtn"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                data-bs-strategy="fixed"
+                                aria-expanded="false"
+                                title="Filter rows by Ad Type">
+                            <span id="faasTypeFilterLabel">Type: all</span>
+                        </button>
+                        <ul class="dropdown-menu px-2 py-1"
+                            id="faasTypeFilterMenu"
+                            aria-labelledby="faasTypeFilterBtn"
+                            style="max-height:300px; overflow-y:auto; min-width:200px;">
+                            <li class="d-flex justify-content-between align-items-center px-2 pt-1 pb-2 border-bottom">
+                                <button type="button" class="btn btn-link btn-sm p-0" id="faasTypeFilterAll">All</button>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-muted" id="faasTypeFilterClear">None</button>
+                            </li>
+                        </ul>
                     </div>
+
+                    {{-- Global search — fills the horizontal space
+                         between the leading filters and the trailing
+                         Sbgt/Stat selectors. --}}
+                    <input type="text"
+                           id="faas-search"
+                           class="form-control form-control-sm"
+                           placeholder="Search across all columns…"
+                           style="flex-grow:1; min-width:220px;">
+
+                    {{-- Sbgt-band multi-select (penultimate). --}}
+                    <div class="dropdown faas-sbgt-dropdown" style="flex-shrink:0;">
+                        <button class="btn btn-sm btn-outline-primary dropdown-toggle"
+                                type="button"
+                                id="faasSbgtFilterBtn"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                data-bs-strategy="fixed"
+                                aria-expanded="false"
+                                title="Filter rows by suggested-budget band">
+                            <span id="faasSbgtFilterLabel">Sbgt: all</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end px-2 py-1"
+                            id="faasSbgtFilterMenu"
+                            aria-labelledby="faasSbgtFilterBtn"
+                            style="max-height:300px; overflow-y:auto; min-width:200px;">
+                            <li class="d-flex justify-content-between align-items-center px-2 pt-1 pb-2 border-bottom">
+                                <button type="button" class="btn btn-link btn-sm p-0" id="faasSbgtFilterAll">All</button>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-muted" id="faasSbgtFilterClear">None</button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    {{-- Status multi-select (last). --}}
+                    <div class="dropdown faas-sbgt-dropdown" style="flex-shrink:0;">
+                        <button class="btn btn-sm btn-outline-primary dropdown-toggle"
+                                type="button"
+                                id="faasStatusFilterBtn"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                data-bs-strategy="fixed"
+                                aria-expanded="false"
+                                title="Filter rows by Status">
+                            <span id="faasStatusFilterLabel">Stat: all</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end px-2 py-1"
+                            id="faasStatusFilterMenu"
+                            aria-labelledby="faasStatusFilterBtn"
+                            style="max-height:300px; overflow-y:auto; min-width:200px;">
+                            <li class="d-flex justify-content-between align-items-center px-2 pt-1 pb-2 border-bottom">
+                                <button type="button" class="btn btn-link btn-sm p-0" id="faasStatusFilterAll">All</button>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-muted" id="faasStatusFilterClear">None</button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body" style="padding: 0;">
+                <div id="faas-table-wrapper" style="height: calc(100vh - 230px); display: flex; flex-direction: column;">
                     <div id="facebook-all-ads-table" style="flex: 1;"></div>
                 </div>
             </div>
@@ -340,10 +463,140 @@
         </div>
     </div>
 </div>
+
+{{-- ── Campaign Audit modal ────────────────────────────────────────
+     Opens when the Audit cell is clicked. Renders the AUDIT_CHECKLIST
+     items as point-weighted checkboxes with a live total, plus a
+     comments box and an inline history list of the last 50 audits. --}}
+<div class="modal fade"
+     id="auditModal"
+     tabindex="-1"
+     aria-labelledby="auditModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
+                <h5 class="modal-title" id="auditModalLabel">
+                    <i class="fas fa-clipboard-check me-2"></i>
+                    Campaign Audit — <span id="auditCampaignName" class="fw-normal opacity-75"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <span class="badge bg-secondary">Campaign ID: <code id="auditCampaignId" class="text-white"></code></span>
+                    <span class="badge bg-light text-dark border">
+                        Live score:
+                        <strong id="auditLiveScore">0%</strong>
+                        <small class="text-muted">(<span id="auditLiveEarned">0</span>/<span id="auditLiveTotal">0</span> pts)</small>
+                    </span>
+                </div>
+
+                <div class="table-responsive border rounded mb-3">
+                    <table class="table table-sm align-middle mb-0" id="auditChecklistTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;"></th>
+                                <th>Check</th>
+                                <th class="text-end" style="width:80px;">Points</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditChecklistBody"></tbody>
+                    </table>
+                </div>
+
+                <label class="form-label small text-muted mb-1">Comments</label>
+                <textarea id="auditComments"
+                          class="form-control form-control-sm"
+                          rows="3"
+                          placeholder="Notes about what looked off or what to revisit next time…"></textarea>
+
+                <hr class="my-3">
+                <h6 class="small text-uppercase text-muted mb-2">Audit history</h6>
+                <div id="auditHistoryEmpty" class="small text-muted d-none">No prior audits for this campaign.</div>
+                <div class="table-responsive border rounded" id="auditHistoryWrap">
+                    <table class="table table-sm mb-0" id="auditHistoryTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:160px;">When</th>
+                                <th style="width:160px;">By</th>
+                                <th class="text-end" style="width:80px;">Score</th>
+                                <th>Comments</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditHistoryBody"></tbody>
+                    </table>
+                </div>
+
+                <p class="small text-danger mb-0 mt-2 d-none" id="auditError"></p>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-sm btn-primary" id="auditSaveBtn">
+                    <i class="fas fa-save me-1"></i>Save Audit
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- ── Badge history chart modal ───────────────────────────────────
+     Same line-chart idea as /all-marketplace-master: clickable badge
+     opens this modal, /facebook-all-ads-sheet/badge-history feeds it,
+     and Chart.js draws a 32-day rolling line with dots (green = up,
+     red = down, grey = flat), a dashed median line, and a side panel
+     showing HIGHEST / MEDIAN / LOWEST. --}}
+<div class="modal fade"
+     id="badgeChartModal"
+     tabindex="-1"
+     aria-labelledby="badgeChartModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
+                <h6 class="modal-title fw-bold" id="badgeChartModalLabel">
+                    <i class="fas fa-chart-line me-1"></i>
+                    <span id="badgeChartTitle">Trend</span>
+                </h6>
+                <div class="ms-auto d-flex align-items-center gap-2">
+                    <select id="badgeChartRange" class="form-select form-select-sm" style="width:120px;">
+                        <option value="7">7 Days</option>
+                        <option value="14">14 Days</option>
+                        <option value="32" selected>32 Days</option>
+                        <option value="60">60 Days</option>
+                        <option value="90">90 Days</option>
+                    </select>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body p-0">
+                <div class="d-flex">
+                    <div style="flex:1; min-height:300px; padding:8px;">
+                        <canvas id="badgeChartCanvas"></canvas>
+                        <p class="text-center text-muted small mb-0 d-none" id="badgeChartEmpty">
+                            No history available for this metric in the selected window.
+                        </p>
+                    </div>
+                    <div style="width:120px; border-left:1px solid #dee2e6; padding:14px 10px; text-align:center; font-family:'Inter',system-ui,sans-serif;">
+                        <div class="small text-uppercase fw-bold" style="color:#dc3545;">Highest</div>
+                        <div class="fs-5 fw-bold" id="badgeChartHighest">—</div>
+                        <hr class="my-2">
+                        <div class="small text-uppercase fw-bold" style="color:#6c757d;">Median</div>
+                        <div class="fs-5 fw-bold" id="badgeChartMedian">—</div>
+                        <hr class="my-2">
+                        <div class="small text-uppercase fw-bold" style="color:#198754;">Lowest</div>
+                        <div class="fs-5 fw-bold" id="badgeChartLowest">—</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
     (function () {
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
@@ -362,6 +615,14 @@
             'PARENT VIDEO':    { bg: '#fef3c7', fg: '#92400e' },
             'PARENT CAROUSAL': { bg: '#fce7f3', fg: '#9d174d' },
         };
+        // Frontend-only short labels for the Ad-Type column. The DB
+        // and the rest of the code keep using the full strings — only
+        // what the user sees is shortened.
+        function shortAdType(v) {
+            if (!v) return v;
+            return v.replace(/^GROUP\b/,  'G')
+                    .replace(/^PARENT\b/, 'P');
+        }
 
         // Tabulator column visibility is shared across users via the
         // channel_tabulator_column_settings table (channel_name +
@@ -374,15 +635,64 @@
 
         let tabulator = null;
 
-        // Render the Ad Type cell as a coloured pill so values are scannable.
+        // Render the Ad Type cell as a coloured pill — pill text uses
+        // the short label (G VIDEO / P CAROUSAL / …), but the underlying
+        // cell value stays the full string.
         function formatAdTypeCell(cell) {
             const v = cell.getValue();
             if (!v) {
                 return '<span class="text-muted small">— Select —</span>';
             }
-            const c = AD_TYPE_COLORS[v] || { bg: '#e5e7eb', fg: '#374151' };
+            const c     = AD_TYPE_COLORS[v] || { bg: '#e5e7eb', fg: '#374151' };
+            const label = shortAdType(v);
             return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;`
-                 + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${v}</span>`;
+                 + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${label}</span>`;
+        }
+
+        // Renders the Status column (sourced from Meta's "Campaign
+        // delivery") as a coloured dot. The full status text lives in
+        // the title= tooltip so users can still hover to see it; the
+        // header-filter dropdown also still shows the words.
+        function formatStatusCell(cell) {
+            const raw = (cell.getValue() ?? '').toString().trim();
+            if (!raw) return '';
+            // Normalise so "Not_delivering" / "not delivering" / etc.
+            // all hit the same key.
+            const key = raw.toLowerCase().replace(/[\s_-]+/g, '_');
+            const dotColors = {
+                'active'           : '#16a34a',  // green
+                'inactive'         : '#ca8a04',  // mustard
+                'archived'         : '#dc2626',  // red
+                'not_delivering'   : '#2563eb',  // blue
+            };
+            const color = dotColors[key] || '#9ca3af'; // neutral grey for anything else
+            const safe  = raw.replace(/</g, '&lt;');
+            return `<span title="${safe}"`
+                 + ` style="display:inline-block;width:12px;height:12px;border-radius:50%;`
+                 + `background:${color};box-shadow:0 0 0 1px rgba(0,0,0,0.05);"></span>`;
+        }
+
+        // Cells in the Acos / Sbgt columns get coloured text to match
+        // the ACOS-band the row falls into. The colour comes from the
+        // hidden `_sbgt_color` field set by the controller, so editing
+        // the rule (Sbgt-Rule modal) re-paints the whole table after
+        // the next loadTable().
+        function formatBandColoredCell(cell) {
+            const value = cell.getValue();
+            const color = cell.getRow().getData()._sbgt_color;
+            const el    = cell.getElement();
+            // Always reset background — we only colour the text now.
+            el.style.background = '';
+            if (color) {
+                el.style.color      = color;
+                el.style.fontWeight = '700';
+            } else {
+                // No band match → reset any leftover styling from a
+                // previous render (in case the row was re-projected).
+                el.style.color      = '';
+                el.style.fontWeight = '';
+            }
+            return (value === null || value === undefined || value === '') ? '' : String(value);
         }
 
         // Persist a row's chosen Ad Type to the backend on edit.
@@ -477,42 +787,310 @@
                     // a free-text filter on a number doesn't make sense and
                     // it eats vertical space under the header.
                     const NO_HEADER_FILTER = new Set([
-                        'Acos', 'Sbgt', 'IMPRESSIONS', 'CLICKS', 'CTR',
-                        'SPEND', 'SALES', 'SOLD', 'CVR',
+                        'Campaign name',
+                        'Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR',
+                        'SPEND', 'SALES', 'SOLD', 'CVR', 'CPS',
                     ]);
-                    const cols = (resp.columns || []).map(c => ({
-                        title:        c.title,
-                        field:        c.field,
-                        headerFilter: NO_HEADER_FILTER.has(c.field) ? false : 'input',
-                        headerSort:   true,
-                        widthGrow:    1,
-                        minWidth:     120,
-                        formatter:    'plaintext',
-                    }));
-                    // Prepend row index + Ad Type dropdown columns.
+                    // Columns whose cell should be painted with the
+                    // matched ACOS-band colour (set by the controller as
+                    // a hidden `_sbgt_color` field on each row).
+                    const COLOR_BY_BAND = new Set(['Acos', 'Sbgt']);
+                    // Empty SALES → "$0" in red so missing-revenue rows
+                    // jump out instead of looking like a blank cell.
+                    function formatSalesCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#dc2626;font-weight:700;">$0</span>';
+                        }
+                        return String(v);
+                    }
+                    // Same idea for SOLD — show "0" in red when no
+                    // orders attribute to the row, without the $ prefix.
+                    function formatSoldCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#dc2626;font-weight:700;">0</span>';
+                        }
+                        return String(v);
+                    }
+                    // SPEND — render in red when the campaign is
+                    // burning > $30 with no sales attributed. Catches
+                    // wasteful campaigns at a glance without needing
+                    // to scan ACOS or Sbgt.
+                    function formatSpendCell(cell) {
+                        const v = (cell.getValue() ?? '').toString();
+                        if (!v) return '';
+                        const row      = cell.getRow().getData();
+                        const spendNum = toNumber(v);
+                        const salesNum = toNumber(row['SALES']);
+                        const wasteful = spendNum > 30 && (!salesNum || salesNum === 0);
+                        if (wasteful) {
+                            return `<span style="color:#dc2626;font-weight:700;">${v}</span>`;
+                        }
+                        return v;
+                    }
+
+                    // CVR is a ratio — show "0%" in red when blank
+                    // (no clicks → no conversion to compute).
+                    function formatCvrCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#dc2626;font-weight:700;">0%</span>';
+                        }
+                        return String(v);
+                    }
+                    // Campaign name can be very long — truncate to 70
+                    // chars in the cell but expose the full text on
+                    // hover (and to header search) via a title tooltip.
+                    function formatCampaignNameCell(cell) {
+                        const v = (cell.getValue() ?? '').toString();
+                        if (!v) return '';
+                        const safe = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                        if (v.length <= 70) return safe;
+                        const truncSafe = v.slice(0, 70).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                        return `<span title="${safe}">${truncSafe}…</span>`;
+                    }
+                    // Audit column — small button that opens the audit
+                    // modal. Cell text shows the latest score (0–100%)
+                    // colour-coded green/amber/red. Empty for never-
+                    // audited campaigns ("Audit" prompt only).
+                    function formatAuditCell(cell) {
+                        const row   = cell.getRow().getData();
+                        const cid   = (row['CAMPAIGN ID'] ?? '').toString();
+                        const score = row._audit_score;
+                        if (!cid || !/^\d{6,}$/.test(cid)) return '';
+                        if (score == null) {
+                            return `<button type="button"
+                                            class="btn btn-sm btn-outline-primary py-0 px-2"
+                                            style="font-size:11px;"
+                                            data-audit-cid="${cid}">
+                                        <i class="fas fa-clipboard-check"></i> Audit
+                                    </button>`;
+                        }
+                        const colour = score >= 80 ? '#16a34a'
+                                     : score >= 50 ? '#ca8a04'
+                                     : '#dc2626';
+                        return `<button type="button"
+                                        class="btn btn-sm py-0 px-2"
+                                        style="font-size:11px;background:${colour};color:#fff;font-weight:700;"
+                                        data-audit-cid="${cid}">${score}%</button>`;
+                    }
+                    // History column — last audit "MMM dd · name" with
+                    // a tooltip carrying the comments. Empty when
+                    // never audited.
+                    function formatHistoryCell(cell) {
+                        const row = cell.getRow().getData();
+                        const at  = row._audit_at;
+                        if (!at) return '<span class="text-muted small">—</span>';
+                        // Trim seconds and reformat: "2026-05-22 02:45:11" → "May 22"
+                        const d = new Date(at.replace(' ', 'T'));
+                        const when = isNaN(d) ? at
+                            : d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+                        const who  = (row._audit_by || '—').toString().replace(/</g, '&lt;');
+                        const tip  = (row._audit_comments || 'No comments')
+                            .toString().replace(/"/g, '&quot;').slice(0, 200);
+                        return `<span title="${tip}" style="cursor:help;font-size:11px;">`
+                             + `${when} <span class="text-muted">·</span> ${who}</span>`;
+                    }
+
+                    // Link column — icon-only anchor (opens in a new
+                    // tab). Falls back to plain text if the value
+                    // isn't a URL.
+                    function formatLinkCell(cell) {
+                        const v = (cell.getValue() ?? '').toString().trim();
+                        if (!v) return '';
+                        const isUrl = /^https?:\/\//i.test(v);
+                        const safeHref = v.replace(/"/g, '&quot;');
+                        const safeText = v.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                        if (!isUrl) return safeText;
+                        return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"`
+                             + ` title="${safeHref}"`
+                             + ` style="color:#2563eb;font-size:14px;">`
+                             + `<i class="fas fa-external-link-alt"></i>`
+                             + `</a>`;
+                    }
+                    // Distinct Status values present in this dataset →
+                    // also populates the toolbar Status filter.
+                    statusValues = Array.from(new Set(
+                        (resp.data || [])
+                            .map(r => (r['Status'] ?? '').toString().trim())
+                            .filter(v => v !== '')
+                    )).sort();
+
+                    // First-load default: pre-select "active" so users
+                    // see only delivering campaigns until they widen
+                    // the filter themselves.
+                    if (!defaultStatusApplied) {
+                        defaultStatusApplied = true;
+                        if (statusValues.some(v => statusKey(v) === 'active')) {
+                            statusFilterSelected.add('active');
+                        }
+                    }
+                    buildStatusFilter();
+                    const cols = (resp.columns || []).map(c => {
+                        if (c.field === 'Status') {
+                            return {
+                                // Header is "Stat" — frontend rename only;
+                                // field stays "Status" so filter/lookup
+                                // code keeps working unchanged.
+                                title:        'Stat',
+                                field:        c.field,
+                                headerSort:   true,
+                                widthGrow:    0,
+                                width:        90,
+                                minWidth:     80,
+                                hozAlign:     'center',
+                                headerFilter: false,
+                                formatter:    formatStatusCell,
+                            };
+                        }
+                        let formatter = 'plaintext';
+                        if (COLOR_BY_BAND.has(c.field))      formatter = formatBandColoredCell;
+                        else if (c.field === 'SPEND')        formatter = formatSpendCell;
+                        else if (c.field === 'SALES')        formatter = formatSalesCell;
+                        else if (c.field === 'SOLD')         formatter = formatSoldCell;
+                        else if (c.field === 'CVR')          formatter = formatCvrCell;
+                        else if (c.field === 'Campaign name') formatter = formatCampaignNameCell;
+                        else if (c.field === 'Link')         formatter = formatLinkCell;
+                        else if (c.field === 'Audit')        formatter = formatAuditCell;
+                        else if (c.field === 'History')      formatter = formatHistoryCell;
+
+                        // Numeric columns ship as already-formatted
+                        // strings ("$165", "1.8%", "$1,234"). Without
+                        // a custom sorter Tabulator defaults to text
+                        // sort which goes wildly wrong for those —
+                        // strip everything except digits, sign and
+                        // decimal, then sort numerically.
+                        const NUMERIC = new Set([
+                            'Acos','Sbgt','IMPR','CLK','CTR',
+                            'SPEND','SALES','SOLD','CVR','CPS',
+                        ]);
+                        const sorter = NUMERIC.has(c.field)
+                            ? function (a, b) {
+                                const na = parseFloat(String(a ?? '').replace(/[^\d.\-]/g, ''));
+                                const nb = parseFloat(String(b ?? '').replace(/[^\d.\-]/g, ''));
+                                const va = isFinite(na) ? na : -Infinity;
+                                const vb = isFinite(nb) ? nb : -Infinity;
+                                return va - vb;
+                            }
+                            // Default Tabulator string sort for text
+                            // columns is fine.
+                            : undefined;
+                        // Compact metric columns get a much smaller
+                        // min-width so 2–4-character values like "1%"
+                        // or "68" don't reserve a 120px slot. Campaign
+                        // name keeps a wide min so long names render
+                        // without wrapping. Tabulator's fitDataStretch
+                        // layout fills any leftover horizontal space.
+                        const NARROW = new Set([
+                            'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
+                        ]);
+                        const minWidth = NARROW.has(c.field) ? 70
+                                       : (c.field === 'Campaign name' ? 220
+                                       : (c.field === 'CAMPAIGN ID'  ? 150
+                                       : (c.field === 'Link'         ? 60
+                                       : (c.field === 'Audit'        ? 80
+                                       : (c.field === 'History'      ? 140 : 100)))));
+                        const widthGrow = NARROW.has(c.field) ? 0
+                                       : (c.field === 'Campaign name' ? 3
+                                       : (c.field === 'Link'         ? 0
+                                       : (c.field === 'Audit'        ? 0
+                                       : (c.field === 'History'      ? 0 : 1))));
+                        // Link header — show just the icon, no word.
+                        const title = c.field === 'Link'
+                            ? '<i class="fas fa-link" title="Link"></i>'
+                            : c.title;
+                        // Action columns aren't sortable — sorting them
+                        // is meaningless (Audit is a button, History is
+                        // a person+date string, Link is an icon).
+                        const NO_SORT = new Set(['Audit', 'History', 'Link']);
+                        return {
+                            // Tabulator renders `title` as innerHTML,
+                            // so the Link column can swap its label
+                            // for an icon by passing an <i> element.
+                            title:        title,
+                            field:        c.field,
+                            // All header search inputs are off — users
+                            // filter via the "Search across all columns"
+                            // input above the table instead.
+                            headerFilter: false,
+                            headerSort:   !NO_SORT.has(c.field),
+                            widthGrow:    widthGrow,
+                            minWidth:     minWidth,
+                            formatter:    formatter,
+                            sorter:       sorter,
+                        };
+                    });
+                    // Prepend the row-selection checkbox + Ad Type
+                    // dropdown columns. (Row index hidden by request —
+                    // the data is still in the row payload as
+                    // `_row_index` for any future use.)
                     cols.unshift(
                         {
-                            title: '#',
-                            field: '_row_index',
-                            width: 60,
-                            headerSort: true,
-                            hozAlign: 'center',
+                            // Per-row checkbox + a header "select all"
+                            // toggle scoped to the currently-visible
+                            // (filter-passing) rows only. Tabulator's
+                            // built-in 'rowSelection' titleFormatter
+                            // selects every row regardless of filter,
+                            // which made Push (98) actually push 326.
+                            title:          '',
+                            field:          '_select',
+                            titleFormatter: function (cell, _params, onRendered) {
+                                const wrap = document.createElement('span');
+                                wrap.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;cursor:pointer;';
+                                const cb = document.createElement('input');
+                                cb.type = 'checkbox';
+                                cb.style.cursor = 'pointer';
+                                wrap.appendChild(cb);
+
+                                const refresh = () => {
+                                    if (!tabulator) return;
+                                    const visible  = tabulator.getRows('active');
+                                    const selected = visible.filter(r => r.isSelected());
+                                    cb.checked = visible.length > 0 && selected.length === visible.length;
+                                    cb.indeterminate = selected.length > 0 && selected.length < visible.length;
+                                };
+                                onRendered(refresh);
+
+                                cb.addEventListener('click', function (e) {
+                                    e.stopPropagation();
+                                    const visible = tabulator.getRows('active');
+                                    const allSel  = visible.length > 0 && visible.every(r => r.isSelected());
+                                    if (allSel) visible.forEach(r => r.deselect());
+                                    else        visible.forEach(r => r.select());
+                                });
+                                // Keep the checkbox in sync with row
+                                // selection / filter changes.
+                                tabulator.on('rowSelected',   refresh);
+                                tabulator.on('rowDeselected', refresh);
+                                tabulator.on('dataFiltered',  refresh);
+                                return wrap;
+                            },
+                            formatter:    'rowSelection',
+                            hozAlign:     'center',
+                            headerSort:   false,
+                            headerFilter: false,
+                            width:        40,
+                            // Allow clicking anywhere in the cell, not
+                            // just the tiny checkbox.
+                            cellClick: (e, cell) => cell.getRow().toggleSelect(),
                         },
                         {
-                            title:        'Ad Type',
+                            // Header is "Type" but the field stays
+                            // ad_type so all backend code is unchanged.
+                            title:        'Type',
                             field:        'ad_type',
-                            width:        180,
-                            headerFilter: 'list',
-                            headerFilterParams: {
-                                values:      { '': '— all —', ...Object.fromEntries(AD_TYPES.map(v => [v, v])) },
-                                clearable:   true,
-                            },
+                            width:        130,
+                            headerFilter: false,
                             editor:       'list',
                             editorParams: {
-                                values:        ['', ...AD_TYPES],
-                                clearable:     true,
-                                autocomplete:  true,
-                                listOnEmpty:   true,
+                                values: {
+                                    '': '— Select —',
+                                    ...Object.fromEntries(AD_TYPES.map(v => [v, shortAdType(v)])),
+                                },
+                                clearable:        true,
+                                autocomplete:     true,
+                                listOnEmpty:      true,
                                 placeholderEmpty: '— Select —',
                             },
                             cellEdited:   onAdTypeEdited,
@@ -538,6 +1116,21 @@
                         movableColumns:         true,
                         resizableColumns:       true,
                         clipboard:              true,
+                        // Multi-row selection (checkbox column above).
+                        // `selectableRows` is the Tabulator 6 spelling;
+                        // `selectable` works on older builds — we set
+                        // both for safety. Range select makes click+
+                        // shift behave like spreadsheets.
+                        selectable:        true,
+                        selectableRows:    true,
+                        selectableRangeMode: 'click',
+                        // Centre every column unless a column overrides
+                        // hozAlign explicitly (e.g. the # row-index column).
+                        columnDefaults: {
+                            hozAlign:       'center',
+                            headerHozAlign: 'center',
+                            vertAlign:      'middle',
+                        },
                         placeholder:            resp.batch
                             ? 'No rows in this upload.'
                             : 'No uploads yet — click Upload Sheet to get started.',
@@ -550,12 +1143,39 @@
                         bindSearch();
                         applyColumnVisibility();
                         buildColumnDropdown();
+                        // Re-apply whatever Sbgt/Type/Status/search
+                        // filters are currently selected — ensures the
+                        // "default = active only" pre-selection takes
+                        // effect on first paint, and survives table
+                        // rebuilds (after upload, page-type switch,…).
+                        applyAllFilters();
                         updateMetricBadges();
                     });
                     // Recompute sums whenever the visible row set changes
                     // (search box, header filters, ad-type filter, …).
-                    tabulator.on('dataFiltered', updateMetricBadges);
-                    tabulator.on('dataLoaded',   updateMetricBadges);
+                    // dataFiltered hands us (filters, rows) — pass the
+                    // rows array straight through so we read the same
+                    // filtered set Tabulator just rendered.
+                    tabulator.on('dataFiltered', function (_filters, rows) {
+                        updateMetricBadges(rows);
+                        // Drop selections that no longer pass the
+                        // filter so the Push count, header checkbox
+                        // and the eventual payload stay in agreement.
+                        const visibleSet = new Set(rows);
+                        if (tabulator.getSelectedRows) {
+                            tabulator.getSelectedRows().forEach(r => {
+                                if (!visibleSet.has(r)) r.deselect();
+                            });
+                        }
+                        updatePushSbgtLabel();
+                    });
+                    tabulator.on('dataLoaded', function () {
+                        updateMetricBadges();
+                    });
+                    // Refresh the Push button's "(N)" suffix as the
+                    // selection grows / shrinks.
+                    tabulator.on('rowSelected',   updatePushSbgtLabel);
+                    tabulator.on('rowDeselected', updatePushSbgtLabel);
                 });
         }
 
@@ -576,7 +1196,13 @@
             return ((num / den) * 100).toFixed(decimals) + '%';
         }
 
-        function updateMetricBadges() {
+        // updateMetricBadges receives the filtered rows directly from
+        // Tabulator's `dataFiltered` event when available — that's the
+        // most reliable way to read what the user is currently seeing
+        // (tabulator.getData('active') can lag one tick during filter
+        // event chains and report stale, unfiltered totals).
+        function updateMetricBadges(rowSource) {
+            const countEl = document.getElementById('faasCountValue');
             const imprEl  = document.getElementById('faasImpressionsValue');
             const clkEl   = document.getElementById('faasClicksValue');
             const spendEl = document.getElementById('faasSpendValue');
@@ -585,22 +1211,39 @@
             const acosEl  = document.getElementById('faasAcosValue');
             const ctrEl   = document.getElementById('faasCtrValue');
             const cvrEl   = document.getElementById('faasCvrValue');
+            const sbgtEl  = document.getElementById('faasSbgtValue');
             if (!imprEl || !clkEl || !spendEl || !salesEl || !soldEl
                 || !acosEl || !ctrEl || !cvrEl) return;
 
-            let imprSum = 0, clkSum = 0, spendSum = 0, salesSum = 0, soldSum = 0;
-            if (tabulator) {
-                // 'active' = rows after filters / search are applied,
-                // which is what users see in the table.
-                const rows = tabulator.getData('active') || [];
-                rows.forEach(r => {
-                    imprSum  += toNumber(r.IMPRESSIONS);
-                    clkSum   += toNumber(r.CLICKS);
-                    spendSum += toNumber(r.SPEND);
-                    salesSum += toNumber(r.SALES);
-                    soldSum  += toNumber(r.SOLD);
-                });
+            let imprSum = 0, clkSum = 0, spendSum = 0, salesSum = 0, soldSum = 0, sbgtSum = 0;
+            let visibleCount = 0;
+
+            // Resolve the row data to sum:
+            //   1. If Tabulator handed us RowComponents (or plain row
+            //      objects) via the dataFiltered event, use those —
+            //      they're authoritative.
+            //   2. Otherwise pull from getActiveData() which respects
+            //      sort + filter, falling back to getData('active').
+            let rows = [];
+            if (Array.isArray(rowSource)) {
+                rows = rowSource.map(r => (r && typeof r.getData === 'function') ? r.getData() : r);
+            } else if (tabulator) {
+                if (typeof tabulator.getActiveData === 'function') {
+                    rows = tabulator.getActiveData() || [];
+                } else {
+                    rows = tabulator.getData('active') || [];
+                }
             }
+            visibleCount = rows.length;
+            rows.forEach(r => {
+                imprSum  += toNumber(r.IMPR);
+                clkSum   += toNumber(r.CLK);
+                spendSum += toNumber(r.SPEND);
+                salesSum += toNumber(r.SALES);
+                soldSum  += toNumber(r.SOLD);
+                sbgtSum  += toNumber(r.Sbgt);
+            });
+            if (countEl) countEl.textContent = visibleCount.toLocaleString();
             // Match column formatters: Spend & Sales are whole-dollar
             // amounts (controller already rounds them). Sold is a count.
             imprEl.textContent  = imprSum.toLocaleString();
@@ -608,11 +1251,14 @@
             spendEl.textContent = '$' + Math.round(spendSum).toLocaleString();
             salesEl.textContent = '$' + Math.round(salesSum).toLocaleString();
             soldEl.textContent  = soldSum.toLocaleString();
+            // Sbgt sum carries a "$" prefix to match the column cells
+            // (Sbgt values are whole-dollar daily-budget recommendations).
+            if (sbgtEl) sbgtEl.textContent = '$' + Math.round(sbgtSum).toLocaleString();
             // Ratios use the same decimals the controller passes to
-            // divPct(): Acos & CTR → 0 dp, CVR → 2 dp (default).
+            // divPct(): Acos → 0 dp, CTR & CVR → 1 dp.
             acosEl.textContent  = divPct(spendSum, salesSum, 0);
-            ctrEl.textContent   = divPct(clkSum,   imprSum,  0);
-            cvrEl.textContent   = divPct(soldSum,  clkSum);
+            ctrEl.textContent   = divPct(clkSum,   imprSum,  1);
+            cvrEl.textContent   = divPct(soldSum,  clkSum,   1);
         }
 
         // ── Column visibility (channel_tabulator_column_settings) ─────
@@ -705,18 +1351,10 @@
         function bindSearch() {
             const input = document.getElementById('faas-search');
             if (!input || !tabulator) return;
-            input.oninput = function () {
-                const v = (this.value || '').toLowerCase().trim();
-                if (!v) { tabulator.clearFilter(); return; }
-                tabulator.setFilter(function (row) {
-                    for (const k in row) {
-                        if (k.startsWith('_')) continue;
-                        const cell = row[k];
-                        if (cell != null && String(cell).toLowerCase().includes(v)) return true;
-                    }
-                    return false;
-                });
-            };
+            // Each keystroke recomposes the full filter list so the
+            // search box, Sbgt, Type and Status filters always AND
+            // together correctly.
+            input.oninput = applyAllFilters;
         }
 
         // ── Wiring ──────────────────────────────────────────────
@@ -764,6 +1402,15 @@
                     bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                 }
                 clearStatus();
+                // Clear the Status filter so the freshly-imported rows
+                // are immediately visible — without this, sales for
+                // inactive/archived campaigns would stay hidden behind
+                // the default "active only" pre-selection and look
+                // like the upload "did nothing". Also persist the
+                // cleared state so a page refresh keeps it cleared.
+                statusFilterSelected = new Set();
+                buildStatusFilter();
+                saveCurrentFilters();
                 // After any upload, return to the Merged view — that's where
                 // the user expects to see Campaign + Spend together. The
                 // newly-uploaded batch is automatically included because
@@ -799,6 +1446,383 @@
         const SBGT_RULE_GET_URL  = '/facebook-all-ads-sheet/rule';
         const SBGT_RULE_SAVE_URL = '/facebook-all-ads-sheet/rule';
         let currentSbgtRule = { bands: [] };
+
+        // Selected values for each multi-select filter, persisted in
+        // localStorage so a page refresh doesn't snap back to defaults
+        // (e.g. hiding freshly-uploaded inactive-status sales rows).
+        const FILTER_STORAGE_KEY = 'faas:v1:filters';
+        function loadSavedFilters() {
+            try {
+                const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+                if (!raw) return null;
+                const obj = JSON.parse(raw);
+                return obj && typeof obj === 'object' ? obj : null;
+            } catch (_) { return null; }
+        }
+        function saveCurrentFilters() {
+            try {
+                localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+                    sbgt:   [...sbgtFilterSelected],
+                    type:   [...typeFilterSelected],
+                    status: [...statusFilterSelected],
+                    // Per-page-type so /facebook-video and /facebook-carousal
+                    // remember their own filter state independently.
+                    pt:     PAGE_TYPE,
+                    // Marker so we know the user has been here at least
+                    // once and shouldn't get the active-only default
+                    // applied to them ever again.
+                    seen:   true,
+                }));
+            } catch (_) { /* quota / private-mode → silently skip */ }
+        }
+        const _savedFilters = loadSavedFilters();
+        let sbgtFilterSelected   = new Set(
+            (_savedFilters && _savedFilters.pt === PAGE_TYPE && Array.isArray(_savedFilters.sbgt))
+                ? _savedFilters.sbgt.map(Number)
+                : []
+        );
+        let typeFilterSelected   = new Set(
+            (_savedFilters && _savedFilters.pt === PAGE_TYPE && Array.isArray(_savedFilters.type))
+                ? _savedFilters.type
+                : []
+        );
+        let statusFilterSelected = new Set(
+            (_savedFilters && _savedFilters.pt === PAGE_TYPE && Array.isArray(_savedFilters.status))
+                ? _savedFilters.status
+                : []
+        );
+        // Distinct Status values seen in the current dataset — refilled
+        // every time loadTable() returns. Used to drive the Status
+        // dropdown's checkbox list.
+        let statusValues = [];
+        // First-load default: pre-select "active". Skipped entirely
+        // once the user has been on the page before (we have a saved
+        // filter snapshot in localStorage), so refresh-after-upload
+        // doesn't overwrite their cleared filter.
+        let defaultStatusApplied = !!(_savedFilters && _savedFilters.seen);
+
+        // Same colour map formatStatusCell uses, exposed so the Status
+        // filter can prefix each option with the matching dot.
+        const STATUS_DOTS = {
+            'active'         : '#16a34a',
+            'inactive'       : '#ca8a04',
+            'archived'       : '#dc2626',
+            'not_delivering' : '#2563eb',
+        };
+        function statusKey(s) {
+            return (s ?? '').toString().toLowerCase().replace(/[\s_-]+/g, '_');
+        }
+        function statusDotColor(s) {
+            return STATUS_DOTS[statusKey(s)] || '#9ca3af';
+        }
+
+        // Composite filter — every active source AND-ed together
+        // through a single Tabulator function filter. Mixing filter
+        // objects with raw functions inside setFilter([...]) is
+        // unreliable in Tabulator 6; a single combined predicate
+        // sidesteps that and behaves identically across versions.
+        function applyAllFilters() {
+            // Always re-derive selections from the live DOM
+            // checkboxes — the in-memory Sets can drift out of sync
+            // when the dropdown is rebuilt (e.g. after a save) and
+            // the user has clicked between rebuilds. Reading from the
+            // DOM is the source-of-truth and guarantees the badge
+            // sums match what the dropdown visually shows checked.
+            sbgtFilterSelected = new Set();
+            document.querySelectorAll('#faasSbgtFilterMenu input[type="checkbox"]:checked')
+                .forEach(cb => sbgtFilterSelected.add(Number(cb.value)));
+            typeFilterSelected = new Set();
+            document.querySelectorAll('#faasTypeFilterMenu input[type="checkbox"]:checked')
+                .forEach(cb => typeFilterSelected.add(cb.value));
+            statusFilterSelected = new Set();
+            document.querySelectorAll('#faasStatusFilterMenu input[type="checkbox"]:checked')
+                .forEach(cb => statusFilterSelected.add(cb.value));
+
+            // Persist filter state on every change so a page refresh
+            // doesn't snap back to the active-only default.
+            saveCurrentFilters();
+            if (!tabulator) return;
+
+            const sbgtSel   = sbgtFilterSelected;
+            const typeSel   = typeFilterSelected;
+            const statusSel = statusFilterSelected;
+            const term = (document.getElementById('faas-search')?.value || '')
+                .toLowerCase().trim();
+
+            // Fast path — no filters active → clear so Tabulator skips
+            // the per-row predicate cost entirely.
+            if (sbgtSel.size === 0 && typeSel.size === 0 && statusSel.size === 0 && !term) {
+                tabulator.clearFilter(false);
+                return;
+            }
+
+            tabulator.setFilter(function (row) {
+                // Sbgt — exact-match by numeric value.
+                if (sbgtSel.size > 0) {
+                    const v = Number(row['Sbgt']);
+                    if (!sbgtSel.has(v)) return false;
+                }
+                // Type (ad_type) — exact-match by full string.
+                if (typeSel.size > 0) {
+                    if (!typeSel.has(row['ad_type'])) return false;
+                }
+                // Status — normalised keys so "Not delivering",
+                // "not_delivering", "Not-Delivering" all match.
+                if (statusSel.size > 0) {
+                    if (!statusSel.has(statusKey(row['Status']))) return false;
+                }
+                // Free-text search — match against any column whose
+                // key isn't an internal/hidden one (prefix `_`).
+                if (term) {
+                    let hit = false;
+                    for (const k in row) {
+                        if (k.startsWith('_')) continue;
+                        const cell = row[k];
+                        if (cell != null && String(cell).toLowerCase().includes(term)) {
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if (!hit) return false;
+                }
+                return true;
+            });
+        }
+
+        // Build / refresh the toolbar Sbgt filter dropdown. Each band
+        // becomes a checkbox row with its band colour as a leading
+        // dot, matching the colour painting in the table cells.
+        function buildSbgtFilter() {
+            const menu = document.getElementById('faasSbgtFilterMenu');
+            if (!menu) return;
+            // Wipe everything except the All / None header row, which
+            // is the first <li> in the menu.
+            const headerLi = menu.firstElementChild;
+            menu.innerHTML = '';
+            if (headerLi) menu.appendChild(headerLi);
+
+            // Sort by sbgt desc so the "best" band sits at the top.
+            const bands = (currentSbgtRule.bands || []).slice().sort(
+                (a, b) => (Number(b.sbgt) || 0) - (Number(a.sbgt) || 0)
+            );
+
+            // Drop any selected values that no longer exist in the
+            // current rule (band may have been removed in the modal).
+            const valid = new Set(bands.map(b => Number(b.sbgt)));
+            sbgtFilterSelected = new Set([...sbgtFilterSelected].filter(v => valid.has(v)));
+
+            bands.forEach(b => {
+                const li    = document.createElement('li');
+                const label = document.createElement('label');
+                label.style.cssText = 'display:flex;align-items:center;gap:8px;'
+                                    + 'padding:4px 6px;cursor:pointer;user-select:none;'
+                                    + 'white-space:nowrap;font-size:12px;';
+                const cb = document.createElement('input');
+                cb.type    = 'checkbox';
+                cb.value   = String(b.sbgt);
+                cb.checked = sbgtFilterSelected.has(Number(b.sbgt));
+                cb.addEventListener('change', () => {
+                    if (cb.checked) sbgtFilterSelected.add(Number(b.sbgt));
+                    else            sbgtFilterSelected.delete(Number(b.sbgt));
+                    applySbgtFilter();
+                });
+
+                const dot = document.createElement('span');
+                dot.style.cssText = `display:inline-block;width:10px;height:10px;`
+                                  + `border-radius:50%;background:${b.color || '#9ca3af'};`
+                                  + `box-shadow:0 0 0 1px rgba(0,0,0,0.05);`;
+
+                const text = document.createElement('span');
+                text.textContent = `${b.sbgt}${b.label ? ' · ' + b.label : ''}`;
+
+                label.appendChild(cb);
+                label.appendChild(dot);
+                label.appendChild(text);
+                li.appendChild(label);
+                menu.appendChild(li);
+            });
+
+            updateSbgtFilterLabel();
+        }
+
+        // Update the button text to reflect the current selection
+        // (read directly from DOM checkboxes so it always matches
+        // what the user sees ticked).
+        function updateSbgtFilterLabel() {
+            const lbl = document.getElementById('faasSbgtFilterLabel');
+            if (!lbl) return;
+            const sel = [...document.querySelectorAll('#faasSbgtFilterMenu input[type="checkbox"]:checked')]
+                .map(cb => Number(cb.value));
+            if (sel.length === 0)      lbl.textContent = 'Sbgt: all';
+            else if (sel.length <= 3)  lbl.textContent = 'Sbgt: ' + sel.sort((a,b)=>b-a).join(', ');
+            else                       lbl.textContent = `Sbgt: ${sel.length} bands`;
+        }
+
+        // Sbgt selection changed — refresh label, recompose all filters.
+        function applySbgtFilter() {
+            updateSbgtFilterLabel();
+            applyAllFilters();
+        }
+
+        // "All" → tick every band; "None" → clear all ticks.
+        document.getElementById('faasSbgtFilterAll')?.addEventListener('click', function () {
+            sbgtFilterSelected = new Set(
+                (currentSbgtRule.bands || []).map(b => Number(b.sbgt))
+            );
+            buildSbgtFilter();
+            applySbgtFilter();
+        });
+        document.getElementById('faasSbgtFilterClear')?.addEventListener('click', function () {
+            sbgtFilterSelected = new Set();
+            buildSbgtFilter();
+            applySbgtFilter();
+        });
+
+        // ── Generic builder for Type / Status multi-select dropdowns ──
+        // Each option is rendered as [checkbox] [colour-dot] [label].
+        // Note: we do NOT bind per-checkbox change handlers here —
+        // event delegation on the menu itself (set up once in the
+        // boot section, see "filter delegation" below) handles every
+        // checkbox toggle, and applyAllFilters() always re-derives
+        // the selection from the live DOM. That guarantees the
+        // visible checkbox state and the filter result stay in sync
+        // even across rebuilds.
+        function buildCheckboxFilter(menuId, options, selectedSet, _onChange) {
+            const menu = document.getElementById(menuId);
+            if (!menu) return;
+            // Preserve the All/None header row (always the first <li>).
+            const headerLi = menu.firstElementChild;
+            menu.innerHTML = '';
+            if (headerLi) menu.appendChild(headerLi);
+
+            // Drop selections that no longer exist in the option list.
+            const validValues = new Set(options.map(o => o.value));
+            [...selectedSet].forEach(v => { if (!validValues.has(v)) selectedSet.delete(v); });
+
+            options.forEach(opt => {
+                const li    = document.createElement('li');
+                const label = document.createElement('label');
+                label.style.cssText = 'display:flex;align-items:center;gap:8px;'
+                                    + 'padding:4px 6px;cursor:pointer;user-select:none;'
+                                    + 'white-space:nowrap;font-size:12px;';
+                const cb = document.createElement('input');
+                cb.type    = 'checkbox';
+                cb.value   = String(opt.value);
+                cb.checked = selectedSet.has(opt.value);
+                const dot = document.createElement('span');
+                dot.style.cssText = `display:inline-block;width:10px;height:10px;`
+                                  + `border-radius:50%;background:${opt.color || '#9ca3af'};`
+                                  + `box-shadow:0 0 0 1px rgba(0,0,0,0.05);`;
+                const text = document.createElement('span');
+                text.textContent = opt.label;
+                label.append(cb, dot, text);
+                li.appendChild(label);
+                menu.appendChild(li);
+            });
+        }
+
+        // Delegated change handler — one per dropdown menu, attached
+        // once and surviving every buildCheckboxFilter rebuild. The
+        // handler's job is just to nudge applyAllFilters; the live
+        // DOM is the source-of-truth for what's currently checked.
+        ['faasSbgtFilterMenu', 'faasTypeFilterMenu', 'faasStatusFilterMenu'].forEach(id => {
+            const menu = document.getElementById(id);
+            if (!menu) return;
+            menu.addEventListener('change', function (e) {
+                if (e.target && e.target.matches('input[type="checkbox"]')) {
+                    // Refresh the dropdown's button label too.
+                    if (id === 'faasSbgtFilterMenu')   updateSbgtFilterLabel();
+                    if (id === 'faasTypeFilterMenu')   updateTypeFilterLabel();
+                    if (id === 'faasStatusFilterMenu') updateStatusFilterLabel();
+                    applyAllFilters();
+                }
+            });
+        });
+
+        // ── Type filter ──────────────────────────────────────────────
+        function buildTypeFilter() {
+            const opts = (AD_TYPES || []).map(v => ({
+                value: v,
+                label: shortAdType(v),
+                color: (AD_TYPE_COLORS[v] || {}).bg || '#9ca3af',
+            }));
+            buildCheckboxFilter('faasTypeFilterMenu', opts, typeFilterSelected, function () {
+                updateTypeFilterLabel();
+                applyAllFilters();
+            });
+            updateTypeFilterLabel();
+        }
+        function updateTypeFilterLabel() {
+            const lbl = document.getElementById('faasTypeFilterLabel');
+            if (!lbl) return;
+            const sel = [...document.querySelectorAll('#faasTypeFilterMenu input[type="checkbox"]:checked')]
+                .map(cb => cb.value);
+            if (sel.length === 0)     lbl.textContent = 'Type: all';
+            else if (sel.length <= 2) lbl.textContent = 'Type: ' + sel.map(shortAdType).join(', ');
+            else                      lbl.textContent = `Type: ${sel.length} sel`;
+        }
+        document.getElementById('faasTypeFilterAll')?.addEventListener('click', function () {
+            typeFilterSelected = new Set(AD_TYPES || []);
+            buildTypeFilter();
+            applyAllFilters();
+        });
+        document.getElementById('faasTypeFilterClear')?.addEventListener('click', function () {
+            typeFilterSelected = new Set();
+            buildTypeFilter();
+            applyAllFilters();
+        });
+
+        // ── Status filter ────────────────────────────────────────────
+        // Options come from whatever distinct Status values were in
+        // the last loadTable() response, so the dropdown stays in
+        // sync with what's actually in the dataset.
+        function buildStatusFilter() {
+            const opts = (statusValues || []).map(v => ({
+                value: statusKey(v),    // key matches what applyAllFilters compares
+                label: v,
+                color: statusDotColor(v),
+            }));
+            buildCheckboxFilter('faasStatusFilterMenu', opts, statusFilterSelected, function () {
+                updateStatusFilterLabel();
+                applyAllFilters();
+            });
+            updateStatusFilterLabel();
+        }
+        function updateStatusFilterLabel() {
+            const lbl = document.getElementById('faasStatusFilterLabel');
+            if (!lbl) return;
+            const sel = [...document.querySelectorAll('#faasStatusFilterMenu input[type="checkbox"]:checked')]
+                .map(cb => cb.value);
+            if (sel.length === 0)     lbl.textContent = 'Stat: all';
+            else if (sel.length <= 2) lbl.textContent = 'Stat: ' + sel.join(', ');
+            else                      lbl.textContent = `Stat: ${sel.length} sel`;
+        }
+        document.getElementById('faasStatusFilterAll')?.addEventListener('click', function () {
+            statusFilterSelected = new Set((statusValues || []).map(statusKey));
+            buildStatusFilter();
+            applyAllFilters();
+        });
+        document.getElementById('faasStatusFilterClear')?.addEventListener('click', function () {
+            statusFilterSelected = new Set();
+            buildStatusFilter();
+            applyAllFilters();
+        });
+
+        // Load once at page boot so the filter is usable before the
+        // user opens the Rule modal.
+        function fetchSbgtRule() {
+            return fetch(SBGT_RULE_GET_URL, { credentials: 'same-origin' })
+                .then(r => r.json())
+                .then(rule => {
+                    currentSbgtRule = (rule && Array.isArray(rule.bands))
+                        ? rule
+                        : { bands: [] };
+                    buildSbgtFilter();
+                    return currentSbgtRule;
+                })
+                .catch(() => { currentSbgtRule = { bands: [] }; });
+        }
+
 
         // Build one editable <tr> per band. Re-rendered whenever a band
         // is added / removed; individual field edits update
@@ -950,6 +1974,9 @@
                     }
                     currentSbgtRule = body.rule || currentSbgtRule;
                     bootstrap.Modal.getInstance(document.getElementById('sbgtRuleModal')).hide();
+                    // Re-build the toolbar Sbgt filter so its options
+                    // mirror whatever was just saved.
+                    buildSbgtFilter();
                     // Reload table so the Sbgt column re-projects with
                     // the new bands.
                     loadTable();
@@ -970,9 +1997,30 @@
         // calls Meta once per campaign to update `daily_budget`.
         const SBGT_PUSH_URL = '/facebook-all-ads-sheet/push-sbgt';
 
+        // Returns the rows that are BOTH currently selected AND
+        // currently visible (after every active filter). Tabulator
+        // happily keeps a row selected after the user filters it out
+        // of view, so callers must intersect manually — otherwise the
+        // Push count and what the user sees would disagree.
+        function getEffectivelySelectedData() {
+            if (!tabulator) return [];
+            const selectedSet = new Set(tabulator.getSelectedRows());
+            return tabulator.getRows('active')
+                .filter(r => selectedSet.has(r))
+                .map(r => r.getData());
+        }
+
+        // Source rows for Push:
+        //   1. If any rows are checked AND visible, push exactly those.
+        //   2. Otherwise (no selection visible) push every visible row,
+        //      preserving the original "click Push to push everything
+        //      I'm looking at" shortcut.
         function collectSbgtRowsToPush() {
             if (!tabulator) return [];
-            const rows = tabulator.getData('active') || [];
+            const selected = getEffectivelySelectedData();
+            const rows = (selected && selected.length)
+                ? selected
+                : (tabulator.getActiveData ? tabulator.getActiveData() : tabulator.getData('active') || []);
             const out = [];
             rows.forEach(r => {
                 const cid  = (r['CAMPAIGN ID'] ?? '').toString().trim();
@@ -986,6 +2034,17 @@
             return out;
         }
 
+        // Update the Push button label so users always know how many
+        // rows the next click will hit. Counts only selected rows that
+        // are currently visible — never selections hiding behind a
+        // filter.
+        function updatePushSbgtLabel() {
+            const lbl = document.getElementById('faasPushSbgtLabel');
+            if (!lbl || !tabulator) return;
+            const n = getEffectivelySelectedData().length;
+            lbl.textContent = n > 0 ? `Push (${n})` : 'Push';
+        }
+
         function renderSbgtResult(payload) {
             const summary = document.getElementById('sbgt-result-summary');
             const body    = document.getElementById('sbgt-result-body');
@@ -997,16 +2056,32 @@
             }
             if (body) {
                 body.innerHTML = '';
+                // Render the per-row Status column as a glyph instead
+                // of the plain word — green check for pushed, red
+                // cross for failed, grey dash for skipped. The full
+                // status text stays in the title= tooltip.
+                const glyphFor = (status) => {
+                    if (status === 'pushed') {
+                        return `<i class="fas fa-check-circle"
+                                   title="pushed"
+                                   style="color:#16a34a;font-size:18px;"></i>`;
+                    }
+                    if (status === 'failed') {
+                        return `<i class="fas fa-times-circle"
+                                   title="failed"
+                                   style="color:#dc2626;font-size:18px;"></i>`;
+                    }
+                    return `<i class="fas fa-minus-circle"
+                               title="${status || 'skipped'}"
+                               style="color:#9ca3af;font-size:18px;"></i>`;
+                };
                 (payload.results || []).forEach((r, i) => {
                     const tr = document.createElement('tr');
-                    const cls = r.status === 'pushed'
-                        ? 'badge bg-success'
-                        : (r.status === 'failed' ? 'badge bg-danger' : 'badge bg-secondary');
                     tr.innerHTML = `
                         <td class="text-muted small">${i + 1}</td>
                         <td><code>${r.campaign_id || ''}</code></td>
                         <td>${r.sbgt != null ? '$' + r.sbgt : '—'}</td>
-                        <td><span class="${cls}">${r.status}</span></td>
+                        <td class="text-center">${glyphFor(r.status)}</td>
                         <td class="small">${(r.reason || '').toString().replace(/</g, '&lt;')}</td>`;
                     body.appendChild(tr);
                 });
@@ -1022,7 +2097,11 @@
                     + 'Tip: upload Spend + Sales sheets, then come back and try again.');
                 return;
             }
-            if (!confirm(`Push suggested daily budget to ${rows.length} Meta campaign(s)?\n\n`
+            const usingSelection = getEffectivelySelectedData().length > 0;
+            const scopeLabel = usingSelection
+                ? `${rows.length} selected campaign(s)`
+                : `all ${rows.length} visible campaign(s)`;
+            if (!confirm(`Push suggested daily budget to ${scopeLabel}?\n\n`
                 + 'This updates live ad budgets on Meta — make sure the Sbgt rule is what you want.')) {
                 return;
             }
@@ -1057,9 +2136,424 @@
                 });
         });
 
+        // ── Badge trend chart ────────────────────────────────────────
+        // Each toolbar badge has data-metric/data-label; clicking opens
+        // the chart modal and asks the backend for the daily series.
+        // Same look & feel as the chart on /all-marketplace-master.
+        const BADGE_HISTORY_URL = '/facebook-all-ads-sheet/badge-history';
+        let badgeChartInstance = null;
+        let activeBadgeMetric  = null;
+        let activeBadgeLabel   = '';
+
+        // Format a number per metric so chart labels and the side panel
+        // use the same conventions as the badges (currency for $, % for
+        // ratio metrics, plain integers otherwise).
+        function fmtBadgeValue(metric, v) {
+            if (v === null || v === undefined || isNaN(v)) return '—';
+            if (metric === 'spend' || metric === 'sales') {
+                return '$' + Math.round(v).toLocaleString('en-US');
+            }
+            if (metric === 'acos' || metric === 'ctr' || metric === 'cvr') {
+                return Number(v).toFixed(1) + '%';
+            }
+            return Math.round(v).toLocaleString('en-US');
+        }
+
+        // Push the click handler — only ever bound once.
+        document.querySelectorAll('.badge-chart-link').forEach(el => {
+            el.addEventListener('click', function () {
+                const metric = this.dataset.metric;
+                const label  = this.dataset.label || metric.toUpperCase();
+                openBadgeChart(metric, label);
+            });
+        });
+
+        // Range dropdown re-loads the chart with the new window length.
+        document.getElementById('badgeChartRange')?.addEventListener('change', function () {
+            if (activeBadgeMetric) loadBadgeChart(activeBadgeMetric, activeBadgeLabel);
+        });
+
+        function openBadgeChart(metric, label) {
+            activeBadgeMetric = metric;
+            activeBadgeLabel  = label;
+            const titleEl = document.getElementById('badgeChartTitle');
+            const days    = parseInt(document.getElementById('badgeChartRange').value || '32', 10);
+            if (titleEl) titleEl.textContent = `${label} (Rolling L${days})`;
+
+            const modalEl = document.getElementById('badgeChartModal');
+            if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            loadBadgeChart(metric, label);
+        }
+
+        function loadBadgeChart(metric, label) {
+            const days = parseInt(document.getElementById('badgeChartRange').value || '32', 10);
+            const titleEl = document.getElementById('badgeChartTitle');
+            if (titleEl) titleEl.textContent = `${label} (Rolling L${days})`;
+
+            // Limit chart to currently-visible campaigns so the badges
+            // and the chart agree about scope. Empty list → backend
+            // falls back to the global aggregate.
+            const cids = [];
+            if (tabulator) {
+                (tabulator.getData('active') || []).forEach(r => {
+                    const cid = (r['CAMPAIGN ID'] ?? '').toString().trim();
+                    if (cid && /^\d{6,}$/.test(cid)) cids.push(cid);
+                });
+            }
+            const params = new URLSearchParams({ metric, days: String(days) });
+            if (cids.length) params.set('campaign_ids', cids.join(','));
+
+            fetch(`${BADGE_HISTORY_URL}?${params.toString()}`, { credentials: 'same-origin' })
+                .then(r => r.json())
+                .then(resp => {
+                    const data = (resp && resp.data) || [];
+                    renderBadgeChart(metric, data);
+                })
+                .catch(err => console.error('badge-history fetch failed:', err));
+        }
+
+        function renderBadgeChart(metric, data) {
+            const canvas  = document.getElementById('badgeChartCanvas');
+            const emptyEl = document.getElementById('badgeChartEmpty');
+            if (!canvas) return;
+
+            // Reset side-panel + tear down previous chart before
+            // checking for emptiness so we never end up with stale
+            // numbers from a different metric.
+            if (badgeChartInstance) { badgeChartInstance.destroy(); badgeChartInstance = null; }
+            ['badgeChartHighest','badgeChartMedian','badgeChartLowest'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '—';
+            });
+
+            if (!data.length) {
+                canvas.style.display = 'none';
+                emptyEl?.classList.remove('d-none');
+                return;
+            }
+            canvas.style.display = '';
+            emptyEl?.classList.add('d-none');
+
+            const labels = data.map(d => d.date);
+            const values = data.map(d => Number(d.value) || 0);
+
+            const dataMin = Math.min(...values);
+            const dataMax = Math.max(...values);
+            const sorted  = [...values].sort((a, b) => a - b);
+            const mid     = Math.floor(sorted.length / 2);
+            const median  = sorted.length % 2 !== 0
+                ? sorted[mid]
+                : (sorted[mid - 1] + sorted[mid]) / 2;
+            const range = (dataMax - dataMin) || 1;
+            const yMin  = Math.max(0, dataMin - range * 0.1);
+            const yMax  = dataMax + range * 0.1;
+
+            // Side panel — same colour rules as /all-marketplace-master.
+            const refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+            const setStat = (id, v) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.textContent = fmtBadgeValue(metric, v);
+                el.style.color = (v === 0) ? refGreen : (v > 0 ? refRed : refGray);
+            };
+            setStat('badgeChartHighest', dataMax);
+            setStat('badgeChartMedian',  median);
+            setStat('badgeChartLowest',  dataMin);
+
+            // Per-day dot colours: green = improved vs prev day,
+            // red = worse, grey = flat. Inverted for "lower is better"
+            // metrics (Acos — same convention as the parent page).
+            const invertedMetrics = ['acos'];
+            const isInverted = invertedMetrics.includes(metric);
+            const dotColors = values.map((v, i) => {
+                if (i === 0) return refGray;
+                if (isInverted) {
+                    return v < values[i - 1] ? '#28a745'
+                         : v > values[i - 1] ? '#dc3545'
+                         : refGray;
+                }
+                return v > values[i - 1] ? '#28a745'
+                     : v < values[i - 1] ? '#dc3545'
+                     : refGray;
+            });
+
+            // Plugin: dashed median line.
+            const medianLinePlugin = {
+                id: 'medianLine',
+                afterDraw(chart) {
+                    const yScale = chart.scales.y;
+                    const xScale = chart.scales.x;
+                    const ctx = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(median);
+                    ctx.save();
+                    ctx.setLineDash([6, 4]);
+                    ctx.strokeStyle = '#6c757d';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(xScale.left, yPixel);
+                    ctx.lineTo(xScale.right, yPixel);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+            // Plugin: value label above each dot, alternating offset
+            // so labels don't clobber each other on dense series.
+            const labelColors = values.map(v => v === 0 ? refGreen : (v > 0 ? refRed : refGray));
+            const valueLabelsPlugin = {
+                id: 'valueLabels',
+                afterDatasetsDraw(chart) {
+                    const meta = chart.getDatasetMeta(0);
+                    const ctx  = chart.ctx;
+                    ctx.save();
+                    ctx.font         = 'bold 11px Inter, system-ui, sans-serif';
+                    ctx.textAlign    = 'center';
+                    ctx.textBaseline = 'bottom';
+                    meta.data.forEach((point, i) => {
+                        const offY = (i % 2 === 0) ? -10 : -20;
+                        ctx.fillStyle = labelColors[i];
+                        ctx.fillText(fmtBadgeValue(metric, values[i]), point.x, point.y + offY);
+                    });
+                    ctx.restore();
+                }
+            };
+
+            badgeChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: activeBadgeLabel,
+                        data: values,
+                        backgroundColor: 'rgba(108,117,125,0.08)',
+                        borderColor:     '#adb5bd',
+                        borderWidth:     1.5,
+                        fill:            true,
+                        tension:         0.3,
+                        pointRadius:     3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: dotColors,
+                        pointBorderColor:     dotColors,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 24, right: 16, bottom: 12, left: 16 } },
+                    plugins: {
+                        legend:  { display: false },
+                        tooltip: {
+                            callbacks: { label: (ctx) => fmtBadgeValue(metric, ctx.parsed.y) }
+                        },
+                    },
+                    scales: {
+                        y: { min: yMin, max: yMax,
+                             ticks: { callback: (v) => fmtBadgeValue(metric, v) } },
+                        x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } },
+                    },
+                },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
+            });
+        }
+
         // Initial load — pull saved column visibility first so the very
         // first table render already respects it (no flash of hidden cols).
+        // ── Campaign Audit modal ─────────────────────────────────────
+        // Click handler: any "Audit" button (formatAuditCell) opens
+        // the modal seeded with the latest audit + history. Save
+        // POSTs to /audit and refreshes just the row in-place so the
+        // table doesn't have to be reloaded.
+        const AUDIT_GET_URL  = '/facebook-all-ads-sheet/audit';
+        const AUDIT_SAVE_URL = '/facebook-all-ads-sheet/audit';
+        let auditCurrentCid  = '';
+        let auditChecklistCache = [];   // mirrors AUDIT_CHECKLIST from server
+
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-audit-cid]');
+            if (!btn) return;
+            e.preventDefault();
+            const cid = btn.dataset.auditCid;
+            // Look up the row by campaign id so the modal title can
+            // include the campaign name without another query.
+            let name = '';
+            if (tabulator) {
+                const match = (tabulator.getData() || [])
+                    .find(r => (r['CAMPAIGN ID'] ?? '').toString() === cid);
+                if (match) name = match['Campaign name'] || '';
+            }
+            openAuditModal(cid, name);
+        });
+
+        function openAuditModal(cid, name) {
+            auditCurrentCid = cid;
+            document.getElementById('auditCampaignName').textContent = name || '';
+            document.getElementById('auditCampaignId').textContent   = cid;
+            document.getElementById('auditError')?.classList.add('d-none');
+            document.getElementById('auditComments').value = '';
+            // Empty state until the fetch completes.
+            document.getElementById('auditChecklistBody').innerHTML =
+                '<tr><td colspan="3" class="text-center small text-muted py-3">Loading…</td></tr>';
+
+            fetch(`${AUDIT_GET_URL}?campaign_id=${encodeURIComponent(cid)}`,
+                { credentials: 'same-origin' })
+                .then(r => r.json())
+                .then(resp => {
+                    if (!resp.success) throw new Error(resp.error || 'Failed to load audit.');
+                    auditChecklistCache = resp.checklist || [];
+                    const ticked = (resp.latest && resp.latest.checks) || {};
+                    renderAuditChecklist(auditChecklistCache, ticked);
+                    document.getElementById('auditComments').value =
+                        (resp.latest && resp.latest.comments) || '';
+                    renderAuditHistory(resp.history || []);
+                    recalcAuditScore();
+                })
+                .catch(err => {
+                    const e = document.getElementById('auditError');
+                    e.textContent = err.message;
+                    e.classList.remove('d-none');
+                });
+
+            const modalEl = document.getElementById('auditModal');
+            if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        function renderAuditChecklist(items, ticked) {
+            const tbody = document.getElementById('auditChecklistBody');
+            tbody.innerHTML = '';
+            items.forEach(it => {
+                const tr = document.createElement('tr');
+                const checked = ticked && ticked[it.key] ? 'checked' : '';
+                tr.innerHTML = `
+                    <td class="text-center">
+                        <input type="checkbox" class="form-check-input"
+                               data-audit-key="${it.key}"
+                               data-audit-weight="${it.weight}" ${checked}>
+                    </td>
+                    <td>${it.label.replace(/</g, '&lt;')}</td>
+                    <td class="text-end fw-semibold text-muted">${it.weight}</td>`;
+                tbody.appendChild(tr);
+            });
+            tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.addEventListener('change', recalcAuditScore);
+            });
+        }
+
+        function recalcAuditScore() {
+            let earned = 0, total = 0;
+            auditChecklistCache.forEach(it => { total += Number(it.weight) || 0; });
+            document.querySelectorAll('#auditChecklistBody input[type="checkbox"]')
+                .forEach(cb => { if (cb.checked) earned += Number(cb.dataset.auditWeight) || 0; });
+            const pct = total > 0 ? Math.round((earned / total) * 100) : 0;
+            document.getElementById('auditLiveScore').textContent  = pct + '%';
+            document.getElementById('auditLiveEarned').textContent = earned;
+            document.getElementById('auditLiveTotal').textContent  = total;
+        }
+
+        function renderAuditHistory(rows) {
+            const body  = document.getElementById('auditHistoryBody');
+            const empty = document.getElementById('auditHistoryEmpty');
+            const wrap  = document.getElementById('auditHistoryWrap');
+            body.innerHTML = '';
+            if (!rows.length) {
+                empty.classList.remove('d-none');
+                wrap.classList.add('d-none');
+                return;
+            }
+            empty.classList.add('d-none');
+            wrap.classList.remove('d-none');
+            rows.forEach(r => {
+                const score = Number(r.score_pct) || 0;
+                const colour = score >= 80 ? '#16a34a'
+                             : score >= 50 ? '#ca8a04'
+                             : '#dc2626';
+                const tr = document.createElement('tr');
+                const safeC = (r.comments || '').toString().replace(/</g, '&lt;');
+                tr.innerHTML = `
+                    <td class="small">${r.audited_at || '—'}</td>
+                    <td class="small">${(r.audited_by_name || '—').toString().replace(/</g, '&lt;')}</td>
+                    <td class="text-end small fw-bold" style="color:${colour}">${score}%</td>
+                    <td class="small text-muted">${safeC || '—'}</td>`;
+                body.appendChild(tr);
+            });
+        }
+
+        document.getElementById('auditSaveBtn')?.addEventListener('click', function () {
+            const checks = {};
+            document.querySelectorAll('#auditChecklistBody input[type="checkbox"]').forEach(cb => {
+                checks[cb.dataset.auditKey] = !!cb.checked;
+            });
+            const comments = document.getElementById('auditComments').value || '';
+            const btn = this;
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+
+            // Look up the row's campaign name once more (might have
+            // changed if the user switched filters between open + save).
+            let campaignName = '';
+            if (tabulator) {
+                const match = (tabulator.getData() || [])
+                    .find(r => (r['CAMPAIGN ID'] ?? '').toString() === auditCurrentCid);
+                if (match) campaignName = match['Campaign name'] || '';
+            }
+
+            fetch(AUDIT_SAVE_URL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept':       'application/json',
+                },
+                body: JSON.stringify({
+                    campaign_id:   auditCurrentCid,
+                    campaign_name: campaignName,
+                    checks:        checks,
+                    comments:      comments,
+                }),
+            })
+                .then(r => r.json().then(j => ({ ok: r.ok, body: j })))
+                .then(({ ok, body }) => {
+                    if (!ok || body.success === false) {
+                        const e = document.getElementById('auditError');
+                        e.textContent = body.error || 'Failed to save.';
+                        e.classList.remove('d-none');
+                        return;
+                    }
+                    // Patch the corresponding Tabulator row in place so
+                    // the Audit / History columns repaint without a
+                    // full table reload.
+                    if (tabulator) {
+                        const row = tabulator.getRows().find(r =>
+                            (r.getData()['CAMPAIGN ID'] ?? '').toString() === auditCurrentCid);
+                        if (row) {
+                            row.update({
+                                _audit_score:    body.score_pct,
+                                _audit_at:       body.audited_at,
+                                _audit_by:       body.audited_by_name,
+                                _audit_comments: comments,
+                            });
+                            row.reformat();
+                        }
+                    }
+                    bootstrap.Modal.getInstance(document.getElementById('auditModal'))?.hide();
+                })
+                .catch(err => {
+                    const e = document.getElementById('auditError');
+                    e.textContent = 'Network error: ' + err.message;
+                    e.classList.remove('d-none');
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                });
+        });
+
+        // Type filter is driven by AD_TYPES (static for this page) so
+        // it can be built immediately, before the first data fetch.
+        buildTypeFilter();
+
         fetchColumnVisibility()
+            .then(() => fetchSbgtRule())   // populates the Sbgt filter dropdown
             .then(() => loadBatches())
             .then(() => loadTable());
     })();
