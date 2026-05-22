@@ -94,11 +94,72 @@ class AuditMasterController extends Controller
             ->pluck('last_at', 'channel')
             ->toArray();
 
-        // Decorate channels with their last audit date (or null if never audited)
-        $channelsWithLogo = array_map(function ($row) use ($lastAuditMap) {
-            $row['last_audited_at'] = $lastAuditMap[$row['channel']] ?? null;
-            return $row;
-        }, $channelsWithLogo);
+        // For each channel, also pull the grade + auditor remarks from the most
+        // recent audit (latest row by id — auto-increment matches insertion order).
+        $latestAuditMap = AuditResult::where('module', 'cc_messages')
+            ->whereIn('id', function ($q) {
+                $q->from('audit_results')
+                    ->selectRaw('MAX(id)')
+                    ->where('module', 'cc_messages')
+                    ->groupBy('channel');
+            })
+            ->get(['id', 'channel', 'grade', 'auditor_notes', 'critical_failure_reasons'])
+            ->keyBy('channel');
+
+        // Per-parameter remarks from those latest audits — auditors usually leave
+        // feedback against individual parameters, not the top-level "Notes" field,
+        // so we pull them as structured items the front-end can render in a modal.
+        $latestAuditIds = $latestAuditMap->pluck('id')->all();
+        $itemsByAudit   = [];
+        if (!empty($latestAuditIds)) {
+            $items = AuditResultItem::whereIn('audit_result_id', $latestAuditIds)
+                ->whereNotNull('remarks')
+                ->where('remarks', '!=', '')
+                ->orderBy('audit_result_id')
+                ->orderBy('id')
+                ->get(['audit_result_id', 'parameter_label', 'category', 'is_critical_failed', 'score', 'max_score', 'remarks']);
+            foreach ($items as $it) {
+                $text = trim((string) $it->remarks);
+                if ($text === '') continue;
+                $itemsByAudit[$it->audit_result_id][] = [
+                    'label'        => $it->parameter_label,
+                    'category'     => $it->category,
+                    'score'        => (float) $it->score,
+                    'max_score'    => (float) $it->max_score,
+                    'critical'     => (bool) $it->is_critical_failed,
+                    'remarks'      => $text,
+                ];
+            }
+        }
+
+        // Grade colours (module-scoped, with global fallback) keyed by grade letter
+        $gradeColorMap = AuditGrade::bandsForModule('cc_messages')
+            ->pluck('color', 'grade')
+            ->toArray();
+
+        // Decorate channels with their last audit date + latest grade / colour / remarks
+        $channelsWithLogo = array_map(
+            function ($row) use ($lastAuditMap, $latestAuditMap, $gradeColorMap, $itemsByAudit) {
+                $row['last_audited_at'] = $lastAuditMap[$row['channel']] ?? null;
+                $latest = $latestAuditMap[$row['channel']] ?? null;
+                $grade  = $latest->grade ?? null;
+                $row['last_grade']       = $grade;
+                $row['last_grade_color'] = $grade ? ($gradeColorMap[$grade] ?? null) : null;
+
+                // Structured remarks for the modal (per-parameter feedback) + a
+                // free-form auditor notes / critical-reasons block when present.
+                $items = $latest ? ($itemsByAudit[$latest->id] ?? []) : [];
+                $row['last_remarks_items'] = $items;
+                $row['last_auditor_notes'] = $latest->auditor_notes ?? null;
+                $row['last_critical_reasons'] = $latest->critical_failure_reasons ?? null;
+                $row['last_remarks_count'] = count($items)
+                    + (!empty($latest->auditor_notes) ? 1 : 0)
+                    + (!empty($latest->critical_failure_reasons) ? 1 : 0);
+
+                return $row;
+            },
+            $channelsWithLogo
+        );
 
         $isAuditAdmin = $this->isAuditAdmin();
 

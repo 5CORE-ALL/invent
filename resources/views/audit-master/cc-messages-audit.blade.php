@@ -387,6 +387,71 @@
             font-size: 12px;
         }
 
+        /* Remarks viewer modal */
+        .view-remarks-btn { line-height: 1; }
+        .view-remarks-btn .badge { font-size: 10px; }
+
+        #remarksViewerList .remark-card {
+            border: 1px solid #e9ecef;
+            border-left-width: 4px;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: #fff;
+        }
+        #remarksViewerList .remark-card.cat-core_qa { border-left-color: #1976d2; }
+        #remarksViewerList .remark-card.cat-channel_compliance { border-left-color: #f57c00; }
+        #remarksViewerList .remark-card.cat-note { border-left-color: #6c757d; background: #f8f9fa; }
+        #remarksViewerList .remark-card.is-critical { border-left-color: #dc3545; background: #fff5f5; }
+
+        #remarksViewerList .remark-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        #remarksViewerList .remark-label {
+            font-weight: 600;
+            color: #212529;
+            font-size: 13px;
+        }
+        #remarksViewerList .remark-score {
+            font-size: 11.5px;
+            color: #495057;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #remarksViewerList .remark-text {
+            color: #212529;
+            font-size: 12.5px;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+        #remarksViewerList .remark-cat-tag {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 10.5px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-left: 6px;
+        }
+        #remarksViewerList .remark-cat-tag.core_qa { background: #e3f2fd; color: #0d47a1; }
+        #remarksViewerList .remark-cat-tag.channel_compliance { background: #fff3e0; color: #e65100; }
+        #remarksViewerList .remark-cat-tag.note { background: #ede7f6; color: #4527a0; }
+        #remarksViewerList .remark-crit-tag {
+            display: inline-block;
+            padding: 1px 6px;
+            background: #dc3545;
+            color: #fff;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 700;
+            margin-left: 6px;
+        }
+
         .audit-critical-chip {
             display: inline-block;
             padding: 2px 8px;
@@ -1027,6 +1092,32 @@
             </div>
         </div>
     </div>
+    {{-- ============ REMARKS VIEWER MODAL ============ --}}
+    <div class="modal fade" id="remarksViewerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #1976d2 0%, #0d47a1 100%); color: #fff;">
+                    <h5 class="modal-title d-flex align-items-center flex-wrap gap-2">
+                        <i class="ri-chat-quote-line"></i>
+                        <span>Audit Remarks</span>
+                        <span class="audit-channel-pill" id="remarksViewerChannel">Channel</span>
+                        <span class="badge bg-light text-dark ms-1" id="remarksViewerCount">0</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="remarksViewerEmpty" class="text-center text-muted py-4 d-none">
+                        <i class="ri-chat-off-line" style="font-size: 28px; opacity: 0.4;"></i>
+                        <div class="mt-1">No remarks recorded for this audit.</div>
+                    </div>
+                    <div id="remarksViewerList"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-after-vite')
@@ -1066,6 +1157,17 @@
                 return `Audited ${days} days ago`;
             }
 
+            // Fallback palette for grades when audit_grades doesn't supply a colour.
+            const GRADE_FALLBACK_COLORS = {
+                'A+': '#198754', 'A': '#28a745', 'B': '#0d6efd',
+                'C': '#ffc107',  'D': '#fd7e14', 'F': '#dc3545',
+            };
+            function resolveGradeColor(grade, color) {
+                if (color) return color;
+                if (!grade) return '#6c757d';
+                return GRADE_FALLBACK_COLORS[grade] || '#6c757d';
+            }
+
             const tableData = channelsWithLogo.map((row, index) => ({
                 id: index + 1,
                 channel: row.channel,
@@ -1074,6 +1176,12 @@
                 last_audited: row.last_audited_at
                     ? new Date(row.last_audited_at).toLocaleDateString()
                     : '-',
+                last_grade: row.last_grade || null,
+                last_grade_color: row.last_grade_color || null,
+                last_remarks_items: Array.isArray(row.last_remarks_items) ? row.last_remarks_items : [],
+                last_auditor_notes: row.last_auditor_notes || null,
+                last_critical_reasons: row.last_critical_reasons || null,
+                last_remarks_count: parseInt(row.last_remarks_count, 10) || 0,
             }));
 
             const table = new Tabulator('#ccMessagesAuditTable', {
@@ -1128,6 +1236,43 @@
                         },
                     },
                     { title: 'Last Audited', field: 'last_audited', width: 160 },
+                    {
+                        title: 'Grade',
+                        field: 'last_grade',
+                        width: 110,
+                        hozAlign: 'center',
+                        formatter: function (cell) {
+                            const data  = cell.getRow().getData();
+                            const grade = cell.getValue();
+                            if (!grade) {
+                                return `<span class="text-muted">-</span>`;
+                            }
+                            const color = resolveGradeColor(grade, data.last_grade_color);
+                            return `<span class="audit-grade-pill" style="background:${color}">${escapeHtml(grade)}</span>`;
+                        },
+                    },
+                    {
+                        title: 'Remarks',
+                        field: 'last_remarks_count',
+                        width: 110,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            const data  = cell.getRow().getData();
+                            const count = parseInt(cell.getValue(), 10) || 0;
+                            if (!count) {
+                                return `<span class="text-muted" title="No remarks">-</span>`;
+                            }
+                            const safeCh = (data.channel || '').toString().replace(/"/g, '&quot;');
+                            return `<button type="button"
+                                        class="btn btn-sm btn-outline-primary view-remarks-btn"
+                                        data-channel="${safeCh}"
+                                        title="View remarks (${count})">
+                                        <i class="ri-chat-quote-line"></i>
+                                        <span class="badge bg-primary ms-1">${count}</span>
+                                    </button>`;
+                        },
+                    },
                 ],
             });
 
@@ -1439,6 +1584,88 @@
                 bootstrap.Modal.getOrCreateInstance(el).show();
             });
 
+            // Render the Remarks viewer modal for a given channel using the
+            // already-loaded row data (no extra server roundtrip required).
+            function openRemarksViewer(channel) {
+                const row = table.getRows().find(r => r.getData().channel === channel);
+                if (!row) return;
+                const data = row.getData();
+                const items = Array.isArray(data.last_remarks_items) ? data.last_remarks_items : [];
+                const notes = (data.last_auditor_notes || '').trim();
+                const crits = (data.last_critical_reasons || '').trim();
+                const total = items.length + (notes ? 1 : 0) + (crits ? 1 : 0);
+
+                $('#remarksViewerChannel').text(channel || '');
+                $('#remarksViewerCount').text(total);
+
+                const $list = $('#remarksViewerList').empty();
+                if (!total) {
+                    $('#remarksViewerEmpty').removeClass('d-none');
+                } else {
+                    $('#remarksViewerEmpty').addClass('d-none');
+
+                    items.forEach(it => {
+                        const cat = it.category || 'core_qa';
+                        const catLabel = cat === 'channel_compliance' ? 'Channel Compliance' : 'Core QA';
+                        const crit = it.critical
+                            ? `<span class="remark-crit-tag">CRITICAL</span>` : '';
+                        const max  = it.max_score != null ? it.max_score : '';
+                        const sc   = it.score != null ? Number(it.score).toFixed(1) : '-';
+                        $list.append(`
+                            <div class="remark-card cat-${cat} ${it.critical ? 'is-critical' : ''}">
+                                <div class="remark-head">
+                                    <div>
+                                        <span class="remark-label">${escapeHtml(it.label || 'Parameter')}</span>
+                                        <span class="remark-cat-tag ${cat}">${catLabel}</span>
+                                        ${crit}
+                                    </div>
+                                    <div class="remark-score">${sc} / ${max}</div>
+                                </div>
+                                <div class="remark-text">${escapeHtml(it.remarks || '')}</div>
+                            </div>
+                        `);
+                    });
+
+                    if (notes) {
+                        $list.append(`
+                            <div class="remark-card cat-note">
+                                <div class="remark-head">
+                                    <div>
+                                        <span class="remark-label"><i class="ri-edit-line me-1"></i>Auditor Notes</span>
+                                        <span class="remark-cat-tag note">Note</span>
+                                    </div>
+                                </div>
+                                <div class="remark-text">${escapeHtml(notes)}</div>
+                            </div>
+                        `);
+                    }
+
+                    if (crits) {
+                        $list.append(`
+                            <div class="remark-card is-critical">
+                                <div class="remark-head">
+                                    <div>
+                                        <span class="remark-label"><i class="ri-error-warning-fill me-1 text-danger"></i>Critical Failure Reasons</span>
+                                        <span class="remark-crit-tag">CRITICAL</span>
+                                    </div>
+                                </div>
+                                <div class="remark-text">${escapeHtml(crits)}</div>
+                            </div>
+                        `);
+                    }
+                }
+
+                const el = document.getElementById('remarksViewerModal');
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            }
+
+            $(document).on('click', '.view-remarks-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const channel = $(this).data('channel') || '';
+                openRemarksViewer(channel);
+            });
+
             // Re-load history when the History tab is opened (in case state changed)
             $('#audit-history-tab').on('shown.bs.tab', function () {
                 if (currentChannel) loadAuditHistory(currentChannel);
@@ -1516,11 +1743,51 @@
 
                     // Reflect on the row in the table
                     const nowIso = new Date().toISOString();
+                    const savedGrade = (res.audit && res.audit.grade) || null;
+                    const savedGradeColor = savedGrade
+                        ? ((currentGrades.find(g => g.grade === savedGrade) || {}).color
+                            || GRADE_FALLBACK_COLORS[savedGrade]
+                            || null)
+                        : null;
+                    // Mirror the controller: collect per-parameter remarks as
+                    // structured items + capture auditor notes / critical reasons.
+                    const savedItems = $('#auditParamsContainer .audit-param-row').map(function () {
+                        const $row = $(this);
+                        const text = ($row.find('.param-remarks').val() || '').trim();
+                        if (!text) return null;
+                        const paramId = parseInt($row.data('param-id'), 10);
+                        const param   = currentParams.find(p => p.id === paramId) || {};
+                        const label   = param.label
+                            || ($row.find('.param-label').contents()
+                                .filter(function () { return this.nodeType === 3; })
+                                .text() || '').trim();
+                        const max = parseFloat($row.data('max')) || 0;
+                        const score = parseFloat($row.find('.param-score').val()) || 0;
+                        return {
+                            label:    label,
+                            category: param.category || $row.data('category') || 'core_qa',
+                            score:    score,
+                            max_score: max,
+                            critical: $row.find('.param-critical-fail').is(':checked'),
+                            remarks:  text,
+                        };
+                    }).get().filter(Boolean);
+                    const savedNotes   = ($('#auditNotes').val() || '').trim() || null;
+                    const savedReasons = ($('#auditCriticalReasonsText').val() || '').trim() || null;
+                    const savedCount   = savedItems.length
+                        + (savedNotes ? 1 : 0)
+                        + (savedReasons ? 1 : 0);
                     table.getRows().forEach(r => {
                         if (r.getData().channel === currentChannel) {
                             r.update({
                                 last_audited: new Date().toLocaleDateString(),
                                 last_audited_at: nowIso, // <-- triggers Audit column to re-render in green
+                                last_grade: savedGrade,
+                                last_grade_color: savedGradeColor,
+                                last_remarks_items: savedItems,
+                                last_auditor_notes: savedNotes,
+                                last_critical_reasons: savedReasons,
+                                last_remarks_count: savedCount,
                             });
                         }
                     });
