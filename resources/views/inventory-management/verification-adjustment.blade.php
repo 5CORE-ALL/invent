@@ -3796,7 +3796,7 @@
             function showSkuHistory(sku) {
                 const safeSku = escapeHtml(String(sku || ''));
                 $.ajax({
-                    url: '/inventory-history',
+                    url: '/sku-adjustment-history',
                     type: 'GET',
                     data: { sku: safeSku },
                     success: function (res) {
@@ -3909,7 +3909,7 @@
                 // Fetch history for all SKUs using Promise.all
                 const historyPromises = parentSkus.map(sku => {
                     return $.ajax({
-                        url: '/inventory-history',
+                        url: '/sku-adjustment-history',
                         type: 'GET',
                         data: { sku },
                         dataType: 'json'

@@ -654,7 +654,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-doubtful-status', [VerificationAdjustmentController::class, 'updateDoubtfulStatus']);
     Route::get('/verified-stock-activity-log', [VerificationAdjustmentController::class, 'getVerifiedStockActivityLog']);
     Route::get('/view-inventory-data', [VerificationAdjustmentController::class, 'viewInventory'])->name('view-inventory-data');
-    Route::get('/inventory-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory']);
+    Route::get('/sku-adjustment-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory'])->name('sku-adjustment-history');
     Route::get('/shopify-inventory-history-url', [VerificationAdjustmentController::class, 'getShopifyInventoryHistoryUrl']);
     Route::post('/row-hide-toggle', [VerificationAdjustmentController::class, 'toggleHide']);
     Route::get('/get-hidden-rows', [VerificationAdjustmentController::class, 'getHiddenRows']);

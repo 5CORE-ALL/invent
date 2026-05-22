@@ -2389,7 +2389,7 @@
                 const sku = $(this).data('sku');
 
                 $.ajax({
-                    url: '/inventory-history', // Adjust if your route is different
+                    url: '/sku-adjustment-history',
                     type: 'GET',
                     data: { sku },
                     success: function (res) {
