@@ -28,6 +28,28 @@ class AuditMasterController extends Controller
     ];
 
     /**
+     * Emails allowed to edit the SOP (Standard Operating Procedure) HTML
+     * content shown by the SOP button on each audit page.
+     * Comparison is case-insensitive.
+     */
+    private const SOP_ADMIN_EMAILS = [
+        'president@5core.com',
+        'software5@5core.com',
+    ];
+
+    /**
+     * Whitelist of SOP "keys" the front-end may load / save. Restricts the
+     * route to known files only so a request cannot reach arbitrary storage
+     * paths via the key parameter.
+     */
+    private const SOP_KEYS = [
+        'cc_messages',
+        'cc_return',
+        'cc_replacement',
+        'cc_shipping',
+    ];
+
+    /**
      * True if the currently authenticated user is allowed to manage
      * (add / edit / archive) audit parameters.
      */
@@ -37,6 +59,48 @@ class AuditMasterController extends Controller
         if (! $user) return false;
         $email = strtolower(trim((string) ($user->email ?? '')));
         return $email !== '' && in_array($email, self::ADMIN_EMAILS, true);
+    }
+
+    /**
+     * True if the currently authenticated user is allowed to edit the
+     * SOP HTML content (rendered inside the SOP modal).
+     */
+    public function isSopAdmin(): bool
+    {
+        $user = Auth::user();
+        if (! $user) return false;
+        $email = strtolower(trim((string) ($user->email ?? '')));
+        return $email !== '' && in_array($email, self::SOP_ADMIN_EMAILS, true);
+    }
+
+    /**
+     * Relative path inside the "local" disk for the SOP HTML file
+     * associated with the given module key.
+     */
+    private function sopStoragePath(string $key): string
+    {
+        return 'sop/' . $key . '-sop.html';
+    }
+
+    /**
+     * Load the saved SOP HTML for a given module key. Returns an empty
+     * string when nothing has been saved yet so the modal can render its
+     * own "no content yet" placeholder.
+     */
+    private function loadSopHtml(string $key): string
+    {
+        if (! in_array($key, self::SOP_KEYS, true)) {
+            return '';
+        }
+
+        $path = $this->sopStoragePath($key);
+        try {
+            return Storage::disk('local')->exists($path)
+                ? (string) Storage::disk('local')->get($path)
+                : '';
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     /**
@@ -96,6 +160,8 @@ class AuditMasterController extends Controller
 
         // For each channel, also pull the grade + auditor remarks from the most
         // recent audit (latest row by id — auto-increment matches insertion order).
+        // We also pull auditor_id + created_at so the table can show who ran
+        // the audit and at what exact time (the audit_date column is date-only).
         $latestAuditMap = AuditResult::where('module', 'cc_messages')
             ->whereIn('id', function ($q) {
                 $q->from('audit_results')
@@ -103,8 +169,37 @@ class AuditMasterController extends Controller
                     ->where('module', 'cc_messages')
                     ->groupBy('channel');
             })
-            ->get(['id', 'channel', 'grade', 'auditor_notes', 'critical_failure_reasons'])
+            ->get([
+                'id', 'channel', 'grade',
+                'auditor_notes', 'critical_failure_reasons',
+                'auditor_id', 'audit_date', 'created_at',
+            ])
             ->keyBy('channel');
+
+        // Resolve auditor user_id -> display name (single query, no N+1).
+        // Falls back to email local-part, then to "Auditor #<id>" when the
+        // user row is missing.
+        $auditorIds = $latestAuditMap
+            ->pluck('auditor_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $auditorNameMap = [];
+        if (!empty($auditorIds)) {
+            $auditorNameMap = DB::table('users')
+                ->whereIn('id', $auditorIds)
+                ->get(['id', 'name', 'email'])
+                ->mapWithKeys(function ($u) {
+                    $name = trim((string) ($u->name ?? ''));
+                    if ($name === '') {
+                        $email = (string) ($u->email ?? '');
+                        $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $u->id);
+                    }
+                    return [$u->id => $name];
+                })
+                ->toArray();
+        }
 
         // Per-parameter remarks from those latest audits — auditors usually leave
         // feedback against individual parameters, not the top-level "Notes" field,
@@ -139,12 +234,26 @@ class AuditMasterController extends Controller
 
         // Decorate channels with their last audit date + latest grade / colour / remarks
         $channelsWithLogo = array_map(
-            function ($row) use ($lastAuditMap, $latestAuditMap, $gradeColorMap, $itemsByAudit) {
+            function ($row) use ($lastAuditMap, $latestAuditMap, $gradeColorMap, $itemsByAudit, $auditorNameMap) {
                 $row['last_audited_at'] = $lastAuditMap[$row['channel']] ?? null;
                 $latest = $latestAuditMap[$row['channel']] ?? null;
                 $grade  = $latest->grade ?? null;
                 $row['last_grade']       = $grade;
                 $row['last_grade_color'] = $grade ? ($gradeColorMap[$grade] ?? null) : null;
+
+                // Auditor (who ran the audit) + the exact timestamp it was
+                // saved. created_at carries the time of day; audit_date is
+                // date-only and used as a soft fallback.
+                $auditorId = $latest->auditor_id ?? null;
+                $row['last_auditor_id']   = $auditorId;
+                $row['last_auditor_name'] = ($auditorId && isset($auditorNameMap[$auditorId]))
+                    ? $auditorNameMap[$auditorId]
+                    : null;
+                $row['last_audited_full'] = $latest && $latest->created_at
+                    ? $latest->created_at->toIso8601String()
+                    : ($latest && $latest->audit_date
+                        ? $latest->audit_date->toIso8601String()
+                        : null);
 
                 // Structured remarks for the modal (per-parameter feedback) + a
                 // free-form auditor notes / critical-reasons block when present.
@@ -162,9 +271,13 @@ class AuditMasterController extends Controller
         );
 
         $isAuditAdmin = $this->isAuditAdmin();
+        $isSopAdmin   = $this->isSopAdmin();
+        $sopHtml      = $this->loadSopHtml('cc_messages');
+        $sopKey       = 'cc_messages';
 
         return view('audit-master.cc-messages-audit', compact(
-            'channels', 'channelsWithLogo', 'isAuditAdmin'
+            'channels', 'channelsWithLogo', 'isAuditAdmin',
+            'isSopAdmin', 'sopHtml', 'sopKey'
         ));
     }
 
@@ -813,5 +926,80 @@ class AuditMasterController extends Controller
         if (is_bool($v)) return $v;
         if (is_numeric($v)) return (int) $v === 1;
         return in_array(strtolower((string) $v), ['1', 'true', 'on', 'yes'], true);
+    }
+
+    /**
+     * GET the saved SOP HTML for a given module key. Everyone with access
+     * to the audit page can read it; only SOP admins can save it back via
+     * the companion saveSop() endpoint.
+     *
+     * GET /audit-master/sop?key=cc_messages
+     */
+    public function getSop(Request $request): JsonResponse
+    {
+        $key = (string) $request->query('key', '');
+        if (! in_array($key, self::SOP_KEYS, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unknown SOP key.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success'   => true,
+            'key'       => $key,
+            'html'      => $this->loadSopHtml($key),
+            'can_edit'  => $this->isSopAdmin(),
+        ]);
+    }
+
+    /**
+     * POST the SOP HTML for a given module key. Only the SOP_ADMIN_EMAILS
+     * users can save (paste-in content from ChatGPT / external editor).
+     *
+     * POST /audit-master/sop
+     *   key: cc_messages | cc_return | cc_replacement | cc_shipping
+     *   html: raw HTML string (max 5 MB)
+     */
+    public function saveSop(Request $request): JsonResponse
+    {
+        if (! $this->isSopAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not authorized to edit the SOP.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'key'  => 'required|string|max:64',
+            // ~5 MB cap; pasted SOPs from ChatGPT are typically a few hundred KB.
+            'html' => 'nullable|string|max:5242880',
+        ]);
+
+        $key = $validated['key'];
+        if (! in_array($key, self::SOP_KEYS, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unknown SOP key.',
+            ], 422);
+        }
+
+        $html = (string) ($validated['html'] ?? '');
+
+        try {
+            Storage::disk('local')->put($this->sopStoragePath($key), $html);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save SOP: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'key'     => $key,
+            'bytes'   => strlen($html),
+            'message' => 'SOP saved successfully.',
+        ]);
     }
 }

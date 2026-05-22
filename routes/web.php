@@ -5012,6 +5012,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::delete('/parameters/manage/{id}',  [AuditMasterController::class, 'destroyParameter'])
             ->whereNumber('id')
             ->name('audit.master.parameters.destroy');
+
+        // SOP (Standard Operating Procedure) content per audit module.
+        // GET is open to everyone with access to the page; POST is gated to
+        // SOP_ADMIN_EMAILS in the controller (president@5core.com, software5@5core.com).
+        Route::get('/sop',  [AuditMasterController::class, 'getSop'])->name('audit.master.sop.get');
+        Route::post('/sop', [AuditMasterController::class, 'saveSop'])->name('audit.master.sop.save');
     });
 
     Route::post('/channel-promotion/store', [ChannelPromotionMasterController::class, 'storeOrUpdatePromotion']);
@@ -5032,6 +5038,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/automated/{id}/edit', [\App\Http\Controllers\TaskController::class, 'automatedEdit'])->name('tasks.automatedEdit');
     Route::put('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedUpdate'])->name('tasks.automatedUpdate');
     Route::delete('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedDestroy'])->name('tasks.automatedDestroy');
+    Route::post('/tasks/automated/expire-daily', [\App\Http\Controllers\TaskController::class, 'expireDailyAutomatedTasks'])->name('tasks.expireDailyAutomated');
+    Route::get('/tasks/today-deleted/data', [\App\Http\Controllers\TaskController::class, 'todayDeletedData'])->name('tasks.todayDeleted.data');
+    Route::post('/tasks/today-deleted/{id}/revert', [\App\Http\Controllers\TaskController::class, 'revertTodayDeletedTask'])->name('tasks.todayDeleted.revert');
+    Route::post('/tasks/today-deleted/bulk-revert', [\App\Http\Controllers\TaskController::class, 'bulkRevertTodayDeleted'])->name('tasks.todayDeleted.bulkRevert');
     Route::get('/tasks/deleted', [\App\Http\Controllers\TaskController::class, 'deletedIndex'])->name('tasks.deleted');
     Route::get('/tasks/deleted/data', [\App\Http\Controllers\TaskController::class, 'deletedData'])->name('tasks.deletedData');
     Route::post('/tasks/deleted/{id}/revive', [\App\Http\Controllers\TaskController::class, 'reviveDeletedTask'])->name('tasks.deleted.revive');

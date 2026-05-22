@@ -205,12 +205,38 @@ class TaskController extends Controller
                       ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
             });
         }
-        $stats['missed_count_30'] = $missedQuery->count();
+        $missedTasks = $missedQuery->get();
+
+        // Also include daily-auto tasks that the system already auto-expired into deleted_tasks
+        // (see App\Console\Commands\ExpireDailyAutomatedTasks). Without this, the Missed badge would
+        // drop to 0 as soon as the nightly cleanup archives them.
+        $archivedMissedQuery = DeletedTask::query()
+            ->where('is_missed', 1)
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->whereNotNull('start_date');
+        if (!$isAdmin) {
+            $archivedMissedQuery->where(function($query) use ($user) {
+                $query->where('assignor', $user->email)
+                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+            });
+        }
+        if ($selectedUserEmail) {
+            $archivedMissedQuery->where(function($query) use ($selectedUserEmail) {
+                $query->where('assignor', $selectedUserEmail)
+                      ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
+            });
+        }
+        $archivedMissedTasks = $archivedMissedQuery->get();
+
+        $stats['missed_count_30'] = $missedTasks->count() + $archivedMissedTasks->count();
 
         // Daily missed count for line chart (last 30 days): date => count of missed tasks started on that day
         $missedByDay = [];
-        $missedTasks = $missedQuery->get();
         foreach ($missedTasks as $task) {
+            $day = \Carbon\Carbon::parse($task->start_date)->format('Y-m-d');
+            $missedByDay[$day] = ($missedByDay[$day] ?? 0) + 1;
+        }
+        foreach ($archivedMissedTasks as $task) {
             $day = \Carbon\Carbon::parse($task->start_date)->format('Y-m-d');
             $missedByDay[$day] = ($missedByDay[$day] ?? 0) + 1;
         }
@@ -544,10 +570,16 @@ class TaskController extends Controller
             }
         }
 
-        // Order: by date (asc). Within same day, automated tasks on top (us din ka automated task top par), then start_date
+        // Order: by date (asc). Within the same day:
+        //   - Default (no user filter): automated tasks on top (us din ka automated task top par)
+        //   - When a user is filtered: manual/normal tasks first, then automated (per user request)
+        // start_date is the tiebreaker either way.
+        $hasUserFilter = $userNameFilter !== '';
+        $automateSortDirection = $hasUserFilter ? 'asc' : 'desc';
+
         $tasks = $tasksQuery
             ->orderByRaw('(start_date IS NULL) ASC, DATE(start_date) ASC')
-            ->orderBy('is_automate_task', 'desc')
+            ->orderBy('is_automate_task', $automateSortDirection)
             ->orderBy('start_date', 'asc')
             ->get();
 
@@ -1109,9 +1141,15 @@ class TaskController extends Controller
             \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
         }
 
+        // Auto-archive: completed automated tasks shouldn't stay in the active list (user request).
+        $archived = $this->archiveCompletedAutomatedTask($task);
+
         return response()->json([
             'success' => true,
-            'message' => 'Task completed successfully!',
+            'message' => $archived
+                ? 'Task completed & auto-archived (visible in Today Deleted for 24h).'
+                : 'Task completed successfully!',
+            'archived' => $archived,
             'task' => $task->fresh(),
         ]);
     }
@@ -1157,12 +1195,15 @@ class TaskController extends Controller
 
         $task->save();
 
+        $archived = false;
         if ($validated['status'] === 'Done') {
             try {
                 $this->taskWhatsApp->notifyTaskDone($task->fresh());
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
             }
+            // Auto-archive: completed automated tasks shouldn't stay in the active list (user request).
+            $archived = $this->archiveCompletedAutomatedTask($task);
         } elseif ($validated['status'] === 'Rework') {
             try {
                 $this->taskWhatsApp->notifyRework($task->fresh());
@@ -1173,9 +1214,46 @@ class TaskController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Status updated successfully!',
+            'message' => $archived
+                ? 'Status updated to Done & task auto-archived (visible in Today Deleted for 24h).'
+                : 'Status updated successfully!',
+            'archived' => $archived,
             'task' => $task->fresh()
         ]);
+    }
+
+    /**
+     * Auto-archive a completed automated task. Returns true when the task was archived + soft-deleted.
+     * No-op for manual tasks, soft-deleted tasks, or non-Done tasks.
+     *
+     * Stores the row in deleted_tasks with status='Done' so the Today Deleted modal lists it under
+     * the user's name (deleted_by_email = current user), letting them undo if Done was clicked by mistake.
+     */
+    protected function archiveCompletedAutomatedTask(Task $task): bool
+    {
+        if (!$task->is_automate_task) {
+            return false;
+        }
+        if ($task->trashed()) {
+            return false;
+        }
+        if (($task->status ?? '') !== 'Done') {
+            return false;
+        }
+
+        try {
+            $this->saveDeletedTask($task);
+            $task->delete();
+
+            return true;
+        } catch (\Throwable $e) {
+            \Log::warning('archiveCompletedAutomatedTask failed', [
+                'task_id' => $task->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     protected function mergeEmptyReferenceLink(Request $request): void
@@ -2202,6 +2280,360 @@ class TaskController extends Controller
         \DB::table('tasks')->where('automate_task_id', $id)->delete();
 
         return response()->json(['success' => true, 'message' => 'Automated task and all its instances deleted!']);
+    }
+
+    /**
+     * List tasks deleted today (Asia/Kolkata) so users can spot accidental deletions.
+     * Visibility: admins see everything; others see only rows where they were assignor or in assign_to,
+     * plus anything they themselves deleted today.
+     */
+    public function todayDeletedData(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['data' => [], 'count' => 0]);
+        }
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        $todayStart = \Carbon\Carbon::today('Asia/Kolkata')->startOfDay();
+        $todayEnd = \Carbon\Carbon::today('Asia/Kolkata')->endOfDay();
+
+        $query = DeletedTask::query()
+            ->whereBetween('deleted_at', [$todayStart, $todayEnd]);
+
+        if (!$isAdmin) {
+            $query->where(function ($q) use ($user) {
+                $q->where('assignor', $user->email)
+                  ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%')
+                  ->orWhere('deleted_by_email', $user->email);
+            });
+        }
+
+        // True total (not affected by the row limit), and a breakdown so the UI can show
+        // "1,103 auto-expired, 19 manual" — useful when the daily-auto cleanup just ran.
+        $totalCount = (clone $query)->count();
+        $autoCount = (clone $query)->whereRaw('LOWER(deleted_by_email) = ?', ['system@auto'])->count();
+        $manualCount = max(0, $totalCount - $autoCount);
+
+        // Cap rows actually rendered to keep the modal snappy. The badge / footer still show the
+        // true total above so the user knows nothing is hidden — they can use Refresh after reverting.
+        $rowLimit = (int) $request->query('limit', 2000);
+        $rowLimit = max(100, min($rowLimit, 5000));
+
+        $rows = $query->orderBy('deleted_at', 'desc')->limit($rowLimit)->get();
+
+        $data = $rows->map(function ($r) {
+            return [
+                'id' => $r->id,
+                'original_task_id' => $r->original_task_id,
+                'title' => (string) ($r->title ?? ''),
+                'group' => (string) ($r->group ?? ''),
+                'priority' => (string) ($r->priority ?? ''),
+                'status' => (string) ($r->status ?? ''),
+                'assignor' => (string) ($r->assignor ?? ''),
+                'assignor_name' => (string) ($r->assignor_name ?? ''),
+                'assign_to' => (string) ($r->assign_to ?? ''),
+                'assignee_name' => (string) ($r->assignee_name ?? ''),
+                'task_type' => (string) ($r->task_type ?? ''),
+                'is_missed' => (int) ($r->is_missed ?? 0),
+                'deleted_by_email' => (string) ($r->deleted_by_email ?? ''),
+                'deleted_by_name' => (string) ($r->deleted_by_name ?? ''),
+                'deleted_at' => $r->deleted_at ? \Carbon\Carbon::parse($r->deleted_at)->format('Y-m-d H:i:s') : null,
+                'deleted_at_human' => $r->deleted_at ? \Carbon\Carbon::parse($r->deleted_at)->setTimezone('Asia/Kolkata')->format('h:i A') : '',
+                'is_auto_expired' => strtolower((string) ($r->deleted_by_email ?? '')) === 'system@auto',
+            ];
+        });
+
+        return response()->json([
+            'data' => $data,
+            'count' => $totalCount,
+            'auto_count' => $autoCount,
+            'manual_count' => $manualCount,
+            'returned' => $data->count(),
+            'truncated' => $totalCount > $data->count(),
+        ]);
+    }
+
+    /**
+     * Revert a task that was deleted today (Asia/Kolkata). Looser permissions than the archive
+     * {@see reviveDeletedTask()}: any visible user may undo their own / their tasks' same-day deletion,
+     * including system-auto deletions from the daily expire job.
+     */
+    public function revertTodayDeletedTask($id)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Not authenticated.'], 401);
+        }
+
+        $deletedTask = DeletedTask::find($id);
+        if (!$deletedTask) {
+            return response()->json(['success' => false, 'message' => 'Deleted task not found.'], 404);
+        }
+
+        $result = $this->revertOneTodayDeleted($deletedTask, $user);
+
+        if ($result['code'] === 200) {
+            return response()->json(['success' => true, 'message' => 'Task reverted successfully.']);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $result['message'] ?? 'Failed to revert task.',
+        ], $result['code']);
+    }
+
+    /**
+     * Bulk-revert today's deletions. Accepts:
+     *  - mode=auto    → only rows where deleted_by_email=system@auto (the daily-auto cleanup)
+     *  - mode=manual  → only rows deleted by a real user
+     *  - mode=all     → both
+     *  - ids[]        → explicit IDs (takes precedence over mode)
+     *
+     * Each row is still permission-checked individually via {@see revertOneTodayDeleted()} so
+     * non-admins can only revert tasks they're allowed to see.
+     */
+    public function bulkRevertTodayDeleted(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Not authenticated.'], 401);
+        }
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        $mode = strtolower((string) $request->input('mode', 'all'));
+        $ids = (array) $request->input('ids', []);
+        $ids = array_values(array_filter(array_map('intval', $ids), fn ($v) => $v > 0));
+
+        $todayStart = \Carbon\Carbon::today('Asia/Kolkata')->startOfDay();
+        $todayEnd = \Carbon\Carbon::today('Asia/Kolkata')->endOfDay();
+
+        $query = DeletedTask::query()->whereBetween('deleted_at', [$todayStart, $todayEnd]);
+
+        if (!empty($ids)) {
+            $query->whereIn('id', $ids);
+        } elseif ($mode === 'auto') {
+            $query->whereRaw('LOWER(deleted_by_email) = ?', ['system@auto']);
+        } elseif ($mode === 'manual') {
+            $query->where(function ($q) {
+                $q->whereNull('deleted_by_email')
+                  ->orWhere('deleted_by_email', '')
+                  ->orWhereRaw('LOWER(deleted_by_email) != ?', ['system@auto']);
+            });
+        } elseif ($mode !== 'all') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid mode. Use auto, manual, all, or pass ids[].',
+            ], 422);
+        }
+
+        if (!$isAdmin) {
+            $query->where(function ($q) use ($user) {
+                $q->where('assignor', $user->email)
+                  ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%')
+                  ->orWhere('deleted_by_email', $user->email);
+            });
+        }
+
+        // Hard cap so a runaway click can't try to revert tens of thousands at once.
+        $hardCap = 2000;
+        $candidates = $query->orderBy('id')->limit($hardCap + 1)->get();
+        $candidateCount = $candidates->count();
+        $hitCap = $candidateCount > $hardCap;
+        if ($hitCap) {
+            $candidates = $candidates->take($hardCap);
+        }
+
+        $reverted = 0;
+        $skipped = 0;
+        $failed = 0;
+        $errors = [];
+
+        foreach ($candidates as $task) {
+            $result = $this->revertOneTodayDeleted($task, $user);
+            if ($result['code'] === 200) {
+                $reverted++;
+            } elseif (in_array($result['code'], [403, 422], true)) {
+                $skipped++;
+            } else {
+                $failed++;
+                if (count($errors) < 5) {
+                    $errors[] = "ID {$task->id}: " . ($result['message'] ?? 'unknown error');
+                }
+            }
+        }
+
+        $msg = "Reverted {$reverted} task(s).";
+        if ($skipped > 0) {
+            $msg .= " Skipped {$skipped} (no permission or not same-day).";
+        }
+        if ($failed > 0) {
+            $msg .= " Failed {$failed}.";
+        }
+        if ($hitCap) {
+            $msg .= " Hit safety cap of {$hardCap} per request — click again to continue.";
+        }
+
+        return response()->json([
+            'success' => true,
+            'reverted' => $reverted,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'hit_cap' => $hitCap,
+            'message' => $msg,
+            'errors' => $errors,
+        ]);
+    }
+
+    /**
+     * Internal: revert one DeletedTask row (today only). Returns ['code' => httpStatus, 'message' => ?]
+     * Does NOT commit a transaction across rows — each call is its own transaction so partial bulk
+     * failures don't roll back everything.
+     */
+    private function revertOneTodayDeleted(DeletedTask $deletedTask, User $user): array
+    {
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        $todayStart = \Carbon\Carbon::today('Asia/Kolkata')->startOfDay();
+        $todayEnd = \Carbon\Carbon::today('Asia/Kolkata')->endOfDay();
+        $deletedAt = $deletedTask->deleted_at ? \Carbon\Carbon::parse($deletedTask->deleted_at) : null;
+        if (!$deletedAt || $deletedAt->lt($todayStart) || $deletedAt->gt($todayEnd)) {
+            return [
+                'code' => 422,
+                'message' => 'This task was not deleted today and cannot be reverted here. Ask an admin to revive it from the Archive.',
+            ];
+        }
+
+        if (!$isAdmin) {
+            $isInvolved = $deletedTask->assignor === $user->email
+                || ($deletedTask->assign_to && str_contains((string) $deletedTask->assign_to, $user->email))
+                || $deletedTask->deleted_by_email === $user->email;
+            if (!$isInvolved) {
+                return [
+                    'code' => 403,
+                    'message' => 'You are not allowed to revert this task.',
+                ];
+            }
+        }
+
+        try {
+            \DB::beginTransaction();
+
+            $restored = false;
+            if (!empty($deletedTask->original_task_id)) {
+                $existing = Task::withTrashed()->find($deletedTask->original_task_id);
+                if ($existing && $existing->trashed()) {
+                    $existing->restore();
+                    $existing->is_missed = 0;
+                    $existing->is_missed_track = 0;
+                    if (in_array($existing->status, ['Missed', 'Archived'], true)) {
+                        $existing->status = 'Todo';
+                    }
+                    $existing->save();
+                    $restored = true;
+                }
+            }
+
+            if (!$restored) {
+                Task::create([
+                    'task_id' => (string) ($deletedTask->task_id ?? ''),
+                    'title' => (string) ($deletedTask->title ?? ''),
+                    'description' => $deletedTask->description,
+                    'group' => $deletedTask->group,
+                    'priority' => $deletedTask->priority ?: 'normal',
+                    'assignor' => $deletedTask->assignor,
+                    'assign_to' => $deletedTask->assign_to,
+                    'split_tasks' => (int) ($deletedTask->split_tasks ?? 0),
+                    'status' => in_array($deletedTask->status, ['Missed', 'Archived', null], true) ? 'Todo' : $deletedTask->status,
+                    'eta_time' => (int) ($deletedTask->eta_time ?? 0),
+                    'start_date' => $deletedTask->start_date,
+                    'completion_date' => $deletedTask->completion_date,
+                    'due_date' => $deletedTask->completion_date,
+                    'completion_day' => (int) ($deletedTask->completion_day ?? 0),
+                    'etc_done' => (int) ($deletedTask->etc_done ?? 0),
+                    'is_missed' => 0,
+                    'is_missed_track' => 0,
+                    'link1' => $deletedTask->link1,
+                    'link2' => $deletedTask->link2,
+                    'link3' => $deletedTask->link3,
+                    'link4' => $deletedTask->link4,
+                    'link5' => $deletedTask->link5,
+                    'link6' => $deletedTask->link6,
+                    'link7' => $deletedTask->link7,
+                    'link8' => $deletedTask->link8,
+                    'link9' => $deletedTask->link9,
+                    'image' => $deletedTask->image,
+                    'task_type' => $deletedTask->task_type ?: 'manual',
+                    'rework_reason' => $deletedTask->rework_reason,
+                    'workspace' => 0,
+                    'order' => 0,
+                    'is_data_from' => 0,
+                    'is_automate_task' => 0,
+                ]);
+            }
+
+            $deletedTask->delete();
+
+            \DB::commit();
+
+            return ['code' => 200];
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            \Log::error('revertOneTodayDeleted failed', [
+                'deleted_task_id' => $deletedTask->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'code' => 500,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Manually run the "expire daily automated tasks" cleanup (admin-only).
+     * Mirrors the nightly {@see \App\Console\Commands\ExpireDailyAutomatedTasks} schedule so admins
+     * can force a sweep without waiting for the scheduler.
+     */
+    public function expireDailyAutomatedTasks(Request $request)
+    {
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        if (!$isAdmin) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins can run this cleanup.',
+            ], 403);
+        }
+
+        try {
+            \Illuminate\Support\Facades\Artisan::call('tasks:expire-daily-automated');
+            $output = \Illuminate\Support\Facades\Artisan::output();
+
+            $expired = 0;
+            if (preg_match('/Expired:\s*(\d+)/i', $output, $m)) {
+                $expired = (int) $m[1];
+            }
+
+            return response()->json([
+                'success' => true,
+                'expired' => $expired,
+                'message' => $expired > 0
+                    ? "Auto-deleted {$expired} incomplete daily task(s) and counted them as Missed."
+                    : 'No incomplete daily automated tasks from earlier days.',
+                'output' => trim($output),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('expireDailyAutomatedTasks failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Cleanup failed: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

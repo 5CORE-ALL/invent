@@ -5,6 +5,8 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+
     <style>
         /* ========================================
            MOBILE OPTIMIZED STYLES
@@ -1468,7 +1470,31 @@
     .modal-content {
         z-index: 1060 !important;
     }
-    
+
+    /* Today Deleted modal — yellow row when deletion was made by the automated system */
+    #todayDeletedModal .today-deleted-row-auto > td {
+        background-color: #fff3cd !important; /* Bootstrap "warning" subtle yellow */
+        border-left: 3px solid #ffc107;
+    }
+    #todayDeletedModal .today-deleted-row-auto:hover > td {
+        background-color: #ffeeba !important;
+    }
+    #todayDeletedModal .today-deleted-row-auto > td:first-child {
+        border-left: 4px solid #ffc107 !important;
+    }
+
+    /* Today Deleted modal — green row when an automated task was completed (Done) and auto-archived */
+    #todayDeletedModal .today-deleted-row-done > td {
+        background-color: #d1e7dd !important; /* Bootstrap "success" subtle green */
+        border-left: 3px solid #198754;
+    }
+    #todayDeletedModal .today-deleted-row-done:hover > td {
+        background-color: #badbcc !important;
+    }
+    #todayDeletedModal .today-deleted-row-done > td:first-child {
+        border-left: 4px solid #198754 !important;
+    }
+
     </style>
 @endsection
 
@@ -1641,7 +1667,22 @@
                                         <button type="button" class="btn btn-warning text-dark ms-2" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
                                             <i class="mdi mdi-refresh me-2"></i> Refresh
                                         </button>
-                                        
+
+                                        @if($isAdmin)
+                                        <button type="button" class="btn btn-outline-danger ms-2" id="expire-daily-auto-btn"
+                                            title="Auto-delete DAILY automated tasks that were not completed the same day (e.g. 23rd's task → expired on 24th) and count them in Missed. Weekly & Monthly automated tasks are NOT affected. Runs automatically every night at 00:05 IST.">
+                                            <i class="mdi mdi-broom me-2"></i> Cleanup Missed Daily
+                                        </button>
+                                        @endif
+
+                                        <button type="button" class="btn btn-outline-secondary ms-2 position-relative" id="today-deleted-btn"
+                                            data-bs-toggle="modal" data-bs-target="#todayDeletedModal"
+                                            title="See tasks deleted today and revert any wrongly-deleted ones.">
+                                            <i class="mdi mdi-undo-variant me-2"></i> Today Deleted
+                                            <span class="badge bg-danger rounded-pill ms-1" id="today-deleted-badge" style="display:none;">0</span>
+                                        </button>
+
+
                                         <!-- Playback Controls - Assignor -->
                                         <div class="btn-group task-playback-group task-playback-assignor ms-2" role="group" aria-label="Assignor playback">
                                             <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Previous assignor" disabled>
@@ -2035,6 +2076,120 @@
                 <button type="button" class="btn btn-primary" id="confirm-status-change-btn">
                     <i class="mdi mdi-check me-1"></i>Confirm Change
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Today Deleted Modal — recover tasks deleted today (incl. auto-expired daily auto-tasks) -->
+<div class="modal fade" id="todayDeletedModal" tabindex="-1" aria-labelledby="todayDeletedModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="modal-title" id="todayDeletedModalLabel">
+                    <i class="mdi mdi-undo-variant me-2"></i>Today Deleted Tasks
+                    <small class="ms-2 opacity-75" style="font-size: 0.75rem;">Recover anything that was deleted by mistake today</small>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                    <div class="text-muted small">
+                        <i class="mdi mdi-information-outline"></i>
+                        Only today's deletions are shown. After midnight (IST) use the Deleted/Archive page.
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="small text-muted d-inline-flex align-items-center">
+                            <span style="display:inline-block; width:14px; height:14px; background:#fff3cd; border-left:3px solid #ffc107; margin-right:4px;"></span>
+                            = Auto-deleted (missed)
+                        </span>
+                        <span class="small text-muted d-inline-flex align-items-center">
+                            <span style="display:inline-block; width:14px; height:14px; background:#d1e7dd; border-left:3px solid #198754; margin-right:4px;"></span>
+                            = Completed (Done)
+                        </span>
+
+                        <!-- Bulk revert: Selected (becomes active when at least 1 row is checked) -->
+                        <button type="button" class="btn btn-sm btn-success" id="today-deleted-revert-selected-btn" disabled>
+                            <i class="mdi mdi-undo-variant me-1"></i> Revert Selected (<span id="today-deleted-selected-count">0</span>)
+                        </button>
+
+                        <!-- Bulk revert: by category -->
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-warning text-dark dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="mdi mdi-undo-variant me-1"></i> Bulk Revert
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="#" data-bulk-mode="auto">
+                                        <i class="mdi mdi-robot text-warning me-1"></i>
+                                        Revert <strong>Auto-Expired</strong> (<span class="today-deleted-auto-num">0</span>)
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" data-bulk-mode="manual">
+                                        <i class="mdi mdi-account me-1"></i>
+                                        Revert <strong>Manual</strong> (<span class="today-deleted-manual-num">0</span>)
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item text-danger" href="#" data-bulk-mode="all">
+                                        <i class="mdi mdi-undo me-1"></i>
+                                        Revert <strong>ALL</strong> (<span class="today-deleted-total-num">0</span>)
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="today-deleted-refresh-btn">
+                            <i class="mdi mdi-refresh me-1"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div id="today-deleted-loading" class="text-center py-4" style="display:none;">
+                    <i class="mdi mdi-loading mdi-spin" style="font-size: 32px; color: #667eea;"></i>
+                    <div class="text-muted mt-2">Loading today's deletions...</div>
+                </div>
+
+                <div id="today-deleted-empty" class="text-center py-4" style="display:none;">
+                    <i class="mdi mdi-emoticon-happy-outline" style="font-size: 48px; color: #28a745;"></i>
+                    <div class="text-muted mt-2">Nothing deleted today. Nothing to recover.</div>
+                </div>
+
+                <div id="today-deleted-table-wrap" style="display:none;">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 32px;">
+                                        <input type="checkbox" id="today-deleted-select-all" class="form-check-input" title="Select all visible">
+                                    </th>
+                                    <th style="width: 90px;">Deleted At</th>
+                                    <th>Title</th>
+                                    <th style="width: 100px;">Type</th>
+                                    <th style="width: 130px;">Assignor</th>
+                                    <th style="width: 130px;">Assignee</th>
+                                    <th style="width: 130px;">Deleted By</th>
+                                    <th style="width: 100px;">Status</th>
+                                    <th style="width: 110px;" class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="today-deleted-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span class="me-auto text-muted small">
+                    <strong><span id="today-deleted-count">0</span></strong> task(s) deleted today
+                    <span id="today-deleted-breakdown" class="ms-1"></span>
+                    <span id="today-deleted-truncated" class="ms-2 text-warning" style="display:none;">
+                        <i class="mdi mdi-alert-circle-outline"></i>
+                        Showing first <span id="today-deleted-returned">0</span> rows. Revert what you need then click Refresh to load more.
+                    </span>
+                </span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -3093,11 +3248,13 @@
                 },
                 layout: "fitDataTable",
                 pagination: true,
-                paginationSize: 25,
-                paginationSizeSelector: [10, 25, 50, 100],
+                paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 200, 500],
+                paginationCounter: "rows",
+                langs: { default: { pagination: { page_size: "Rows" } } },
                 responsiveLayout: false,
                 placeholder: "No Tasks Found",
-                height: "600px",
+                height: "calc(100vh - 220px)",
                 layoutColumnsOnNewData: true,
                 autoResize: true,
                 initialSort: [
@@ -3755,6 +3912,31 @@
                 });
             }
 
+            // Decide row order based on active user filters.
+            // - When ANY user filter is active (assignor dropdown, assignee dropdown, or session user focus):
+            //     manual / normal tasks FIRST, then automated.
+            // - Otherwise (global view): automated tasks on top per the existing UX.
+            // Day-level ordering (start_date) is always primary.
+            function getTaskSortForCurrentFilters() {
+                var hasUserFilter = !!(
+                    ($('#filter-assignor').val() || '').trim()
+                    || ($('#filter-assignee').val() || '').trim()
+                    || (typeof taskManagerSessionUserFocus !== 'undefined' && String(taskManagerSessionUserFocus || '').trim())
+                );
+                return [
+                    {column: "start_date", dir: "asc"},
+                    {column: "is_automate_task", dir: hasUserFilter ? "asc" : "desc"}
+                ];
+            }
+
+            function applyTaskOrdering() {
+                try {
+                    table.setSort(getTaskSortForCurrentFilters());
+                } catch (e) {
+                    console.warn('applyTaskOrdering failed:', e);
+                }
+            }
+
             // Combined filter function (proper AND logic)
             function applyFilters() {
                 console.log('🔍 Applying filters...');
@@ -3892,7 +4074,11 @@
                 if (filters.length > 0) {
                     table.setFilter(filters);
                 }
-                
+
+                // Re-apply ordering: when a user is being filtered we want manual tasks first,
+                // then automated. Without this the initialSort would always keep automated on top.
+                applyTaskOrdering();
+
                 // Update statistics after filtering
                 setTimeout(function() {
                     updateStatistics();
@@ -4001,6 +4187,351 @@
                             $icon.removeClass('mdi-spin');
                         }
                     });
+            });
+
+            // ============================================================
+            // Today Deleted — show today's deletions and let user revert
+            // ============================================================
+            function escapeHtml(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+            }
+
+            function renderTodayDeletedRow(row) {
+                var title = escapeHtml(row.title || '(no title)');
+                var typeBadge = row.is_auto_expired
+                    ? '<span class="badge bg-warning text-dark" title="Auto-deleted by nightly daily-auto cleanup">Auto-Expired</span>'
+                    : (row.task_type === 'automate_task'
+                        ? '<span class="badge bg-info">Auto</span>'
+                        : '<span class="badge bg-light text-dark">Manual</span>');
+                var assignor = escapeHtml(row.assignor_name || row.assignor || '-');
+                var assignee = escapeHtml(row.assignee_name || row.assign_to || '-');
+                var deletedBy = row.is_auto_expired
+                    ? '<span class="text-warning"><i class="mdi mdi-robot"></i> System</span>'
+                    : escapeHtml(row.deleted_by_name || row.deleted_by_email || '-');
+                var status = escapeHtml(row.status || '-');
+                var time = escapeHtml(row.deleted_at_human || '');
+
+                // Row color rules:
+                //   yellow = auto-expired (system@auto cleanup of missed daily auto-tasks)
+                //   green  = completed automated tasks auto-archived on Done
+                //   white  = manually deleted tasks
+                var rowClass = '';
+                if (row.is_auto_expired) {
+                    rowClass = ' class="today-deleted-row-auto"';
+                } else if (String(row.status || '').toLowerCase() === 'done') {
+                    rowClass = ' class="today-deleted-row-done"';
+                }
+
+                return ''
+                    + '<tr data-id="' + row.id + '" data-mode="' + (row.is_auto_expired ? 'auto' : 'manual') + '"' + rowClass + '>'
+                    + '  <td><input type="checkbox" class="form-check-input today-deleted-row-chk" data-id="' + row.id + '"></td>'
+                    + '  <td><span class="text-muted small">' + time + '</span></td>'
+                    + '  <td>' + title + '</td>'
+                    + '  <td>' + typeBadge + '</td>'
+                    + '  <td><span class="small">' + assignor + '</span></td>'
+                    + '  <td><span class="small">' + assignee + '</span></td>'
+                    + '  <td><span class="small">' + deletedBy + '</span></td>'
+                    + '  <td><span class="badge bg-secondary">' + status + '</span></td>'
+                    + '  <td class="text-end">'
+                    + '    <button type="button" class="btn btn-sm btn-success today-deleted-revert-btn" data-id="' + row.id + '">'
+                    + '      <i class="mdi mdi-undo"></i> Revert'
+                    + '    </button>'
+                    + '  </td>'
+                    + '</tr>';
+            }
+
+            function formatBadgeNumber(n) {
+                if (typeof n !== 'number' || !isFinite(n)) return '0';
+                if (n >= 1000) {
+                    return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'k';
+                }
+                return String(n);
+            }
+
+            function loadTodayDeleted() {
+                var $loading = $('#today-deleted-loading');
+                var $empty = $('#today-deleted-empty');
+                var $wrap = $('#today-deleted-table-wrap');
+                var $tbody = $('#today-deleted-tbody');
+                var $count = $('#today-deleted-count');
+                var $badge = $('#today-deleted-badge');
+                var $breakdown = $('#today-deleted-breakdown');
+                var $trunc = $('#today-deleted-truncated');
+                var $returned = $('#today-deleted-returned');
+
+                $loading.show();
+                $empty.hide();
+                $wrap.hide();
+                $tbody.empty();
+                $breakdown.text('');
+                $trunc.hide();
+
+                return $.ajax({
+                    url: '{{ route('tasks.todayDeleted.data') }}',
+                    method: 'GET',
+                    dataType: 'json'
+                }).done(function (resp) {
+                    var data = (resp && resp.data) ? resp.data : [];
+                    var total = (resp && typeof resp.count === 'number') ? resp.count : data.length;
+                    var auto = (resp && typeof resp.auto_count === 'number') ? resp.auto_count : 0;
+                    var manual = (resp && typeof resp.manual_count === 'number') ? resp.manual_count : Math.max(0, total - auto);
+
+                    // Footer count uses TRUE total (not the limited rows fetched).
+                    $count.text(total.toLocaleString());
+                    if (auto > 0 || manual > 0) {
+                        $breakdown.html('(<span class="text-warning">' + auto.toLocaleString() + ' auto</span>, '
+                            + manual.toLocaleString() + ' manual)');
+                    }
+                    if (resp && resp.truncated) {
+                        $returned.text((resp.returned || data.length).toLocaleString());
+                        $trunc.show();
+                    }
+
+                    // Update bulk-revert dropdown counters
+                    $('.today-deleted-auto-num').text(auto.toLocaleString());
+                    $('.today-deleted-manual-num').text(manual.toLocaleString());
+                    $('.today-deleted-total-num').text(total.toLocaleString());
+                    // Reset selection state
+                    $('#today-deleted-select-all').prop('checked', false).prop('indeterminate', false);
+                    updateTodayDeletedSelection();
+
+                    // Badge uses TRUE total, abbreviated if it's huge.
+                    if (total > 0) {
+                        $badge.text(formatBadgeNumber(total)).attr('title', total.toLocaleString() + ' deleted today').show();
+                    } else {
+                        $badge.hide();
+                    }
+
+                    if (data.length === 0) {
+                        $empty.show();
+                    } else {
+                        var html = data.map(renderTodayDeletedRow).join('');
+                        $tbody.html(html);
+                        $wrap.show();
+                    }
+                }).fail(function () {
+                    $tbody.html('<tr><td colspan="9" class="text-center text-danger py-3"><i class="mdi mdi-alert"></i> Failed to load today\'s deletions.</td></tr>');
+                    $wrap.show();
+                }).always(function () {
+                    $loading.hide();
+                });
+            }
+
+            // Refresh the badge count quietly on page load and every 60s so users notice deletions.
+            function refreshTodayDeletedBadge() {
+                $.ajax({
+                    url: '{{ route('tasks.todayDeleted.data') }}',
+                    method: 'GET',
+                    data: { limit: 1 }, // tiny payload, count is computed server-side without the row cap
+                    dataType: 'json'
+                }).done(function (resp) {
+                    var n = (resp && typeof resp.count === 'number') ? resp.count : 0;
+                    var $badge = $('#today-deleted-badge');
+                    if (n > 0) {
+                        $badge.text(formatBadgeNumber(n)).attr('title', n.toLocaleString() + ' deleted today').show();
+                    } else {
+                        $badge.hide();
+                    }
+                });
+            }
+            refreshTodayDeletedBadge();
+            setInterval(refreshTodayDeletedBadge, 60000);
+
+            $('#todayDeletedModal').on('show.bs.modal', loadTodayDeleted);
+            $('#today-deleted-refresh-btn').on('click', loadTodayDeleted);
+
+            // ---- Selection: per-row + select-all ----
+            function updateTodayDeletedSelection() {
+                var $checked = $('#today-deleted-tbody .today-deleted-row-chk:checked');
+                var $all = $('#today-deleted-tbody .today-deleted-row-chk');
+                var n = $checked.length;
+                $('#today-deleted-selected-count').text(n);
+                $('#today-deleted-revert-selected-btn').prop('disabled', n === 0);
+
+                var $selAll = $('#today-deleted-select-all');
+                if (n === 0) {
+                    $selAll.prop('checked', false).prop('indeterminate', false);
+                } else if (n === $all.length) {
+                    $selAll.prop('checked', true).prop('indeterminate', false);
+                } else {
+                    $selAll.prop('checked', false).prop('indeterminate', true);
+                }
+            }
+
+            $(document).on('change', '#today-deleted-select-all', function () {
+                var checked = $(this).is(':checked');
+                $('#today-deleted-tbody .today-deleted-row-chk').prop('checked', checked);
+                updateTodayDeletedSelection();
+            });
+
+            $(document).on('change', '#today-deleted-tbody .today-deleted-row-chk', updateTodayDeletedSelection);
+
+            // ---- Shared bulk-revert AJAX runner ----
+            function runBulkRevert(payload, confirmMsg, $triggerBtn) {
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                var originalHtml = $triggerBtn ? $triggerBtn.html() : null;
+                if ($triggerBtn) {
+                    $triggerBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Reverting...');
+                }
+                var data = $.extend({ _token: '{{ csrf_token() }}' }, payload);
+                $.ajax({
+                    url: '{{ route('tasks.todayDeleted.bulkRevert') }}',
+                    method: 'POST',
+                    data: data,
+                    traditional: true,
+                    dataType: 'json'
+                }).done(function (resp) {
+                    alert((resp && resp.message) ? resp.message : 'Bulk revert finished.');
+                    loadTodayDeleted();
+                    if (typeof table !== 'undefined' && table && typeof table.replaceData === 'function') {
+                        table.replaceData().then(function () {
+                            if (typeof applyFilters === 'function') { applyFilters(); }
+                            if (typeof updateStatistics === 'function') { setTimeout(updateStatistics, 100); }
+                        });
+                    }
+                }).fail(function (xhr) {
+                    var msg = 'Bulk revert failed.';
+                    try {
+                        var r = xhr.responseJSON;
+                        if (r && r.message) { msg = r.message; }
+                    } catch (e) {}
+                    alert(msg);
+                }).always(function () {
+                    if ($triggerBtn && originalHtml !== null) {
+                        $triggerBtn.prop('disabled', false).html(originalHtml);
+                    }
+                });
+            }
+
+            // ---- Bulk: by category from dropdown ----
+            $(document).on('click', '[data-bulk-mode]', function (e) {
+                e.preventDefault();
+                var mode = $(this).data('bulk-mode');
+                var label = mode === 'auto' ? 'auto-expired' : (mode === 'manual' ? 'manual' : 'ALL');
+                var num = mode === 'auto'
+                    ? $('.today-deleted-auto-num').first().text()
+                    : (mode === 'manual'
+                        ? $('.today-deleted-manual-num').first().text()
+                        : $('.today-deleted-total-num').first().text());
+                var msg = 'Revert ' + num + ' ' + label + ' deleted task(s) from today?\n\n'
+                    + 'They will be restored to the active Tasks list with status Todo and is_missed cleared.';
+                runBulkRevert({ mode: mode }, msg, null);
+            });
+
+            // ---- Bulk: revert checked rows ----
+            $(document).on('click', '#today-deleted-revert-selected-btn', function () {
+                var ids = $('#today-deleted-tbody .today-deleted-row-chk:checked').map(function () {
+                    return $(this).data('id');
+                }).get();
+                if (ids.length === 0) return;
+                var $btn = $(this);
+                runBulkRevert(
+                    { ids: ids },
+                    'Revert ' + ids.length + ' selected task(s)?',
+                    $btn
+                );
+            });
+
+            $(document).on('click', '.today-deleted-revert-btn', function () {
+                var $btn = $(this);
+                var id = $btn.data('id');
+                if (!id) return;
+                if (!confirm('Revert this task back to active?\n\nThe task will return to your Tasks list with status Todo and is_missed cleared.')) {
+                    return;
+                }
+                $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin"></i>');
+                $.ajax({
+                    url: '/tasks/today-deleted/' + id + '/revert',
+                    method: 'POST',
+                    data: { _token: '{{ csrf_token() }}' },
+                    dataType: 'json'
+                }).done(function (resp) {
+                    if (resp && resp.success) {
+                        $btn.closest('tr').fadeOut(200, function () { $(this).remove(); });
+                        // Update count + badge + reload main task table so the revived task shows up.
+                        var $count = $('#today-deleted-count');
+                        var raw = String($count.text()).replace(/[^0-9]/g, '');
+                        var newCount = Math.max(0, (parseInt(raw, 10) || 1) - 1);
+                        $count.text(newCount.toLocaleString());
+                        var $badge = $('#today-deleted-badge');
+                        if (newCount > 0) {
+                            $badge.text(formatBadgeNumber(newCount)).attr('title', newCount.toLocaleString() + ' deleted today').show();
+                        } else {
+                            $badge.hide();
+                            $('#today-deleted-table-wrap').hide();
+                            $('#today-deleted-empty').show();
+                        }
+                        if (typeof table !== 'undefined' && table && typeof table.replaceData === 'function') {
+                            table.replaceData().then(function () {
+                                if (typeof applyFilters === 'function') { applyFilters(); }
+                                if (typeof updateStatistics === 'function') { setTimeout(updateStatistics, 100); }
+                            });
+                        }
+                    } else {
+                        alert((resp && resp.message) ? resp.message : 'Revert failed.');
+                        $btn.prop('disabled', false).html('<i class="mdi mdi-undo"></i> Revert');
+                    }
+                }).fail(function (xhr) {
+                    var msg = 'Revert failed.';
+                    try {
+                        var r = xhr.responseJSON;
+                        if (r && r.message) { msg = r.message; }
+                    } catch (e) {}
+                    alert(msg);
+                    $btn.prop('disabled', false).html('<i class="mdi mdi-undo"></i> Revert');
+                });
+            });
+
+            // Admin: trigger the "Cleanup Missed Daily" job on demand.
+            // Auto-deletes daily automated tasks that were not completed the same day and counts them in Missed.
+            $('#expire-daily-auto-btn').on('click', function () {
+                var $btn = $(this);
+                var originalHtml = $btn.html();
+
+                if (!confirm('Auto-delete DAILY automated tasks that were NOT completed before today?\n\n• Only schedule_type = daily is affected.\n• Weekly and Monthly automated tasks are NOT touched.\n• Deleted tasks are moved to the Deleted/Archive list and counted in the Missed badge.')) {
+                    return;
+                }
+
+                $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-2"></i> Cleaning...');
+
+                $.ajax({
+                    url: '{{ route('tasks.expireDailyAutomated') }}',
+                    method: 'POST',
+                    data: { _token: '{{ csrf_token() }}' },
+                    dataType: 'json'
+                }).done(function (resp) {
+                    if (resp && resp.success) {
+                        alert(resp.message || 'Cleanup complete.');
+                        // Refresh table + stats so the Missed badge updates immediately.
+                        if (typeof table !== 'undefined' && table && typeof table.replaceData === 'function') {
+                            table.replaceData().then(function () {
+                                applyFilters();
+                                setTimeout(updateStatistics, 100);
+                            });
+                        } else {
+                            location.reload();
+                        }
+                        // Refresh Today Deleted badge — auto-expired tasks become today-deleted entries.
+                        if (typeof refreshTodayDeletedBadge === 'function') {
+                            refreshTodayDeletedBadge();
+                        }
+                    } else {
+                        alert((resp && resp.message) ? resp.message : 'Cleanup failed.');
+                    }
+                }).fail(function (xhr) {
+                    var msg = 'Cleanup failed.';
+                    try {
+                        var r = xhr.responseJSON;
+                        if (r && r.message) { msg = r.message; }
+                    } catch (e) {}
+                    alert(msg);
+                }).always(function () {
+                    $btn.prop('disabled', false).html(originalHtml);
+                });
             });
 
             // Assignor playback (step through assignors - next to Bulk button)

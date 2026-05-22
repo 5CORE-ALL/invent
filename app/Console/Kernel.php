@@ -188,6 +188,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Auto-delete daily automated tasks not completed the same day.
+        // Runs at 00:05 IST so yesterday's incomplete daily auto-tasks are archived as Missed
+        // before today's new instances are generated (generator runs from 12:01 onward).
+        $schedule->command('tasks:expire-daily-automated')
+            ->dailyAt('00:05')
+            ->timezone('Asia/Kolkata')
+            ->name('expire-daily-automated-tasks')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Lightweight alert: log only when expected automated instances are missing.
         $schedule->command('tasks:automated-health-alert')
             ->everyThirtyMinutes()

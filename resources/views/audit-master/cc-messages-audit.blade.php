@@ -703,6 +703,429 @@
             font-size: 11px;
             margin-left: 6px;
         }
+
+        /* ============== LAST AUDITED (auditor + timestamp) ============== */
+        .la-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            line-height: 1.25;
+            text-align: left;
+        }
+        .la-cell .la-auditor {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #0d47a1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .la-cell .la-auditor.la-auditor-missing {
+            color: #adb5bd;
+            font-weight: 500;
+            font-style: italic;
+        }
+        .la-cell .la-time {
+            font-size: 11.5px;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+
+        /* ============== INLINE REMARKS (Remarks column) ==============
+           Rendered directly inside the Tabulator cell so auditors can read
+           the last audit feedback without opening a modal. Designed to
+           stay compact yet wrap cleanly inside a 360-400px column. */
+        .cell-remarks {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 4px 0;
+            text-align: left;
+        }
+        .cell-remarks .cr-empty {
+            color: #adb5bd;
+            font-style: italic;
+            font-size: 12px;
+        }
+        .cell-remarks .cr-item {
+            display: block;
+            padding: 6px 8px;
+            border-left: 3px solid #1976d2;
+            background: #f5faff;
+            border-radius: 0 4px 4px 0;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .cell-remarks .cr-item.cr-channel { border-left-color: #f57c00; background: #fff8ef; }
+        .cell-remarks .cr-item.cr-note    { border-left-color: #6c757d; background: #f8f9fa; }
+        .cell-remarks .cr-item.cr-crit    { border-left-color: #dc3545; background: #fff5f5; }
+        .cell-remarks .cr-label {
+            display: inline-block;
+            font-weight: 700;
+            color: #0d47a1;
+            margin-right: 4px;
+        }
+        .cell-remarks .cr-item.cr-channel .cr-label { color: #e65100; }
+        .cell-remarks .cr-item.cr-note    .cr-label { color: #4527a0; }
+        .cell-remarks .cr-item.cr-crit    .cr-label { color: #b71c1c; }
+        .cell-remarks .cr-score {
+            color: #6c757d;
+            font-size: 11px;
+            font-weight: 500;
+            margin-left: 4px;
+        }
+        .cell-remarks .cr-crit-tag {
+            display: inline-block;
+            background: #dc3545;
+            color: #fff;
+            font-size: 9.5px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 8px;
+            margin-left: 4px;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            vertical-align: middle;
+        }
+        .cell-remarks .cr-text {
+            display: block;
+            color: #212529;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* ================== SOP BUTTON + MODAL ================== */
+        .sop-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 2px 4px;
+            cursor: pointer;
+            line-height: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        .sop-btn img {
+            width: 38px;
+            height: 38px;
+            object-fit: contain;
+            display: block;
+        }
+        .sop-btn:hover {
+            transform: scale(1.08);
+            border-color: #1E90FF;
+            box-shadow: 0 0 0 3px rgba(30, 144, 255, 0.18);
+        }
+        .sop-btn:focus { outline: none; }
+        .sop-btn:focus-visible {
+            border-color: #1E90FF;
+            box-shadow: 0 0 0 3px rgba(30, 144, 255, 0.35);
+        }
+        .sop-btn[data-can-edit="1"] { position: relative; }
+        .sop-btn[data-can-edit="1"]::after {
+            content: "edit";
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: #E63946;
+            color: #fff;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 8px;
+            line-height: 1.2;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        }
+
+        #sopModal .modal-header {
+            background: linear-gradient(135deg, #1976d2 0%, #0d47a1 100%);
+            color: #fff;
+        }
+        #sopModal .modal-header .btn-close { filter: invert(1); }
+        #sopModal .sop-title-img {
+            width: 36px;
+            height: 36px;
+            object-fit: contain;
+            margin-right: 8px;
+            background: #fff;
+            border-radius: 6px;
+            padding: 2px;
+        }
+        #sopModal .sop-badge {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        #sopModal .sop-admin-badge {
+            background: #E63946;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-left: 8px;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+        }
+        #sopModal .sop-mode-hint {
+            font-size: 12px;
+            color: #6c757d;
+            padding: 6px 12px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        #sopModal .sop-viewer {
+            min-height: 55vh;
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 20px 24px;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            background: #fff;
+            font-size: 14.5px;
+            line-height: 1.6;
+            color: #212529;
+            word-wrap: break-word;
+        }
+        #sopModal .sop-viewer:empty::before {
+            content: "No SOP content has been added yet. " attr(data-empty-hint);
+            color: #adb5bd;
+            font-style: italic;
+        }
+
+        /* Rendered Markdown / HTML typography ------------------------- */
+        #sopModal .sop-viewer h1,
+        #sopModal .sop-viewer h2,
+        #sopModal .sop-viewer h3,
+        #sopModal .sop-viewer h4,
+        #sopModal .sop-viewer h5,
+        #sopModal .sop-viewer h6 {
+            margin: 18px 0 10px;
+            font-weight: 700;
+            line-height: 1.3;
+            color: #0d47a1;
+        }
+        #sopModal .sop-viewer h1 { font-size: 24px; border-bottom: 2px solid #e3f2fd; padding-bottom: 6px; }
+        #sopModal .sop-viewer h2 { font-size: 20px; border-bottom: 1px solid #e9ecef; padding-bottom: 4px; }
+        #sopModal .sop-viewer h3 { font-size: 17px; }
+        #sopModal .sop-viewer h4 { font-size: 15px; color: #1565c0; }
+        #sopModal .sop-viewer h5,
+        #sopModal .sop-viewer h6 { font-size: 14px; color: #1976d2; }
+        #sopModal .sop-viewer h1:first-child,
+        #sopModal .sop-viewer h2:first-child,
+        #sopModal .sop-viewer h3:first-child { margin-top: 0; }
+
+        #sopModal .sop-viewer p { margin: 0 0 10px; }
+        #sopModal .sop-viewer ul,
+        #sopModal .sop-viewer ol {
+            margin: 6px 0 12px;
+            padding-left: 26px;
+        }
+        #sopModal .sop-viewer li { margin: 2px 0; }
+        #sopModal .sop-viewer li > p { margin: 0; }
+
+        #sopModal .sop-viewer blockquote {
+            margin: 10px 0;
+            padding: 8px 14px;
+            border-left: 4px solid #1976d2;
+            background: #f5faff;
+            color: #495057;
+            border-radius: 0 4px 4px 0;
+        }
+
+        #sopModal .sop-viewer hr {
+            border: 0;
+            border-top: 1px dashed #ced4da;
+            margin: 18px 0;
+        }
+
+        #sopModal .sop-viewer a {
+            color: #1565c0;
+            text-decoration: underline;
+            word-break: break-word;
+        }
+        #sopModal .sop-viewer a:hover { color: #0d47a1; }
+
+        /* Images — small, user-friendly thumbnails by default.
+           Multiple inline images flow side-by-side and wrap. Click any
+           thumbnail to open a full-size lightbox. */
+        #sopModal .sop-viewer img {
+            max-width: 220px;
+            max-height: 160px;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            display: inline-block;
+            vertical-align: middle;
+            margin: 6px 8px 6px 0;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            background: #fff;
+            cursor: zoom-in;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        #sopModal .sop-viewer img:hover {
+            transform: scale(1.04);
+            border-color: #1976d2;
+            box-shadow: 0 4px 10px rgba(13, 71, 161, 0.18);
+        }
+        /* Images that sit alone on a line (Markdown image-only paragraph)
+           get a tiny bit of extra breathing room, but still stay small. */
+        #sopModal .sop-viewer p > img:only-child {
+            display: inline-block;
+            margin: 8px 8px;
+        }
+        /* Wrap groups of consecutive images into a tidy gallery row. */
+        #sopModal .sop-viewer p:has(> img) {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: flex-start;
+            margin: 6px 0 12px;
+        }
+
+        /* Auto-built gallery — groups of consecutive image-only paragraphs
+           get collapsed into a single grid so they fill the full viewer
+           width instead of stacking down the left edge. */
+        #sopModal .sop-viewer .sop-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+            margin: 10px 0 16px;
+            align-items: start;
+        }
+        #sopModal .sop-viewer .sop-gallery img {
+            max-width: 100%;
+            max-height: 180px;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            object-fit: cover;
+        }
+
+        /* ---- Full-size image lightbox (opens on thumbnail click) ---- */
+        .sop-lightbox-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 24px;
+            cursor: zoom-out;
+            animation: sopLbFade 0.12s ease-out;
+        }
+        @keyframes sopLbFade { from { opacity: 0; } to { opacity: 1; } }
+        .sop-lightbox-backdrop img {
+            max-width: 95vw;
+            max-height: 90vh;
+            border-radius: 8px;
+            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
+            background: #fff;
+        }
+        .sop-lightbox-close {
+            position: absolute;
+            top: 14px;
+            right: 18px;
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            border: 0;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sop-lightbox-close:hover { background: rgba(255, 255, 255, 0.25); }
+
+        /* Tables (GFM tables from Markdown). */
+        #sopModal .sop-viewer table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 13.5px;
+        }
+        #sopModal .sop-viewer table, #sopModal .sop-viewer th, #sopModal .sop-viewer td {
+            border: 1px solid #dee2e6;
+        }
+        #sopModal .sop-viewer th {
+            background: #f1f3f5;
+            color: #212529;
+            font-weight: 700;
+        }
+        #sopModal .sop-viewer th, #sopModal .sop-viewer td {
+            padding: 8px 10px;
+            vertical-align: top;
+        }
+        #sopModal .sop-viewer tr:nth-child(even) td { background: #fbfcfe; }
+
+        /* Inline & block code. */
+        #sopModal .sop-viewer code {
+            background: #f1f3f5;
+            color: #c7254e;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        }
+        #sopModal .sop-viewer pre {
+            background: #f8f9fa;
+            color: #212529;
+            padding: 12px 14px;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid #e9ecef;
+        }
+        #sopModal .sop-viewer pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        /* GFM task lists. */
+        #sopModal .sop-viewer input[type="checkbox"] {
+            margin-right: 6px;
+            transform: translateY(1px);
+        }
+        #sopModal .sop-viewer .task-list-item { list-style: none; }
+        #sopModal .sop-viewer .task-list-item-checkbox { margin-left: -20px; }
+        #sopModal .sop-editor {
+            width: 100%;
+            min-height: 55vh;
+            max-height: 70vh;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+            font-size: 12.5px;
+            line-height: 1.45;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 12px 14px;
+            resize: vertical;
+        }
+        #sopModal .sop-editor:focus {
+            outline: none;
+            border-color: #1E90FF;
+            box-shadow: 0 0 0 3px rgba(30, 144, 255, 0.18);
+        }
+        #sopModal .sop-footer-status {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        #sopModal .sop-footer-status.is-error { color: #b71c1c; }
+        #sopModal .sop-footer-status.is-success { color: #2e7d32; }
     </style>
 @endsection
 
@@ -735,6 +1158,21 @@
                             <small class="text-muted fw-normal" id="kpiWindowLabel">last 90 days</small>
                         </h5>
                         <div class="d-flex align-items-center gap-2">
+                            {{-- SOP (Standard Operating Procedure) button.
+                                 Click  = open modal in view-only mode (everyone).
+                                 Double-click = open in edit mode for SOP admins only
+                                                (president@5core.com, software5@5core.com). --}}
+                            <button type="button"
+                                    id="sopOpenBtn"
+                                    class="sop-btn"
+                                    data-can-edit="{{ !empty($isSopAdmin) ? '1' : '0' }}"
+                                    data-sop-key="{{ $sopKey ?? 'cc_messages' }}"
+                                    title="{{ !empty($isSopAdmin)
+                                        ? 'Click: view SOP — Double-click: edit SOP'
+                                        : 'View Standard Operating Procedure (SOP)' }}"
+                                    aria-label="Open SOP">
+                                <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP">
+                            </button>
                             <select id="kpiWindow" class="form-select form-select-sm" style="width: 140px;">
                                 <option value="30">Last 30 days</option>
                                 <option value="60">Last 60 days</option>
@@ -1118,10 +1556,86 @@
             </div>
         </div>
     </div>
+
+    {{-- ================ SOP (Standard Operating Procedure) MODAL ================
+         Click on the SOP button = open this modal in read-only "viewer" mode.
+         Double-click on the SOP button (and only if the current user is in
+         AuditMasterController::SOP_ADMIN_EMAILS, currently:
+            - president@5core.com
+            - software5@5core.com
+         ) = open in edit mode. Editors paste the HTML they copied out of
+         ChatGPT into the textarea and click Save. The HTML is persisted on
+         the server (storage/app/sop/<module>-sop.html) and shown to everyone. --}}
+    <div class="modal fade" id="sopModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title d-flex align-items-center flex-wrap">
+                        <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" class="sop-title-img">
+                        <span>Standard Operating Procedure</span>
+                        <span class="sop-badge">CC Messages</span>
+                        <span id="sopAdminBadge" class="sop-admin-badge d-none">
+                            <i class="ri-edit-line"></i> Edit Mode
+                        </span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="sop-mode-hint" id="sopModeHint">
+                    {{-- Filled in by JS based on current mode (viewer / editor). --}}
+                </div>
+
+                <div class="modal-body">
+                    {{-- Read-only viewer: shows the saved HTML as rendered HTML.
+                         Hidden in edit mode. --}}
+                    <div id="sopViewer"
+                         class="sop-viewer"
+                         data-empty-hint="An admin can double-click the SOP button to add content.">
+                    </div>
+
+                    {{-- Editable textarea: shown only in edit mode (admins).
+                         Auditors paste HTML straight out of ChatGPT here. --}}
+                    <textarea id="sopEditor"
+                              class="sop-editor d-none"
+                              spellcheck="false"
+                              placeholder="Paste the SOP content (copied from ChatGPT) here...&#10;&#10;Both Markdown and raw HTML are supported.&#10; • Markdown:   # Heading,  ![image](url),  - bullet,  | table | ...&#10; • HTML:       <h1>Heading</h1> <img src=&quot;url&quot;> ...&#10;&#10;The viewer renders it as a formatted document (real headings, real images), never as raw code."></textarea>
+                </div>
+
+                <div class="modal-footer d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div class="sop-footer-status" id="sopStatus"></div>
+                    <div class="d-flex gap-2">
+                        {{-- Edit / Save / Cancel buttons. The Edit button is
+                             only visible to SOP admins; it switches the modal
+                             into edit mode (same effect as double-clicking
+                             the SOP icon). --}}
+                        @if(!empty($isSopAdmin))
+                            <button type="button" id="sopEditBtn" class="btn btn-sm btn-outline-primary">
+                                <i class="ri-edit-line me-1"></i> Edit
+                            </button>
+                            <button type="button" id="sopCancelBtn" class="btn btn-sm btn-outline-secondary d-none">
+                                Cancel
+                            </button>
+                            <button type="button" id="sopSaveBtn" class="btn btn-sm btn-primary d-none">
+                                <i class="ri-save-3-line me-1"></i> Save SOP
+                            </button>
+                        @endif
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-after-vite')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    {{-- Markdown -> HTML renderer for the SOP viewer (so pasted ChatGPT
+         Markdown shows as formatted document with images, headings, etc.
+         instead of raw text). --}}
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    {{-- DOMPurify sanitizes the rendered HTML before injection so a paste
+         can't ship a stray <script>. --}}
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script>
         $(function () {
             const channelsWithLogo = @json($channelsWithLogo);
@@ -1173,6 +1687,8 @@
                 channel: row.channel,
                 logo: row.logo || null,
                 last_audited_at: row.last_audited_at || null,
+                last_audited_full: row.last_audited_full || null,
+                last_auditor_name: row.last_auditor_name || null,
                 last_audited: row.last_audited_at
                     ? new Date(row.last_audited_at).toLocaleDateString()
                     : '-',
@@ -1187,6 +1703,10 @@
             const table = new Tabulator('#ccMessagesAuditTable', {
                 data: tableData,
                 layout: 'fitColumns',
+                // Let rows grow to fit the inline remarks cell (no truncation).
+                // We don't pin a rowHeight, so Tabulator auto-sizes each row
+                // to its tallest cell.
+                resizableColumnFit: true,
                 pagination: 'local',
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
@@ -1235,7 +1755,55 @@
                                     </button>`;
                         },
                     },
-                    { title: 'Last Audited', field: 'last_audited', width: 160 },
+                    {
+                        // Last Audited — shows the auditor's name (top line)
+                        // and the exact date + time the audit was saved
+                        // (second line). Falls back gracefully when either
+                        // piece of data is missing.
+                        title: 'Last Audited',
+                        field: 'last_audited_full',
+                        width: 200,
+                        headerSort: true,
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData();
+                            const iso  = cell.getValue() || data.last_audited_at;
+                            const name = (data.last_auditor_name || '').toString().trim();
+
+                            if (!iso && !name) {
+                                return `<span class="text-muted">-</span>`;
+                            }
+
+                            let dateLine = '-';
+                            let timeLine = '';
+                            if (iso) {
+                                const d = new Date(iso);
+                                if (!isNaN(d.getTime())) {
+                                    dateLine = d.toLocaleDateString(undefined, {
+                                        year: 'numeric', month: 'short', day: '2-digit'
+                                    });
+                                    timeLine = d.toLocaleTimeString(undefined, {
+                                        hour: '2-digit', minute: '2-digit', hour12: true
+                                    });
+                                }
+                            }
+
+                            const safeName = escapeHtml(name || 'Unknown auditor');
+                            const nameHtml = name
+                                ? `<div class="la-auditor" title="Auditor: ${safeName}">
+                                       <i class="ri-user-3-line me-1"></i>${safeName}
+                                   </div>`
+                                : `<div class="la-auditor la-auditor-missing" title="Auditor not recorded">
+                                       <i class="ri-user-unfollow-line me-1"></i>—
+                                   </div>`;
+
+                            return `<div class="la-cell">
+                                        ${nameHtml}
+                                        <div class="la-time">
+                                            <i class="ri-time-line me-1"></i>${escapeHtml(dateLine)}${timeLine ? ` · ${escapeHtml(timeLine)}` : ''}
+                                        </div>
+                                    </div>`;
+                        },
+                    },
                     {
                         title: 'Grade',
                         field: 'last_grade',
@@ -1252,25 +1820,68 @@
                         },
                     },
                     {
+                        // Inline remarks — always visible, no click/modal.
+                        // Renders per-parameter feedback + auditor notes +
+                        // critical failure reasons stacked vertically inside
+                        // the cell so the auditor can see them at a glance.
                         title: 'Remarks',
                         field: 'last_remarks_count',
-                        width: 110,
-                        hozAlign: 'center',
+                        width: 380,
+                        hozAlign: 'left',
                         headerSort: false,
+                        variableHeight: true,
                         formatter: function (cell) {
                             const data  = cell.getRow().getData();
-                            const count = parseInt(cell.getValue(), 10) || 0;
-                            if (!count) {
-                                return `<span class="text-muted" title="No remarks">-</span>`;
+                            const items = Array.isArray(data.last_remarks_items) ? data.last_remarks_items : [];
+                            const notes = (data.last_auditor_notes || '').toString().trim();
+                            const crits = (data.last_critical_reasons || '').toString().trim();
+
+                            if (!items.length && !notes && !crits) {
+                                return `<div class="cell-remarks"><span class="cr-empty">No remarks</span></div>`;
                             }
-                            const safeCh = (data.channel || '').toString().replace(/"/g, '&quot;');
-                            return `<button type="button"
-                                        class="btn btn-sm btn-outline-primary view-remarks-btn"
-                                        data-channel="${safeCh}"
-                                        title="View remarks (${count})">
-                                        <i class="ri-chat-quote-line"></i>
-                                        <span class="badge bg-primary ms-1">${count}</span>
-                                    </button>`;
+
+                            const parts = [];
+
+                            items.forEach(function (it) {
+                                const cat       = (it.category === 'channel_compliance') ? 'channel' : 'core';
+                                const catCls    = (cat === 'channel') ? 'cr-channel' : '';
+                                const sc        = Number.isFinite(+it.score)     ? (+it.score).toFixed(1)     : '0.0';
+                                const max       = Number.isFinite(+it.max_score) ? (+it.max_score).toFixed(1) : '0.0';
+                                const isCrit    = !!it.critical;
+                                const critTag   = isCrit ? `<span class="cr-crit-tag">CRITICAL</span>` : '';
+                                const label     = escapeHtml(it.label || 'Parameter');
+                                const text      = escapeHtml(it.remarks || '');
+                                const wrapCls   = isCrit ? 'cr-crit' : catCls;
+                                parts.push(
+                                    `<div class="cr-item ${wrapCls}">
+                                        <span class="cr-label">${label}</span>
+                                        <span class="cr-score">(${sc}/${max})</span>
+                                        ${critTag}
+                                        <span class="cr-text">${text}</span>
+                                    </div>`
+                                );
+                            });
+
+                            if (notes) {
+                                parts.push(
+                                    `<div class="cr-item cr-note">
+                                        <span class="cr-label"><i class="ri-edit-line me-1"></i>Auditor Notes</span>
+                                        <span class="cr-text">${escapeHtml(notes)}</span>
+                                    </div>`
+                                );
+                            }
+
+                            if (crits) {
+                                parts.push(
+                                    `<div class="cr-item cr-crit">
+                                        <span class="cr-label"><i class="ri-error-warning-fill me-1"></i>Critical Failure Reasons</span>
+                                        <span class="cr-crit-tag">CRITICAL</span>
+                                        <span class="cr-text">${escapeHtml(crits)}</span>
+                                    </div>`
+                                );
+                            }
+
+                            return `<div class="cell-remarks">${parts.join('')}</div>`;
                         },
                     },
                 ],
@@ -1777,11 +2388,17 @@
                     const savedCount   = savedItems.length
                         + (savedNotes ? 1 : 0)
                         + (savedReasons ? 1 : 0);
+                    // Current auditor — used to refresh the Last Audited cell
+                    // without a full page reload.
+                    const currentAuditorName = @json(trim((string) (auth()->user()->name
+                        ?? (auth()->user()->email ?? ''))));
                     table.getRows().forEach(r => {
                         if (r.getData().channel === currentChannel) {
                             r.update({
                                 last_audited: new Date().toLocaleDateString(),
                                 last_audited_at: nowIso, // <-- triggers Audit column to re-render in green
+                                last_audited_full: nowIso,
+                                last_auditor_name: currentAuditorName || null,
                                 last_grade: savedGrade,
                                 last_grade_color: savedGradeColor,
                                 last_remarks_items: savedItems,
@@ -2198,6 +2815,368 @@
 
             // Initial load
             loadAgentKpis();
+
+            /* ============================================================
+             *  SOP (Standard Operating Procedure) modal wiring
+             *  ----------------------------------------------------------
+             *  - Click on #sopOpenBtn               -> open in VIEW mode (everyone)
+             *  - Double-click on #sopOpenBtn        -> open in EDIT mode (SOP admins only)
+             *  - #sopEditBtn / #sopCancelBtn        -> in-modal mode switch
+             *  - #sopSaveBtn                        -> POST html to backend
+             *  The "can edit" flag is set server-side via data-can-edit on
+             *  the button so an unauthorised paste cannot succeed even if
+             *  the DOM is tampered with — the controller re-checks the
+             *  current user's email against SOP_ADMIN_EMAILS on save.
+             * ============================================================ */
+            (function initSopModal() {
+                const $openBtn   = $('#sopOpenBtn');
+                if (!$openBtn.length) return;
+
+                const sopKey     = $openBtn.data('sop-key') || 'cc_messages';
+                const canEdit    = String($openBtn.data('can-edit')) === '1';
+
+                const sopGetUrl  = "{{ route('audit.master.sop.get') }}";
+                const sopSaveUrl = "{{ route('audit.master.sop.save') }}";
+                const csrfToken  = $('meta[name="csrf-token"]').attr('content');
+
+                const $modalEl   = $('#sopModal');
+                if (!$modalEl.length) return;
+
+                const sopModal   = new bootstrap.Modal($modalEl[0]);
+                const $viewer    = $('#sopViewer');
+                const $editor    = $('#sopEditor');
+                const $editBtn   = $('#sopEditBtn');
+                const $cancelBtn = $('#sopCancelBtn');
+                const $saveBtn   = $('#sopSaveBtn');
+                const $adminPill = $('#sopAdminBadge');
+                const $hint      = $('#sopModeHint');
+                const $status    = $('#sopStatus');
+
+                let currentHtml  = '';      // last server-confirmed HTML
+                let isEditing    = false;   // current modal mode
+                let isLoading    = false;
+                let dblClickArmed = false;  // suppress single-click when a dblclick fires
+
+                function setStatus(msg, kind) {
+                    $status
+                        .removeClass('is-error is-success')
+                        .text(msg || '');
+                    if (kind === 'error')   $status.addClass('is-error');
+                    if (kind === 'success') $status.addClass('is-success');
+                }
+
+                function setHintForMode() {
+                    if (isEditing) {
+                        $hint.html('<i class="ri-edit-line me-1"></i> <strong>Edit mode.</strong> Paste the SOP <strong>Markdown</strong> (or HTML) copied from ChatGPT below, then click <em>Save SOP</em>. The viewer will render it as a formatted document. Only <code>president@5core.com</code> and <code>software5@5core.com</code> can save.');
+                    } else {
+                        $hint.html('<i class="ri-eye-line me-1"></i> Read-only view. ' + (canEdit
+                            ? 'Double-click the <strong>SOP</strong> button (or click <em>Edit</em>) to update.'
+                            : 'Contact an admin to update this SOP.'));
+                    }
+                }
+
+                function showViewer() {
+                    isEditing = false;
+                    $viewer.removeClass('d-none');
+                    $editor.addClass('d-none');
+                    $editBtn.removeClass('d-none');
+                    $cancelBtn.addClass('d-none');
+                    $saveBtn.addClass('d-none');
+                    $adminPill.addClass('d-none');
+                    setHintForMode();
+                }
+
+                function showEditor() {
+                    if (!canEdit) {
+                        setStatus('You are not authorized to edit the SOP.', 'error');
+                        return;
+                    }
+                    isEditing = true;
+                    $editor.val(currentHtml);
+                    $viewer.addClass('d-none');
+                    $editor.removeClass('d-none');
+                    $editBtn.addClass('d-none');
+                    $cancelBtn.removeClass('d-none');
+                    $saveBtn.removeClass('d-none');
+                    $adminPill.removeClass('d-none');
+                    setHintForMode();
+                    setTimeout(() => $editor.trigger('focus'), 50);
+                }
+
+                // Heuristic: pasted ChatGPT content is usually Markdown
+                // (lines starting with "#", "![Image](...)", "- ", etc.),
+                // but admins can also paste raw HTML. We detect which one
+                // it is and render it as a proper formatted document with
+                // real images / headings / tables — never as raw code.
+                function looksLikeHtml(text) {
+                    if (!text) return false;
+                    const t = text.trim();
+                    if (!t) return false;
+                    // Strong HTML signals: a tag in the first ~200 chars and
+                    // a matching closing tag somewhere later.
+                    if (/^<!doctype\s+html/i.test(t)) return true;
+                    if (/^<(html|body|div|section|article|h[1-6]|p|table|ul|ol|img|figure)\b/i.test(t)) return true;
+                    // Mixed: starts with text but contains <tag>...</tag>
+                    const open  = (t.match(/<[a-z][a-z0-9]*\b[^>]*>/gi) || []).length;
+                    const close = (t.match(/<\/[a-z][a-z0-9]*\s*>/gi) || []).length;
+                    return open >= 3 && close >= 2;
+                }
+
+                function renderHtmlIntoViewer(raw) {
+                    currentHtml = raw || '';
+
+                    let html;
+                    if (looksLikeHtml(currentHtml)) {
+                        html = currentHtml;
+                    } else if (window.marked) {
+                        // Render Markdown -> HTML. GitHub-flavoured by default
+                        // (tables, task lists, fenced code) and line breaks
+                        // preserved so single line breaks behave naturally.
+                        try {
+                            marked.use({ gfm: true, breaks: true });
+                            html = marked.parse(currentHtml);
+                        } catch (e) {
+                            html = '<pre>' + escapeHtml(currentHtml) + '</pre>';
+                        }
+                    } else {
+                        // Markdown lib failed to load — show as preformatted
+                        // text so the auditor at least sees the content.
+                        html = '<pre>' + escapeHtml(currentHtml) + '</pre>';
+                    }
+
+                    // Sanitize before injection. Server-side only SOP admins
+                    // can write, but stripping <script>/event handlers gives
+                    // a second layer of safety.
+                    if (window.DOMPurify) {
+                        html = DOMPurify.sanitize(html, {
+                            USE_PROFILES: { html: true },
+                            ADD_ATTR: ['target'],
+                        });
+                    }
+
+                    $viewer.html(html);
+
+                    // Make every link safe + open in new tab (common for
+                    // "SOP Test Link" style references).
+                    $viewer.find('a[href]').each(function () {
+                        this.setAttribute('target', '_blank');
+                        this.setAttribute('rel', 'noopener noreferrer');
+                    });
+
+                    // Add tooltip + accessibility hint on the thumbnails.
+                    // The actual click->lightbox is delegated below so it
+                    // also works after a re-render.
+                    $viewer.find('img').each(function () {
+                        if (!this.getAttribute('title')) {
+                            this.setAttribute('title', 'Click to enlarge');
+                        }
+                        if (!this.getAttribute('alt')) {
+                            this.setAttribute('alt', 'SOP image');
+                        }
+                        this.setAttribute('loading', 'lazy');
+                    });
+
+                    // Group runs of consecutive image-only paragraphs into a
+                    // responsive grid so images fill the full viewer width
+                    // (instead of stacking down the left edge).
+                    groupImagesIntoGallery($viewer[0]);
+                }
+
+                // Treat a node as "image-only" if it is a <p> that contains
+                // only <img> elements (and whitespace / <br>). Markdown turns
+                // each `![Image](url)` line into its own such paragraph, so a
+                // long block of inline images becomes a vertical column.
+                function isImageOnlyParagraph(node) {
+                    if (!node || node.nodeType !== 1) return false;
+                    if (node.tagName !== 'P') return false;
+                    if (node.querySelector('img') === null) return false;
+                    // Reject if there is any visible text or any non-img/br tag.
+                    for (const child of node.childNodes) {
+                        if (child.nodeType === 3) {
+                            if (child.textContent.trim() !== '') return false;
+                        } else if (child.nodeType === 1) {
+                            const tag = child.tagName.toLowerCase();
+                            if (tag !== 'img' && tag !== 'br') return false;
+                        }
+                    }
+                    return true;
+                }
+
+                function groupImagesIntoGallery(root) {
+                    if (!root) return;
+                    const children = Array.from(root.children);
+                    let i = 0;
+                    while (i < children.length) {
+                        const start = children[i];
+                        if (!isImageOnlyParagraph(start)) { i++; continue; }
+                        let j = i;
+                        const group = [];
+                        while (j < children.length && isImageOnlyParagraph(children[j])) {
+                            group.push(children[j]);
+                            j++;
+                        }
+                        // Need at least two consecutive image paragraphs OR
+                        // one paragraph with multiple images to benefit from
+                        // a grid layout.
+                        const totalImgs = group.reduce((n, p) => n + p.querySelectorAll('img').length, 0);
+                        if (group.length >= 2 || totalImgs >= 2) {
+                            const gallery = document.createElement('div');
+                            gallery.className = 'sop-gallery';
+                            group.forEach(p => {
+                                p.querySelectorAll('img').forEach(img => gallery.appendChild(img));
+                            });
+                            root.insertBefore(gallery, group[0]);
+                            group.forEach(p => p.remove());
+                        }
+                        i = j;
+                    }
+                }
+
+                // Click a thumbnail in the SOP viewer -> open full-size in a
+                // lightweight lightbox. Click backdrop or press Esc to close.
+                function openSopLightbox(src, alt) {
+                    closeSopLightbox(); // make sure only one is ever open
+                    const $backdrop = $('<div class="sop-lightbox-backdrop" role="dialog" aria-modal="true"></div>');
+                    const $closeBtn = $('<button type="button" class="sop-lightbox-close" aria-label="Close">&times;</button>');
+                    const $img = $('<img>').attr('src', src).attr('alt', alt || 'SOP image');
+                    $backdrop.append($closeBtn).append($img);
+                    $('body').append($backdrop);
+                    $backdrop.on('click', function (ev) {
+                        // Close on backdrop click but ignore clicks on the
+                        // image itself so the user can right-click / save it.
+                        if (ev.target === $backdrop[0] || ev.target === $closeBtn[0]) {
+                            closeSopLightbox();
+                        }
+                    });
+                    $(document).on('keydown.sopLb', function (ev) {
+                        if (ev.key === 'Escape') closeSopLightbox();
+                    });
+                }
+                function closeSopLightbox() {
+                    $('.sop-lightbox-backdrop').remove();
+                    $(document).off('keydown.sopLb');
+                }
+                $(document).on('click', '#sopViewer img', function (ev) {
+                    ev.preventDefault();
+                    const src = this.getAttribute('src');
+                    if (!src) return;
+                    openSopLightbox(src, this.getAttribute('alt'));
+                });
+
+                function loadSop(forceEdit) {
+                    if (isLoading) return;
+                    isLoading = true;
+                    setStatus('Loading SOP…');
+                    $.ajax({
+                        url: sopGetUrl,
+                        method: 'GET',
+                        data: { key: sopKey },
+                        dataType: 'json',
+                    }).done(function (res) {
+                        if (res && res.success) {
+                            renderHtmlIntoViewer(res.html || '');
+                            setStatus('');
+                            if (forceEdit && canEdit) {
+                                showEditor();
+                            } else {
+                                showViewer();
+                            }
+                        } else {
+                            setStatus((res && res.message) || 'Failed to load SOP.', 'error');
+                            showViewer();
+                        }
+                    }).fail(function (xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to load SOP.';
+                        setStatus(msg, 'error');
+                        showViewer();
+                    }).always(function () {
+                        isLoading = false;
+                    });
+                }
+
+                function saveSop() {
+                    if (!canEdit) {
+                        setStatus('You are not authorized to edit the SOP.', 'error');
+                        return;
+                    }
+                    const newHtml = $editor.val();
+                    setStatus('Saving…');
+                    $saveBtn.prop('disabled', true);
+                    $.ajax({
+                        url: sopSaveUrl,
+                        method: 'POST',
+                        data: { key: sopKey, html: newHtml, _token: csrfToken },
+                        dataType: 'json',
+                    }).done(function (res) {
+                        if (res && res.success) {
+                            renderHtmlIntoViewer(newHtml);
+                            showViewer();
+                            setStatus('Saved.', 'success');
+                            setTimeout(() => setStatus(''), 2500);
+                        } else {
+                            setStatus((res && res.message) || 'Failed to save SOP.', 'error');
+                        }
+                    }).fail(function (xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save SOP.';
+                        setStatus(msg, 'error');
+                    }).always(function () {
+                        $saveBtn.prop('disabled', false);
+                    });
+                }
+
+                // Server-rendered HTML may already be present in the blade
+                // template (so the modal can open instantly without a round-
+                // trip). Seed it here.
+                renderHtmlIntoViewer(@json($sopHtml ?? ''));
+
+                // Single click vs double-click on the SOP icon. We delay the
+                // single-click handler slightly so a dblclick can cancel it.
+                let clickTimer = null;
+                $openBtn.on('click', function (e) {
+                    e.preventDefault();
+                    if (dblClickArmed) return; // dblclick will handle it
+                    clearTimeout(clickTimer);
+                    clickTimer = setTimeout(function () {
+                        if (dblClickArmed) { dblClickArmed = false; return; }
+                        sopModal.show();
+                        loadSop(false);
+                    }, 220);
+                });
+
+                $openBtn.on('dblclick', function (e) {
+                    e.preventDefault();
+                    dblClickArmed = true;
+                    clearTimeout(clickTimer);
+                    setTimeout(() => { dblClickArmed = false; }, 400);
+
+                    if (!canEdit) {
+                        // Non-admins falling through to a dblclick still get
+                        // the read-only modal, but with a clear hint.
+                        sopModal.show();
+                        loadSop(false);
+                        setStatus('Only president@5core.com and software5@5core.com can edit the SOP.', 'error');
+                        return;
+                    }
+                    sopModal.show();
+                    loadSop(true);
+                });
+
+                // In-modal buttons (only present for SOP admins).
+                $editBtn.on('click', function () { showEditor(); });
+                $cancelBtn.on('click', function () {
+                    $editor.val(currentHtml);
+                    showViewer();
+                    setStatus('');
+                });
+                $saveBtn.on('click', saveSop);
+
+                // Reset to view mode every time the modal is fully closed so
+                // the next open starts clean.
+                $modalEl.on('hidden.bs.modal', function () {
+                    showViewer();
+                    setStatus('');
+                });
+            })();
         });
     </script>
 @endsection
