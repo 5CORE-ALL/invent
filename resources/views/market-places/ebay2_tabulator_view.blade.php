@@ -1688,7 +1688,7 @@
                             // Update table if it's loaded
                             if (table) {
                                 setTimeout(() => {
-                                    table.replaceData();
+                                    refreshEbay2TableData();
                                 }, 1000);
                             }
                         }
@@ -3369,7 +3369,7 @@
                                         data: { sku: sku, status: 'applied' },
                                         success: function(response) {
                                             if (response.success) {
-                                                table.replaceData();
+                                                refreshEbay2TableData();
                                                 showToast('Status updated to Applied', 'success');
                                             }
                                         }
@@ -5304,7 +5304,7 @@
                 const menu = document.getElementById("column-dropdown-menu");
                 menu.innerHTML = '';
 
-                fetch('/ebay-column-visibility', {
+                fetch('/get-ebay2-column-visibility', {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -5346,7 +5346,7 @@
                     }
                 });
 
-                fetch('/ebay-column-visibility', {
+                fetch('/set-ebay2-column-visibility', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -5359,7 +5359,7 @@
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch('/ebay-column-visibility', {
+                fetch('/get-ebay2-column-visibility', {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -5635,7 +5635,7 @@
                         
                         // Reload table data
                         setTimeout(() => {
-                            table.setData('/ebay-data-json');
+                            table.setData('/ebay2-data?_=' + Date.now());
                         }, 1000);
                     },
                     error: function(xhr) {
@@ -5653,6 +5653,12 @@
             competitors: [],
             lowestPrice: null
         };
+
+        function refreshEbay2TableData() {
+            if (typeof table !== 'undefined' && table) {
+                table.replaceData('/ebay2-data?_=' + Date.now());
+            }
+        }
 
         // Load Competitors Modal Function
         function loadEbayCompetitorsModal(sku) {
@@ -5819,7 +5825,7 @@
                         loadEbayCompetitorsModal(sku);
                         
                         // Reload main table data
-                        table.replaceData();
+                        refreshEbay2TableData();
                     } else {
                         showToast(response.error || 'Failed to add competitor', 'error');
                     }
@@ -5864,7 +5870,7 @@
                         loadEbayCompetitorsModal(sku);
                         
                         // Reload main table data
-                        table.replaceData();
+                        refreshEbay2TableData();
                     } else {
                         showToast(response.error || 'Failed to delete competitor', 'error');
                     }

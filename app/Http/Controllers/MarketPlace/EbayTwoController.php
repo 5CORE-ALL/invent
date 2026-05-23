@@ -21,6 +21,7 @@ use App\Models\EbayTwoListingStatus;
 use App\Models\Ebay2Order;
 use App\Models\Ebay2OrderItem;
 use App\Models\AmazonDatasheet;
+use App\Models\EbaySkuCompetitor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -374,6 +375,10 @@ class EbayTwoController extends Controller
         $pmtPercentage = $pmtMarketplaceData ? ($pmtMarketplaceData->percentage / 100) : 1;
         $pmtAdPercentage = $pmtMarketplaceData ? ($pmtMarketplaceData->ad_updates / 100) : 0;
 
+        $lmpLookups = EbaySkuCompetitor::buildGroupedLookup('ebay');
+        $lmpDetailsLookup = $lmpLookups['details'];
+        $lmpLowestLookup = $lmpLookups['lowest'];
+
         // 6. Build Result
         $result = [];
 
@@ -442,6 +447,8 @@ class EbayTwoController extends Controller
             
             // Amazon Price for comparison
             $row['A Price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
+
+            EbaySkuCompetitor::applyToRow($row, $pm->sku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?: null);
 
             $ebayL30ForDil = floatval($row["eBay L30"] ?? 0);
             $viewsForDil = floatval($row['views'] ?? 0);
@@ -705,6 +712,9 @@ class EbayTwoController extends Controller
                 $row['l7_views'] = $metric->l7_views ?? 0;
                 $row['eBay_item_id'] = $metric->item_id ?? null;
                 $row['E Stock'] = $metric->ebay_stock ?? 0;
+
+                EbaySkuCompetitor::applyToRow($row, $metricSku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?: null);
+
                 $ebayL30ForDilM = floatval($row["eBay L30"] ?? 0);
                 $viewsForDilM = floatval($row['views'] ?? 0);
                 $row["E Dil%"] = $viewsForDilM > 0

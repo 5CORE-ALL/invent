@@ -16,6 +16,7 @@ use App\Models\EbayThreeListingStatus;
 use App\Models\ADVMastersData;
 use App\Models\Ebay3GeneralReport;
 use App\Models\Ebay3Metric;
+use App\Models\EbaySkuCompetitor;
 use App\Models\Ebay3PriorityReport;
 use App\Models\EbayPriorityReport;
 use App\Models\EbayGeneralReport;
@@ -284,7 +285,7 @@ class EbayThreeController extends Controller
         });
         $skus = array_values($nonParentSkus);
 
-        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id', 'lmp_data', 'lmp_link')
+        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id')
             ->whereIn('sku', $allSkus)
             ->get();
         $ebayMetrics = $ebayMetricsAll->keyBy('sku');
@@ -313,6 +314,10 @@ class EbayThreeController extends Controller
 
             return $k === '' ? null : ($shopifyByNorm[$k] ?? null);
         };
+
+        $lmpLookups = EbaySkuCompetitor::buildGroupedLookup('ebay');
+        $lmpDetailsLookup = $lmpLookups['details'];
+        $lmpLowestLookup = $lmpLookups['lowest'];
 
         // Fetch Amazon data for price comparison
         $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -771,8 +776,7 @@ class EbayThreeController extends Controller
                 $row['percentage'] = $percentage;
                 $row['ad_updates'] = $adUpdates;
                 $row['image_path'] = null;
-                $row['lmp_price'] = null;
-                $row['lmp_link'] = null;
+                $row = array_merge($row, EbaySkuCompetitor::emptyRowFields());
                 $row['l7_views'] = $sums['l7_views'] ?? 0;
                 // KW Ads fields for parent rows - populate from pre-fetched campaign data
                 $row['kw_campaign_id'] = '';
@@ -899,30 +903,7 @@ class EbayThreeController extends Controller
                 $row['eBay Stock'] = $ebayMetric->ebay_stock ?? 0;
                 $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
                 
-                // LMP Data from ebay_3_metrics table
-                $lmpData = $ebayMetric->lmp_data ?? null;
-                $lmpEntries = [];
-                $lmpPrice = null;
-                
-                if ($lmpData) {
-                    if (is_string($lmpData)) {
-                        $lmpEntries = json_decode($lmpData, true) ?? [];
-                    } else {
-                        $lmpEntries = $lmpData;
-                    }
-                    
-                    // Get lowest price from lmp_data
-                    if (!empty($lmpEntries)) {
-                        $prices = array_column($lmpEntries, 'price');
-                        if (!empty($prices)) {
-                            $lmpPrice = min($prices);
-                        }
-                    }
-                }
-                
-                $row['lmp_price'] = $lmpPrice;
-                $row['lmp_link'] = $ebayMetric->lmp_link ?? null;
-                $row['lmp_entries'] = $lmpEntries;
+                EbaySkuCompetitor::applyToRow($row, $sku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?? null);
 
                 // Add values from product_master
                 $values = $productMaster->Values ?: [];
@@ -1759,6 +1740,10 @@ class EbayThreeController extends Controller
 
             return $k === '' ? null : ($shopifyByNorm[$k] ?? null);
         };
+
+        $lmpLookups = EbaySkuCompetitor::buildGroupedLookup('ebay');
+        $lmpDetailsLookup = $lmpLookups['details'];
+        $lmpLowestLookup = $lmpLookups['lowest'];
 
         // Fetch Amazon data for price comparison
         $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');

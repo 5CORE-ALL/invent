@@ -2952,7 +2952,13 @@ class EbayController extends Controller
             }
             
             // Use 'ebay' to match database marketplace value
-            $competitors = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($sku, 'ebay');
+            $competitors = collect();
+            foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($sku) as $lookupSku) {
+                $competitors = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
+                if ($competitors->isNotEmpty()) {
+                    break;
+                }
+            }
             $fetcher = app(EbayLivePriceFetcher::class);
 
             foreach ($competitors as $competitor) {
@@ -2990,7 +2996,14 @@ class EbayController extends Controller
                 ]);
             }
 
-            $competitors = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($sku, 'ebay');
+            $competitors = collect();
+            foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($sku) as $lookupSku) {
+                $found = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
+                if ($found->isNotEmpty()) {
+                    $competitors = $found;
+                    break;
+                }
+            }
             $lowestPrice = $competitors->first();
             
             return response()->json([
