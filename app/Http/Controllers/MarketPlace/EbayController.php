@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\EbayListingStatus;
 use App\Services\EbayApiService;
+use App\Services\EbayLivePriceFetcher;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -2952,7 +2953,44 @@ class EbayController extends Controller
             
             // Use 'ebay' to match database marketplace value
             $competitors = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($sku, 'ebay');
-            
+            $fetcher = app(EbayLivePriceFetcher::class);
+
+            foreach ($competitors as $competitor) {
+                $listingId = $fetcher->resolveListingId($competitor->product_link, $competitor->item_id);
+                if (!$listingId) {
+                    continue;
+                }
+
+                $live = $fetcher->fetchByListingId($listingId);
+                if (!$live) {
+                    continue;
+                }
+
+                $originalItemId = $competitor->item_id;
+                $competitor->update([
+                    'item_id' => $listingId,
+                    'price' => $live['price'],
+                    'shipping_cost' => $live['shipping_cost'],
+                    'total_price' => $live['total_price'],
+                    'product_title' => $live['title'] ?? $competitor->product_title,
+                    'product_link' => $live['link'] ?? $competitor->product_link,
+                    'image' => $live['image'] ?? $competitor->image,
+                ]);
+
+                \App\Models\EbayCompetitorItem::where(function ($query) use ($originalItemId, $listingId) {
+                    $query->where('item_id', $originalItemId)
+                        ->orWhere('link', 'like', '%/itm/' . $listingId . '%');
+                })->update([
+                    'item_id' => $listingId,
+                    'price' => $live['price'],
+                    'shipping_cost' => $live['shipping_cost'],
+                    'link' => $live['link'],
+                    'title' => $live['title'],
+                    'image' => $live['image'],
+                ]);
+            }
+
+            $competitors = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($sku, 'ebay');
             $lowestPrice = $competitors->first();
             
             return response()->json([
@@ -3004,7 +3042,11 @@ class EbayController extends Controller
             ]);
             
             $sku = $validated['sku'];
-            $itemId = $validated['item_id'];
+            $fetcher = app(EbayLivePriceFetcher::class);
+            $itemId = $fetcher->resolveListingId(
+                $validated['product_link'] ?? null,
+                $validated['item_id']
+            ) ?? $validated['item_id'];
             $price = $validated['price'];
             $shippingCost = $validated['shipping_cost'] ?? 0;
             $totalPrice = $price + $shippingCost;

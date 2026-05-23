@@ -169,7 +169,9 @@ class UpdateEbayCompetitorPrices extends Command
                 $organicResults = $data['organic_results'];
                 
                 foreach ($organicResults as $result) {
-                    $itemId = $result['item_id'] ?? $result['epid'] ?? null;
+                    $link = $result['link'] ?? null;
+                    $fetcher = app(\App\Services\EbayLivePriceFetcher::class);
+                    $itemId = $fetcher->resolveListingId($link, $result['item_id'] ?? $result['epid'] ?? null);
                     
                     if (!$itemId) {
                         continue;
@@ -190,9 +192,14 @@ class UpdateEbayCompetitorPrices extends Command
                     $title = $result['title'] ?? null;
                     $image = $result['thumbnail'] ?? $result['image'] ?? null;
 
-                    // Check if item exists in database
+                    // Check if item exists in database (match by listing id or link)
                     $existing = EbayCompetitorItem::where('search_query', $searchQuery)
-                        ->where('item_id', $itemId)
+                        ->where(function ($query) use ($itemId, $link) {
+                            $query->where('item_id', $itemId);
+                            if ($link) {
+                                $query->orWhere('link', $link);
+                            }
+                        })
                         ->first();
 
                     if ($existing) {
@@ -216,6 +223,7 @@ class UpdateEbayCompetitorPrices extends Command
                         if ($hasChanges) {
                             if (!$isDryRun) {
                                 $existing->update([
+                                    'item_id' => $itemId,
                                     'price' => $price,
                                     'shipping_cost' => $shippingCost,
                                     'condition' => $condition,

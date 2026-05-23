@@ -94,7 +94,9 @@ class EbaySearchController extends Controller
                 $organicResults = $data['organic_results'];
                 
                 foreach ($organicResults as $index => $result) {
-                    $itemId = $result['item_id'] ?? $result['epid'] ?? null;
+                    $link = $result['link'] ?? null;
+                    $fetcher = app(\App\Services\EbayLivePriceFetcher::class);
+                    $itemId = $fetcher->resolveListingId($link, $result['item_id'] ?? $result['epid'] ?? null);
                     
                     if (!$itemId) {
                         continue;
@@ -570,7 +572,11 @@ class EbaySearchController extends Controller
                 $shippingCost = floatval($competitor['shipping_cost'] ?? 0);
                 $totalPrice = $price + $shippingCost;
                 $sku = trim($competitor['sku']);
-                $itemId = (string) ($competitor['item_id'] ?? '');
+                $fetcher = app(\App\Services\EbayLivePriceFetcher::class);
+                $itemId = $fetcher->resolveListingId(
+                    $competitor['product_link'] ?? null,
+                    $competitor['item_id'] ?? null
+                ) ?? (string) ($competitor['item_id'] ?? '');
 
                 if (empty($sku) || empty($itemId)) {
                     Log::warning('EbaySearchController storeCompetitors: skipping empty sku/item_id', [
