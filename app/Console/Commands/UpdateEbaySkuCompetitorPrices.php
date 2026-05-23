@@ -100,8 +100,11 @@ class UpdateEbaySkuCompetitorPrices extends Command
                     $oldPrice = floatval($skuCompetitor->price ?? 0);
                     $oldShipping = floatval($skuCompetitor->shipping_cost ?? 0);
                     $oldTotalPrice = floatval($skuCompetitor->total_price ?? 0);
+                    $newImage = $latestItem->image ?? null;
+                    $priceChanged = $newPrice != $oldPrice || $newShipping != $oldShipping;
+                    $imageNeedsUpdate = !empty($newImage) && empty($skuCompetitor->image);
 
-                    if ($newPrice != $oldPrice || $newShipping != $oldShipping) {
+                    if ($priceChanged || $imageNeedsUpdate) {
                         if (!$isDryRun) {
                             $skuCompetitor->update([
                                 'price' => $newPrice,
@@ -109,14 +112,16 @@ class UpdateEbaySkuCompetitorPrices extends Command
                                 'total_price' => $newTotalPrice,
                                 'product_title' => $latestItem->title,
                                 'product_link' => $latestItem->link,
-                                'image' => $latestItem->image,
+                                'image' => $newImage ?: $skuCompetitor->image,
                             ]);
                         }
                         
-                        $this->newLine();
-                        $this->info("  Updated SKU: {$skuCompetitor->sku}, Item: {$skuCompetitor->item_id}");
-                        $this->info("    Price: \${$oldPrice} → \${$newPrice}");
-                        $this->info("    Shipping: \${$oldShipping} → \${$newShipping}");
+                        if ($priceChanged) {
+                            $this->newLine();
+                            $this->info("  Updated SKU: {$skuCompetitor->sku}, Item: {$skuCompetitor->item_id}");
+                            $this->info("    Price: \${$oldPrice} → \${$newPrice}");
+                            $this->info("    Shipping: \${$oldShipping} → \${$newShipping}");
+                        }
                         
                         $totalUpdated++;
                     } else {
@@ -190,6 +195,7 @@ class UpdateEbaySkuCompetitorPrices extends Command
         $this->info('Fetching live eBay prices for ' . count($listingMap) . ' unique listings...');
         $liveUpdated = 0;
         $liveFailed = 0;
+        $imagesUpdated = 0;
         $index = 0;
 
         foreach ($listingMap as $listingId => $competitorIds) {
@@ -208,6 +214,9 @@ class UpdateEbaySkuCompetitorPrices extends Command
                 $oldPrice = floatval($competitor->price ?? 0);
                 $oldShipping = floatval($competitor->shipping_cost ?? 0);
                 $originalItemId = $competitor->item_id;
+                $newImage = $live['image'] ?? null;
+                $imageChanged = !empty($newImage) && empty($competitor->image);
+                $priceChanged = $oldPrice != $live['price'] || $oldShipping != $live['shipping_cost'];
 
                 if (!$isDryRun) {
                     $competitor->update([
@@ -217,7 +226,7 @@ class UpdateEbaySkuCompetitorPrices extends Command
                         'total_price' => $live['total_price'],
                         'product_title' => $live['title'] ?? $competitor->product_title,
                         'product_link' => $live['link'] ?? $competitor->product_link,
-                        'image' => $live['image'] ?? $competitor->image,
+                        'image' => $newImage ?? $competitor->image,
                     ]);
 
                     EbayCompetitorItem::where(function ($query) use ($originalItemId, $listingId) {
@@ -229,20 +238,23 @@ class UpdateEbaySkuCompetitorPrices extends Command
                         'shipping_cost' => $live['shipping_cost'],
                         'link' => $live['link'],
                         'title' => $live['title'],
-                        'image' => $live['image'],
+                        'image' => $newImage,
                     ]);
                 }
 
-                if ($oldPrice != $live['price'] || $oldShipping != $live['shipping_cost']) {
+                if ($priceChanged) {
                     $this->line("  [{$index}/" . count($listingMap) . "] Listing {$listingId}: \${$oldPrice} → \${$live['price']} (SKU: {$competitor->sku})");
                     $liveUpdated++;
+                } elseif ($imageChanged) {
+                    $this->line("  [{$index}/" . count($listingMap) . "] Listing {$listingId}: image saved (SKU: {$competitor->sku})");
+                    $imagesUpdated++;
                 }
             }
 
             usleep(500000);
         }
 
-        $this->info("Live listing fetch complete. Updated: {$liveUpdated}, Failed: {$liveFailed}");
+        $this->info("Live listing fetch complete. Updated: {$liveUpdated}, Images saved: {$imagesUpdated}, Failed: {$liveFailed}");
         $this->newLine();
     }
 

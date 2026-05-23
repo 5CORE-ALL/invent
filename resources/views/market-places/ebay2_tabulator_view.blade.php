@@ -12,6 +12,18 @@
             z-index: 10050;
         }
 
+        /* LMP modal: full-viewport backdrop (avoid black gaps behind modal) */
+        #lmpModal {
+            z-index: 1060 !important;
+        }
+
+        body.modal-open .modal-backdrop {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+        }
+
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
@@ -1297,6 +1309,11 @@
         }
 
         $(document).ready(function() {
+            const lmpModalEl = document.getElementById('lmpModal');
+            if (lmpModalEl) {
+                lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
+            }
+
             // Initialize SKU-specific chart only
             initSkuMetricsChart();
             
@@ -5661,6 +5678,31 @@
         }
 
         // Load Competitors Modal Function
+        function cleanupLmpModalBackdrop() {
+            document.querySelectorAll('.modal-backdrop').forEach(function(node) {
+                node.remove();
+            });
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+        }
+
+        function openLmpModal() {
+            const el = document.getElementById('lmpModal');
+            if (!el) {
+                return;
+            }
+            if (el.parentElement !== document.body) {
+                document.body.appendChild(el);
+            }
+            cleanupLmpModalBackdrop();
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            } else {
+                $(el).modal('show');
+            }
+        }
+
         function loadEbayCompetitorsModal(sku) {
             $('#lmpSku').text(sku);
             
@@ -5672,7 +5714,7 @@
             $('#addCompLink').val('');
             $('#addCompTitle').val('');
             
-            $('#lmpModal').modal('show');
+            openLmpModal();
             
             // Show loading state
             $('#lmpDataList').html(`
@@ -5730,7 +5772,7 @@
             html += `
                 <thead class="table-dark">
                     <tr>
-                        <th>Item ID</th>
+                        <th>Image</th>
                         <th>Price</th>
                         <th>Shipping</th>
                         <th>Total</th>
@@ -5746,12 +5788,13 @@
                 const rowClass = isLowest ? 'table-success' : '';
                 const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>' : '';
                 const productLink = item.link || `https://www.ebay.com/itm/${item.item_id}`;
+                const imageCell = item.image
+                    ? `<img src="${item.image}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;" loading="lazy">`
+                    : '<span class="text-muted">—</span>';
                 
                 html += `
                     <tr class="${rowClass}">
-                        <td>
-                            <code>${item.item_id}</code>
-                        </td>
+                        <td>${imageCell}</td>
                         <td>$${parseFloat(item.price).toFixed(2)}</td>
                         <td>${parseFloat(item.shipping_cost) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
                         <td><strong>$${parseFloat(item.total_price).toFixed(2)}</strong> ${badge}</td>

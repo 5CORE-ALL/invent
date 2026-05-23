@@ -87,10 +87,7 @@ class EbayLivePriceFetcher
 
             $shippingCost = $this->extractShippingCost($product);
             $link = $product['product_link'] ?? $product['link'] ?? "https://www.ebay.com/itm/{$listingId}";
-            $image = $product['thumbnail'] ?? $product['image'] ?? null;
-            if (!$image && !empty($product['images'][0])) {
-                $image = $product['images'][0];
-            }
+            $image = $this->extractImage($product);
 
             return [
                 'listing_id' => $listingId,
@@ -152,5 +149,64 @@ class EbayLivePriceFetcher
         }
 
         return 0.0;
+    }
+
+  /**
+   * Extract the best product image URL from SerpApi ebay_product response.
+   */
+    private function extractImage(array $product): ?string
+    {
+        if (!empty($product['thumbnail']) && is_string($product['thumbnail'])) {
+            return $product['thumbnail'];
+        }
+
+        if (!empty($product['image']) && is_string($product['image'])) {
+            return $product['image'];
+        }
+
+        if (!empty($product['images'][0]) && is_string($product['images'][0])) {
+            return $product['images'][0];
+        }
+
+        if (empty($product['media']) || !is_array($product['media'])) {
+            return null;
+        }
+
+        foreach ($product['media'] as $mediaItem) {
+            if (($mediaItem['type'] ?? '') !== 'image') {
+                continue;
+            }
+
+            $variants = $mediaItem['image'] ?? [];
+            if (!is_array($variants) || empty($variants)) {
+                continue;
+            }
+
+            $bestLink = null;
+            $bestWidth = 0;
+
+            foreach ($variants as $variant) {
+                $link = $variant['link'] ?? null;
+                if (!$link) {
+                    continue;
+                }
+
+                $width = (int) ($variant['size']['width'] ?? 0);
+                if ($width === 500) {
+                    return $link;
+                }
+
+                if ($width > $bestWidth) {
+                    $bestLink = $link;
+                    $bestWidth = $width;
+                }
+            }
+
+            if ($bestLink) {
+                return $bestLink;
+            }
+        }
+
+        return null;
     }
 }

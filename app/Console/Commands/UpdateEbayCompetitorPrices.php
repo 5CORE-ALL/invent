@@ -219,6 +219,13 @@ class UpdateEbayCompetitorPrices extends Command
                             $hasChanges = true;
                             $changes['condition'] = ['old' => $existing->condition, 'new' => $condition];
                         }
+                        if (empty($existing->image) && !empty($image)) {
+                            $hasChanges = true;
+                            $changes['image'] = ['old' => $existing->image, 'new' => $image];
+                        } elseif (!empty($image) && $existing->image != $image) {
+                            $hasChanges = true;
+                            $changes['image'] = ['old' => $existing->image, 'new' => $image];
+                        }
 
                         if ($hasChanges) {
                             if (!$isDryRun) {
