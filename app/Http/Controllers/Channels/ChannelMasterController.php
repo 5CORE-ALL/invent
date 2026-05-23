@@ -10854,6 +10854,38 @@ class ChannelMasterController extends Controller
             ['percentage' => number_format((float)$channelPercentage, 2, '.', '')]
         );
 
+        // The page renders out of channel_master_calculated_data (see
+        // getViewChannelDataFast). That table is only rebuilt by the hourly
+        // channel:calculate-data run, so without this push-through the user would
+        // save A/S, reload, and still see the stale cached value for up to an hour.
+        // Mirror the freshly saved fields into the cache row for this channel so
+        // the next table.setData() reload shows them immediately.
+        try {
+            $cachePayload = [
+                'sheet_link'     => $sheetUrl,
+                'type'           => $type,
+                'target'         => is_numeric($target) ? (float) $target : null,
+                'missing_link'   => $missingLink,
+                'addition_sheet' => $additionSheet,
+            ];
+            if (Schema::hasColumn('channel_master_calculated_data', 'update_flag')) {
+                $cachePayload['update_flag'] = ($updateFlag === 'A' || $updateFlag === 'S') ? $updateFlag : null;
+            }
+            // Original lookup is by channel name; if the user also renamed the
+            // channel, the cache row keyed on the old name needs to move with it.
+            $cacheQuery = \App\Models\ChannelMasterCalculatedData::query()
+                ->where('channel', $originalChannel);
+            if ($updatedChannel !== $originalChannel) {
+                $cachePayload['channel'] = $updatedChannel;
+            }
+            $cacheQuery->update($cachePayload);
+        } catch (\Throwable $e) {
+            // Non-fatal: the next channel:calculate-data run will reconcile.
+            Log::warning('Channel cache sync after update failed: ' . $e->getMessage(), [
+                'channel' => $originalChannel,
+            ]);
+        }
+
         return response()->json(['success' => true]);
     }
 
