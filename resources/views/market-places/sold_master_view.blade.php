@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Sold Master', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Sales by Value', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -390,8 +390,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Sold Master',
-        'sub_title' => 'Sold Master Data with Editable SPRICE',
+        'page_title' => 'Sales by Value',
+        'sub_title' => 'Sales by Value Data with Editable SPRICE',
     ])
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
@@ -893,8 +893,8 @@
 
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="both" selected>Both (SKU + Parent)</option>
-                        <option value="sku">SKU Only</option>
+                        <option value="both">Both (SKU + Parent)</option>
+                        <option value="sku" selected>SKU Only</option>
                         <option value="parent">Parent Only</option>
                     </select>
 
@@ -1721,7 +1721,7 @@
                     }
                 }
             },
-            initialSort: [{ column: "parent", dir: "asc" }],
+            initialSort: [{ column: "inv_value", dir: "asc" }],
             rowFormatter: function(row) {
                 const data = row.getData();
                 if (data.is_parent_summary === true) {
@@ -1881,18 +1881,6 @@
                     }
                 },
                 {
-                    title: "OV L30 + FBA",
-                    field: "ov_l30_plus_fba",
-                    hozAlign: "center",
-                    minWidth: 100,
-                    sorter: "number",
-                    headerTooltip: "Shopify OV L30 plus FBA L30: Product SKU is resolved to an FBA listing (FbaInventoryService, same as FBA Dispatch), then fba_monthly_sales.l30_units for that MSKU.",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        return `<span style="font-weight: 600;">${value}</span>`;
-                    }
-                },
-                {
                     title: "OV L30",
                     field: "overall_l30",
                     hozAlign: "center",
@@ -1913,22 +1901,6 @@
                     }
                 },
                 {
-                    title: "SW L30",
-                    field: "m_l30",
-                    hozAlign: "center",
-                    minWidth: 80,
-                    sorter: "number",
-                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Walmart, Temu, Temu 2, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sw = parseFloat(cell.getValue() || 0);
-                        const ov = parseFloat(rowData.overall_l30 ?? 0);
-                        const match = Math.abs(sw - ov) < 0.01;
-                        const color = match ? '#28a745' : '#dc3545';
-                        return `<span style="font-weight: 600; color: ${color};">${sw}</span>`;
-                    }
-                },
-                {
                     title: "Details",
                     field: "details_dot",
                     headerSort: false,
@@ -1942,7 +1914,7 @@
                         const inv = rowData.inventory ?? rowData.inv ?? 0;
                         const value = parseFloat(cell.getRow().getData().overall_l30 || 0);
                         const dilPercent = rowData.dil_percent || 0;
-                        return `<i class="fas fa-info-circle text-info ovl30-info-icon" 
+                        return `<i class="fas fa-search text-info ovl30-info-icon" 
                                style="cursor: pointer; font-size: 12px;" 
                                data-sku="${sku}"
                                data-image="${imagePath}"
@@ -3403,6 +3375,9 @@ title: "Dil %",
             }
 
             suppressDataLoadedHandler = true;
+            // Clear active filters (e.g. default "SKU Only" which hides parent rows) so the
+            // expanded view shows ALL rows for this parent, including the parent summary row.
+            table.clearFilter(true);
             table.setData(displayData).then(() => {
                 updateSummary();
             });
@@ -3793,7 +3768,7 @@ title: "Dil %",
 
         $('#remove-filter-btn').on('click', function() {
             $('#inventory-filter').val('more');
-            $('#sku-parent-filter').val('both');
+            $('#sku-parent-filter').val('sku');
             $('#sku-search').val('');
             $('#parent-search').val('');
             // Reset DIL

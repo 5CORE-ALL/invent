@@ -22,6 +22,16 @@ class TaskPolicy
     ];
 
     /**
+     * Names from the users table that get the same full-access permission as the
+     * special emails above. Matched case-insensitively against either the full
+     * `users.name` or the first token of it, so DB rows like "Hritiksha Deb"
+     * still resolve. Keep this list small; prefer emails when possible.
+     */
+    private const SPECIAL_TASK_DELETE_MODIFY_NAMES = [
+        'hritiksha',
+    ];
+
+    /**
      * Check if user is admin
      */
     private function isAdmin(User $user): bool
@@ -52,12 +62,31 @@ class TaskPolicy
     }
 
     /**
-     * Check if user has special permission to delete/modify any task (by email).
+     * Check if user has special permission to delete/modify any task.
+     *
+     * Resolution order (all sourced from the users table):
+     *   1. users.email matches one of SPECIAL_TASK_DELETE_MODIFY_EMAILS
+     *   2. users.name (full string OR first token) matches one of
+     *      SPECIAL_TASK_DELETE_MODIFY_NAMES — lets us grant access by
+     *      person-name (e.g. "Hritiksha" → row "Hritiksha Deb") without
+     *      having to know their current login email.
      */
     public static function userHasSpecialTaskPermission(User $user): bool
     {
         $email = trim(strtolower((string) ($user->email ?? '')));
-        return in_array($email, self::SPECIAL_TASK_DELETE_MODIFY_EMAILS, true);
+        if ($email !== '' && in_array($email, self::SPECIAL_TASK_DELETE_MODIFY_EMAILS, true)) {
+            return true;
+        }
+
+        $name = trim(strtolower((string) ($user->name ?? '')));
+        if ($name === '') {
+            return false;
+        }
+        if (in_array($name, self::SPECIAL_TASK_DELETE_MODIFY_NAMES, true)) {
+            return true;
+        }
+        $firstToken = trim((string) (preg_split('/\s+/', $name, 2)[0] ?? ''));
+        return $firstToken !== '' && in_array($firstToken, self::SPECIAL_TASK_DELETE_MODIFY_NAMES, true);
     }
 
     /**

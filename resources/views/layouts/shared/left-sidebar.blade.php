@@ -79,6 +79,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('missing.listing') }}" class="side-nav-link">
+                    <i class="ri-error-warning-line"></i>
+                    <span>Missing Listing</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('compliance-certificates.index') }}" class="side-nav-link">
                     <i class="ri-shield-check-line"></i>
                     <span>Compliance Certificates</span>
@@ -1500,6 +1507,24 @@
                         </li>
 
                         <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarDepop" aria-expanded="false"
+                                aria-controls="sidebarDepop">
+                                <span> Depop </span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarDepop">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('depop.pricing') }}">Depop Pricing</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('depop.sheet') }}">Depop Sales Data</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+                        <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarPurchasingPower" aria-expanded="false"
                                 aria-controls="sidebarPurchasingPower">
                                 <span> Purchasing Power </span>
@@ -2350,7 +2375,7 @@
             <li class="side-nav-item">
                 <a href="{{ url('/sold-master') }}" class="side-nav-link">
                     <i class="ri-shopping-cart-line"></i>
-                    <span>Sold Master</span>
+                    <span>Sales by Value</span>
                 </a>
             </li>
 

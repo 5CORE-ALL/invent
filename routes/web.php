@@ -2705,6 +2705,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/depop/sheet-data', [\App\Http\Controllers\Sales\DepopSalesController::class, 'getData'])->name('depop.sheet.data');
     Route::post('/depop/upload', [\App\Http\Controllers\Sales\DepopSalesController::class, 'upload'])->name('depop.upload');
 
+    // Depop Pricing — editable Price / L30 per SKU, with CSV export/import round-trip
+    Route::get('/depop/pricing',         [\App\Http\Controllers\MarketPlace\DepopController::class, 'pricingView'])->name('depop.pricing');
+    Route::get('/depop/pricing/data',    [\App\Http\Controllers\MarketPlace\DepopController::class, 'getPricingData'])->name('depop.pricing.data');
+    Route::get('/depop/pricing/export',  [\App\Http\Controllers\MarketPlace\DepopController::class, 'exportCsv'])->name('depop.pricing.export');
+    Route::post('/depop/pricing/import', [\App\Http\Controllers\MarketPlace\DepopController::class, 'importCsv'])->name('depop.pricing.import');
+
+    // Missing Listing — channel_master rows (image + channel) plus DAR submissions
+    Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
+    Route::get('/missing-listing/data',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getData'])->name('missing.listing.data');
+    Route::post('/missing-listing/dar/submit',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'submitDar'])->name('missing.listing.dar.submit');
+    Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
+    Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');
+
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
     Route::get('/doba/daily-sales', [DobaSalesController::class, 'index'])->name('doba.daily.sales');
