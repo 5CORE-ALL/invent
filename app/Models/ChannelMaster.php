@@ -27,7 +27,8 @@ class ChannelMaster extends Model
         'base',
         'target',
         'missing_link',
-        'addition_sheet'
+        'addition_sheet',
+        'update',
     ];
 
     /**

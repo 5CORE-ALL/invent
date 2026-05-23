@@ -275,7 +275,9 @@ class CalculateChannelMasterData extends Command
             
             // Other
             'nr' => (int) ($data['NR'] ?? 0),
-            'update_flag' => (int) ($data['Update'] ?? 0),
+            // "Update" is a short tag (A/S) selected in the channel edit modal —
+            // stored as a string so it round-trips, not cast to int.
+            'update_flag' => $this->normalizeUpdateFlag($data['Update'] ?? null),
             'red_margin' => $parseNumber($data['red_margin'] ?? 0),
             
             // Store account health and reviews as JSON if present
@@ -290,6 +292,25 @@ class CalculateChannelMasterData extends Command
     /**
      * Store summary data (inventory values, etc.)
      */
+    /**
+     * Coerce the raw "Update" payload (could be 'A', 'S', null, '', 0, '0', or a
+     * legacy integer) into the canonical string used by the pre-calc cache: 'A',
+     * 'S', or null. Anything outside the known set becomes null so the column
+     * never carries a value the UI doesn't know how to render.
+     */
+    private function normalizeUpdateFlag($raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+        $val = trim((string) $raw);
+        if ($val === '' || $val === '0') {
+            return null;
+        }
+        $val = strtoupper($val);
+        return in_array($val, ['A', 'S'], true) ? $val : null;
+    }
+
     private function storeSummaryData(array $response, $calculatedAt)
     {
         // Store summary data in cache or separate table

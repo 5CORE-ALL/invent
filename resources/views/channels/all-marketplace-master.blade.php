@@ -521,6 +521,14 @@
                                 <option value="Dropship">Dropship</option>
                             </select>
                         </div>
+                        <div class="mb-3">
+                            <label for="channelUpdate" class="form-label">Update</label>
+                            <select class="form-control" id="channelUpdate">
+                                <option value="">Select</option>
+                                <option value="A">A</option>
+                                <option value="S">S</option>
+                            </select>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">
@@ -592,6 +600,14 @@
                             <label for="editAdditionSheet" class="form-label">Addition Sheet</label>
                             <input type="url" class="form-control" id="editAdditionSheet" placeholder="https://...">
                             <small class="text-muted">This link will open when clicking the Missing L column</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelUpdate" class="form-label">Update</label>
+                            <select class="form-control" id="editChannelUpdate">
+                                <option value="">Select</option>
+                                <option value="A">A</option>
+                                <option value="S">S</option>
+                            </select>
                         </div>
                     </form>
                 </div>
@@ -1443,6 +1459,33 @@
                             const value = cell.getValue();
                             if (!value || value === 0) return '<strong style="color:#adb5bd;" title="No Yesterday Sales">NYS</strong>';
                             return `<strong style="color:#0d6efd;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        // "Source" mirrors the channel's "Update" tag (A = API/Automated, S = Sheet/Manual).
+                        // The value is set per channel via the Edit Channel modal and persists on
+                        // channel_master.update — see ChannelMasterController::update().
+                        title: "Source",
+                        field: "Update",
+                        headerTooltip: "Data source tag for this channel. A = Auto, S = Sheet. Set in the channel's Edit modal.",
+                        hozAlign: "center",
+                        width: 80,
+                        sorter: function(a, b) {
+                            // Sort A before S before blanks, so unset rows sink to the bottom
+                            const na = (a === 'A' || a === 'S') ? a : 'Z';
+                            const nb = (b === 'A' || b === 'S') ? b : 'Z';
+                            return na.localeCompare(nb);
+                        },
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            const v = (raw === 'A' || raw === 'S') ? raw : '';
+                            if (!v) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            // Color-coded chip so the two values are scannable at a glance.
+                            const bg    = v === 'A' ? '#198754' : '#fd7e14';
+                            const label = v === 'A' ? 'Auto'    : 'Sheet';
+                            return `<span class="badge" style="background-color:${bg};color:#fff;font-weight:600;min-width:24px;" title="${label}">${v}</span>`;
                         }
                     },
                     {
@@ -4345,6 +4388,11 @@
                     const additionSheet = rowData['addition_sheet'] || '';
                     const logo = rowData['logo'] || '';
                     const sellerLink = rowData['seller_link'] || '';
+                    // Row exposes the value as 'Update' (see per-channel data builders).
+                    // Coerce anything that isn't 'A' or 'S' (incl. 0, null, '0') to '' so
+                    // the dropdown lands on its placeholder "Select" entry.
+                    const rawUpdate = rowData['Update'];
+                    const updateFlag = (rawUpdate === 'A' || rawUpdate === 'S') ? rawUpdate : '';
 
                     // Populate modal fields
                     $('#editChannelName').val(channel);
@@ -4354,6 +4402,7 @@
                     $('#editMissingLink').val(missingLink);
                     $('#editAdditionSheet').val(additionSheet);
                     $('#editChannelSellerLink').val(sellerLink);
+                    $('#editChannelUpdate').val(updateFlag);
                     $('#originalChannel').val(channel);
 
                     // Reset file input + show current logo (if any)
@@ -4479,6 +4528,7 @@
                 const additionSheet = $('#additionSheet').val().trim();
                 const type = $('#type').val().trim();
                 const sellerLink = $('#channelSellerLink').val().trim();
+                const updateFlag = $('#channelUpdate').val();
                 const logoFile = $('#channelLogo')[0].files[0];
 
                 if (!channelName || !channelUrl || !type) {
@@ -4492,6 +4542,7 @@
                 formData.append('addition_sheet', additionSheet);
                 formData.append('type', type);
                 formData.append('seller_link', sellerLink);
+                formData.append('update', updateFlag);
                 if (logoFile) {
                     formData.append('logo', logoFile);
                 }
@@ -4510,6 +4561,7 @@
                             if (modal) modal.hide();
                             $('#channelForm')[0].reset();
                             $('#channelSellerLink').val('');
+                            $('#channelUpdate').val('');
                             $('#channelLogoPreview').html('<span class="placeholder-text">No logo</span>');
                             table.setData(); // Reload data
                             showToast('success', 'Channel added successfully');
@@ -4536,6 +4588,7 @@
                 const additionSheet = $('#editAdditionSheet').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
                 const sellerLink = $('#editChannelSellerLink').val().trim();
+                const updateFlag = $('#editChannelUpdate').val();
                 const logoFile = $('#editChannelLogo')[0].files[0];
 
                 if (!channel || !sheetUrl) {
@@ -4552,6 +4605,7 @@
                 formData.append('addition_sheet', additionSheet);
                 formData.append('original_channel', originalChannel);
                 formData.append('seller_link', sellerLink);
+                formData.append('update', updateFlag);
                 if (logoFile) {
                     formData.append('logo', logoFile);
                 }
@@ -4570,6 +4624,7 @@
                             if (modal) modal.hide();
                             $('#editChannelForm')[0].reset();
                             $('#editChannelSellerLink').val('');
+                            $('#editChannelUpdate').val('');
                             $('#editChannelLogoPreview').html('<span class="placeholder-text">No logo</span>');
                             $('#editExistingLogo').val('');
                             table.setData(); // Reload data

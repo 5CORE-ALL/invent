@@ -6396,6 +6396,69 @@ class ChannelMasterController extends Controller
         return $missingListingCount;
     }
 
+    /**
+     * Derive today's L60 (sales + orders) for a Temu/Temu 2 channel from historical L30 snapshots.
+     *
+     * L30 snapshot taken on day X represents sales from days (X−30)..X.
+     * "Today's L60" is days 31..60 ago = sales from a 30-day window ending ~30 days ago,
+     * which is exactly what the L30 snapshot from ~30 days back recorded. Using it as the
+     * L60 source means the value updates daily without the manual `*_daily_data_l60` upload
+     * (which was being truncated and refilled by hand, and went stale).
+     *
+     * Picks the snapshot whose date is closest to (today − 30 days), within ±10 days, and
+     * with l30_sales > 0 so a partial/zero upload doesn't poison the result. Returns null
+     * when no usable snapshot exists so callers can fall back to the legacy static table.
+     *
+     * @param  string  $channelKey  Normalized channel key as stored in channel_master_daily_data (e.g. 'temu', 'temu2').
+     * @return array{sales: float, orders: int, snapshot_date: string}|null
+     */
+    private function deriveTemuL60FromHistoricalL30(string $channelKey): ?array
+    {
+        try {
+            $targetDate = now('America/Los_Angeles')->subDays(30)->toDateString();
+            $earliest   = now('America/Los_Angeles')->subDays(40)->toDateString();
+            $latest     = now('America/Los_Angeles')->subDays(20)->toDateString();
+
+            $candidates = \App\Models\ChannelMasterSummary::where('channel', $channelKey)
+                ->whereBetween('snapshot_date', [$earliest, $latest])
+                ->orderBy('snapshot_date', 'desc')
+                ->get(['snapshot_date', 'summary_data']);
+
+            if ($candidates->isEmpty()) {
+                return null;
+            }
+
+            $best = null;
+            $bestDelta = PHP_INT_MAX;
+            foreach ($candidates as $row) {
+                $sd = is_array($row->summary_data) ? $row->summary_data : (array) $row->summary_data;
+                $sales = (float) ($sd['l30_sales'] ?? 0);
+                if ($sales <= 0) {
+                    continue;
+                }
+                $delta = abs(Carbon::parse($row->snapshot_date)->diffInDays(Carbon::parse($targetDate)));
+                if ($delta < $bestDelta) {
+                    $best = $row;
+                    $bestDelta = $delta;
+                }
+            }
+
+            if (!$best) {
+                return null;
+            }
+
+            $sd = is_array($best->summary_data) ? $best->summary_data : (array) $best->summary_data;
+            return [
+                'sales'         => (float) ($sd['l30_sales'] ?? 0),
+                'orders'        => (int) ($sd['l30_orders'] ?? 0),
+                'snapshot_date' => Carbon::parse($best->snapshot_date)->toDateString(),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('deriveTemuL60FromHistoricalL30 failed: ' . $e->getMessage(), ['channel' => $channelKey]);
+            return null;
+        }
+    }
+
     public function getTemuChannelData(Request $request)
     {
         $result = [];
@@ -6449,28 +6512,40 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // Fetch L60 Sales and Orders from temu_daily_data_l60 table
-        // Calculate using FB Price logic (same as temu-tabulator and getDailyDataL60)
+        // Fetch L60 Sales and Orders.
+        // Primary source: historical L30 snapshot from ~30 days ago — by definition,
+        // L30 ending on day X equals "days 31..60 ago" once today is X+30. This makes
+        // L60 update daily instead of freezing at whatever was last manually uploaded
+        // into temu_daily_data_l60 (which is a truncate-and-replace table).
         $l60Orders = 0;
-        $l60Sales = 0;
-        
-        if (Schema::hasTable('temu_daily_data_l60')) {
+        $l60Sales  = 0;
+
+        $derivedL60 = $this->deriveTemuL60FromHistoricalL30('temu');
+        if ($derivedL60) {
+            $l60Sales  = (float) $derivedL60['sales'];
+            $l60Orders = (int)   $derivedL60['orders'];
+        }
+
+        // Fallback: if no historical snapshot is available yet, use the manually-uploaded
+        // temu_daily_data_l60 file (preserves the original behavior so nothing breaks on
+        // fresh installs or before the snapshot history has accumulated).
+        if ($l60Sales <= 0 && Schema::hasTable('temu_daily_data_l60')) {
             $l60Data = DB::table('temu_daily_data_l60')
                 ->select('order_id', 'base_price_total', 'quantity_purchased')
                 ->get();
-            
+
             $uniqueOrders = [];
             foreach ($l60Data as $row) {
                 if ($row->order_id && !in_array($row->order_id, $uniqueOrders)) {
                     $uniqueOrders[] = $row->order_id;
                     $l60Orders++;
                 }
-                
+
                 $basePrice = (float) ($row->base_price_total ?? 0);
-                $quantity = (int) ($row->quantity_purchased ?? 0);
-                $total = $basePrice * $quantity;
-                
-                // Calculate FB Price: if order total < $27, add $2.99 shipping
+                $quantity  = (int)   ($row->quantity_purchased ?? 0);
+                $total     = $basePrice * $quantity;
+
+                // FB Price: orders under $27 carry +$2.99 shipping
                 $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
                 $l60Sales += $fbPrice * $quantity;
             }
@@ -6606,33 +6681,42 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // Fetch L60 Sales and Orders from temu2_daily_data_l60 (separate table for Temu 2)
-        // Calculate using FB Price logic (same as temu2-tabulator and getDailyDataL60)
+        // Fetch L60 Sales and Orders.
+        // Primary source: historical L30 snapshot from ~30 days ago (same rationale as Temu —
+        // see deriveTemuL60FromHistoricalL30). Eliminates the "L60 = L30" placeholder that
+        // was previously kicking in because temu2_daily_data_l60 is almost never populated.
         $l60Orders = 0;
-        $l60Sales = 0;
+        $l60Sales  = 0;
 
-        if (Schema::hasTable('temu2_daily_data_l60')) {
+        $derivedL60 = $this->deriveTemuL60FromHistoricalL30('temu2');
+        if ($derivedL60) {
+            $l60Sales  = (float) $derivedL60['sales'];
+            $l60Orders = (int)   $derivedL60['orders'];
+        }
+
+        // Fallback 1: manually-uploaded temu2_daily_data_l60 (legacy behavior)
+        if ($l60Sales <= 0 && Schema::hasTable('temu2_daily_data_l60')) {
             $l60Data = DB::table('temu2_daily_data_l60')
                 ->select('order_id', 'base_price_total', 'quantity_purchased')
                 ->get();
-            
+
             $uniqueOrders = [];
             foreach ($l60Data as $row) {
                 if ($row->order_id && !in_array($row->order_id, $uniqueOrders)) {
                     $uniqueOrders[] = $row->order_id;
                     $l60Orders++;
                 }
-                
+
                 $basePrice = (float) ($row->base_price_total ?? 0);
-                $quantity = (int) ($row->quantity_purchased ?? 0);
-                $total = $basePrice * $quantity;
-                
-                // Calculate FB Price: if order total < $27, add $2.99 shipping
+                $quantity  = (int)   ($row->quantity_purchased ?? 0);
+                $total     = $basePrice * $quantity;
+
+                // FB Price: orders under $27 carry +$2.99 shipping
                 $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
                 $l60Sales += $fbPrice * $quantity;
             }
         }
-        
+
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
         $totalQuantity = $metrics->total_quantity ?? 0;
@@ -6646,8 +6730,7 @@ class ChannelMasterController extends Controller
         $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
 
         // Growth = ((L30 - L60) / L60) * 100.
-        // If temu2_daily_data_l60 has no rows yet (user hasn't uploaded L60 separately),
-        // fall back to L60 = L30 so the column renders 0% instead of blank "—".
+        // Final fallback only if neither historical snapshot nor static file gave us a value.
         if ($l60Sales <= 0 && $l30Sales > 0) {
             $l60Sales  = $l30Sales;
             $l60Orders = $l30Orders;
@@ -10626,6 +10709,10 @@ class ChannelMasterController extends Controller
             'channel_percentage' => 'nullable|numeric',
             'logo' => 'nullable|image|mimes:jpg,jpeg,png,gif,svg,webp|max:2048',
             'seller_link' => 'nullable|url|max:1000',
+            // "Update" flag chosen on /all-marketplace-master edit modal. Constrained
+            // to the two known values so we never persist arbitrary strings to a
+            // column that the table renders verbatim.
+            'update' => 'nullable|in:A,S',
             // 'status' => 'required|in:Active,In Active,To Onboard,In Progress',
             // 'executive' => 'nullable|string',
             // 'b_link' => 'nullable|string',
@@ -10647,6 +10734,11 @@ class ChannelMasterController extends Controller
             // seller_link column may not exist yet (pre-migration); strip if missing
             if (!Schema::hasColumn('channel_master', 'seller_link')) {
                 unset($validatedData['seller_link']);
+            }
+
+            // Treat empty `update` as NULL so we don't store an empty string
+            if (array_key_exists('update', $validatedData) && $validatedData['update'] === '') {
+                $validatedData['update'] = null;
             }
 
             // Handle logo upload (saved under storage/app/public/channel-logos/)
@@ -10696,6 +10788,8 @@ class ChannelMasterController extends Controller
         $request->validate([
             'logo' => 'nullable|image|mimes:jpg,jpeg,png,gif,svg,webp|max:2048',
             'seller_link' => 'nullable|url|max:1000',
+            // Allow blank (clears the flag) or one of the two supported tags.
+            'update' => 'nullable|in:A,S',
         ]);
 
         $originalChannel = $request->input('original_channel');
@@ -10708,6 +10802,7 @@ class ChannelMasterController extends Controller
         $missingLink = $request->input('missing_link');
         $additionSheet = $request->input('addition_sheet');
         $sellerLink = $request->input('seller_link');
+        $updateFlag = $request->input('update');
 
         $channel = ChannelMaster::where('channel', $originalChannel)->first();
 
@@ -10734,6 +10829,12 @@ class ChannelMasterController extends Controller
         // string when the user clears it; treat blank as NULL)
         if (Schema::hasColumn('channel_master', 'seller_link') && $request->has('seller_link')) {
             $channel->seller_link = ($sellerLink !== '' && $sellerLink !== null) ? $sellerLink : null;
+        }
+
+        // Persist the "Update" tag (A/S/clear). Only touch the column when the form
+        // actually sent the field so older callers that don't post it don't wipe it.
+        if (Schema::hasColumn('channel_master', 'update') && $request->has('update')) {
+            $channel->update = ($updateFlag === 'A' || $updateFlag === 'S') ? $updateFlag : null;
         }
 
         // Handle logo upload (replace existing if a new file is provided)

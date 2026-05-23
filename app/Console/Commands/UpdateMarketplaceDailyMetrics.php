@@ -860,32 +860,38 @@ class UpdateMarketplaceDailyMetrics extends Command
             ->values()
             ->all();
 
+        // Normalized PM SKU set + no-space fallback map — MUST mirror temu-tabulator's
+        // salesSummary loop in TemuController::buildTemuDecreaseDataResponse, otherwise the
+        // L30 total on /all-marketplace-master drifts from the badge on /temu-tabulator.
         $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
             return [$normalizeSku($s) => true];
         })->all();
+        $noSpaceToNormalized = [];
+        foreach (array_keys($normalizedPmSet) as $nk) {
+            $noSpace = str_replace(' ', '', $nk);
+            if ($noSpace !== '') {
+                $noSpaceToNormalized[$noSpace] = $nk;
+            }
+        }
 
-        // Include orders whose contribution_sku normalizes to a ProductMaster SKU (match temu-tabulator logic)
-        $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()
-            ->get()
-            ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-            })
-            ->pluck('contribution_sku')
-            ->unique()
-            ->values()
-            ->all();
-
-        // Get Temu daily data filtered to only include allowed SKUs (match temu-tabulator)
-        $data = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)->get();
+        // Pull every Temu daily row and filter in-PHP using the same two-tier match
+        // (normalized exact, then no-space fallback) the tabulator uses. We can't use
+        // the previous whereIn() pre-filter because it dropped rows that only matched
+        // via the no-space fallback (≈$400 / 5 orders missing on Temu as of 2026-05-23).
+        $data = TemuDailyData::all();
 
         if ($data->isEmpty()) {
             return null;
         }
 
         // Get ProductMaster keyed by normalized SKU (so order contribution_sku matches PM sku)
-        $productMastersBySku = ProductMaster::all()->keyBy('sku');
-        $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
+        $allPms = ProductMaster::all();
+        $productMastersBySku = $allPms->keyBy('sku');
+        $productMastersByNormalized = $allPms->keyBy(function ($pm) use ($normalizeSku) {
             return $normalizeSku($pm->sku ?? '');
+        });
+        $productMastersByNoSpace = $allPms->keyBy(function ($pm) use ($normalizeSku) {
+            return str_replace(' ', '', $normalizeSku($pm->sku ?? ''));
         });
 
         // Read Temu margin from marketplace_percentages (fallback 0.96)
@@ -903,28 +909,41 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         foreach ($data as $row) {
             // Skip rows with empty SKU or order_id (match temu-tabulator logic)
-            if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '' || !$row->order_id || trim((string) $row->order_id) === '') {
+            $rawSku  = trim((string) ($row->contribution_sku ?? ''));
+            $orderId = trim((string) ($row->order_id ?? ''));
+            if ($rawSku === '' || $orderId === '') {
                 continue;
             }
 
-            // Look up ProductMaster by exact then normalized SKU (match TemuController logic)
-            $pm = $productMastersBySku[$row->contribution_sku]
-                ?? $productMastersByNormalized[$normalizeSku($row->contribution_sku)]
-                ?? null;
-            $parent = $pm ? $pm->parent : '';
-            if ($parent && str_starts_with((string) $parent, 'PARENT')) {
+            // Match this order row to the ProductMaster universe exactly the way the
+            // temu-tabulator badge does: normalized → no-space fallback. Skip otherwise.
+            $normalizedRowSku        = $normalizeSku($rawSku);
+            $normalizedRowSkuNoSpace = str_replace(' ', '', $normalizedRowSku);
+            if (!isset($normalizedPmSet[$normalizedRowSku])
+                && !isset($noSpaceToNormalized[$normalizedRowSkuNoSpace])) {
                 continue;
             }
+
+            // Look up ProductMaster (same three-tier strategy as the SKU match above)
+            $pm = $productMastersBySku[$rawSku]
+                ?? $productMastersByNormalized[$normalizedRowSku]
+                ?? $productMastersByNoSpace[$normalizedRowSkuNoSpace]
+                ?? null;
 
             $totalOrders++;
-            $quantity = (int) ($row->quantity_purchased ?? 0);
+            $quantity  = (int)   ($row->quantity_purchased ?? 0);
             $basePrice = (float) ($row->base_price_total ?? 0);
-            
-            $totalQuantity += $quantity;
-            $totalRevenue += $basePrice * $quantity;
 
-            $total = $basePrice * $quantity;
+            $totalQuantity += $quantity;
+
+            $total   = $basePrice * $quantity;
             $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+
+            // Revenue / L30 Sales: include every matched row (no hasSales gate). This is
+            // the value rendered as "Sales" on /all-marketplace-master and must agree
+            // with /temu-tabulator's sales summary card.
+            $totalRevenue  += $fbPrice * $quantity;
+            $totalL30Sales += $fbPrice * $quantity;
 
             if ($quantity > 0 && $basePrice > 0) {
                 $totalWeightedPrice += $basePrice * $quantity;
@@ -954,13 +973,12 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
             }
 
-            // Only include rows with sales in PFT / L30 Sales / COGS (match temu_tabulator_view & temu_decrease)
-            $hasSales = $quantity > 0 && $basePrice > 0;
-            if ($hasSales) {
+            // PFT/COGS only accumulate on rows with real qty + price (price=0 would
+            // divide by zero in the per-row PFT% calculation below).
+            if ($quantity > 0 && $basePrice > 0) {
                 // PFT % = (price * Temu margin - lp - temuship) / price; dollar = pft * price * quantity (price = FB Prc)
                 $pftDecimal = $fbPrice > 0 ? ($fbPrice * $percentage - $lp - $temuShip) / $fbPrice : 0;
-                $totalPft += $pftDecimal * $fbPrice * $quantity;
-                $totalL30Sales += $fbPrice * $quantity;
+                $totalPft  += $pftDecimal * $fbPrice * $quantity;
                 $totalCogs += $lp * $quantity;
             }
         }
@@ -1033,29 +1051,34 @@ class UpdateMarketplaceDailyMetrics extends Command
             ->values()
             ->all();
 
+        // Mirror temu2-tabulator's salesSummary loop exactly: normalized match first,
+        // then no-space fallback. Same divergence story as Temu — without the fallback
+        // and without dropping the redundant "PARENT" check, the L30 stored here drifts
+        // from the badge on /temu2-tabulator.
         $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
             return [$normalizeSku($s) => true];
         })->all();
+        $noSpaceToNormalized = [];
+        foreach (array_keys($normalizedPmSet) as $nk) {
+            $noSpace = str_replace(' ', '', $nk);
+            if ($noSpace !== '') {
+                $noSpaceToNormalized[$noSpace] = $nk;
+            }
+        }
 
-        $allowedRawSkus = Temu2DailyData::select('contribution_sku')->distinct()
-            ->get()
-            ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-            })
-            ->pluck('contribution_sku')
-            ->unique()
-            ->values()
-            ->all();
-
-        $data = Temu2DailyData::whereIn('contribution_sku', $allowedRawSkus)->get();
+        $data = Temu2DailyData::all();
 
         if ($data->isEmpty()) {
             return null;
         }
 
-        $productMastersBySku = ProductMaster::all()->keyBy('sku');
-        $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
+        $allPms = ProductMaster::all();
+        $productMastersBySku = $allPms->keyBy('sku');
+        $productMastersByNormalized = $allPms->keyBy(function ($pm) use ($normalizeSku) {
             return $normalizeSku($pm->sku ?? '');
+        });
+        $productMastersByNoSpace = $allPms->keyBy(function ($pm) use ($normalizeSku) {
+            return str_replace(' ', '', $normalizeSku($pm->sku ?? ''));
         });
 
         // Read TemuTwo margin from marketplace_percentages (fallback 0.96)
@@ -1072,26 +1095,33 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalQuantityForPrice = 0;
 
         foreach ($data as $row) {
-            if (!$row->contribution_sku || trim((string) $row->contribution_sku) === ''
-                || !$row->order_id || trim((string) $row->order_id) === '') {
-                continue;
-            }
-            $pm = $productMastersBySku[$row->contribution_sku]
-                ?? $productMastersByNormalized[$normalizeSku($row->contribution_sku)]
-                ?? null;
-            $parent = $pm ? $pm->parent : '';
-            if ($parent && str_starts_with((string) $parent, 'PARENT')) {
+            $rawSku  = trim((string) ($row->contribution_sku ?? ''));
+            $orderId = trim((string) ($row->order_id ?? ''));
+            if ($rawSku === '' || $orderId === '') {
                 continue;
             }
 
+            $normalizedRowSku        = $normalizeSku($rawSku);
+            $normalizedRowSkuNoSpace = str_replace(' ', '', $normalizedRowSku);
+            if (!isset($normalizedPmSet[$normalizedRowSku])
+                && !isset($noSpaceToNormalized[$normalizedRowSkuNoSpace])) {
+                continue;
+            }
+
+            $pm = $productMastersBySku[$rawSku]
+                ?? $productMastersByNormalized[$normalizedRowSku]
+                ?? $productMastersByNoSpace[$normalizedRowSkuNoSpace]
+                ?? null;
+
             $totalOrders++;
-            $quantity = (int) ($row->quantity_purchased ?? 0);
+            $quantity  = (int)   ($row->quantity_purchased ?? 0);
             $basePrice = (float) ($row->base_price_total ?? 0);
             $totalQuantity += $quantity;
 
-            $total = $basePrice * $quantity;
+            $total   = $basePrice * $quantity;
             $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
-            $totalRevenue += $fbPrice * $quantity; // match tabulator: revenue uses fbPrice
+            $totalRevenue  += $fbPrice * $quantity; // match tabulator: revenue uses fbPrice
+            $totalL30Sales += $fbPrice * $quantity;
 
             if ($quantity > 0 && $basePrice > 0) {
                 $totalWeightedPrice += $basePrice * $quantity;
@@ -1119,11 +1149,9 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
             }
 
-            $hasSales = $quantity > 0 && $basePrice > 0;
-            if ($hasSales) {
+            if ($quantity > 0 && $basePrice > 0) {
                 $pftDecimal = $fbPrice > 0 ? ($fbPrice * $percentage - $lp - $temuShip) / $fbPrice : 0;
-                $totalPft += $pftDecimal * $fbPrice * $quantity;
-                $totalL30Sales += $fbPrice * $quantity;
+                $totalPft  += $pftDecimal * $fbPrice * $quantity;
                 $totalCogs += $lp * $quantity;
             }
         }

@@ -1216,9 +1216,22 @@ class Kernel extends ConsoleKernel
         | CHANNEL MASTER PRE-CALCULATION (New - Performance Optimization)
         |--------------------------------------------------------------------------
         */
-        // Calculate channel master data daily at 1 AM IST (after most data sync jobs)
-        $schedule->command('channel:calculate-data')
-            ->dailyAt('01:00')
+        // Channel master pre-calculation.
+        //
+        // /all-marketplace-master serves rows out of channel_master_calculated_data
+        // (see ChannelMasterController::getViewChannelDataFast). The underlying
+        // marketplace_daily_metrics already refreshes every 5 minutes, so doing this
+        // only once a day made the page lag by up to 24 hours behind reality. Run it
+        // hourly with --force so that:
+        //   - L30/L60 sales (Temu, Temu 2, eBay, Amazon, …) reflect the latest sync
+        //   - channel_master_daily_data gets a fresh snapshot for today (drives the
+        //     red/green/gray trend dots on every metric column)
+        //
+        // Each run takes ~50s; withoutOverlapping(120) keeps consecutive runs from
+        // stacking up if one ever slows down. dailyAt('01:00') is preserved by the
+        // hourly cadence (the 01:00 IST tick still fires).
+        $schedule->command('channel:calculate-data --force')
+            ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('channel-master-calculate-data')
             ->withoutOverlapping(120)
