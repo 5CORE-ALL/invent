@@ -7,11 +7,26 @@
     <style>
         .tabulator-paginator label { margin-right: 5px; }
         .ml-channel-logo {
-            width: 40px;
-            height: 40px;
+            width: 28px;
+            height: 28px;
             object-fit: contain;
             border-radius: 4px;
+            background: #fff;
+            border: 1px solid #e9ecef;
+            padding: 1px;
+            display: inline-block;
+        }
+        .ml-channel-logo-placeholder {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
             background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            color: #adb5bd;
+            font-size: 12px;
         }
         .badge-ml-stat { font-size: 0.9rem; padding: 0.45rem 0.7rem; }
         .badge-ml-chart { cursor: pointer; font-weight: bold; }
@@ -471,6 +486,15 @@
             .replace(/'/g, '&#39;');
     }
 
+    // channel_master.logo is stored as a relative path under storage/
+    // (e.g. channel_logos/amazon.png) — same as all-marketplace-master Img column.
+    function mlLogoSrc(logo) {
+        const v = String(logo || '').trim();
+        if (!v) return '';
+        if (/^https?:\/\//i.test(v) || v.startsWith('/')) return v;
+        return '/storage/' + v.replace(/^\/+/, '');
+    }
+
     function formatTimestamp(iso) {
         if (!iso) return '-';
         const d = new Date(iso);
@@ -640,9 +664,15 @@
                     width: 90,
                     hozAlign: "center",
                     formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (!v) return '<span class="text-muted">-</span>';
-                        return `<img src="${v}" alt="" class="ml-channel-logo">`;
+                        const logo = cell.getValue();
+                        const channel = (cell.getRow().getData().channel || '').trim();
+                        if (!logo) {
+                            return '<span class="ml-channel-logo-placeholder" title="No logo"><i class="fas fa-image"></i></span>';
+                        }
+                        const src = mlLogoSrc(logo);
+                        const safeSrc = escapeHtml(src);
+                        const safeAlt = escapeHtml(channel);
+                        return `<img src="${safeSrc}" alt="${safeAlt}" class="ml-channel-logo" onerror="this.style.display='none'">`;
                     }
                 },
                 {
