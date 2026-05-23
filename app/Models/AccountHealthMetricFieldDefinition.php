@@ -14,6 +14,7 @@ class AccountHealthMetricFieldDefinition extends Model
         'label',
         'm_link',
         'h_link',
+        'r_link',
         'sort_order',
     ];
 }

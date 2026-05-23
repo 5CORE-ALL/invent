@@ -669,6 +669,52 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/customer-care', function () {
         return view('customer-care.index');
     })->name('customer.care');
+    // CC message & Returns — minimal channel list (channel_master) used by
+    // the Customer Care team as the landing for message + return follow-ups.
+    Route::get('/customer-care/cc-messages-returns', [AuditMasterController::class, 'ccMessagesReturns'])
+        ->name('customer.care.cc.messages.returns');
+    Route::post('/customer-care/cc-messages-returns/checklist', [AuditMasterController::class, 'storeCcChecklist'])
+        ->name('customer.care.cc.messages.returns.checklist.store');
+    Route::get('/customer-care/cc-messages-returns/checklist/history', [AuditMasterController::class, 'getCcChecklistHistory'])
+        ->name('customer.care.cc.messages.returns.checklist.history');
+    // Returns checklist — second Status + History column pair (after R link)
+    // backed by a separate cc_returns_checklists table.
+    Route::post('/customer-care/cc-messages-returns/returns-checklist', [AuditMasterController::class, 'storeCcReturnsChecklist'])
+        ->name('customer.care.cc.messages.returns.returns.checklist.store');
+    Route::get('/customer-care/cc-messages-returns/returns-checklist/history', [AuditMasterController::class, 'getCcReturnsChecklistHistory'])
+        ->name('customer.care.cc.messages.returns.returns.checklist.history');
+    // "Next" priority value (1..9) per channel — manager-only edit gated by
+    // NEXT_EDITOR_EMAILS inside the controller.
+    Route::post('/customer-care/cc-messages-returns/next', [AuditMasterController::class, 'storeCcNextValue'])
+        ->name('customer.care.cc.messages.returns.next.store');
+    // "R Next" priority value (1..9) — same shape as Next but for the
+    // Returns workflow (drives R Status freshness). Same permission gate.
+    Route::post('/customer-care/cc-messages-returns/r-next', [AuditMasterController::class, 'storeCcReturnsNextValue'])
+        ->name('customer.care.cc.messages.returns.r.next.store');
+    // R link (Returns link) — same scope-storage model as M / H links but
+    // owned by this page so we don't have to extend the AHM endpoint.
+    Route::post('/customer-care/cc-messages-returns/r-link', [AuditMasterController::class, 'storeCcRLink'])
+        ->name('customer.care.cc.messages.returns.r.link.store');
+
+    // CC Shipping — duplicate of /customer-care/cc-messages-returns
+    // backed by entirely separate cc_shipping_* tables.
+    Route::get('/customer-care/cc-shipping', [AuditMasterController::class, 'ccShipping'])
+        ->name('customer.care.cc.shipping');
+    Route::post('/customer-care/cc-shipping/checklist', [AuditMasterController::class, 'storeCcShippingChecklist'])
+        ->name('customer.care.cc.shipping.checklist.store');
+    Route::get('/customer-care/cc-shipping/checklist/history', [AuditMasterController::class, 'getCcShippingChecklistHistory'])
+        ->name('customer.care.cc.shipping.checklist.history');
+    Route::post('/customer-care/cc-shipping/returns-checklist', [AuditMasterController::class, 'storeCcShippingReturnsChecklist'])
+        ->name('customer.care.cc.shipping.returns.checklist.store');
+    Route::get('/customer-care/cc-shipping/returns-checklist/history', [AuditMasterController::class, 'getCcShippingReturnsChecklistHistory'])
+        ->name('customer.care.cc.shipping.returns.checklist.history');
+    Route::post('/customer-care/cc-shipping/next', [AuditMasterController::class, 'storeCcShippingNextValue'])
+        ->name('customer.care.cc.shipping.next.store');
+    Route::post('/customer-care/cc-shipping/r-next', [AuditMasterController::class, 'storeCcShippingReturnsNextValue'])
+        ->name('customer.care.cc.shipping.r.next.store');
+    // S link (Shipping link) — per-channel, owned by the Shipping page.
+    Route::post('/customer-care/cc-shipping/s-link', [AuditMasterController::class, 'storeCcShippingSLink'])
+        ->name('customer.care.cc.shipping.s.link.store');
     Route::get('/customer-care/shipping', [ShippingController::class, 'index'])->name('customer.care.shipping');
     Route::get('/customer-care/shipping/overview', [ShippingController::class, 'overview'])->name('customer.care.shipping.overview');
     Route::get('/customer-care/shipping/report-state', [ShippingController::class, 'reportState'])->name('customer.care.shipping.report.state');

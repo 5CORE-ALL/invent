@@ -7,6 +7,15 @@ use App\Models\AuditGrade;
 use App\Models\AuditParameter;
 use App\Models\AuditResult;
 use App\Models\AuditResultItem;
+use App\Models\CcMessageChannelNext;
+use App\Models\CcMessageChecklist;
+use App\Models\CcReturnsChannelNext;
+use App\Models\CcReturnsChecklist;
+use App\Models\CcShippingChannelLink;
+use App\Models\CcShippingChannelNext;
+use App\Models\CcShippingChecklist;
+use App\Models\CcShippingReturnsChannelNext;
+use App\Models\CcShippingReturnsChecklist;
 use App\Models\ChannelMaster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,6 +45,56 @@ class AuditMasterController extends Controller
         'president@5core.com',
         'software5@5core.com',
     ];
+
+    /**
+     * Email(s) allowed to edit the per-channel "Next" priority value (1..9)
+     * on the /customer-care/cc-messages-returns page. Comparison is
+     * case-insensitive.
+     */
+    private const NEXT_EDITOR_EMAILS = [
+        'mgr-operations@5core.com',
+        'president@5core.com',
+    ];
+
+    /**
+     * Per-page table set used by the shared CC checklist page builder.
+     * Adding a third workflow (e.g. "warehouse") later means appending
+     * one entry here + a thin controller wrapper + a new route + a clone
+     * of the blade view.
+     */
+    private function checklistPageSet(string $page): array
+    {
+        $sets = [
+            'messages_returns' => [
+                'view'        => 'customer-care.cc-messages-returns',
+                'msg_table'   => 'cc_message_checklists',
+                'msg_model'   => CcMessageChecklist::class,
+                'ret_table'   => 'cc_returns_checklists',
+                'ret_model'   => CcReturnsChecklist::class,
+                'msg_next_t'  => 'cc_message_channel_next',
+                'msg_next_m'  => CcMessageChannelNext::class,
+                'ret_next_t'  => 'cc_returns_channel_next',
+                'ret_next_m'  => CcReturnsChannelNext::class,
+            ],
+            'shipping' => [
+                'view'        => 'customer-care.cc-shipping',
+                'msg_table'   => 'cc_shipping_checklists',
+                'msg_model'   => CcShippingChecklist::class,
+                'ret_table'   => 'cc_shipping_returns_checklists',
+                'ret_model'   => CcShippingReturnsChecklist::class,
+                'msg_next_t'  => 'cc_shipping_channel_next',
+                'msg_next_m'  => CcShippingChannelNext::class,
+                'ret_next_t'  => 'cc_shipping_returns_channel_next',
+                'ret_next_m'  => CcShippingReturnsChannelNext::class,
+                // S link (Shipping link) — per-channel, lives in its own
+                // table so it stays isolated from M / H / R link storage.
+                's_link_t'    => 'cc_shipping_channel_links',
+                's_link_m'    => CcShippingChannelLink::class,
+            ],
+        ];
+
+        return $sets[$page] ?? $sets['messages_returns'];
+    }
 
     /**
      * Whitelist of SOP "keys" the front-end may load / save. Restricts the
@@ -71,6 +130,19 @@ class AuditMasterController extends Controller
         if (! $user) return false;
         $email = strtolower(trim((string) ($user->email ?? '')));
         return $email !== '' && in_array($email, self::SOP_ADMIN_EMAILS, true);
+    }
+
+    /**
+     * True if the currently authenticated user is allowed to edit the
+     * per-channel "Next" priority value (1..9) on the CC Message & Returns
+     * page.
+     */
+    public function canEditNextValue(): bool
+    {
+        $user = Auth::user();
+        if (! $user) return false;
+        $email = strtolower(trim((string) ($user->email ?? '')));
+        return $email !== '' && in_array($email, self::NEXT_EDITOR_EMAILS, true);
     }
 
     /**
@@ -140,6 +212,1239 @@ class AuditMasterController extends Controller
             ])
             ->values()
             ->toArray();
+    }
+
+    /**
+     * Count minutes between two timestamps that fall OUTSIDE the working
+     * window 06:00–18:00 (i.e., overnight hours from 18:00 to 06:00 next
+     * day). Used by the "TAT" column on the CC Message & Returns page.
+     *
+     * Walks the range one transition at a time (at most ~2 transitions per
+     * day) so it stays O(days) regardless of how long the gap is.
+     */
+    private function offHoursMinutesBetween(\Carbon\Carbon $start, \Carbon\Carbon $end): int
+    {
+        if ($end->lessThanOrEqualTo($start)) {
+            return 0;
+        }
+
+        $count  = 0;
+        $cursor = $start->copy();
+
+        // Hard safety cap so a corrupt timestamp can't loop forever.
+        $maxIters = 3650; // ~10 years of half-day blocks
+        $iter = 0;
+
+        while ($cursor->lessThan($end) && $iter < $maxIters) {
+            $iter++;
+            $hour  = (int) $cursor->hour;
+            $isOff = ($hour >= 18 || $hour < 6);
+
+            // Find the next 06:00 / 18:00 boundary after $cursor.
+            if ($hour < 6) {
+                $next = $cursor->copy()->setTime(6, 0, 0);
+            } elseif ($hour < 18) {
+                $next = $cursor->copy()->setTime(18, 0, 0);
+            } else {
+                $next = $cursor->copy()->addDay()->setTime(6, 0, 0);
+            }
+
+            $blockEnd = $next->lessThan($end) ? $next : $end;
+            $blockMinutes = (int) floor($cursor->diffInSeconds($blockEnd) / 60);
+            if ($isOff) {
+                $count += $blockMinutes;
+            }
+            $cursor = $blockEnd;
+        }
+
+        return $count;
+    }
+
+    /**
+     * Display the "CC message & Returns" page (Customer Care sidebar group).
+     *
+     * Tabulator listing of active channels from channel_master with their
+     * logo + the shared M link / H link from the Account Health Master
+     * metric field definitions. Reuses
+     * AccountHealthMasterController::definitionScopeForChannel() and the
+     * `account.health.master.scope.link.save` endpoint so M/H links stay
+     * in sync with the /account-health-master/tabulator page.
+     */
+    public function ccMessagesReturns()
+    {
+        return $this->renderChecklistPage('messages_returns');
+    }
+
+    /**
+     * Display the "CC Shipping" page — same UI and data shape as
+     * /customer-care/cc-messages-returns, but every checklist + next
+     * row is read from a separate set of cc_shipping_* tables so the
+     * Shipping team's data is fully isolated from the Messages /
+     * Returns team's data.
+     */
+    public function ccShipping()
+    {
+        return $this->renderChecklistPage('shipping');
+    }
+
+    /**
+     * Generic window-state snapshot used by both the 9AM Clear and
+     * 3 PM Clear columns. Evaluated server-side so the front-end can
+     * trust the times even if the user's clock is off.
+     */
+    private function shippingWindowState(int $fromHour, int $toHour, string $label): array
+    {
+        $now = \Carbon\Carbon::now(self::SHIPPING_CLEAR_TZ);
+        $h   = (int) $now->hour;
+        $open = $h >= $fromHour && $h < $toHour;
+
+        return [
+            'tz'          => self::SHIPPING_CLEAR_TZ,
+            'from_hour'   => $fromHour,
+            'to_hour'     => $toHour,
+            'label'       => $label,
+            'now_iso'     => $now->toIso8601String(),
+            'now_label'   => $now->format('H:i'),
+            'open'        => $open,
+            'today_local' => $now->toDateString(),
+        ];
+    }
+
+    private function nineAmClearWindowState(): array
+    {
+        return $this->shippingWindowState(
+            self::SHIPPING_CLEAR_WINDOW_FROM,
+            self::SHIPPING_CLEAR_WINDOW_TO,
+            '9AM Clear'
+        );
+    }
+
+    private function threePmClearWindowState(): array
+    {
+        return $this->shippingWindowState(
+            self::SHIPPING_RETURNS_WINDOW_FROM,
+            self::SHIPPING_RETURNS_WINDOW_TO,
+            '3 PM Clear'
+        );
+    }
+
+    /**
+     * Aggregate "success" and "missed" submission counts across all
+     * provided channels for the past 30 calendar days, excluding Sundays,
+     * for both Shipping-page workflows. Used to feed the two summary
+     * badges shown above the table.
+     *
+     *   - success = distinct (channel, EST-date) pairs that have AT LEAST
+     *               ONE submission on that EST date.
+     *   - missed  = total eligible slots minus success.
+     *
+     * Where total eligible slots = (active channels) × (eligible days).
+     */
+    private function ccShippingHistoryAggregates(array $channelIds): array
+    {
+        $tz    = self::SHIPPING_CLEAR_TZ;
+        $today = \Carbon\Carbon::now($tz)->startOfDay();
+
+        // Build the list of eligible EST dates: 30 calendar days back
+        // (inclusive of today), excluding Sundays.
+        $eligibleDates = [];
+        for ($i = 0; $i < 30; $i++) {
+            $d = $today->copy()->subDays($i);
+            if ($d->dayOfWeek === \Carbon\Carbon::SUNDAY) continue;
+            $eligibleDates[$d->toDateString()] = true;
+        }
+
+        $channelCount = count($channelIds);
+        $slotsPerKind = $channelCount * count($eligibleDates);
+
+        // Lower bound for the SQL filter. Bias by 32 hours so a submission
+        // logged just before midnight EST that maps to "today" doesn't get
+        // missed when stored in UTC / app TZ.
+        $minSubmitted = $today->copy()->subDays(31)->setTimezone(config('app.timezone'));
+
+        $out = [];
+        $tables = [
+            'nine_am_clear'  => 'cc_shipping_checklists',
+            'three_pm_clear' => 'cc_shipping_returns_checklists',
+        ];
+
+        foreach ($tables as $key => $table) {
+            $base = [
+                'success'  => 0,
+                'missed'  => $slotsPerKind,
+                'total'   => $slotsPerKind,
+                'days'    => count($eligibleDates),
+                'channels' => $channelCount,
+            ];
+
+            if (! Schema::hasTable($table) || empty($channelIds) || empty($eligibleDates)) {
+                $out[$key] = $base;
+                continue;
+            }
+
+            // One query per table — pulls only the (channel_id, submitted_at)
+            // pair for submissions in the recent window. We bucket in PHP
+            // because timezone-aware date bucketing is tricky in MySQL.
+            $rows = DB::table($table)
+                ->whereIn('channel_id', $channelIds)
+                ->where('submitted_at', '>=', $minSubmitted)
+                ->get(['channel_id', 'submitted_at']);
+
+            $coveredPairs = [];
+            foreach ($rows as $r) {
+                if (empty($r->submitted_at)) continue;
+                try {
+                    $estDate = \Carbon\Carbon::parse($r->submitted_at)
+                        ->setTimezone($tz)
+                        ->toDateString();
+                    if (! isset($eligibleDates[$estDate])) continue;
+                    $coveredPairs[$r->channel_id . '|' . $estDate] = true;
+                } catch (\Throwable $e) {
+                    // skip unparseable
+                }
+            }
+
+            $successCount = count($coveredPairs);
+            $out[$key] = [
+                'success'  => $successCount,
+                'missed'   => max(0, $slotsPerKind - $successCount),
+                'total'    => $slotsPerKind,
+                'days'     => count($eligibleDates),
+                'channels' => $channelCount,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Shared page renderer. Given a page key (resolved through
+     * checklistPageSet()), pulls active channels, M / H / R links,
+     * latest + previous checklist submissions for both halves, the
+     * per-channel "Next" priorities, and computes off-hours TAT for
+     * both halves. Returns a view with the same `channelsWithLogo`
+     * payload structure regardless of which page is being rendered,
+     * so a single blade template (or a literal clone of it) can render
+     * either page without further changes.
+     */
+    private function renderChecklistPage(string $page)
+    {
+        $set = $this->checklistPageSet($page);
+
+        // Pull active channels with id + channel + logo. The id is needed
+        // so the M/H link modal can POST channel_id to the shared
+        // scope-link save endpoint.
+        $hasLogo = Schema::hasColumn('channel_master', 'logo');
+        $columns = ['id', 'channel'];
+        if ($hasLogo) {
+            $columns[] = 'logo';
+        }
+
+        $channels = ChannelMaster::where('status', 'Active')
+            ->orderBy('channel')
+            ->get($columns)
+            ->filter(fn ($row) => !empty($row->channel))
+            ->values();
+
+        // Resolve M / H / R link per channel via the same scope rules used
+        // by /account-health-master/tabulator. eBay-group channels share
+        // one set of links; everything else uses its own per-channel scope.
+        // R link is owned by this page (added for CC Message & Returns) but
+        // is stored on the same metric-field definition row so the per-scope
+        // sharing model stays consistent.
+        $ahmController = app(\App\Http\Controllers\Channels\AccountHealthMasterController::class);
+        $scopeToMLink = [];
+        $scopeToHLink = [];
+        $scopeToRLink = [];
+
+        // Pre-load the LATEST + second-most-recent checklist submission per
+        // channel for BOTH halves so the History + TAT columns can render
+        // without N+1 queries. All four table names come from $set so the
+        // exact same code drives the Shipping page too.
+        $latestChecklistMap = [];
+        $prevChecklistMap   = [];
+        $latestReturnsMap   = [];
+        $prevReturnsMap     = [];
+        $nextValueMap       = [];
+        $nextReturnsValueMap = [];
+        $channelIds = $channels->pluck('id')->all();
+
+        $msgTable = $set['msg_table'];
+        $msgModel = $set['msg_model'];
+        if (Schema::hasTable($msgTable) && !empty($channelIds)) {
+            $latestIds = $msgModel::query()
+                ->whereIn('channel_id', $channelIds)
+                ->selectRaw('MAX(id) AS id')
+                ->groupBy('channel_id')
+                ->pluck('id')
+                ->all();
+
+            if (!empty($latestIds)) {
+                $latestChecklistMap = $msgModel::query()
+                    ->whereIn('id', $latestIds)
+                    ->get()
+                    ->keyBy('channel_id');
+
+                $prevIds = DB::table($msgTable)
+                    ->whereIn('channel_id', $channelIds)
+                    ->whereNotIn('id', $latestIds)
+                    ->selectRaw('channel_id, MAX(id) AS id')
+                    ->groupBy('channel_id')
+                    ->pluck('id', 'channel_id')
+                    ->toArray();
+
+                if (!empty($prevIds)) {
+                    $prevChecklistMap = $msgModel::query()
+                        ->whereIn('id', array_values($prevIds))
+                        ->get()
+                        ->keyBy('channel_id');
+                }
+            }
+        }
+
+        $retTable = $set['ret_table'];
+        $retModel = $set['ret_model'];
+        if (Schema::hasTable($retTable) && !empty($channelIds)) {
+            $latestReturnsIds = $retModel::query()
+                ->whereIn('channel_id', $channelIds)
+                ->selectRaw('MAX(id) AS id')
+                ->groupBy('channel_id')
+                ->pluck('id')
+                ->all();
+
+            if (!empty($latestReturnsIds)) {
+                $latestReturnsMap = $retModel::query()
+                    ->whereIn('id', $latestReturnsIds)
+                    ->get()
+                    ->keyBy('channel_id');
+
+                $prevReturnsIds = DB::table($retTable)
+                    ->whereIn('channel_id', $channelIds)
+                    ->whereNotIn('id', $latestReturnsIds)
+                    ->selectRaw('channel_id, MAX(id) AS id')
+                    ->groupBy('channel_id')
+                    ->pluck('id', 'channel_id')
+                    ->toArray();
+
+                if (!empty($prevReturnsIds)) {
+                    $prevReturnsMap = $retModel::query()
+                        ->whereIn('id', array_values($prevReturnsIds))
+                        ->get()
+                        ->keyBy('channel_id');
+                }
+            }
+        }
+
+        $msgNextTable = $set['msg_next_t'];
+        $msgNextModel = $set['msg_next_m'];
+        if (Schema::hasTable($msgNextTable) && !empty($channelIds)) {
+            $nextValueMap = $msgNextModel::query()
+                ->whereIn('channel_id', $channelIds)
+                ->get()
+                ->keyBy('channel_id');
+        }
+
+        $retNextTable = $set['ret_next_t'];
+        $retNextModel = $set['ret_next_m'];
+        if (Schema::hasTable($retNextTable) && !empty($channelIds)) {
+            $nextReturnsValueMap = $retNextModel::query()
+                ->whereIn('channel_id', $channelIds)
+                ->get()
+                ->keyBy('channel_id');
+        }
+
+        // Per-page custom link map (currently only the Shipping page uses
+        // this — it stores its own S link in cc_shipping_channel_links).
+        $sLinkMap = [];
+        $sLinkTable = $set['s_link_t'] ?? null;
+        $sLinkModel = $set['s_link_m'] ?? null;
+        if ($sLinkTable && $sLinkModel && Schema::hasTable($sLinkTable) && !empty($channelIds)) {
+            $sLinkMap = $sLinkModel::query()
+                ->whereIn('channel_id', $channelIds)
+                ->get()
+                ->keyBy('channel_id');
+        }
+
+        $hasRLink = Schema::hasColumn('account_health_metric_field_definitions', 'r_link');
+
+        $rows = $channels->map(function (ChannelMaster $c) use (
+            $ahmController, $hasLogo, $hasRLink,
+            &$scopeToMLink, &$scopeToHLink, &$scopeToRLink,
+            $latestChecklistMap, $prevChecklistMap,
+            $latestReturnsMap,   $prevReturnsMap,
+            $nextValueMap, $nextReturnsValueMap,
+            $sLinkMap
+        ) {
+            $scope = $ahmController->definitionScopeForChannel($c);
+
+            if (! array_key_exists($scope, $scopeToMLink)) {
+                $scopeToMLink[$scope] = \App\Models\AccountHealthMetricFieldDefinition::query()
+                    ->where('definition_scope', $scope)
+                    ->whereNotNull('m_link')
+                    ->where('m_link', '!=', '')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->value('m_link');
+            }
+            if (! array_key_exists($scope, $scopeToHLink)) {
+                $scopeToHLink[$scope] = \App\Models\AccountHealthMetricFieldDefinition::query()
+                    ->where('definition_scope', $scope)
+                    ->whereNotNull('h_link')
+                    ->where('h_link', '!=', '')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->value('h_link');
+            }
+            if ($hasRLink && ! array_key_exists($scope, $scopeToRLink)) {
+                $scopeToRLink[$scope] = \App\Models\AccountHealthMetricFieldDefinition::query()
+                    ->where('definition_scope', $scope)
+                    ->whereNotNull('r_link')
+                    ->where('r_link', '!=', '')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->value('r_link');
+            }
+
+            $latest = $latestChecklistMap[$c->id] ?? null;
+            $latestArr = null;
+            if ($latest) {
+                $latestArr = [
+                    'id'                            => $latest->id,
+                    'user_name'                     => $latest->user_name,
+                    'submitted_at'                  => optional($latest->submitted_at)->toIso8601String(),
+                    'messages_resolved'             => (bool) $latest->messages_resolved,
+                    // returns_resolved is a legacy column kept only on
+                    // cc_message_checklists for back-compat; other tables
+                    // don't carry it.
+                    'returns_resolved'              => isset($latest->returns_resolved) ? (bool) $latest->returns_resolved : false,
+                    'unresolved_messages_followup'  => (bool) $latest->unresolved_messages_followup,
+                    'activity_documented'           => (bool) $latest->activity_documented,
+                    // extra_check / extra_check_2 only present on
+                    // cc_shipping_*; default to false on other tables.
+                    'extra_check'                   => isset($latest->extra_check)   ? (bool) $latest->extra_check   : false,
+                    'extra_check_2'                 => isset($latest->extra_check_2) ? (bool) $latest->extra_check_2 : false,
+                ];
+            }
+
+            $latestReturns = $latestReturnsMap[$c->id] ?? null;
+            $latestReturnsArr = null;
+            if ($latestReturns) {
+                $latestReturnsArr = [
+                    'id'                            => $latestReturns->id,
+                    'user_name'                     => $latestReturns->user_name,
+                    'submitted_at'                  => optional($latestReturns->submitted_at)->toIso8601String(),
+                    'messages_resolved'             => (bool) $latestReturns->messages_resolved,
+                    'unresolved_messages_followup'  => (bool) $latestReturns->unresolved_messages_followup,
+                    'activity_documented'           => (bool) $latestReturns->activity_documented,
+                    'extra_check'                   => isset($latestReturns->extra_check)   ? (bool) $latestReturns->extra_check   : false,
+                    'extra_check_2'                 => isset($latestReturns->extra_check_2) ? (bool) $latestReturns->extra_check_2 : false,
+                ];
+            }
+
+            $nextRow = $nextValueMap[$c->id] ?? null;
+            $nextValue = $nextRow ? (int) $nextRow->next_value : null;
+            if ($nextValue !== null && ($nextValue < 1 || $nextValue > 9)) {
+                $nextValue = null;
+            }
+
+            $nextReturnsRow = $nextReturnsValueMap[$c->id] ?? null;
+            $nextReturnsValue = $nextReturnsRow ? (int) $nextReturnsRow->next_value : null;
+            if ($nextReturnsValue !== null && ($nextReturnsValue < 1 || $nextReturnsValue > 9)) {
+                $nextReturnsValue = null;
+            }
+
+            // TAT (Turn-Around-Time) for the Messages workflow:
+            // off-hours minutes between the previous Messages submission
+            // and the latest one. "Off-hours" = outside 06:00–18:00.
+            // null when there's fewer than 2 submissions for this channel.
+            $tatMinutes = null;
+            $prev = $prevChecklistMap[$c->id] ?? null;
+            if ($latest && $prev && $latest->submitted_at && $prev->submitted_at) {
+                $tatMinutes = $this->offHoursMinutesBetween(
+                    \Carbon\Carbon::parse($prev->submitted_at),
+                    \Carbon\Carbon::parse($latest->submitted_at)
+                );
+            }
+
+            // Same TAT computation for the Returns workflow.
+            $tatReturnsMinutes = null;
+            $prevReturns = $prevReturnsMap[$c->id] ?? null;
+            if ($latestReturns && $prevReturns
+                && $latestReturns->submitted_at && $prevReturns->submitted_at) {
+                $tatReturnsMinutes = $this->offHoursMinutesBetween(
+                    \Carbon\Carbon::parse($prevReturns->submitted_at),
+                    \Carbon\Carbon::parse($latestReturns->submitted_at)
+                );
+            }
+
+            $sLinkRow = $sLinkMap[$c->id] ?? null;
+            $sLinkValue = $sLinkRow ? (trim((string) $sLinkRow->s_link) ?: null) : null;
+
+            return [
+                'id'                       => $c->id,
+                'channel'                  => $c->channel,
+                'logo'                     => $hasLogo ? ($c->logo ?? null) : null,
+                'm_link'                   => $scopeToMLink[$scope] ?: null,
+                'h_link'                   => $scopeToHLink[$scope] ?: null,
+                'r_link'                   => $hasRLink ? ($scopeToRLink[$scope] ?: null) : null,
+                's_link'                   => $sLinkValue,
+                'latest_checklist'         => $latestArr,
+                'latest_returns_checklist' => $latestReturnsArr,
+                'next_value'               => $nextValue,
+                'next_returns_value'       => $nextReturnsValue,
+                'tat_minutes'              => $tatMinutes,
+                'tat_returns_minutes'      => $tatReturnsMinutes,
+            ];
+        })->values()->toArray();
+
+        return view($set['view'], [
+            'channelsWithLogo'   => $rows,
+            'canEditNext'        => $this->canEditNextValue(),
+            // Shipping page surfaces the 9AM Clear (Messages-side) and
+            // 3 PM Clear (Returns-side) window states so the submit modal
+            // can show "open" / "closed" and disable Submit accordingly.
+            // Null on other pages.
+            'nineAmClearWindow'  => $page === 'shipping' ? $this->nineAmClearWindowState()  : null,
+            'threePmClearWindow' => $page === 'shipping' ? $this->threePmClearWindowState() : null,
+            // 30-day (ex-Sundays) success / missed totals per workflow —
+            // feeds the two summary badges shown above the Shipping table.
+            'shippingHistoryAgg' => $page === 'shipping'
+                ? $this->ccShippingHistoryAggregates($channelIds)
+                : null,
+        ]);
+    }
+
+    /**
+     * Save the per-channel "Next" priority value (1..9). Restricted to
+     * NEXT_EDITOR_EMAILS — everybody else gets a 403.
+     */
+    public function storeCcNextValue(Request $request)
+    {
+        if (! $this->canEditNextValue()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to edit the Next value.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'next_value' => 'nullable|integer|min:1|max:9',
+        ]);
+
+        $user = Auth::user();
+        $userName = null;
+        if ($user) {
+            $name = trim((string) ($user->name ?? ''));
+            if ($name === '') {
+                $email = (string) ($user->email ?? '');
+                $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $user->id);
+            }
+            $userName = $name;
+        }
+
+        $row = CcMessageChannelNext::updateOrCreate(
+            ['channel_id' => (int) $validated['channel_id']],
+            [
+                'next_value'         => array_key_exists('next_value', $validated) ? $validated['next_value'] : null,
+                'updated_by_user_id' => Auth::id(),
+                'updated_by_name'    => $userName,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'row' => [
+                'channel_id'      => $row->channel_id,
+                'next_value'      => $row->next_value !== null ? (int) $row->next_value : null,
+                'updated_by_name' => $row->updated_by_name,
+                'updated_at'      => optional($row->updated_at)->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
+     * Save the per-channel "R Next" priority value (1..9) — drives the
+     * freshness window for the R Status icon (Returns checklist). Same
+     * permission gate as storeCcNextValue: only NEXT_EDITOR_EMAILS.
+     */
+    public function storeCcReturnsNextValue(Request $request)
+    {
+        if (! $this->canEditNextValue()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to edit the R Next value.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'next_value' => 'nullable|integer|min:1|max:9',
+        ]);
+
+        $user = Auth::user();
+        $userName = null;
+        if ($user) {
+            $name = trim((string) ($user->name ?? ''));
+            if ($name === '') {
+                $email = (string) ($user->email ?? '');
+                $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $user->id);
+            }
+            $userName = $name;
+        }
+
+        $row = CcReturnsChannelNext::updateOrCreate(
+            ['channel_id' => (int) $validated['channel_id']],
+            [
+                'next_value'         => array_key_exists('next_value', $validated) ? $validated['next_value'] : null,
+                'updated_by_user_id' => Auth::id(),
+                'updated_by_name'    => $userName,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'row' => [
+                'channel_id'      => $row->channel_id,
+                'next_value'      => $row->next_value !== null ? (int) $row->next_value : null,
+                'updated_by_name' => $row->updated_by_name,
+                'updated_at'      => optional($row->updated_at)->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
+     * Save the per-scope R link (R = Returns) for the channel. Mirrors the
+     * /account-health-master/tabulator scope-link save flow but kept local
+     * to this page so we don't have to change the validation rules on the
+     * Account Health Master endpoint (which only allows m_link / h_link).
+     */
+    public function storeCcRLink(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'value'      => 'nullable|string|max:2048',
+        ]);
+
+        if (! Schema::hasColumn('account_health_metric_field_definitions', 'r_link')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'R link column is not available yet — run migrations.',
+            ], 500);
+        }
+
+        $channel = ChannelMaster::query()->findOrFail((int) $request->input('channel_id'));
+        $ahmController = app(\App\Http\Controllers\Channels\AccountHealthMasterController::class);
+        $scope = $ahmController->definitionScopeForChannel($channel);
+
+        $raw = $request->input('value');
+        $link = $raw === null ? null : trim((string) $raw);
+        if ($link === '') $link = null;
+
+        // Prefer updating the lowest-sort_order factor in the scope; if none
+        // exist yet, create a hidden placeholder row so we have somewhere to
+        // store the scope-wide link (same shape used by m_link / h_link).
+        $row = \App\Models\AccountHealthMetricFieldDefinition::query()
+            ->where('definition_scope', $scope)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->first();
+
+        if (! $row) {
+            $row = \App\Models\AccountHealthMetricFieldDefinition::query()->create([
+                'definition_scope' => $scope,
+                'field_key'        => '_link_holder',
+                'label'            => 'Link Holder',
+                'sort_order'       => 0,
+            ]);
+        }
+
+        $row->update(['r_link' => $link]);
+
+        return response()->json([
+            'success' => true,
+            'scope'   => $scope,
+            'field'   => 'r_link',
+            'value'   => $link,
+        ]);
+    }
+
+    /**
+     * Persist a single submission of the per-channel "CC Message & Returns"
+     * checklist. Returns the freshly stored row so the front-end can update
+     * the "History" column in place without reloading.
+     */
+    public function storeCcChecklist(Request $request)
+    {
+        $validated = $request->validate([
+            'channel_id'                   => 'required|integer|exists:channel_master,id',
+            'messages_resolved'            => 'sometimes|boolean',
+            'returns_resolved'             => 'sometimes|boolean',
+            'unresolved_messages_followup' => 'sometimes|boolean',
+            'activity_documented'          => 'sometimes|boolean',
+            'notes'                        => 'nullable|string|max:2000',
+        ]);
+
+        $channel = ChannelMaster::query()->findOrFail((int) $validated['channel_id']);
+        $user = Auth::user();
+        $userName = null;
+        if ($user) {
+            $name = trim((string) ($user->name ?? ''));
+            if ($name === '') {
+                $email = (string) ($user->email ?? '');
+                $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $user->id);
+            }
+            $userName = $name;
+        }
+
+        $row = CcMessageChecklist::create([
+            'channel_id'                   => $channel->id,
+            'channel'                      => $channel->channel,
+            'user_id'                      => Auth::id(),
+            'user_name'                    => $userName,
+            'messages_resolved'            => (bool) ($validated['messages_resolved']            ?? false),
+            'returns_resolved'             => (bool) ($validated['returns_resolved']             ?? false),
+            'unresolved_messages_followup' => (bool) ($validated['unresolved_messages_followup'] ?? false),
+            'activity_documented'          => (bool) ($validated['activity_documented']          ?? false),
+            'notes'                        => $validated['notes'] ?? null,
+            'submitted_at'                 => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'row' => [
+                'id'                            => $row->id,
+                'channel_id'                    => $row->channel_id,
+                'user_name'                     => $row->user_name,
+                'submitted_at'                  => optional($row->submitted_at)->toIso8601String(),
+                'messages_resolved'             => (bool) $row->messages_resolved,
+                'returns_resolved'              => (bool) $row->returns_resolved,
+                'unresolved_messages_followup'  => (bool) $row->unresolved_messages_followup,
+                'activity_documented'           => (bool) $row->activity_documented,
+            ],
+        ]);
+    }
+
+    /**
+     * Return the most recent checklist submissions for a single channel,
+     * newest first. Used by the History modal on the CC Message & Returns
+     * page.
+     */
+    public function getCcChecklistHistory(Request $request)
+    {
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'limit'      => 'nullable|integer|min:1|max:200',
+        ]);
+        $limit = (int) ($validated['limit'] ?? 50);
+
+        $rows = CcMessageChecklist::query()
+            ->where('channel_id', (int) $validated['channel_id'])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (CcMessageChecklist $r) => [
+                'id'                            => $r->id,
+                'user_name'                     => $r->user_name,
+                'submitted_at'                  => optional($r->submitted_at)->toIso8601String(),
+                'messages_resolved'             => (bool) $r->messages_resolved,
+                'returns_resolved'              => (bool) $r->returns_resolved,
+                'unresolved_messages_followup'  => (bool) $r->unresolved_messages_followup,
+                'activity_documented'           => (bool) $r->activity_documented,
+                'notes'                         => $r->notes,
+            ])
+            ->all();
+
+        return response()->json(['rows' => $rows]);
+    }
+
+    /**
+     * Persist a single submission of the per-channel Returns checklist —
+     * powers the second Status + History column pair (placed after R link)
+     * on the CC Message & Returns page. Same shape as storeCcChecklist()
+     * but writes to cc_returns_checklists.
+     */
+    public function storeCcReturnsChecklist(Request $request)
+    {
+        $validated = $request->validate([
+            'channel_id'                   => 'required|integer|exists:channel_master,id',
+            'messages_resolved'            => 'sometimes|boolean',
+            'unresolved_messages_followup' => 'sometimes|boolean',
+            'activity_documented'          => 'sometimes|boolean',
+            'notes'                        => 'nullable|string|max:2000',
+        ]);
+
+        $channel = ChannelMaster::query()->findOrFail((int) $validated['channel_id']);
+        $user = Auth::user();
+        $userName = null;
+        if ($user) {
+            $name = trim((string) ($user->name ?? ''));
+            if ($name === '') {
+                $email = (string) ($user->email ?? '');
+                $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $user->id);
+            }
+            $userName = $name;
+        }
+
+        $row = CcReturnsChecklist::create([
+            'channel_id'                   => $channel->id,
+            'channel'                      => $channel->channel,
+            'user_id'                      => Auth::id(),
+            'user_name'                    => $userName,
+            'messages_resolved'            => (bool) ($validated['messages_resolved']            ?? false),
+            'unresolved_messages_followup' => (bool) ($validated['unresolved_messages_followup'] ?? false),
+            'activity_documented'          => (bool) ($validated['activity_documented']          ?? false),
+            'notes'                        => $validated['notes'] ?? null,
+            'submitted_at'                 => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'row' => [
+                'id'                            => $row->id,
+                'channel_id'                    => $row->channel_id,
+                'user_name'                     => $row->user_name,
+                'submitted_at'                  => optional($row->submitted_at)->toIso8601String(),
+                'messages_resolved'             => (bool) $row->messages_resolved,
+                'unresolved_messages_followup'  => (bool) $row->unresolved_messages_followup,
+                'activity_documented'           => (bool) $row->activity_documented,
+            ],
+        ]);
+    }
+
+    /**
+     * Returns the most recent Returns-checklist submissions for a single
+     * channel, newest first. Used by the second History modal on the
+     * CC Message & Returns page.
+     */
+    public function getCcReturnsChecklistHistory(Request $request)
+    {
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'limit'      => 'nullable|integer|min:1|max:200',
+        ]);
+        $limit = (int) ($validated['limit'] ?? 50);
+
+        $rows = CcReturnsChecklist::query()
+            ->where('channel_id', (int) $validated['channel_id'])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (CcReturnsChecklist $r) => [
+                'id'                            => $r->id,
+                'user_name'                     => $r->user_name,
+                'submitted_at'                  => optional($r->submitted_at)->toIso8601String(),
+                'messages_resolved'             => (bool) $r->messages_resolved,
+                'unresolved_messages_followup'  => (bool) $r->unresolved_messages_followup,
+                'activity_documented'           => (bool) $r->activity_documented,
+                'notes'                         => $r->notes,
+            ])
+            ->all();
+
+        return response()->json(['rows' => $rows]);
+    }
+
+    // =================================================================
+    //  Shipping-page endpoints — mirror the cc_message_*  and cc_returns_*
+    //  variants but write to / read from cc_shipping_*  tables instead.
+    //  Same validation rules, same auth gating, same response shape so
+    //  the blade's helper JS works unchanged.
+    // =================================================================
+
+    /**
+     * Shipping-page daily submission windows. Each side of the page has
+     * its own time gate (in America/New_York hours):
+     *   - 9AM Clear   (Messages side):  09:00–10:00
+     *   - 3 PM Clear  (Returns side):   15:00–16:00
+     * Outside the relevant window the corresponding store endpoint
+     * returns 422. Days where the window passed without a submission
+     * render as red "missed" rows in that side's history modal.
+     */
+    private const SHIPPING_CLEAR_TZ                  = 'America/New_York';
+    private const SHIPPING_CLEAR_WINDOW_FROM         = 9;    // 9AM Clear from
+    private const SHIPPING_CLEAR_WINDOW_TO           = 10;   // 9AM Clear to (exclusive)
+    private const SHIPPING_RETURNS_WINDOW_FROM       = 15;   // 3PM Clear from
+    private const SHIPPING_RETURNS_WINDOW_TO         = 16;   // 3PM Clear to (exclusive)
+
+    public function storeCcShippingChecklist(Request $request)
+    {
+        $nowEst = \Carbon\Carbon::now(self::SHIPPING_CLEAR_TZ);
+        $h = (int) $nowEst->hour;
+        if ($h < self::SHIPPING_CLEAR_WINDOW_FROM || $h >= self::SHIPPING_CLEAR_WINDOW_TO) {
+            return response()->json([
+                'success' => false,
+                'message' => '9AM Clear can only be submitted between '
+                    . sprintf('%02d:00', self::SHIPPING_CLEAR_WINDOW_FROM)
+                    . ' and '
+                    . sprintf('%02d:00', self::SHIPPING_CLEAR_WINDOW_TO)
+                    . ' ' . self::SHIPPING_CLEAR_TZ
+                    . '. It is currently ' . $nowEst->format('H:i') . ' there.',
+                'window_open' => false,
+            ], 422);
+        }
+
+        return $this->genericStoreChecklist($request, CcShippingChecklist::class, false, true, true);
+    }
+
+    public function getCcShippingChecklistHistory(Request $request)
+    {
+        return $this->shippingChecklistHistoryWithMissed(
+            $request,
+            CcShippingChecklist::class,
+            self::SHIPPING_CLEAR_WINDOW_TO,
+            true
+        );
+    }
+
+    public function getCcShippingReturnsChecklistHistory(Request $request)
+    {
+        return $this->shippingChecklistHistoryWithMissed(
+            $request,
+            CcShippingReturnsChecklist::class,
+            self::SHIPPING_RETURNS_WINDOW_TO,
+            true
+        );
+    }
+
+    /**
+     * Shared body for the two Shipping-page history endpoints. Loads the
+     * raw submissions for the given model, then synthesizes red "missed"
+     * rows for every EST day in the range that had no submission. The
+     * `$windowToHour` controls when "today" counts as missed (i.e. once
+     * the window's upper bound has passed in EST).
+     */
+    private function shippingChecklistHistoryWithMissed(
+        Request $request,
+        string $modelClass,
+        int $windowToHour,
+        bool $includeExtraCheck2 = false
+    ) {
+        // Pull the raw submissions first (newest → oldest).
+        $base = $this->genericChecklistHistory($request, $modelClass, false, true, $includeExtraCheck2);
+        $payload = json_decode($base->getContent(), true) ?: [];
+        $rows = $payload['rows'] ?? [];
+
+        // Bucket existing submissions by their EST date — any submission
+        // on that EST date counts as "covered" so we don't double-report
+        // old/late submissions as missed.
+        $coveredDates = [];
+        foreach ($rows as $r) {
+            if (empty($r['submitted_at'])) continue;
+            try {
+                $date = \Carbon\Carbon::parse($r['submitted_at'])
+                    ->setTimezone(self::SHIPPING_CLEAR_TZ)
+                    ->toDateString();
+                $coveredDates[$date] = true;
+            } catch (\Throwable $e) {
+                // ignore unparseable rows
+            }
+        }
+
+        // Walk every day from the EARLIEST submission (or 30 days ago
+        // when there are no submissions yet) up to "today" in EST. Skip
+        // today if the window hasn't fully passed yet — the user can
+        // still submit.
+        $oldestRow = end($rows) ?: null;
+        $start = $oldestRow && !empty($oldestRow['submitted_at'])
+            ? \Carbon\Carbon::parse($oldestRow['submitted_at'])->setTimezone(self::SHIPPING_CLEAR_TZ)->startOfDay()
+            : \Carbon\Carbon::now(self::SHIPPING_CLEAR_TZ)->subDays(30)->startOfDay();
+
+        $nowEst   = \Carbon\Carbon::now(self::SHIPPING_CLEAR_TZ);
+        $todayEst = $nowEst->copy()->startOfDay();
+        $windowPassedToday = $nowEst->hour >= $windowToHour;
+        $end = $windowPassedToday ? $todayEst : $todayEst->copy()->subDay();
+
+        $missed = [];
+        $cursor = $start->copy();
+        $safetyCap = 400; // ~13 months — guards against runaway loops
+        $iter = 0;
+        while ($cursor->lessThanOrEqualTo($end) && $iter < $safetyCap) {
+            $iter++;
+            $d = $cursor->toDateString();
+            if (! isset($coveredDates[$d])) {
+                $missed[] = [
+                    'id'           => null,
+                    'user_name'    => null,
+                    // Anchor the synthetic row at the END of the missed
+                    // window (in EST) so it sorts naturally between real
+                    // submissions.
+                    'submitted_at' => $cursor->copy()->setTime($windowToHour, 0, 0)->toIso8601String(),
+                    'status'       => 'missed',
+                    'notes'        => null,
+                ];
+            }
+            $cursor->addDay();
+        }
+
+        $merged = array_merge($rows, $missed);
+        usort($merged, function ($a, $b) {
+            return strcmp(($b['submitted_at'] ?? ''), ($a['submitted_at'] ?? ''));
+        });
+
+        return response()->json(['rows' => $merged]);
+    }
+
+    public function storeCcShippingReturnsChecklist(Request $request)
+    {
+        $nowEst = \Carbon\Carbon::now(self::SHIPPING_CLEAR_TZ);
+        $h = (int) $nowEst->hour;
+        if ($h < self::SHIPPING_RETURNS_WINDOW_FROM || $h >= self::SHIPPING_RETURNS_WINDOW_TO) {
+            return response()->json([
+                'success' => false,
+                'message' => '3 PM Clear can only be submitted between '
+                    . sprintf('%02d:00', self::SHIPPING_RETURNS_WINDOW_FROM)
+                    . ' and '
+                    . sprintf('%02d:00', self::SHIPPING_RETURNS_WINDOW_TO)
+                    . ' ' . self::SHIPPING_CLEAR_TZ
+                    . '. It is currently ' . $nowEst->format('H:i') . ' there.',
+                'window_open' => false,
+            ], 422);
+        }
+
+        return $this->genericStoreChecklist($request, CcShippingReturnsChecklist::class, false, true, true);
+    }
+
+    public function storeCcShippingNextValue(Request $request)
+    {
+        return $this->genericStoreNextValue($request, CcShippingChannelNext::class);
+    }
+
+    public function storeCcShippingReturnsNextValue(Request $request)
+    {
+        return $this->genericStoreNextValue($request, CcShippingReturnsChannelNext::class);
+    }
+
+    /**
+     * Save the per-channel "S link" (Shipping link) for the Shipping page.
+     * Open to everyone (matches the M/H/R-link behaviour on the
+     * /customer-care/cc-messages-returns page — link editing isn't gated
+     * to a manager).
+     */
+    public function storeCcShippingSLink(Request $request)
+    {
+        $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'value'      => 'nullable|string|max:2048',
+        ]);
+
+        $channel = ChannelMaster::query()->findOrFail((int) $request->input('channel_id'));
+
+        $raw  = $request->input('value');
+        $link = $raw === null ? null : trim((string) $raw);
+        if ($link === '') {
+            $link = null;
+        }
+
+        $user = Auth::user();
+        $userName = null;
+        if ($user) {
+            $name = trim((string) ($user->name ?? ''));
+            if ($name === '') {
+                $email = (string) ($user->email ?? '');
+                $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $user->id);
+            }
+            $userName = $name;
+        }
+
+        $row = CcShippingChannelLink::updateOrCreate(
+            ['channel_id' => $channel->id],
+            [
+                's_link'             => $link,
+                'updated_by_user_id' => Auth::id(),
+                'updated_by_name'    => $userName,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'field'   => 's_link',
+            'value'   => $row->s_link,
+        ]);
+    }
+
+    /**
+     * Shared body for "store one checklist submission" against any
+     * cc_*_checklists model. Returns the same response shape used by
+     * storeCcChecklist() so the existing blade JS can consume it unchanged.
+     */
+    private function genericStoreChecklist(
+        Request $request,
+        string $modelClass,
+        bool $includeReturnsResolved,
+        bool $includeExtraCheck = false,
+        bool $includeExtraCheck2 = false
+    ) {
+        $rules = [
+            'channel_id'                   => 'required|integer|exists:channel_master,id',
+            'messages_resolved'            => 'sometimes|boolean',
+            'unresolved_messages_followup' => 'sometimes|boolean',
+            'activity_documented'          => 'sometimes|boolean',
+            'notes'                        => 'nullable|string|max:2000',
+        ];
+        if ($includeReturnsResolved) {
+            $rules['returns_resolved'] = 'sometimes|boolean';
+        }
+        if ($includeExtraCheck) {
+            $rules['extra_check'] = 'sometimes|boolean';
+        }
+        if ($includeExtraCheck2) {
+            $rules['extra_check_2'] = 'sometimes|boolean';
+        }
+        $validated = $request->validate($rules);
+
+        $channel = ChannelMaster::query()->findOrFail((int) $validated['channel_id']);
+        $user = Auth::user();
+        $userName = null;
+        if ($user) {
+            $name = trim((string) ($user->name ?? ''));
+            if ($name === '') {
+                $email = (string) ($user->email ?? '');
+                $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $user->id);
+            }
+            $userName = $name;
+        }
+
+        $payload = [
+            'channel_id'                   => $channel->id,
+            'channel'                      => $channel->channel,
+            'user_id'                      => Auth::id(),
+            'user_name'                    => $userName,
+            'messages_resolved'            => (bool) ($validated['messages_resolved']            ?? false),
+            'unresolved_messages_followup' => (bool) ($validated['unresolved_messages_followup'] ?? false),
+            'activity_documented'          => (bool) ($validated['activity_documented']          ?? false),
+            'notes'                        => $validated['notes'] ?? null,
+            'submitted_at'                 => now(),
+        ];
+        if ($includeReturnsResolved) {
+            $payload['returns_resolved'] = (bool) ($validated['returns_resolved'] ?? false);
+        }
+        if ($includeExtraCheck) {
+            $payload['extra_check'] = (bool) ($validated['extra_check'] ?? false);
+        }
+        if ($includeExtraCheck2) {
+            $payload['extra_check_2'] = (bool) ($validated['extra_check_2'] ?? false);
+        }
+
+        $row = $modelClass::create($payload);
+
+        $rowOut = [
+            'id'                            => $row->id,
+            'channel_id'                    => $row->channel_id,
+            'user_name'                     => $row->user_name,
+            'submitted_at'                  => optional($row->submitted_at)->toIso8601String(),
+            'messages_resolved'             => (bool) $row->messages_resolved,
+            'unresolved_messages_followup'  => (bool) $row->unresolved_messages_followup,
+            'activity_documented'           => (bool) $row->activity_documented,
+        ];
+        if ($includeReturnsResolved) {
+            $rowOut['returns_resolved'] = (bool) ($row->returns_resolved ?? false);
+        }
+        if ($includeExtraCheck) {
+            $rowOut['extra_check'] = (bool) ($row->extra_check ?? false);
+        }
+        if ($includeExtraCheck2) {
+            $rowOut['extra_check_2'] = (bool) ($row->extra_check_2 ?? false);
+        }
+
+        return response()->json(['success' => true, 'row' => $rowOut]);
+    }
+
+    /**
+     * Shared body for "list history rows" against any cc_*_checklists
+     * model. Same response shape as getCcChecklistHistory().
+     */
+    private function genericChecklistHistory(
+        Request $request,
+        string $modelClass,
+        bool $includeReturnsResolved,
+        bool $includeExtraCheck = false,
+        bool $includeExtraCheck2 = false
+    ) {
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'limit'      => 'nullable|integer|min:1|max:200',
+        ]);
+        $limit = (int) ($validated['limit'] ?? 50);
+
+        $rows = $modelClass::query()
+            ->where('channel_id', (int) $validated['channel_id'])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(function ($r) use ($includeReturnsResolved, $includeExtraCheck, $includeExtraCheck2) {
+                $out = [
+                    'id'                            => $r->id,
+                    'user_name'                     => $r->user_name,
+                    'submitted_at'                  => optional($r->submitted_at)->toIso8601String(),
+                    'messages_resolved'             => (bool) $r->messages_resolved,
+                    'unresolved_messages_followup'  => (bool) $r->unresolved_messages_followup,
+                    'activity_documented'           => (bool) $r->activity_documented,
+                    'notes'                         => $r->notes,
+                ];
+                if ($includeReturnsResolved) {
+                    $out['returns_resolved'] = (bool) ($r->returns_resolved ?? false);
+                }
+                if ($includeExtraCheck) {
+                    $out['extra_check'] = (bool) ($r->extra_check ?? false);
+                }
+                if ($includeExtraCheck2) {
+                    $out['extra_check_2'] = (bool) ($r->extra_check_2 ?? false);
+                }
+                return $out;
+            })
+            ->all();
+
+        return response()->json(['rows' => $rows]);
+    }
+
+    /**
+     * Shared body for "save Next value" against any cc_*_channel_next
+     * model. Same auth gate (NEXT_EDITOR_EMAILS) and response shape as
+     * storeCcNextValue().
+     */
+    private function genericStoreNextValue(Request $request, string $modelClass)
+    {
+        if (! $this->canEditNextValue()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to edit this value.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|exists:channel_master,id',
+            'next_value' => 'nullable|integer|min:1|max:9',
+        ]);
+
+        $user = Auth::user();
+        $userName = null;
+        if ($user) {
+            $name = trim((string) ($user->name ?? ''));
+            if ($name === '') {
+                $email = (string) ($user->email ?? '');
+                $name = $email !== '' ? explode('@', $email)[0] : ('User #' . $user->id);
+            }
+            $userName = $name;
+        }
+
+        $row = $modelClass::updateOrCreate(
+            ['channel_id' => (int) $validated['channel_id']],
+            [
+                'next_value'         => array_key_exists('next_value', $validated) ? $validated['next_value'] : null,
+                'updated_by_user_id' => Auth::id(),
+                'updated_by_name'    => $userName,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'row' => [
+                'channel_id'      => $row->channel_id,
+                'next_value'      => $row->next_value !== null ? (int) $row->next_value : null,
+                'updated_by_name' => $row->updated_by_name,
+                'updated_at'      => optional($row->updated_at)->toIso8601String(),
+            ],
+        ]);
     }
 
     /**

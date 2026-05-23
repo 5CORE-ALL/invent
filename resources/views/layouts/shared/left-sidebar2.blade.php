@@ -861,6 +861,12 @@
                             <a href="{{ route('customer.care') }}">Overview</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.cc.messages.returns') }}">CC message &amp; Returns</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.cc.shipping') }}">CC Shipping</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.refunds') }}">Refunds</a>
                         </li>
                         <li>
